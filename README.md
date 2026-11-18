@@ -3,9 +3,11 @@
 A small block-building game for the browser, built with [three.js](https://threejs.org/).
 It is designed for Android tablets (touch controls) but also plays with keyboard and mouse.
 
-- Procedurally generated 128×128×64 world with hills, lakes and seas, beaches, trees and coal ore
+- Procedurally generated 128×128×64 world with hills, lakes and seas, beaches, trees, caves and coal ore
 - Water you can swim in. It flows into holes you dig next to it, as long as they're at or below sea level
 - Day/night cycle (12 minutes) with sunrise and sunset skies, sun, moon and stars
+- Sunlight: open ground is fully lit, while overhangs, tunnels and caves fade into darkness even at noon.
+  Leaves and water dim the light a little, so it's shadier under trees and deeper in lakes
 - Torches that light up the area around them with a warm, flickering glow. They stand on floors or hang on walls
 - Synthesised sound effects for digging, breaking, placing, footsteps and splashing, with no audio files
 - Break and place blocks, with break times that depend on the tool you hold
@@ -58,7 +60,7 @@ You aim with the crosshair in the middle of the screen. Volume, look speed and a
 | --- | --- |
 | `js/blocks.js` | Block & item definitions, break times, drops, recipes |
 | `js/textures.js` | Procedural texture atlas, item icons, break cracks |
-| `js/world.js` | Terrain generation, torch light propagation, chunk meshing (face culling + AO + smooth light, separate water mesh), water flow, raycasting |
+| `js/world.js` | Terrain and cave generation, sunlight and torch light propagation, chunk meshing (face culling + AO + smooth light, separate water mesh), water flow, raycasting |
 | `js/player.js` | Player physics, collision and swimming |
 | `js/sky.js` | Day/night cycle: sky colour, fog, sun, moon, stars, world brightness |
 | `js/sound.js` | Web Audio sound effects |
