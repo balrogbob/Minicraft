@@ -36,6 +36,7 @@
     <canvas id="map" class="hidden"></canvas>
     <div id="perf" class="hidden"></div>
     <div id="toast"></div>
+    <div id="ach-toast"></div>
     <div id="item-name"></div>
 
     <div id="status">
@@ -51,6 +52,8 @@
     </div>
 
     <button class="btn round" id="btn-jump" title="Jump">⤒</button>
+    <button class="btn round hidden" id="btn-down" title="Fly down">⤓</button>
+    <button class="btn round hidden" id="btn-fly" title="Fly on/off">🕊</button>
 
     <div id="inventory" class="overlay hidden">
       <div class="panel">
@@ -66,6 +69,10 @@
             <p class="hint">Tap a slot, then tap another to move or swap. Put armour in the armour slots to wear it. <button class="btn small" id="btn-sort">Sort backpack</button></p>
           </div>
           <div class="craft-col">
+            <div id="palette-wrap" class="hidden">
+              <h3>Creative palette <span class="hint">tap to take a stack</span></h3>
+              <div id="palette"></div>
+            </div>
             <h3>Crafting <span id="table-status"></span></h3>
             <div class="recipe-filter">
               <input type="search" id="recipe-search" placeholder="Search recipes…" autocomplete="off" spellcheck="false" />
@@ -137,23 +144,92 @@
           <button class="btn small" id="btn-close-menu">✕</button>
         </div>
         <div class="menu-items">
+          <button class="btn wide" id="btn-worlds">Worlds…</button>
+          <button class="btn wide" id="btn-open-map">World map</button>
+          <button class="btn wide" id="btn-guide">Guide &amp; achievements</button>
+          <button class="btn wide" id="btn-mode">Game mode: Survival</button>
           <button class="btn wide" id="btn-difficulty">Difficulty: Worrying</button>
           <p class="hint" id="difficulty-about"></p>
           <button class="btn wide" id="btn-autojump">Auto-jump: on</button>
           <button class="btn wide" id="btn-wear">Tool wear: on</button>
           <label class="slider"><span id="view-label">View distance</span> <input type="range" id="view" min="3" max="10" step="1" value="6" /></label>
+          <label class="slider"><span id="fov-label">Field of view</span> <input type="range" id="fov" min="50" max="110" step="2" value="72" /></label>
           <label class="slider">Look speed <input type="range" id="sens" min="2" max="14" step="1" value="6" /></label>
           <label class="slider">Sound <input type="range" id="volume" min="0" max="100" step="5" value="70" /></label>
           <button class="btn wide" id="btn-perf">Performance info: off</button>
+          <button class="btn wide" id="btn-keys">Keyboard keys…</button>
           <button class="btn wide" id="btn-save">Save now</button>
-          <button class="btn wide danger" id="btn-new">New world</button>
           <p class="hint">
             <b>Touch:</b> left side = move, right side = look.<br />
             Tap = place block / open crafting table. Hold still = break.<br />
             In water, hold ⤒ to swim up. Tap with food in hand to eat.<br />
-            <b>Keyboard:</b> WASD, Space, mouse, E = inventory.
+            <b>Keyboard:</b> WASD, Space, mouse, E = inventory, M = map (change them under Keyboard keys).
           </p>
           <p class="hint" id="version"></p>
+        </div>
+      </div>
+    </div>
+
+    <div id="worlds" class="overlay hidden">
+      <div class="panel menu-panel">
+        <div class="panel-head">
+          <h2>Worlds</h2>
+          <button class="btn small" id="btn-close-worlds">✕</button>
+        </div>
+        <div class="menu-items">
+          <div id="slots"></div>
+          <p class="hint">Each slot holds its own world. Export saves a world to a file you can keep or move to another device; Import loads one into a slot.</p>
+          <input type="file" id="import-file" accept=".json,application/json" hidden />
+        </div>
+      </div>
+    </div>
+
+    <div id="keys" class="overlay hidden">
+      <div class="panel menu-panel">
+        <div class="panel-head">
+          <h2>Keyboard keys</h2>
+          <button class="btn small" id="btn-close-keys">✕</button>
+        </div>
+        <div class="menu-items">
+          <div id="key-list"></div>
+          <p class="hint" id="key-hint">Tap an action, then press the key you want for it.</p>
+          <button class="btn wide" id="btn-keys-reset">Back to the usual keys</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="worldmap" class="overlay hidden">
+      <canvas id="bigmap"></canvas>
+      <div id="map-bar">
+        <button class="btn small" id="btn-map-in" title="Zoom in">＋</button>
+        <button class="btn small" id="btn-map-out" title="Zoom out">－</button>
+        <button class="btn small" id="btn-map-me" title="Back to you">◎</button>
+        <span id="map-hint">Drag to look around · tap to add or remove a waypoint</span>
+        <button class="btn small" id="btn-close-map">✕</button>
+      </div>
+    </div>
+
+    <div id="guide" class="overlay hidden">
+      <div class="panel guide-panel">
+        <div class="panel-head">
+          <h2>Guide</h2>
+          <div class="tabs"><button class="btn small toggle on" id="tab-ach">Achievements</button><button class="btn small toggle" id="tab-guide">How to play</button></div>
+          <button class="btn small" id="btn-close-guide">✕</button>
+        </div>
+        <div id="ach-list" class="guide-body"></div>
+        <div id="guide-text" class="guide-body hidden">
+          <h3>Getting started</h3>
+          <p>Hold still on a tree to punch out logs, then open 🎒 to turn them into planks, sticks and a crafting table. Tap the table to make tools. A stone pickaxe opens up the world underground.</p>
+          <h3>Staying alive</h3>
+          <p>Hunger drains as you move and dig; eat to refill it. A hearty meal (6 or more food) leaves you <b>well fed</b>: hunger falls half as fast and you heal quicker. Night brings creatures: build a bed and sleep through it, or through a storm. Cold lands chill you (stay by a fire or drink honey tea); deserts at midday cause heatstroke (find shade or water). Spiders poison; healing tea cures poison, chill and heat.</p>
+          <h3>Metal and machines</h3>
+          <p>Smelt ores in a smelter, crush them in a rock crusher for double the metal. Water wheels, windmills and the steam engine drive shafts and gears that run saws, mills, drills, trip hammers and harvesters. Pumps move water and lava through lead pipes. Levers, buttons, pressure plates, observers and gauges send signals to doors, lamps and rails.</p>
+          <h3>Exploring</h3>
+          <p>Carry a map to see the land around you; press M (or ☰ → World map) for the whole of what you've explored, and tap it to set waypoints. Rivers hold fish, villages hold traders, and shrines and lairs hold guardians worth defeating. Altars let you enchant tools with crystal shards.</p>
+          <h3>Building</h3>
+          <p>Walls, pillars and stairs join up on their own (stairs make corners). Paint doors and glass with dye, hang paintings, and light rooms with lanterns, chandeliers or coloured glow lamps.</p>
+          <h3>Creative mode</h3>
+          <p>Choose it for a new world, or switch under ☰ → Game mode. You can't be hurt or get hungry, blocks break at once and are never used up, and the inventory has a palette of every block and item. Press F (or 🕊) to fly: jump rises, Shift (or ⤓) sinks. The <b>copy wand</b> copies builds: tap one corner, then the opposite corner, then tap wherever you want copies; hold it still to start over.</p>
         </div>
       </div>
     </div>

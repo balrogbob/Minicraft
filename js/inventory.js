@@ -74,7 +74,7 @@ export class Inventory {
 
   consumeHeld() {
     const s = this.held();
-    if (!s) return;
+    if (!s || this.infinite) return; // (creative mode: nothing in hand is ever used up)
     if (--s.count <= 0) this.slots[this.selected] = null;
     this.onChange();
   }

@@ -19,6 +19,7 @@ export class Player {
     this.onGround = false;
     this.autoJump = true;
     this.speedMul = 1; // below 1 while starving
+    this.flying = false; // creative mode only
     this.kx = 0; this.kz = 0; // knockback from being hit, fades quickly
     this.inWater = false; // any part of the body in water
     this.eyeInWater = false;
@@ -95,7 +96,8 @@ export class Player {
     return false;
   }
 
-  // input: { moveX, moveZ (forward +), jump }
+  // input: { moveX, moveZ (forward +), jump, down }
+  // While flying (creative mode) there's no gravity: jump rises, down sinks, and you move twice as fast.
   update(dt, input) {
     const fx = -Math.sin(this.yaw), fz = -Math.cos(this.yaw);
     const rx = Math.cos(this.yaw), rz = -Math.sin(this.yaw);
@@ -104,12 +106,14 @@ export class Player {
     const len = Math.hypot(wx, wz);
     if (len > 1) { wx /= len; wz /= len; }
     this.updateWaterState();
-    const control = this.inLava ? 0.3 : this.inWater ? 0.55 : this.onGround ? 1 : 0.85;
+    const control = this.flying ? 2.2 : this.inLava ? 0.3 : this.inWater ? 0.55 : this.onGround ? 1 : 0.85;
     this.vel.x = wx * WALK * control * this.speedMul + this.kx;
     this.vel.z = wz * WALK * control * this.speedMul + this.kz;
     const fade = Math.exp(-6 * dt);
     this.kx *= fade; this.kz *= fade;
-    if (this.climbing && !this.inWater) {
+    if (this.flying) {
+      this.vel.y = ((input.jump ? 1 : 0) - (input.down ? 1 : 0)) * 8;
+    } else if (this.climbing && !this.inWater) {
       // ladders: walk into them (or jump) to climb, back away to climb down, stand still to slide down slowly
       if (input.jump || input.moveZ > 0.3) this.vel.y = 3.2;
       else if (input.moveZ < -0.3) this.vel.y = -3.2;

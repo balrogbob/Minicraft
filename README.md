@@ -70,14 +70,27 @@ It is designed for Android tablets (touch controls) but also plays with keyboard
 - World: **weather** (rain, tundra snow, desert sandstorms), **berry bushes**, tame **wolves** that fight for
   you, rideable **camels**, and a **wandering trader** with rare goods
 - Recipe search and favourites, a sort button for your backpack and chests, and marks on the map
+- World life: four **seasons** (crops grow fastest in summer, leaves turn and fall, winter frosts), **rivers**
+  with salmon, icefish and pufferfish, **villages** with houses, fields, a bell and villagers who trade,
+  wild **bee hives** for honey, and new caves: flooded caverns, glowing mushroom caverns and crystal **geodes**
+- Survival: an **enchanting altar** (Swift, Sturdy, Keen, Flame, Warmth), hearty meals that leave you
+  **well fed**, ailments (**poison**, **chill** and **heatstroke**), three more lairs with guardians (the Dune
+  Warden, the Frost Wraith and the Ember Lord) and their crowns, dart-trap tombs, and sleeping through storms
+- Automation: **observers**, **storage gauges**, a crop **harvester**, a **steam engine**, pumps that move
+  **lava** and fill cauldrons, and **switch rails** for branch lines
+- Building: **walls**, **pillars**, stairs that turn **corners**, **doors** and **glass panes** in every colour,
+  **lanterns**, **chandeliers**, coloured **glow lamps** that cast coloured light, and **paintings** of eight sizes
+- **Three world slots** with export to a file and import, a **creative mode** (flying, every block, instant
+  breaking and a **copy wand**), rebindable keys, a field-of-view slider, a full-screen **world map** with
+  waypoints, and **22 achievements** with an in-game guide
 - Torches that light up the area around them with a warm, flickering glow. They stand on floors or hang on walls
 - Synthesised sound effects for digging, breaking, placing, footsteps and splashing, with no audio files
 - Break and place blocks, with break times that depend on the tool you hold
 - Recipe-based crafting: some recipes need a crafting table nearby
 - Pixel-art textures are all generated in code at startup, with no image files
 - Ambient-occlusion lighting on the voxel meshes
-- The world auto-saves in the browser. Only chunks you've changed are stored (in IndexedDB); everything
-  else regenerates from the world's seed. Worlds from the earlier 128 × 128 version are moved,
+- The world auto-saves in the browser, in one of three slots. Only chunks you've changed are stored (in
+  IndexedDB); everything else regenerates from the world's seed. Worlds from the earlier 128 × 128 version are moved,
   builds and all, into the middle of the big world the first time you open the new version
 
 ## Running it
@@ -133,8 +146,13 @@ The version number is shown at the bottom of the ☰ menu; bump `GAME_VERSION` i
 | Jump / swim up | ⤒ button (auto-jump also steps up 1-block ledges) | Space |
 | Select item | Tap a hotbar slot | 1–9 / mouse wheel |
 | Inventory & crafting | 🎒 button | E |
+| World map | ☰ → World map, or tap the corner map | M |
+| Fly on / off (creative) | 🕊 button | F |
+| Fly up / down (creative) | ⤒ / ⤓ buttons | Space / Left Shift |
+| Copy and paste a build (creative) | Tap two corners with the copy wand, then tap to paste; hold still to clear | Right click / hold left button |
 
-You aim with the crosshair in the middle of the screen. Volume, look speed and auto-jump are in the ☰ menu.
+You aim with the crosshair in the middle of the screen. Volume, look speed, field of view and auto-jump are
+in the ☰ menu, and every keyboard key above can be changed under ☰ → **Keyboard keys**.
 
 ## How to progress
 
@@ -615,6 +633,84 @@ make right now. **Sort backpack** (and **Sort** in a chest) stacks things up and
 Holding the map, tap a sign to mark it on the map (named by its first line), or a bed. Tap it again
 to take the mark off. Marks off the edge of the map show as arrows pointing toward them.
 
+### Seasons, rivers, villages and bees
+
+The year turns through **spring, summer, autumn and winter**, six days each (the season shows beside the
+day). Crops grow fastest in summer and barely at all in winter; leaves turn in autumn and fall in winter,
+when the grass frosts over and the rain turns to snow.
+
+**Rivers** wind across the land. Fish in a river for **salmon**, in cold water for **icefish**, and in warm
+water for **pufferfish** (which poison you if you eat them); now and then you hook junk or treasure. Bake
+fish into a **fish pie** (with flour and butter) for a hearty meal.
+
+**Villages** have houses, a well, a wheat field and a **bell** (tap it to hear the village's name).
+Villagers are farmers, smiths, fishers and clerics, and each trades its own goods: tap one to trade.
+
+**Bee hives** hang in trees. Bees fill them with honey (faster with flowers around, slower in winter) and
+spread new flowers as they go. Tap a full hive holding a **glass bottle** for honey, or break it for
+honeycomb. Honeycomb and a bottle in the cauldron make **honey tea**, which keeps out the cold.
+
+Underground there are flooded caverns, caverns lit by **glowcap mushrooms** (cook three with butter in the
+oven for mushroom stew) and **geodes** lined with **crystal**: break it for crystal shards.
+
+### Enchanting, meals, ailments and lairs
+
+An **enchanting altar** (4 obsidian, 4 crystal shards and a gold ingot) puts enchantments on what you hold:
+**Swift** (tools dig 40% faster), **Sturdy** (wears half as fast), **Keen** (weapons hit 3 harder, needs a sun
+scarab), **Flame** (sets creatures alight, needs an ember core) and **Warmth** (armour keeps out the cold,
+needs a frost heart). Enchanted things glow in the inventory.
+
+A meal worth 6 or more food leaves you **well fed** for a while: hunger drains half as fast, and you heal
+quicker. Spiders **poison** you; staying out in the tundra cold (or a winter night) **chills** you, slowing you
+down until you warm up by a fire, wrap up or drink honey tea; and the desert sun at midday brings on
+**heatstroke**, which makes you hungry fast, until you find shade or water. Healing tea cures all three.
+
+Besides the Mossback King's dungeons there are three **lairs**: desert **tombs** (watch for dart traps on the
+pressure plates) guarded by the **Dune Warden**, tundra **crypts** with the **Frost Wraith**, and deep
+**fortresses** with the **Ember Lord**. Each guardian drops a treasure for the altar, and the crown it guards
+protects you from sun, cold or fire. A bed now lets you sleep through a storm too, by day or night.
+
+### Observers, gauges, harvesters, steam and switch rails
+
+These build on the machines you already have:
+
+- An **observer** watches the block in front of it and gives a short pulse of signal when that block changes.
+  A **storage gauge** reads the chest, machine or cauldron in front of it and gives a steady signal while it
+  holds anything (tap it to make it signal only when full). Both work doors, clutches, powered rails and
+  switch rails like any other switch.
+- A **harvester**, driven by a shaft like the drill, reaps ripe wheat, berries and sugar cane in the 5 × 5 patch
+  in front of it, replants them and passes the harvest to whatever is behind it.
+- A **steam engine** burns coal (or any fuel), fed by hand or by a hopper, and drives every shaft or gear
+  pointing into it with more power than a water wheel. It needs water beside it (a cauldron of water will do).
+- **Pumps** set beside lava pump lava through lead pipes, and a spout over a cauldron fills it with water.
+- A **switch rail** joins a branch line to a straight one. It runs straight until it gets a signal, then sends
+  carts onto the branch. Powered rails that aren't turning still brake carts, so they make station stops.
+
+### Walls, pillars, doors, lights and paintings
+
+**Walls** (in six stones) join up with each other, with gates and with solid blocks beside them; **pillars** come in stone and sandstone; and
+**stairs** placed beside each other turn inside and outside corners. Dye a **door** or make **stained glass
+panes** in any of the ten colours. Light rooms with an iron **lantern** (it hangs when placed under a block),
+a gold **chandelier**, or **glow lamps** (crystal shards, stained glass and a torch) that cast light in their
+own colour. Hang a **painting** on a wall: it picks the biggest of eight pictures that fits the space.
+
+### Worlds, creative mode, the map and achievements
+
+☰ → **Worlds…** holds three worlds. Play any of them, start a new **survival** or **creative** world in a slot,
+**Export** a world to a file (to keep it, or move it to another device) and **Import** one into a slot.
+
+In **creative mode** you can't be hurt or get hungry, blocks break at once and are never used up, and 🎒
+has a **palette** of every block and item (the recipe search filters it). Press F (or 🕊) to fly. The
+**copy wand** (in the palette) copies builds of up to 32,768 blocks: tap one corner, then the opposite corner,
+then tap wherever you want copies. Switch a world between survival and creative under ☰ → Game mode.
+
+The **world map** (M, ☰ → World map, or tap the corner map) shows all the land you've explored. Drag to look
+around, pinch or scroll to zoom, and tap to put down a waypoint (or tap one to take it away). Waypoints show
+on the hand-held map too.
+
+☰ → **Guide & achievements** lists 22 achievements for each world (with a pop-up as you earn them) and a short
+guide to how everything works.
+
 ## Code layout
 
 | File | Purpose |
@@ -623,7 +719,7 @@ to take the mark off. Marks off the edge of the map show as arrows pointing towa
 | `js/textures.js` | Procedural texture atlas, item icons, break cracks |
 | `js/terrain.js` | Chunk-by-chunk terrain generation (every block is a pure function of seed and position) |
 | `js/world.js` | Chunk streaming, sunlight and torch light propagation across chunks, chunk meshing (face culling + AO + smooth light, separate water mesh), water flow, raycasting |
-| `js/store.js` | Saving edited chunks to IndexedDB (16 bits per block; older one-byte chunks are widened as they load) |
+| `js/store.js` | Saving edited chunks to IndexedDB, per world slot (16 bits per block; older one-byte chunks are widened as they load) |
 | `js/legacy.js` | The old 128 × 128 generator, used once to migrate old saves |
 | `js/player.js` | Player physics, collision (with half-height blocks and stepping up stairs) and swimming |
 | `js/mobs.js` | Animals, pets, the trader, night creatures and the Mossback King: box models, behaviour and hunting, physics, spawning, difficulty |
@@ -637,8 +733,12 @@ to take the mark off. Marks off the edge of the map show as arrows pointing towa
 | `js/frames.js` | Item frames: what each holds, the pictures in them, and hopper filters |
 | `js/weather.js` | Rain, snow and sandstorms: when they come, and the falling particles |
 | `js/minimap.js` | The map you hold: the land drawn from above |
+| `js/worldmap.js` | The full-screen world map: explored chunks, panning, zoom and waypoints |
+| `js/achievements.js` | The list of achievements |
+| `js/bees.js` | Bees buzzing around their hives |
+| `js/paintings.js` | Paintings: the pictures and the panels that show them |
 | `js/sky.js` | Day/night cycle: sky colour, fog, sun, moon, stars, world brightness |
 | `js/sound.js` | Web Audio sound effects |
-| `js/controls.js` | Touch joystick / look / tap / hold, plus desktop input |
+| `js/controls.js` | Touch joystick / look / tap / hold, plus desktop input and key bindings |
 | `js/inventory.js` | 36-slot inventory |
 | `js/main.js` | Rendering, game loop, HUD, crafting UI, saving |

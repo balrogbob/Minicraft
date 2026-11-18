@@ -21,7 +21,7 @@ import {
   OBSERVER, GAUGE, HARVESTER, STEAM_ENGINE, SWITCH_RAIL, switchRailId,
   TINTS, WALL, LANTERN, HANGING_LANTERN, CHANDELIER, PAINTING, ART, isWall,
   ENCHANT_ALTAR, LAIRS, ENCHANTS, hasEnch, HONEY_TEA, CRYSTAL_BLOCK, SUN_SCARAB, FROST_HEART, EMBER_CORE, OBSIDIAN, SANDSTONE,
-  STICK, STRING, PAPER, CAKE, COOKIE, LEATHER, FISHING_ROD as ROD, WEIGHTED_ROD as WROD, SEEDS, FLOUR, BUTTER,
+  STICK, STRING, PAPER, CAKE, COOKIE, LEATHER, FISHING_ROD as ROD, WEIGHTED_ROD as WROD, SEEDS, FLOUR, BUTTER, COPY_WAND,
 } from './blocks.js';
 import { createAtlas, createIcons, createCrackCanvases, createWaterCanvas, createHudIcons, paintSeason } from './textures.js';
 import { World, CHUNK, WORLD_SIZE, chunkKey } from './world.js';
@@ -32,7 +32,9 @@ import { Sky, DAY_LENGTH } from './sky.js';
 import { Sound } from './sound.js';
 import { Player } from './player.js';
 import { Inventory, SLOTS } from './inventory.js';
-import { Controls } from './controls.js';
+import { Controls, KEY_ACTIONS, DEFAULT_KEYS, keyLabel } from './controls.js';
+import { WorldMap } from './worldmap.js';
+import { ACHIEVEMENTS, ACHIEVEMENT_IDS } from './achievements.js';
 import { MobManager, DIFFICULTY, DIFFICULTY_ORDER, SPECIES } from './mobs.js';
 import { ArrowManager } from './arrows.js';
 import { Stations, STATION_KINDS, isFuel } from './stations.js';
@@ -49,7 +51,7 @@ import { Paintings, paintingCells } from './paintings.js';
 
 // v2 = the 16k x 16k streaming world (player state here, edited chunks in IndexedDB).
 // v1 = the old 128 x 128 world, migrated into the middle of the big world on first launch.
-const GAME_VERSION = '18'; // shown in the menu; bump with each release
+const GAME_VERSION = '19'; // shown in the menu; bump with each release
 const SAVE_KEY = 'minicraft-save-v2';
 const LEGACY_SAVE_KEY = 'minicraft-save-v1';
 const SETTINGS_KEY = 'minicraft-settings-v1';
@@ -57,16 +59,24 @@ const REACH = 5.5;
 const $ = (id) => document.getElementById(id);
 
 // ---------- storage (never trusted to exist) ----------
-function loadSave(key = SAVE_KEY) {
+// Save slots: slot 0 is the original save (so worlds from before there were slots carry on as world 1).
+const SLOT_COUNT = 3;
+const saveKeyOf = (n) => (n ? `${SAVE_KEY}-s${n}` : SAVE_KEY);
+function loadSave(key = saveKeyOf(settings.slot)) {
   try { return JSON.parse(localStorage.getItem(key)); } catch { return null; }
 }
-function writeSave(obj) {
-  try { localStorage.setItem(SAVE_KEY, JSON.stringify(obj)); return true; } catch { return false; }
+function writeSave(obj, slot = settings.slot) {
+  try { localStorage.setItem(saveKeyOf(slot), JSON.stringify(obj)); return true; } catch { return false; }
 }
 // Settings live apart from the world so they survive "New world".
 const settings = (() => {
-  const defaults = { sens: 6, volume: 70, viewDistance: 6, perf: false, difficulty: 'worrying', wear: true, favs: [] };
-  try { return { ...defaults, ...JSON.parse(localStorage.getItem(SETTINGS_KEY)) }; } catch { return defaults; }
+  const defaults = { sens: 6, volume: 70, viewDistance: 6, perf: false, difficulty: 'worrying', wear: true, favs: [], slot: 0, fov: 72, keys: {} };
+  let s;
+  try { s = { ...defaults, ...JSON.parse(localStorage.getItem(SETTINGS_KEY)) }; } catch { s = { ...defaults }; }
+  s.slot = Math.max(0, Math.min(SLOT_COUNT - 1, s.slot | 0));
+  s.fov = Math.max(50, Math.min(110, +s.fov || 72));
+  if (!s.keys || typeof s.keys !== 'object') s.keys = {};
+  return s;
 })();
 function saveSettings() {
   try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch { /* storage unavailable */ }
@@ -83,7 +93,7 @@ const scene = new THREE.Scene();
 scene.background = new THREE.Color(SKY);
 scene.fog = new THREE.Fog(SKY, 38, 80);
 
-const camera = new THREE.PerspectiveCamera(72, window.innerWidth / window.innerHeight, 0.05, 160);
+const camera = new THREE.PerspectiveCamera(settings.fov, window.innerWidth / window.innerHeight, 0.05, 160);
 camera.rotation.order = 'YXZ';
 
 const atlasCanvas = createAtlas();
@@ -292,14 +302,15 @@ async function migrateLegacyWorld(old) {
 async function boot() {
   $('load-text').textContent = 'Opening save…';
   if (!(await store.open())) toast('Storage is unavailable here, so this world won\'t be saved', 5000);
+  store.setSlot(settings.slot);
   let save = loadSave();
-  const legacy = !save && loadSave(LEGACY_SAVE_KEY);
+  const legacy = !save && settings.slot === 0 && loadSave(LEGACY_SAVE_KEY);
   if (legacy?.seed !== undefined) save = await migrateLegacyWorld(legacy);
   await startWorld(save);
   if (legacy?.seed !== undefined) toast('Your world now sits in the middle of a 16,384 × 16,384 block world.<br>Walk out past its edges to explore!', 7000);
 }
 
-async function startWorld(save) {
+async function startWorld(save, opts = {}) {
   worldReady = false;
   paused = true;
   $('loading').classList.remove('hidden');
@@ -366,6 +377,11 @@ async function startWorld(save) {
   waypoints = Array.isArray(save?.waypoints) ? save.waypoints.filter((w) => w && [w.x, w.y, w.z].every(Number.isFinite)).map((w) => ({ x: w.x, y: w.y, z: w.z, name: String(w.name ?? 'Mark').slice(0, 16) })).slice(0, 12) : [];
   if (save?.weather) weather.set(!!save.weather.raining, Math.max(10, +save.weather.timer || 60));
   else weather.set(false);
+  creative = !!(save ? save.creative : opts.creative);
+  player.flying = creative && !!save?.flying;
+  achieved = new Set((Array.isArray(save?.achievements) ? save.achievements : []).filter((a) => ACHIEVEMENT_IDS.has(a)));
+  worldMap.load(save?.explored);
+  wand.a = null; wand.clip = null;
   air = MAX_AIR;
   dead = false;
   fallTop = null;
@@ -373,6 +389,8 @@ async function startWorld(save) {
   renderHunger();
   renderHealth();
   updateAutoJumpLabel();
+  applyCreative();
+  startPos = save?.start && Number.isFinite(save.start.x) ? save.start : { x: player.pos.x, z: player.pos.z };
 
   // build the area around the player before starting; the rest streams in while playing
   for (;;) {
@@ -393,7 +411,7 @@ async function startWorld(save) {
   $('loading').classList.add('hidden');
   worldReady = true;
   paused = false;
-  if (!save) toast('Hold on a tree to punch it and collect logs.<br>Tap 🎒 to craft.', 5000);
+  if (!save) toast(creative ? 'Creative mode: open 🎒 for every block and item. Press F (or 🕊) to fly.' : 'Hold on a tree to punch it and collect logs.<br>Tap 🎒 to craft.', 5000);
   save || saveGame();
 }
 
@@ -447,6 +465,11 @@ function saveGame() {
     pets: mobs.pets(),
     waypoints,
     time: sky.time,
+    creative,
+    flying: player.flying,
+    achievements: [...achieved],
+    explored: worldMap.serialize(),
+    start: startPos,
   });
 }
 
@@ -551,6 +574,7 @@ function renderHunger() {
 // A full bar lasts about 27 minutes standing still, or about 9 minutes of busy play.
 let starvingWarned = false;
 function updateHunger(dt) {
+  if (creative) { hunger = MAX_HUNGER; player.speedMul = 1; return false; }
   const moving = Math.hypot(player.vel.x, player.vel.z) > 0.5;
   const rate = (1 / 80 + (moving ? 1 / 40 : 0) + (controls.breaking ? 1 / 50 : 0)) * (poisoned > 0 ? 4 : 1) *
     (effects.fed > 0 ? 0.5 : 1) * (ailments.heat >= 1 ? 2 : 1);
@@ -606,7 +630,7 @@ function touchingPrickly() {
 }
 
 function damage(amount, cause) {
-  if (dead || amount <= 0) return;
+  if (dead || amount <= 0 || creative) return;
   health = Math.max(0, health - amount);
   sound.hurt();
   const fx = $('hurt');
@@ -647,7 +671,7 @@ function respawnPlayer() {
 //   a well-fed player (hunger 16+) heals a point every 3 s, using up a little hunger.
 function updateHealth(dt, wasGround, prevY) {
   // falling: track the highest point since leaving the ground (including where this step started)
-  if (riding || ridingMob || player.inWater || player.inLava || player.climbing || player.onGround && wasGround) fallTop = null;
+  if (riding || ridingMob || player.flying || player.inWater || player.inLava || player.climbing || player.onGround && wasGround) fallTop = null;
   if (!player.onGround && !player.inWater) fallTop = Math.max(fallTop ?? prevY, prevY, player.pos.y);
   else if (player.onGround && !wasGround && fallTop === null && !player.inWater) fallTop = prevY;
   if (player.onGround && !wasGround && fallTop !== null) {
@@ -713,6 +737,7 @@ function useRod(id) {
   const [what, n, msg] = catchAt(at ?? player.pos);
   if (inventory.add(what, n) > 0) { toast('Inventory full: it got away'); return; }
   toast(msg, 1800);
+  achieve('fish');
   sound.pop();
 }
 
@@ -819,6 +844,7 @@ function nearBlock(id) {
 }
 
 function renderInventory() {
+  if (creative) renderPalette();
   for (let i = 0; i < SLOTS; i++) {
     invEls[i].innerHTML = slotHTML(inventory.slots[i]);
     invEls[i].classList.toggle('picked', i === picked);
@@ -1145,7 +1171,9 @@ function hitMob() {
     wearOutHeld(1);
     return;
   }
+  const wasTame = targetMob.mob.tame;
   const r = mobs.interact(targetMob.mob, player.pos, inventory.heldId());
+  if (!wasTame && targetMob.mob.tame) achieve('tame');
   if (r.trade) { openTrade(targetMob.mob); return; }
   if (r.ride) { mountMob(targetMob.mob); return; }
   for (const [id, n] of r.take) inventory.remove(id, n);
@@ -1193,6 +1221,7 @@ function eat(id) {
     const was = effects.fed > 0;
     effects.fed = Math.max(effects.fed, foodValue(id) * 20); // a hearty meal keeps you going: the better the meal, the longer
     if (!was) toast(`Ate ${itemName(id).toLowerCase()}: you feel well fed`, 1600);
+    achieve('eat');
   }
   if (id === HONEY_BOTTLE) { inventory.add(GLASS_BOTTLE, 1); health = Math.min(MAX_HEALTH, health + 2); renderHealth(); }
   if (id === PUFFERFISH) { poisoned = Math.max(poisoned, 15); toast('Ugh! The pufferfish was poisonous.', 2500); renderHealth(); }
@@ -1355,6 +1384,7 @@ async function sleepUntilMorning() {
   tickLamps(skipped);
   for (let i = 0; i < 6; i++) world.tickPlants(skipped / 6);
   hunger = Math.max(0, hunger - 3); // a night's sleep makes you a bit peckish
+  achieve('sleep');
   renderHunger();
   saveGame();
   await new Promise((r) => setTimeout(r, 400));
@@ -1369,7 +1399,7 @@ async function sleepUntilMorning() {
 // is turned off in the menu). An anvil puts them right with a piece of what they're made of.
 function wearOutHeld(n) {
   const s = inventory.held();
-  if (!settings.wear || !s || !maxWear(s.id)) return;
+  if (creative || !settings.wear || !s || !maxWear(s.id)) return;
   if (hasEnch(s, 'sturdy') && Math.random() < 0.5) return;
   s.wear = (s.wear ?? 0) + n;
   if (s.wear >= maxWear(s.id)) {
@@ -1531,6 +1561,7 @@ function raiseBoss(x, y, z, kind, shrine, spent, name) {
   toast(`${name} rises from the shrine!`, 3000);
 }
 mobs.onDefeat = (m) => {
+  achieve(m.spec.boss ? 'boss' : 'fight');
   if (!m.spec.boss || !m.shrine) return;
   const [x, y, z] = m.shrine.split(',').map(Number);
   const shrine = m.shrineId ?? BOSS_SHRINE, spent = m.spentId ?? SPENT_SHRINE;
@@ -1625,6 +1656,7 @@ function renderEnchants() {
       inventory.onChange();
       sound.levelUp?.() ?? sound.pop();
       toast(`${itemName(h.id)} is now ${e.name}`, 1800);
+      achieve('enchant');
       renderEnchants();
     });
     row.appendChild(btn);
@@ -1736,6 +1768,7 @@ function renderTrades() {
       inventory.remove(gid, gn);
       inventory.add(oid, on);
       sound.pop();
+      achieve('trade');
       renderTrades();
     });
     row.appendChild(btn);
@@ -1934,6 +1967,7 @@ function getInCart(cart) {
   player.vel.set(0, 0, 0);
   sound.place('stone');
   toast('Hold forward to push off, back to brake. Tap to get out.', 2500);
+  achieve('cart');
 }
 function getOutOfCart() {
   if (!riding) return;
@@ -1999,6 +2033,7 @@ function place() {
     if (carts.add(world, target.x, target.y, target.z, player.lookDir(), held.id === STORAGE_CART)) { inventory.consumeHeld(); sound.place('stone'); }
     return;
   }
+  if (held?.id === COPY_WAND) { useWand(); return; }
   if (target && (target.id === TABLE || target.id === CHURN)) { sound.click(); openInventory(target.id); return; }
   if (target) {
     const { x: tx, y: ty, z: tz, id: tid } = target;
@@ -2057,7 +2092,7 @@ function place() {
       // feed a steam engine's firebox, or see how it's doing
       if (held && isFuel(held.id)) {
         const n = machines.insert(world, stations, tx, ty, tz, held.id, held.count, true);
-        if (n) { inventory.remove(held.id, n); sound.place('stone'); toast(`Steam engine: ${machines.engineText(tx, ty, tz)}`, 2000); return; }
+        if (n) { inventory.remove(held.id, n); sound.place('stone'); toast(`Steam engine: ${machines.engineText(tx, ty, tz)}`, 2000); achieve('engine'); return; }
       }
       toast(`Steam engine: ${machines.engineText(tx, ty, tz)}. ${kinetics.statusAt(tx, ty, tz)}`, 3000);
       return;
@@ -2185,6 +2220,7 @@ function place() {
     const pick = ok.filter((a) => ART[a].w * ART[a].h === big);
     const art = pick[Math.floor(Math.random() * pick.length)];
     world.setBlock(x, y, z, PAINTING + art * 4 + f);
+    achieve('paint');
     sound.place('wood');
     inventory.consumeHeld();
     toast(`"${ART[art].name}"`, 1500);
@@ -2439,6 +2475,7 @@ function updateBreaking(dt) {
     crack.visible = false;
     return;
   }
+  if (controls.breaking && inventory.heldId() === COPY_WAND) { resetWand(); crack.visible = false; return; } // holding the wand still clears it
   if (!controls.breaking || !target) {
     breakState.key = ''; breakState.progress = 0; breakState.tick = 0;
     crack.visible = false;
@@ -2449,7 +2486,8 @@ function updateBreaking(dt) {
   const held = inventory.heldId();
   const t = breakTime(target.id, held);
   if (!isFinite(t)) { crack.visible = false; return; }
-  breakState.progress += dt * (effects.haste > 0 ? 1.5 : 1) * (hasEnch(inventory.held(), 'swift') ? 1.4 : 1) / Math.max(t, 0.05);
+  if (creative) breakState.progress += dt / 0.12; // creative: everything breaks at once (one block every so often)
+  else breakState.progress += dt * (effects.haste > 0 ? 1.5 : 1) * (hasEnch(inventory.held(), 'swift') ? 1.4 : 1) / Math.max(t, 0.05);
   breakState.tick = (breakState.tick || 0) - dt;
   if (breakState.tick <= 0) { sound.dig(BLOCKS[target.id].sound); breakState.tick = 0.24; }
   if (breakState.progress >= 1) {
@@ -2514,7 +2552,9 @@ function breakBlock(x, y, z) {
     sound.breakBlock('leaves');
     toast(`Timber! +${felled.length + 1} Log`, 1800);
   }
-  if (drops.length) {
+  if (creative) {
+    // creative: blocks you break aren't collected (the palette has them all)
+  } else if (drops.length) {
     let lost = 0;
     for (const [d, n] of drops) lost += inventory.add(d, n);
     if (lost) toast('Inventory full');
@@ -2621,12 +2661,27 @@ function updateWearLabel() { $('btn-wear').textContent = `Tool wear: ${settings.
 updateWearLabel();
 $('btn-wear').addEventListener('click', () => { settings.wear = !settings.wear; updateWearLabel(); saveSettings(); });
 $('btn-save').addEventListener('click', () => toast(saveGame() ? 'World saved' : 'Could not save (storage unavailable)'));
-$('btn-new').addEventListener('click', () => {
-  // (startWorld(null) also clears the stored chunks)
-  if (!confirm('Start a new world? Your current world will be lost.')) return;
-  $('menu').classList.add('hidden');
-  startWorld(null);
+$('btn-worlds').addEventListener('click', openWorlds);
+$('btn-close-worlds').addEventListener('click', closeWorlds);
+$('btn-open-map').addEventListener('click', () => { $('menu').classList.add('hidden'); openMap(); });
+$('btn-guide').addEventListener('click', () => { $('menu').classList.add('hidden'); openGuide(); });
+$('btn-keys').addEventListener('click', () => { $('menu').classList.add('hidden'); $('keys').classList.remove('hidden'); renderKeys(); });
+$('btn-close-keys').addEventListener('click', () => { controls.capture = null; $('keys').classList.add('hidden'); $('menu').classList.remove('hidden'); });
+$('btn-keys-reset').addEventListener('click', () => { settings.keys = {}; applyKeys(); saveSettings(); renderKeys(); });
+$('btn-mode').addEventListener('click', () => {
+  creative = !creative;
+  applyCreative();
+  toast(creative ? 'Creative mode: no harm, no hunger, and every block in 🎒' : 'Survival mode', 2200);
+  saveGame();
 });
+$('fov').value = settings.fov;
+function applyFov() {
+  camera.fov = settings.fov;
+  camera.updateProjectionMatrix();
+  $('fov-label').textContent = `Field of view: ${settings.fov}°`;
+}
+applyFov();
+$('fov').addEventListener('input', (e) => { settings.fov = +e.target.value; applyFov(); saveSettings(); });
 $('version').textContent = `Version ${GAME_VERSION}`;
 function updatePerfLabel() { $('btn-perf').textContent = `Performance info: ${settings.perf ? 'on' : 'off'}`; }
 updatePerfLabel();
@@ -2683,6 +2738,15 @@ jumpBtn.addEventListener('touchend', setJump(false), { passive: false });
 jumpBtn.addEventListener('touchcancel', setJump(false), { passive: false });
 jumpBtn.addEventListener('mousedown', setJump(true));
 jumpBtn.addEventListener('mouseup', setJump(false));
+const downBtn = $('btn-down');
+const setDown = (v) => (e) => { e.preventDefault(); controls.downTouch = v; };
+downBtn.addEventListener('touchstart', setDown(true), { passive: false });
+downBtn.addEventListener('touchend', setDown(false), { passive: false });
+downBtn.addEventListener('touchcancel', setDown(false), { passive: false });
+downBtn.addEventListener('mousedown', setDown(true));
+downBtn.addEventListener('mouseup', setDown(false));
+$('btn-fly').addEventListener('click', () => toggleFly());
+$('map').addEventListener('click', () => { if (!paused) openMap(); });
 
 // ---------- init ----------
 player = null;
@@ -2695,9 +2759,12 @@ controls = null;
     selectSlot,
     scrollSlot: (d) => selectSlot((inventory.selected + d + 9) % 9),
     toggleInventory,
+    toggleMap: () => (worldMap.open ? closeMap() : !paused && !dead && openMap()),
+    toggleFly,
     isPaused: () => paused,
   });
   controls.lookSens = settings.sens / 1000;
+  applyKeys();
 }
 renderHotbar();
 
@@ -2709,6 +2776,339 @@ window.addEventListener('resize', () => {
 document.addEventListener('visibilitychange', () => { if (document.hidden) saveGame(); });
 window.addEventListener('pagehide', saveGame);
 setInterval(saveGame, 15000);
+
+// ---------- creative mode ----------
+// No harm and no hunger, blocks break at once and are never used up, the inventory gets a palette of
+// every block and item, and you can fly. It's chosen per world (and can be switched from the menu).
+let creative = false;
+function applyCreative() {
+  inventory.infinite = creative;
+  if (!creative) player.flying = false;
+  $('btn-fly').classList.toggle('hidden', !creative);
+  $('btn-fly').classList.toggle('on', player.flying);
+  $('btn-down').classList.toggle('hidden', !player.flying);
+  $('btn-mode').textContent = `Game mode: ${creative ? 'Creative' : 'Survival'}`;
+  $('palette-wrap').classList.toggle('hidden', !creative);
+  if (creative) {
+    hunger = MAX_HUNGER; health = MAX_HEALTH;
+    for (const k of Object.keys(ailments)) ailments[k] = 0;
+    poisoned = 0;
+    renderHunger(); renderHealth();
+  }
+}
+function toggleFly() {
+  if (!creative || riding || ridingMob) return;
+  player.flying = !player.flying;
+  player.vel.y = 0;
+  fallTop = null;
+  applyCreative();
+  toast(player.flying ? 'Flying: jump to rise, Shift (or ⤓) to sink' : 'Flying off', 1500);
+}
+
+// The palette: every block and item, built once and filtered by the recipe search box.
+let paletteBuilt = false;
+function renderPalette() {
+  const el = $('palette');
+  if (!paletteBuilt) {
+    paletteBuilt = true;
+    const ids = [];
+    for (let id = 1; id < BLOCKS.length; id++) if (isBlock(id) && icons[id]) ids.push(id);
+    for (const k of Object.keys(ITEMS).map(Number).sort((a, b) => a - b)) if (icons[k] && !BLOCKS[k]) ids.push(k);
+    for (const id of ids) {
+      const img = document.createElement('img');
+      img.src = icons[id]; img.alt = ''; img.title = itemName(id); img.dataset.name = itemName(id).toLowerCase();
+      img.addEventListener('click', () => {
+        if (inventory.add(id, maxStack(id)) > 0) { toast('Inventory full'); return; }
+        toast(`+${maxStack(id)} ${itemName(id)}`, 1000);
+        sound.pop();
+      });
+      el.appendChild(img);
+    }
+  }
+  const query = $('recipe-search').value.trim().toLowerCase();
+  for (const img of el.children) img.style.display = !query || img.dataset.name.includes(query) ? '' : 'none';
+}
+
+// The copy wand: tap one corner, then the opposite one, to copy everything between them; then every tap
+// pastes a copy against the face you tapped. Holding it still clears it.
+const WAND_MAX = 32768;
+const wand = { a: null, clip: null };
+function resetWand() {
+  if (!wand.a && !wand.clip) return;
+  wand.a = null; wand.clip = null;
+  toast('Copy wand cleared: tap a corner to start a new copy', 2000);
+}
+function useWand() {
+  if (!target) { toast('Tap a block with the copy wand'); return; }
+  if (wand.clip) { pasteClip(target); return; }
+  const { x, y, z } = target;
+  if (!wand.a) { wand.a = [x, y, z]; sound.click(); toast('First corner set: now tap the opposite corner', 2200); return; }
+  const [ax, ay, az] = wand.a;
+  const x0 = Math.min(ax, x), y0 = Math.min(ay, y), z0 = Math.min(az, z);
+  const w = Math.abs(ax - x) + 1, h = Math.abs(ay - y) + 1, d = Math.abs(az - z) + 1;
+  if (w * h * d > WAND_MAX) { toast(`That's ${w} × ${h} × ${d}: too big (at most ${WAND_MAX} blocks)`, 2500); return; }
+  const data = new Uint16Array(w * h * d);
+  for (let j = 0; j < h; j++) for (let k = 0; k < d; k++) for (let i = 0; i < w; i++) data[i + w * (k + d * j)] = world.get(x0 + i, y0 + j, z0 + k);
+  wand.clip = { w, h, d, data };
+  wand.a = null;
+  sound.click();
+  toast(`Copied ${w} × ${h} × ${d}. Tap where you want it; hold the wand still to clear it.`, 3500);
+}
+function pasteClip(t) {
+  const { w, h, d, data } = wand.clip;
+  let ox = t.x + t.nx, oy = t.y + t.ny, oz = t.z + t.nz;
+  if (t.nx < 0) ox -= w - 1;
+  if (t.ny < 0) oy -= h - 1;
+  if (t.nz < 0) oz -= d - 1;
+  let n = 0;
+  for (let j = 0; j < h; j++) {
+    const y = oy + j;
+    if (y < 1 || y >= H) continue;
+    for (let k = 0; k < d; k++) for (let i = 0; i < w; i++) {
+      const x = ox + i, z = oz + k, id = data[i + w * (k + d * j)];
+      if (!world.chunkAt(x, z) || world.get(x, y, z) === id) continue;
+      world.setBlock(x, y, z, id);
+      n++;
+    }
+  }
+  sound.place('stone');
+  toast(`Pasted ${n} block${n === 1 ? '' : 's'}`, 1500);
+}
+
+// ---------- achievements ----------
+let achieved = new Set();
+let startPos = null; // where this world began, for "Explorer"
+let achToastTimer;
+function achieve(id) {
+  if (!worldReady || achieved.has(id) || !ACHIEVEMENT_IDS.has(id)) return;
+  achieved.add(id);
+  const a = ACHIEVEMENTS.find((x) => x.id === id);
+  const el = $('ach-toast');
+  el.innerHTML = `<span class="icon">${a.icon}</span><span><small>Achievement</small><b>${a.name}</b></span>`;
+  el.classList.add('show');
+  clearTimeout(achToastTimer);
+  achToastTimer = setTimeout(() => el.classList.remove('show'), 3500);
+  sound.levelUp?.() ?? sound.pop();
+}
+const INGOT_IDS = Object.keys(ITEMS).map(Number).filter((k) => / Ingot$/.test(ITEMS[k].name));
+const METAL_PICKS = Object.keys(ITEMS).map(Number).filter((k) => ITEMS[k].tool?.type === 'pick' && k !== WOOD_PICK && k !== STONE_PICK);
+let progressTimer = 0;
+// Once a second: goals reached just by having something or being somewhere, and the map's explored land.
+function tickProgress(dt) {
+  if ((progressTimer -= dt) > 0) return;
+  progressTimer = 1;
+  worldMap.record(world);
+  const has = (id) => inventory.count(id) > 0;
+  if (has(LOG)) achieve('log');
+  if (has(TABLE)) achieve('table');
+  if (has(STONE_PICK)) achieve('stonepick');
+  if (INGOT_IDS.some(has)) achieve('ingot');
+  if (METAL_PICKS.some(has)) achieve('metalpick');
+  if (has(CRYSTAL_SHARD)) achieve('diamond');
+  if (player.pos.y < 10) achieve('deep');
+  if (player.pos.y > 46) achieve('peak');
+  if (startPos && Math.hypot(player.pos.x - startPos.x, player.pos.z - startPos.z) > 1000) achieve('far');
+  if (day >= 7) achieve('week');
+}
+
+// ---------- guide ----------
+function openGuide() {
+  paused = true; controls.reset(); document.exitPointerLock?.();
+  renderAchievements();
+  $('guide').classList.remove('hidden');
+}
+function renderAchievements() {
+  $('ach-list').innerHTML = `<p class="ach-count">${achieved.size} of ${ACHIEVEMENTS.length} achievements in this world</p>` +
+    ACHIEVEMENTS.map((a) => `<div class="ach${achieved.has(a.id) ? ' got' : ''}"><span class="icon">${a.icon}</span><span><b>${a.name}${achieved.has(a.id) ? ' ✓' : ''}</b><span class="about">${a.about}</span></span></div>`).join('');
+}
+const guideTab = (ach) => {
+  $('tab-ach').classList.toggle('on', ach); $('tab-guide').classList.toggle('on', !ach);
+  $('ach-list').classList.toggle('hidden', !ach); $('guide-text').classList.toggle('hidden', ach);
+};
+$('tab-ach').addEventListener('click', () => guideTab(true));
+$('tab-guide').addEventListener('click', () => guideTab(false));
+$('btn-close-guide').addEventListener('click', () => { $('guide').classList.add('hidden'); paused = false; });
+
+// ---------- world map ----------
+const worldMap = new WorldMap($('worldmap'), $('bigmap'), minimap, {
+  marks: () => waypoints,
+  home: () => bedSpawn ?? (world.spawnCache ??= world.generator.findSpawn()),
+  toggleMark(x, z, near) {
+    if (near) { waypoints = waypoints.filter((w) => w !== near); toast(`Removed ${near.name}`, 1200); sound.click(); return; }
+    if (waypoints.length >= 12) { toast('You can have 12 waypoints at most: tap one to remove it'); return; }
+    let n = 1;
+    while (waypoints.some((w) => w.name === `Mark ${n}`)) n++;
+    let y = world.generator.height(x, z);
+    if (world.chunkAt(x, z)) for (y = H - 1; y > 0 && world.get(x, y, z) === AIR; y--);
+    waypoints.push({ x, y, z, name: `Mark ${n}` });
+    toast(`Added Mark ${n}`, 1200);
+    sound.click();
+    achieve('map');
+  },
+});
+function openMap() {
+  if (!world || !worldReady) return;
+  paused = true; controls.reset(); document.exitPointerLock?.();
+  worldMap.record(world);
+  worldMap.show(true, world, player);
+}
+function closeMap() {
+  worldMap.show(false);
+  paused = false;
+}
+$('btn-close-map').addEventListener('click', closeMap);
+$('btn-map-in').addEventListener('click', () => worldMap.zoom(1.5));
+$('btn-map-out').addEventListener('click', () => worldMap.zoom(1 / 1.5));
+$('btn-map-me').addEventListener('click', () => worldMap.centre());
+
+// ---------- keyboard keys ----------
+function applyKeys() {
+  controls.binds = { ...DEFAULT_KEYS };
+  for (const [a, k] of Object.entries(settings.keys)) if (a in DEFAULT_KEYS && typeof k === 'string') controls.binds[a] = k;
+}
+function renderKeys(waiting = null) {
+  const list = $('key-list');
+  list.innerHTML = '';
+  for (const [action, name] of KEY_ACTIONS) {
+    const row = document.createElement('div');
+    row.className = 'key-row';
+    row.innerHTML = `<span>${name}</span>`;
+    const btn = document.createElement('button');
+    btn.className = 'btn' + (waiting === action ? ' waiting' : '');
+    btn.textContent = waiting === action ? 'Press a key…' : keyLabel(controls.binds[action]);
+    btn.addEventListener('click', () => {
+      renderKeys(action);
+      controls.capture = (code) => {
+        if (code !== 'Escape') {
+          // a key can only do one thing: whatever had it swaps to this action's old key
+          const old = controls.binds[action];
+          for (const [a, k] of Object.entries(controls.binds)) if (k === code && a !== action) settings.keys[a] = old;
+          settings.keys[action] = code;
+          applyKeys();
+          saveSettings();
+        }
+        renderKeys();
+      };
+    });
+    row.appendChild(btn);
+    list.appendChild(row);
+  }
+}
+
+// ---------- worlds (save slots) ----------
+function slotSummary(n) {
+  const s = loadSave(saveKeyOf(n));
+  if (!s || s.seed === undefined) return null;
+  return { day: s.day ?? 1, creative: !!s.creative, seed: s.seed, achievements: s.achievements?.length ?? 0 };
+}
+function openWorlds() {
+  $('menu').classList.add('hidden');
+  $('worlds').classList.remove('hidden');
+  renderWorlds();
+}
+function closeWorlds() {
+  $('worlds').classList.add('hidden');
+  $('menu').classList.remove('hidden');
+}
+function renderWorlds() {
+  const box = $('slots');
+  box.innerHTML = '';
+  for (let n = 0; n < SLOT_COUNT; n++) {
+    const sum = n === settings.slot && worldReady ? { day, creative, seed: world.seed, achievements: achieved.size } : slotSummary(n);
+    const card = document.createElement('div');
+    card.className = 'slot-card' + (n === settings.slot ? ' current' : '');
+    card.innerHTML = `<h3>World ${n + 1}${n === settings.slot ? ' (playing)' : ''}</h3><div class="about">${sum ? `Day ${sum.day} · ${sum.creative ? 'Creative' : 'Survival'} · ${sum.achievements}/${ACHIEVEMENTS.length} achievements · seed ${sum.seed}` : 'Empty'}</div><div class="row"></div>`;
+    const row = card.querySelector('.row');
+    const add = (label, fn, danger) => {
+      const b = document.createElement('button');
+      b.className = 'btn' + (danger ? ' danger' : '');
+      b.textContent = label;
+      b.addEventListener('click', fn);
+      row.appendChild(b);
+    };
+    if (sum && n !== settings.slot) add('Play', () => switchSlot(n, loadSave(saveKeyOf(n))));
+    add('New survival', () => newWorldIn(n, false, sum));
+    add('New creative', () => newWorldIn(n, true, sum));
+    if (sum) add('Export', () => exportSlot(n));
+    add('Import', () => { importTarget = n; $('import-file').value = ''; $('import-file').click(); });
+    if (sum && n !== settings.slot) add('Delete', () => deleteSlot(n), true);
+    box.appendChild(card);
+  }
+}
+async function switchSlot(n, save, opts) {
+  saveGame();
+  await world?.saveChunks();
+  worldReady = false;
+  settings.slot = n;
+  saveSettings();
+  store.setSlot(n);
+  $('worlds').classList.add('hidden');
+  $('menu').classList.add('hidden');
+  await startWorld(save, opts);
+}
+function newWorldIn(n, asCreative, sum) {
+  if (sum && !confirm(`Start a new ${asCreative ? 'creative' : 'survival'} world in World ${n + 1}? The world there now will be lost.`)) return;
+  try { localStorage.removeItem(saveKeyOf(n)); } catch { /* storage unavailable */ }
+  switchSlot(n, null, { creative: asCreative });
+}
+async function deleteSlot(n) {
+  if (!confirm(`Delete World ${n + 1}? This can't be undone (unless you've exported it).`)) return;
+  try { localStorage.removeItem(saveKeyOf(n)); } catch { /* storage unavailable */ }
+  await store.clear(n);
+  renderWorlds();
+}
+
+// A world file: the save itself, plus every chunk the player changed (as base64 of their block ids).
+const toB64 = (u16) => {
+  const b = new Uint8Array(u16.buffer, u16.byteOffset, u16.byteLength);
+  let s = '';
+  for (let i = 0; i < b.length; i += 0x8000) s += String.fromCharCode.apply(null, b.subarray(i, i + 0x8000));
+  return btoa(s);
+};
+const fromB64 = (str) => {
+  const s = atob(str), b = new Uint8Array(s.length);
+  for (let i = 0; i < s.length; i++) b[i] = s.charCodeAt(i);
+  return new Uint16Array(b.buffer);
+};
+async function exportSlot(n) {
+  if (n === settings.slot) { saveGame(); await world.saveChunks(); }
+  const save = loadSave(saveKeyOf(n));
+  if (!save) { toast('Nothing to export'); return; }
+  const chunks = (await store.dump(n)).map(([k, d]) => [k, toB64(d)]);
+  const file = { minicraft: 'world', version: GAME_VERSION, save, chunks };
+  const url = URL.createObjectURL(new Blob([JSON.stringify(file)], { type: 'application/json' }));
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `minicraft-world-${n + 1}-day-${save.day ?? 1}.json`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+  toast(`Exported World ${n + 1} (${chunks.length} changed chunk${chunks.length === 1 ? '' : 's'})`, 2500);
+}
+let importTarget = 0;
+$('import-file').addEventListener('change', async (e) => {
+  const f = e.target.files?.[0];
+  if (!f) return;
+  let file;
+  try { file = JSON.parse(await f.text()); } catch { file = null; }
+  if (file?.minicraft !== 'world' || !file.save || !Number.isFinite(file.save.seed) || !Array.isArray(file.chunks)) { toast('That isn\'t a Minicraft world file', 2500); return; }
+  const n = importTarget;
+  if (slotSummary(n) && !confirm(`Replace World ${n + 1} with the imported world?`)) return;
+  let chunks;
+  try {
+    chunks = file.chunks.filter(([k, d]) => Number.isFinite(k) && typeof d === 'string').map(([k, d]) => [k, fromB64(d)]).filter(([, d]) => d.length === CHUNK_VOLUME);
+  } catch { toast('That world file is damaged', 2500); return; }
+  if (n === settings.slot) { worldReady = false; await world?.saveChunks(); }
+  await store.clear(n);
+  const was = store.slot;
+  store.setSlot(n);
+  await store.saveMany(chunks);
+  store.setSlot(was);
+  if (!writeSave(file.save, n)) { toast('Could not save the imported world (storage full?)', 3000); return; }
+  toast(`Imported into World ${n + 1}`, 2000);
+  await switchSlot(n, file.save);
+});
 
 // ---------- movement sounds ----------
 const moveSnd = { dist: 0, swim: 0 };
@@ -2834,7 +3234,7 @@ function stepGame(now, dt) {
       { day: lightUniforms.uDay.value, flicker: lightUniforms.uFlicker.value, ambient: lightUniforms.uAmbient.value });
     if (riding) followCart();
     else if (ridingMob) followMount();
-    else player.update(dt, { moveX: controls.moveX, moveZ: controls.moveZ, jump: controls.jump });
+    else player.update(dt, { moveX: controls.moveX, moveZ: controls.moveZ, jump: controls.jump, down: controls.down });
     if (player.pos.y < -20) respawn();
     playMovementSounds(dt, wasGround, wasWater, fallSpeed);
     world.tickWater(dt);
@@ -2843,6 +3243,7 @@ function stepGame(now, dt) {
     tickLamps(dt);
     tickFuses(dt);
     tickSwitches(dt);
+    tickProgress(dt);
     tickEffects(dt);
     tickBoss(dt);
     tickHazards(dt);
@@ -2877,6 +3278,7 @@ function stepGame(now, dt) {
   tickBlasts(dt);
   minimap.show(!paused && inventory.heldId() === MAP);
   minimap.update(world, player, bedSpawn ?? (world.spawnCache ??= world.generator.findSpawn()), waypoints);
+  worldMap.draw();
   try {
     machines.tick(paused ? 0 : dt, world, kinetics, stations, { day: lightUniforms.uDay.value, flicker: lightUniforms.uFlicker.value, ambient: lightUniforms.uAmbient.value });
   } catch (err) { reportError(err); }
@@ -2949,6 +3351,6 @@ window.minicraft = {
   get poisoned() { return poisoned; }, get dead() { return dead; }, get air() { return air; }, set air(v) { air = v; },
   arrows, fishing, kinetics, bees, catchAt, seasonOf, applySeason, set day(v) { day = v; applySeason(); }, frames, signalAt, setSwitch, machines, carts, minimap, signs, armour, damage, placeRail, getInCart, getOutOfCart,
   get riding() { return riding; }, explode, lightFuse, fuses, clockTime, compassText, place, editSign, closeSign, openInventory, closeInventory, chestMove, lamps, tickLamps, sleepUntilMorning, stations, openStation, closeStation,
-  get caneToday() { return caneToday; }, get waypoints() { return waypoints; }, toggleWaypoint, sortSlots, weather, openTrade, closeTrade, mountMob, dismount, get ridingMob() { return ridingMob; }, effects, armourWear, useAnvil, rollLoot, settings,
+  get caneToday() { return caneToday; }, get creative() { return creative; }, set creative(v) { creative = v; applyCreative(); }, toggleFly, wand, useWand, get achieved() { return achieved; }, achieve, worldMap, openMap, closeMap, openGuide, switchSlot, store, saveGame, renderWorlds, openWorlds, exportSlot, get target() { return target; }, set target(v) { target = v; }, applyKeys, renderKeys, camera, get controls() { return controls; }, get waypoints() { return waypoints; }, toggleWaypoint, sortSlots, weather, openTrade, closeTrade, mountMob, dismount, get ridingMob() { return ridingMob; }, effects, armourWear, useAnvil, rollLoot, settings,
   get bedSpawn() { return bedSpawn; }, paintings, placeSwitchRail, signalAt, ailments, armourEnch, openAltar, lairNear, useBed, eat, drinkTea,
 };

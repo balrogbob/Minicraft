@@ -1319,6 +1319,11 @@ ITEMS[HONEY_TEA] = { name: 'Honey Tea', stack: 8, tea: ['warm', 300], about: 'fe
 ITEMS[MUSHROOM_STEW] = { name: 'Mushroom Stew', food: 8 };
 ITEMS[FISH_PIE] = { name: 'Fish Pie', food: 12 };
 
+// Creative mode's copy wand (only found in the creative palette): tap two corners to copy what's between
+// them, then tap to paste it; hold it still (as if breaking) to start over.
+export const COPY_WAND = 1027;
+ITEMS[COPY_WAND] = { name: 'Copy Wand', stack: 1, about: 'creative: copy and paste builds' };
+
 // Enchantments, put on at the altar. on: what they can go on; cost: what they take.
 const toolType = (id) => ITEMS[id]?.tool?.type;
 export const ENCHANTS = {
