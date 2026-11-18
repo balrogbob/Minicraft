@@ -83,8 +83,8 @@ export class Sky {
 
   get isNight() { return this.time > 0.53 && this.time < 0.97; }
 
-  // materials: world materials whose colour is scaled by daylight
-  update(dt, camPos, materials, underwater) {
+  // dayUniform: shader uniform holding the linear daylight brightness for world materials
+  update(dt, camPos, dayUniform, underwater) {
     this.time = (this.time + dt / DAY_LENGTH) % 1;
     const { sky, light } = sample(this.time);
     this.light = light;
@@ -102,7 +102,7 @@ export class Sky {
     }
 
     const lin = Math.pow(light, 2.2) * 0.85 + 0.15 * light; // keep nights dark but readable
-    for (const m of materials) m.color.setScalar(lin);
+    dayUniform.value = lin;
 
     // sun rises in +x, sets in -x; the moon is opposite
     const a = this.time * Math.PI * 2;
