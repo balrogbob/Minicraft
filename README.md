@@ -95,8 +95,8 @@ You aim with the crosshair in the middle of the screen. Volume, look speed and a
 | Bread (5 food) | 3 flour | crafting table |
 | 9 Cookies (2 food each) | 3 flour + 3 sugar + 1 butter, with a milk bucket (not used up) | crafting table |
 | Cake (12 food) | 3 flour + 3 sugar + 3 butter | crafting table |
-| 3 Wheat String | 1 slime bucket + 3 wheat (you get the bucket back) | anywhere |
-| 4 Arrows | 1 feather + 1 cobblestone + 1 stick | crafting table |
+| Wheat String | 1 slime bucket + 3 wheat (you get the bucket back) | anywhere |
+| Arrow | 1 feather + 1 cobblestone + 1 stick | crafting table |
 | Bow | 3 sticks + 3 wheat string | crafting table |
 
 Tap a crafting table or butter churn to open crafting there. The hunger bar holds 20 points (ten loaves).

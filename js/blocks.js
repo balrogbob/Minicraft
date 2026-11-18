@@ -186,7 +186,7 @@ export const RECIPES = [
   { out: [BREAD, 1], in: [[FLOUR, 3]], table: true },
   { out: [COOKIE, 9], in: [[FLOUR, 3], [SUGAR, 3], [BUTTER, 1]], tools: [MILK_BUCKET], table: true },
   { out: [CAKE, 1], in: [[FLOUR, 3], [SUGAR, 3], [BUTTER, 3]], table: true },
-  { out: [STRING, 3], in: [[SLIME_BUCKET, 1], [WHEAT, 3]], also: [[BUCKET, 1]] },
-  { out: [ARROW, 4], in: [[FEATHER, 1], [COBBLE, 1], [STICK, 1]], table: true },
+  { out: [STRING, 1], in: [[SLIME_BUCKET, 1], [WHEAT, 3]], also: [[BUCKET, 1]] },
+  { out: [ARROW, 1], in: [[FEATHER, 1], [COBBLE, 1], [STICK, 1]], table: true },
   { out: [BOW, 1], in: [[STICK, 3], [STRING, 3]], table: true },
 ];
