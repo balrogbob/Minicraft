@@ -99,18 +99,45 @@ html, body {
 #hotbar .slot { border-color: rgba(255,255,255,0.12); }
 #hotbar .slot.selected { border-color: #fff; background: rgba(255,255,255,0.18); }
 
-#hunger {
-  position: absolute; left: 50%; bottom: calc(max(8px, env(safe-area-inset-bottom)) + var(--slot) + 14px);
-  transform: translateX(calc(-50% - 28px)); display: flex; gap: 1px; pointer-events: none;
+/* hearts on the left, food (and breath underwater) on the right, lined up with the hotbar */
+#status {
+  position: absolute; left: 50%; bottom: calc(max(8px, env(safe-area-inset-bottom)) + var(--slot) + 12px);
+  width: calc(var(--slot) * 9 + 6px); transform: translateX(calc(-50% - (var(--slot) + 8px) / 2));
+  display: flex; justify-content: space-between; align-items: flex-end; pointer-events: none;
 }
-#hunger .food { position: relative; width: 20px; height: 20px; }
-#hunger .food img { position: absolute; inset: 0; width: 100%; height: 100%; image-rendering: pixelated; }
-#hunger .food .bg { filter: grayscale(1) brightness(0.35); opacity: 0.8; }
-#hunger.low .food { animation: hungry 0.8s ease-in-out infinite alternate; }
+#right-status { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
+#health, #hunger, #air { display: flex; gap: 1px; }
+#air.hidden { display: none; }
+#hunger { flex-direction: row-reverse; } /* food empties from the left, like the hearts */
+#status .food, #status .heart { position: relative; width: clamp(14px, 2.1vmin, 20px); aspect-ratio: 1; }
+#status .food img, #status .heart img { position: absolute; inset: 0; width: 100%; height: 100%; image-rendering: pixelated; }
+#status .bg { filter: grayscale(1) brightness(0.35); opacity: 0.8; }
+#status .bubble { width: clamp(14px, 2.1vmin, 20px); image-rendering: pixelated; }
+#hunger.low .food, #health.low .heart { animation: hungry 0.8s ease-in-out infinite alternate; }
+
+#hurt { position: absolute; inset: 0; pointer-events: none; opacity: 0; box-shadow: inset 0 0 120px 40px rgba(220, 0, 0, 0.6); }
+#hurt.flash { animation: hurtflash 0.45s ease-out; }
+@keyframes hurtflash { from { opacity: 1; } to { opacity: 0; } }
+#sick { position: absolute; inset: 0; pointer-events: none; opacity: 0; transition: opacity 0.6s; box-shadow: inset 0 0 160px 50px rgba(90, 170, 40, 0.45); }
+#sick.show { opacity: 1; animation: queasy 2.4s ease-in-out infinite alternate; }
+@keyframes queasy { from { filter: hue-rotate(0deg); } to { filter: hue-rotate(25deg); } }
+
+#charge {
+  position: absolute; left: 50%; top: calc(50% + 18px); width: 44px; height: 5px; transform: translateX(-50%);
+  background: rgba(0,0,0,0.45); border-radius: 3px; overflow: hidden; opacity: 0; pointer-events: none;
+}
+#charge.show { opacity: 1; }
+#charge div { height: 100%; width: calc(var(--charge, 0) * 100%); background: #ffd23f; }
+
+#death { background: rgba(120, 0, 0, 0.55); }
+.death-box { text-align: center; width: min(360px, 90vw); display: flex; flex-direction: column; gap: 10px; }
+.death-box h1 { font-size: 46px; margin: 0; text-shadow: 3px 3px 0 #400; }
+.death-box p { margin: 0; font-size: 17px; text-shadow: 1px 1px 2px #000; }
+.death-box .hint { color: #fdd; }
 @keyframes hungry { from { transform: translateY(0); } to { transform: translateY(-2px); } }
 
 #item-name {
-  position: absolute; left: 50%; bottom: calc(var(--slot) + 44px); transform: translateX(-50%);
+  position: absolute; left: 50%; bottom: calc(var(--slot) + 64px); transform: translateX(-50%);
   font-weight: 600; text-shadow: 1px 1px 2px #000; opacity: 0; transition: opacity 0.4s; pointer-events: none;
   white-space: nowrap;
 }

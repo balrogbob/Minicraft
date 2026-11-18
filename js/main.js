@@ -1,10 +1,10 @@
 import * as THREE from 'three';
 import {
   BLOCKS, RECIPES, TABLE, AIR, WATER, TORCH, TORCH_WALL_W, WALL_TORCH_DIRS,
-  GRASS, DIRT, SAND, CHURN, SUGAR_CANE, BREAD, ITEMS,
+  GRASS, DIRT, SAND, CHURN, SUGAR_CANE, BREAD, ITEMS, BOW, ARROW, BUCKET,
   isBlock, isTorch, isWheat, itemName, breakTime, dropsFor, foodValue,
 } from './blocks.js';
-import { createAtlas, createIcons, createCrackCanvases, createWaterCanvas } from './textures.js';
+import { createAtlas, createIcons, createCrackCanvases, createWaterCanvas, createHudIcons } from './textures.js';
 import { World, CHUNK, WORLD_SIZE, chunkKey } from './world.js';
 import { localIndex, CHUNK_VOLUME, H } from './terrain.js';
 import { ChunkStore } from './store.js';
@@ -15,10 +15,11 @@ import { Player } from './player.js';
 import { Inventory, SLOTS } from './inventory.js';
 import { Controls } from './controls.js';
 import { MobManager } from './mobs.js';
+import { ArrowManager } from './arrows.js';
 
 // v2 = the 16k x 16k streaming world (player state here, edited chunks in IndexedDB).
 // v1 = the old 128 x 128 world, migrated into the middle of the big world on first launch.
-const GAME_VERSION = '8'; // shown in the menu; bump with each release
+const GAME_VERSION = '9'; // shown in the menu; bump with each release
 const SAVE_KEY = 'minicraft-save-v2';
 const LEGACY_SAVE_KEY = 'minicraft-save-v1';
 const SETTINGS_KEY = 'minicraft-settings-v1';
@@ -103,6 +104,8 @@ for (const ev of ['touchstart', 'pointerdown', 'keydown']) {
 
 const icons = createIcons(atlasCanvas);
 const mobs = new MobManager(scene, sound);
+const arrows = new ArrowManager(scene, sound);
+const hudIcons = createHudIcons();
 
 // block highlight + break cracks
 const highlight = new THREE.LineSegments(
@@ -136,6 +139,14 @@ let openedAt = null; // the station block (crafting table or churn) tapped to op
 const MAX_HUNGER = 20;
 let hunger = MAX_HUNGER; // 0..20; each bread-loaf icon on the bar is 2 points
 let day = 1; // days survived; goes up at each sunrise
+const MAX_HEALTH = 20, MAX_AIR = 10;
+let health = MAX_HEALTH; // 0..20; each heart is 2 points
+let air = MAX_AIR; // seconds of breath left underwater
+let poisoned = 0; // seconds of food poisoning left
+let dead = false;
+let fallTop = null; // highest point of the current fall, for fall damage
+const timers = { regen: 0, starve: 0, poison: 0, drown: 0 };
+let bowCharge = 0; // seconds the bow has been drawn (holding)
 const store = new ChunkStore();
 let worldReady = false; // false while a world is loading: nothing gets saved until the player is placed
 
@@ -205,6 +216,7 @@ async function startWorld(save) {
   world = new World(seed, store);
   world.onError = reportError;
   mobs.reset(world);
+  arrows.reset();
   applyViewDistance();
   $('load-text').textContent = 'Generating terrain…';
   setProgress(0);
@@ -227,7 +239,14 @@ async function startWorld(save) {
   sky.time = Number.isFinite(save?.time) ? save.time : 0.02;
   hunger = Number.isFinite(save?.hunger) ? Math.max(0, Math.min(MAX_HUNGER, save.hunger)) : MAX_HUNGER;
   day = Number.isFinite(save?.day) ? Math.max(1, save.day | 0) : 1;
+  health = Number.isFinite(save?.health) && save.health > 0 ? Math.min(MAX_HEALTH, save.health) : MAX_HEALTH;
+  poisoned = Number.isFinite(save?.poisoned) ? Math.max(0, save.poisoned) : 0;
+  air = MAX_AIR;
+  dead = false;
+  fallTop = null;
+  $('death').classList.add('hidden');
   renderHunger();
+  renderHealth();
   updateAutoJumpLabel();
 
   // build the area around the player before starting; the rest streams in while playing
@@ -266,6 +285,8 @@ function saveGame() {
     autoJump: player.autoJump,
     hunger,
     day,
+    health,
+    poisoned,
     time: sky.time,
   });
 }
@@ -365,13 +386,134 @@ function renderHunger() {
 let starvingWarned = false;
 function updateHunger(dt) {
   const moving = Math.hypot(player.vel.x, player.vel.z) > 0.5;
-  const rate = 1 / 80 + (moving ? 1 / 40 : 0) + (controls.breaking ? 1 / 50 : 0);
+  const rate = (1 / 80 + (moving ? 1 / 40 : 0) + (controls.breaking ? 1 / 50 : 0)) * (poisoned > 0 ? 4 : 1);
   hunger = Math.max(0, hunger - rate * dt);
   // starving: you can only stagger along until you eat something
   player.speedMul = hunger <= 0 ? 0.45 : 1;
   if (hunger <= 0 && !starvingWarned) { starvingWarned = true; toast('You\'re starving! Eat something to get your strength back.', 4000); }
   if (hunger > 2) starvingWarned = false;
   renderHunger();
+}
+
+// ---------- health ----------
+// Ten hearts (2 points each), green while poisoned; bubbles show your breath underwater.
+const heartEls = [], bubbleEls = [];
+for (let i = 0; i < MAX_HEALTH / 2; i++) {
+  const el = document.createElement('span');
+  el.className = 'heart';
+  el.innerHTML = `<img class="bg" src="${hudIcons.heart}" alt=""><img class="fg" src="${hudIcons.heart}" alt="">`;
+  $('health').appendChild(el);
+  heartEls.push(el);
+  const b = document.createElement('img');
+  b.className = 'bubble';
+  b.src = hudIcons.bubble;
+  b.alt = '';
+  $('air').appendChild(b);
+  bubbleEls.push(b);
+}
+let shownHealth = '';
+function renderHealth() {
+  const h = Math.ceil(health), sick = poisoned > 0;
+  const key = h + (sick ? 'p' : '');
+  if (key === shownHealth) return;
+  shownHealth = key;
+  heartEls.forEach((el, i) => {
+    const fill = Math.max(0, Math.min(2, h - i * 2));
+    el.lastChild.src = sick ? hudIcons.poison : hudIcons.heart;
+    el.lastChild.style.clipPath = `inset(0 ${100 - fill * 50}% 0 0)`;
+  });
+  $('health').classList.toggle('low', h <= 6);
+}
+function renderAir() {
+  const show = air < MAX_AIR;
+  $('air').classList.toggle('hidden', !show);
+  if (show) bubbleEls.forEach((b, i) => { b.style.visibility = i < Math.ceil(air) ? 'visible' : 'hidden'; });
+}
+
+function damage(amount, cause) {
+  if (dead || amount <= 0) return;
+  health = Math.max(0, health - amount);
+  sound.hurt();
+  const fx = $('hurt');
+  fx.classList.remove('flash'); void fx.offsetWidth; fx.classList.add('flash');
+  renderHealth();
+  if (health <= 0) die(cause);
+}
+
+function die(cause) {
+  dead = true;
+  paused = true;
+  controls.reset();
+  document.exitPointerLock?.();
+  $('death-cause').textContent = cause;
+  $('death-day').textContent = `You made it to day ${day}.`;
+  $('death').classList.remove('hidden');
+}
+
+function respawnPlayer() {
+  respawn();
+  health = MAX_HEALTH; hunger = MAX_HUNGER; air = MAX_AIR; poisoned = 0;
+  fallTop = null; dead = false;
+  player.vel.set(0, 0, 0);
+  $('death').classList.add('hidden');
+  paused = false;
+  renderHealth(); renderHunger(); renderAir();
+  saveGame();
+}
+
+// Per-frame health rules:
+//   falls of more than 3 blocks hurt (1 point per extra block) unless you land in water;
+//   breath lasts 10 s underwater, then you drown at 2 points a second;
+//   an empty hunger bar costs a point every 4 s (it can't take your last point);
+//   food poisoning costs a point every 2 s for its duration (also never the last point);
+//   a well-fed player (hunger 16+) heals a point every 3 s, using up a little hunger.
+function updateHealth(dt, wasGround, prevY) {
+  // falling: track the highest point since leaving the ground (including where this step started)
+  if (player.inWater || player.onGround && wasGround) fallTop = null;
+  if (!player.onGround && !player.inWater) fallTop = Math.max(fallTop ?? prevY, prevY, player.pos.y);
+  else if (player.onGround && !wasGround && fallTop === null && !player.inWater) fallTop = prevY;
+  if (player.onGround && !wasGround && fallTop !== null) {
+    const fall = fallTop - player.pos.y;
+    fallTop = null;
+    if (fall > 3.5) damage(Math.floor(fall - 3), 'You fell from a high place.');
+  }
+  // drowning
+  if (player.eyeInWater) {
+    air = Math.max(0, air - dt);
+    if (air <= 0 && (timers.drown += dt) >= 1) { timers.drown = 0; damage(2, 'You drowned.'); }
+  } else {
+    air = Math.min(MAX_AIR, air + dt * 5);
+    timers.drown = 0;
+  }
+  renderAir();
+  // starving
+  if (hunger <= 0) {
+    if ((timers.starve += dt) >= 4) { timers.starve = 0; if (health > 1) damage(1, 'You starved.'); }
+  } else timers.starve = 0;
+  // food poisoning
+  if (poisoned > 0) {
+    poisoned = Math.max(0, poisoned - dt);
+    if ((timers.poison += dt) >= 2) { timers.poison = 0; if (health > 1) damage(1, 'Food poisoning.'); }
+    if (poisoned === 0) { renderHealth(); toast('You feel better', 1500); }
+  }
+  $('sick').classList.toggle('show', poisoned > 0);
+  // healing
+  if (health < MAX_HEALTH && hunger >= 16 && poisoned <= 0) {
+    if ((timers.regen += dt) >= 3) {
+      timers.regen = 0;
+      health = Math.min(MAX_HEALTH, health + 1);
+      hunger = Math.max(0, hunger - 0.5);
+      renderHealth();
+    }
+  } else timers.regen = 0;
+}
+
+// ---------- bow ----------
+const FULL_DRAW = 1; // seconds to draw the bow all the way
+function shootArrow(power) {
+  if (inventory.count(ARROW) <= 0) { toast('You need arrows'); return; }
+  inventory.remove(ARROW, 1);
+  arrows.shoot(player.eye, player.lookDir(), power);
 }
 
 // ---------- inventory / crafting UI ----------
@@ -493,6 +635,16 @@ function hitMob() {
 }
 
 function eat(id) {
+  if (ITEMS[id]?.drink === 'poison') {
+    // drinking slime: you keep the bucket, and get food poisoning
+    inventory.consumeHeld();
+    inventory.add(BUCKET, 1);
+    poisoned = 20;
+    sound.gulp();
+    toast('Yuck! You have food poisoning.', 2500);
+    renderHealth();
+    return;
+  }
   if (hunger > MAX_HUNGER - 1) { toast('You\'re not hungry'); return; } // (hunger drains constantly, so never exactly full)
   hunger = Math.min(MAX_HUNGER, hunger + foodValue(id));
   inventory.consumeHeld();
@@ -507,10 +659,12 @@ const waterBeside = (x, y, z) => world.isWater(x + 1, y, z) || world.isWater(x -
 
 function place() {
   if (paused) return;
+  const held = inventory.held();
+  // with the bow in hand a tap always shoots (a quick, short shot), whatever you're looking at
+  if (held?.id === BOW) { shootArrow(Math.max(0.25, Math.min(1, bowCharge / FULL_DRAW))); bowCharge = 0; return; }
   if (targetMob) { hitMob(); return; }
   if (target && (target.id === TABLE || target.id === CHURN)) { sound.click(); openInventory(target.id); return; }
-  const held = inventory.held();
-  if (held && foodValue(held.id)) { eat(held.id); return; }
+  if (held && (foodValue(held.id) || ITEMS[held.id]?.drink)) { eat(held.id); return; }
   if (!target || !held) return;
   // what goes into the world: the block itself, or what an item plants (seeds -> young wheat)
   let id = isBlock(held.id) ? held.id : ITEMS[held.id]?.places;
@@ -538,6 +692,16 @@ function place() {
 }
 
 function updateBreaking(dt) {
+  // holding with the bow draws it; letting go shoots (a quick tap is handled by place())
+  if (inventory.heldId() === BOW) {
+    if (controls.breaking) bowCharge = Math.min(FULL_DRAW, bowCharge + dt);
+    else if (bowCharge > 0) { shootArrow(Math.max(0.25, bowCharge / FULL_DRAW)); bowCharge = 0; }
+    $('charge').style.setProperty('--charge', String(bowCharge / FULL_DRAW));
+    $('charge').classList.toggle('show', bowCharge > 0);
+    crack.visible = false;
+    return;
+  }
+  if (bowCharge) { bowCharge = 0; $('charge').classList.remove('show'); }
   // holding on an animal taps it again every half second instead of breaking blocks. The first
   // repeat waits half a second too, so a tap (which acts once, on release) never acts twice.
   if (!controls.breaking) breakState.mobCooldown = 0.5;
@@ -613,6 +777,7 @@ function dropUnsupported(x, y, z) {
 
 // ---------- menu ----------
 function updateAutoJumpLabel() { $('btn-autojump').textContent = `Auto-jump: ${player?.autoJump ? 'on' : 'off'}`; }
+$('btn-respawn').addEventListener('click', respawnPlayer);
 $('btn-menu').addEventListener('click', () => {
   paused = true; controls.reset(); document.exitPointerLock?.();
   $('menu').classList.remove('hidden');
@@ -757,13 +922,16 @@ function stepGame(now, dt) {
   const here = world.chunkAt(Math.floor(player.pos.x), Math.floor(player.pos.z));
   if (!paused && here) {
     controls.update();
-    const wasGround = player.onGround, wasWater = player.inWater, fallSpeed = -player.vel.y;
+    const wasGround = player.onGround, wasWater = player.inWater, fallSpeed = -player.vel.y, prevY = player.pos.y;
     player.update(dt, { moveX: controls.moveX, moveZ: controls.moveZ, jump: controls.jump });
     if (player.pos.y < -20) respawn();
     playMovementSounds(dt, wasGround, wasWater, fallSpeed);
     world.tickWater(dt);
     world.tickPlants(dt);
     updateHunger(dt);
+    updateHealth(dt, wasGround, prevY);
+    const picked = arrows.update(dt, { world, mobs, player, light: { day: lightUniforms.uDay.value, flicker: lightUniforms.uFlicker.value, ambient: AMBIENT } });
+    if (picked) { inventory.add(ARROW, picked); sound.pop(); }
     mobs.update(dt, player, { day: lightUniforms.uDay.value, flicker: lightUniforms.uFlicker.value, ambient: AMBIENT });
   }
   // write edited chunks to storage shortly (1.5 s) after the player stops changing them
@@ -814,4 +982,7 @@ window.minicraft = {
   get hunger() { return hunger; }, set hunger(v) { hunger = v; renderHunger(); },
   get day() { return day; },
   get paused() { return paused; },
+  get health() { return health; }, set health(v) { health = v; renderHealth(); },
+  get poisoned() { return poisoned; }, get dead() { return dead; }, get air() { return air; }, set air(v) { air = v; },
+  arrows, damage,
 };

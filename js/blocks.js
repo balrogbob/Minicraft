@@ -22,7 +22,8 @@ export const STICK = 100, COAL = 101,
   SEEDS = 120, WHEAT = 121, FLOUR = 122, SUGAR = 123, BUTTER = 124,
   BREAD = 125, COOKIE = 126, CAKE = 127,
   BUCKET = 128, MILK_BUCKET = 129, SLIME_BUCKET = 130,
-  FEATHER = 131, MORTAR = 132;
+  FEATHER = 131, MORTAR = 132,
+  STRING = 133, ARROW = 134, BOW = 135;
 
 // Texture atlas tile indices.
 export const T = {
@@ -115,9 +116,12 @@ export const ITEMS = {
   [CAKE]: { name: 'Cake', food: 12, stack: 16 },
   [BUCKET]: { name: 'Wooden Bucket', stack: 16 },
   [MILK_BUCKET]: { name: 'Milk Bucket', stack: 1 },
-  [SLIME_BUCKET]: { name: 'Slime Bucket', stack: 1 },
+  [SLIME_BUCKET]: { name: 'Slime Bucket', stack: 1, drink: 'poison' }, // drinking it gives food poisoning
   [FEATHER]: { name: 'Feather' },
   [MORTAR]: { name: 'Mortar and Pestle', stack: 1 },
+  [STRING]: { name: 'Wheat String' },
+  [ARROW]: { name: 'Arrow' },
+  [BOW]: { name: 'Bow', stack: 1 },
 };
 
 export const foodValue = (id) => ITEMS[id]?.food ?? 0;
@@ -182,4 +186,7 @@ export const RECIPES = [
   { out: [BREAD, 1], in: [[FLOUR, 3]], table: true },
   { out: [COOKIE, 9], in: [[FLOUR, 3], [SUGAR, 3], [BUTTER, 1]], tools: [MILK_BUCKET], table: true },
   { out: [CAKE, 1], in: [[FLOUR, 3], [SUGAR, 3], [BUTTER, 3]], table: true },
+  { out: [STRING, 3], in: [[SLIME_BUCKET, 1], [WHEAT, 3]], also: [[BUCKET, 1]] },
+  { out: [ARROW, 4], in: [[FEATHER, 1], [COBBLE, 1], [STICK, 1]], table: true },
+  { out: [BOW, 1], in: [[STICK, 3], [STRING, 3]], table: true },
 ];

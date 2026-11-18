@@ -14,6 +14,11 @@ It is designed for Android tablets (touch controls) but also plays with keyboard
   yaks roam the hills, and little newts scurry around near water. Tap one to bump it and it runs off.
   Tapping also gathers from them: **wool** from alpacas, **feathers** from ducks, **milk** from yaks and
   **slime** from newts (the last two with an empty wooden bucket in hand)
+- Health (ten hearts): falls of more than 3 blocks hurt, you can drown (watch the bubbles underwater),
+  and an empty hunger bar wears you down. A well-fed player slowly heals. If you die you respawn at
+  the world spawn and keep what you were carrying. Drinking a slime bucket gives you food poisoning
+- A bow and arrows: hold to draw, let go to shoot (tap for a quick shot). Arrows stick in blocks and
+  you can walk over them to pick them back up; animals they hit get bumped away
 - A day counter and a hunger bar. Hunger drains as you play (faster when walking and digging);
   tap with food in hand to eat. If it runs out you're too weak to do more than stagger along
 - Farming: wild wheat grows on the plains and sugar cane on shores. Ripe wheat gives seeds to replant on
@@ -58,7 +63,8 @@ The version number is shown at the bottom of the ☰ menu; bump `GAME_VERSION` i
 | Break | Hold your finger still on the right side | Hold left button |
 | Place / use crafting table | Tap on the right side | Right click |
 | Tap an animal (bump, shear, pluck, milk…) | Tap it | Left or right click |
-| Eat | Tap with food in hand | Right click |
+| Eat (or drink a slime bucket) | Tap with food in hand | Right click |
+| Shoot the bow | Hold to draw, release to shoot (tap: quick shot) | Hold and release left button (right click: quick shot) |
 | Jump / swim up | ⤒ button (auto-jump also steps up 1-block ledges) | Space |
 | Select item | Tap a hotbar slot | 1–9 / mouse wheel |
 | Inventory & crafting | 🎒 button | E |
@@ -89,6 +95,9 @@ You aim with the crosshair in the middle of the screen. Volume, look speed and a
 | Bread (5 food) | 3 flour | crafting table |
 | 9 Cookies (2 food each) | 3 flour + 3 sugar + 1 butter, with a milk bucket (not used up) | crafting table |
 | Cake (12 food) | 3 flour + 3 sugar + 3 butter | crafting table |
+| 3 Wheat String | 1 slime bucket + 3 wheat (you get the bucket back) | anywhere |
+| 4 Arrows | 1 feather + 1 cobblestone + 1 stick | crafting table |
+| Bow | 3 sticks + 3 wheat string | crafting table |
 
 Tap a crafting table or butter churn to open crafting there. The hunger bar holds 20 points (ten loaves).
 
@@ -104,6 +113,7 @@ Tap a crafting table or butter churn to open crafting there. The hunger bar hold
 | `js/legacy.js` | The old 128 × 128 generator, used once to migrate old saves |
 | `js/player.js` | Player physics, collision and swimming |
 | `js/mobs.js` | Animals: box models, behaviour, physics, spawning by habitat |
+| `js/arrows.js` | Arrows: flight, hitting animals, sticking in blocks, pick-up |
 | `js/sky.js` | Day/night cycle: sky colour, fog, sun, moon, stars, world brightness |
 | `js/sound.js` | Web Audio sound effects |
 | `js/controls.js` | Touch joystick / look / tap / hold, plus desktop input |
