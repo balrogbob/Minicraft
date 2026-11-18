@@ -1,6 +1,7 @@
 // Block and item definitions.
 
-// Block ids (< 100, and 190..255). Stored in the world Uint8Array. Item ids are 100..189 and 300 up.
+// Block ids: < 100, 190..255 and 400..999. Stored in each chunk's Uint16Array.
+// Item ids: 100..189, 300..399 and 1000 up (never stored in the world).
 export const AIR = 0, GRASS = 1, DIRT = 2, STONE = 3, COBBLE = 4, LOG = 5, PLANKS = 6,
   LEAVES = 7, SAND = 8, GLASS = 9, TABLE = 10, BRICKS = 11, COAL_ORE = 12, BEDROCK = 13, WATER = 14,
   TORCH = 15, // standing torch; the only torch id that lives in the inventory
@@ -32,7 +33,14 @@ export const AIR = 0, GRASS = 1, DIRT = 2, STONE = 3, COBBLE = 4, LOG = 5, PLANK
   CRUSHER = 198, // 198..201: + facing
   WATER_WHEEL = 202, // 202 = axle along x, 203 = along z
   KINETIC = 204, // 204..230: shafts, small gears and large gears; see kineticId()
-  BLAST_SMELTER = 231; // 231..238: + facing, + 4 while burning
+  BLAST_SMELTER = 231, // 231..238: + facing, + 4 while burning
+  // (ids 239..399 are unused or items; blocks continue from 400)
+  CHEST = 400, // 400..403: + facing
+  IRON_CHEST = 404, // 404..407: + facing
+  LADDER = 408, // 408..411: + facing (it faces away from the wall it's fixed to)
+  SCAFFOLD = 412,
+  SIGN = 413, // 413..416: on a wall, + facing
+  SIGN_POST = 417; // 417..420: standing on a block, + facing
 
 // Wall direction [dx, dz] for each wall-torch variant, in id order.
 export const WALL_TORCH_DIRS = [[-1, 0], [1, 0], [0, -1], [0, 1]];
@@ -58,7 +66,12 @@ export const METAL_TOOLS = 160;
 // Items added after the metal tools.
 export const FLINT = 300, CLAY_BALL = 301, BRICK = 302, FIRE_CLAY = 303, FIRE_BRICK = 304,
   FLINT_DUST = 305, CLAY_DUST = 306, WATER_BUCKET = 307,
-  ORE_DUST = 310; // 310..: the dust of each smeltable ore, in ORES order (see oreDust())
+  ORE_DUST = 310, // 310..: the dust of each smeltable ore, in ORES order (see oreDust())
+  WOOD_SWORD = 320, STONE_SWORD = 321,
+  METAL_SWORDS = 322, // 322..331: one per TOOL_MATERIALS entry
+  HIDE = 332, LEATHER = 333,
+  ARMOUR = 340, // 340..359: + material * 4 + piece (see ARMOUR_MATS, ARMOUR_PIECES)
+  PLATES = 360; // 360..364: hammered metal plates (see PLATE_METALS)
 
 // Charcoal (smelted from logs) can stand in for coal anywhere coal is used.
 export const COAL_OR_CHARCOAL = [COAL, CHARCOAL];
@@ -75,6 +88,7 @@ export const T = {
   ORE0: 40, // 40..49: the ores, in ORES order
   SAPLING: 50, GRAVEL: 51, CLAY: 52, CLAY_BRICKS: 53, FIRE_BRICKS: 54,
   CRUSHER_SIDE: 55, CRUSHER_TOP: 56, CRUSHER_FRONT: 57, STAINLESS: 58,
+  CHEST_SIDE: 59, CHEST_TOP: 60, CHEST_FRONT: 61, IRON_CHEST_SIDE: 62, IRON_CHEST_TOP: 63, IRON_CHEST_FRONT: 64,
 };
 
 // Ores, deepest-reaching last. tier: the pickaxe tier needed to mine it (see TOOL_TIERS);
@@ -147,6 +161,8 @@ function block(id, o) {
     lit: !!o.lit, station: o.station ?? null, // 'oven' | 'smelter' | 'blast' | 'crusher'
     stationBase: o.stationBase ?? 0, // the id of a station's first variant
     kinetic: o.kinetic ?? null, // { part: 'wheel' | 'shaft' | 'gear' | 'large', mat, axis: 0 x | 1 y | 2 z }
+    climb: !!o.climb, // ladders and scaffolding: you can climb up and down inside them
+    sign: !!o.sign, post: !!o.post, // holds a few lines of text (see signs.js); post: stands on a post
   };
 }
 
@@ -331,7 +347,55 @@ for (let k = 0; k < 4; k++) {
     front: T.CRUSHER_FRONT, facing: k, hardness: 2.5, tool: 'pick', variantOf: k ? CRUSHER : 0, drop: CRUSHER, stationBase: CRUSHER,
   });
 }
+// Chests: storage only. Their contents are kept with the stations' (see stations.js).
+for (const [base, station, name, side, top, front, hardness] of [
+  [CHEST, 'chest', 'Chest', T.CHEST_SIDE, T.CHEST_TOP, T.CHEST_FRONT, 2],
+  [IRON_CHEST, 'ironchest', 'Iron-Banded Chest', T.IRON_CHEST_SIDE, T.IRON_CHEST_TOP, T.IRON_CHEST_FRONT, 2.5],
+]) {
+  for (let f = 0; f < 4; f++) {
+    block(base + f, {
+      name, station, side, top, bottom: top, front, facing: f, sound: 'wood', hardness, tool: 'axe',
+      variantOf: f ? base : 0, drop: base, stationBase: base,
+    });
+  }
+}
 export const stationKind = (id) => BLOCKS[id]?.station ?? null;
+
+// Ladders hang on a wall (facing 0: the wall is toward -z); scaffolding stands on its own. You climb
+// both: walk into them (or jump) to go up, back off to go down, and stand still to slide down slowly.
+const LADDER_MODEL = [
+  [2, 0, 0, 3.5, 16, 1.5, wood], [12.5, 0, 0, 14, 16, 1.5, wood], // rails
+  ...[1.5, 5.5, 9.5, 13.5].map((y) => [3.5, y, 0.25, 12.5, y + 1.2, 1.25, wood]), // rungs
+];
+for (let f = 0; f < 4; f++) {
+  block(LADDER + f, {
+    name: 'Ladder', sound: 'wood', transparent: true, solid: false, hardness: 0.6, tool: 'axe', climb: true,
+    model: rotateModel(LADDER_MODEL, f), facing: f, variantOf: f ? LADDER : 0, drop: LADDER,
+  });
+}
+const SCAFFOLD_MODEL = [
+  ...[[0, 0], [14, 0], [0, 14], [14, 14]].map(([x, z]) => [x, 0, z, x + 2, 16, z + 2, wood]), // posts
+  [0, 14, 0, 16, 16, 2, wood], [0, 14, 14, 16, 16, 16, wood], [0, 14, 2, 2, 16, 14, wood], [14, 14, 2, 16, 16, 14, wood], // top frame
+  [2, 15, 5, 14, 16, 7, wood], [2, 15, 9, 14, 16, 11, wood], // slats
+  [2, 7, 0.5, 14, 8.5, 1.5, wood], [2, 7, 14.5, 14, 8.5, 15.5, wood], // braces
+];
+block(SCAFFOLD, { name: 'Scaffolding', sound: 'wood', transparent: true, solid: false, hardness: 0.3, climb: true, model: SCAFFOLD_MODEL });
+export const isClimbable = (id) => !!BLOCKS[id]?.climb;
+
+// Signs: a board on a wall, or on a post. The text is drawn by signs.js.
+const WALL_SIGN_MODEL = [[1, 4, 0, 15, 12, 1.5, wood]];
+const SIGN_POST_MODEL = [[7.2, 0, 7.2, 8.8, 8.5, 8.8, T.LOG_SIDE], [1, 8, 7, 15, 16, 8.5, wood]];
+for (let f = 0; f < 4; f++) {
+  block(SIGN + f, {
+    name: 'Sign', sound: 'wood', transparent: true, solid: false, hardness: 0.6, tool: 'axe', sign: true,
+    model: rotateModel(WALL_SIGN_MODEL, f), facing: f, variantOf: f ? SIGN : 0, drop: SIGN,
+  });
+  block(SIGN_POST + f, {
+    name: 'Sign', sound: 'wood', transparent: true, solid: false, hardness: 0.6, tool: 'axe', sign: true, post: true,
+    model: rotateModel(SIGN_POST_MODEL, f), facing: f, variantOf: SIGN, drop: SIGN,
+  });
+}
+export const isSign = (id) => !!BLOCKS[id]?.sign;
 
 // Power transmission. Each material sets how much load its shafts and gears can carry; a water wheel
 // gives WHEEL_POWER, and a crusher takes CRUSHER_LOAD for each 1x of speed it turns at.
@@ -417,6 +481,48 @@ ITEMS[SULPHUR] = { name: 'Sulphur' };
 // Ore dust from the rock crusher: one kind for each ore that smelts into an ingot.
 export const oreDust = (oreId) => ORE_DUST + ORES.findIndex((o) => o.id === oreId);
 for (const o of ORES) if (o.ingot) ITEMS[oreDust(o.id)] = { name: o.name.replace(' Ore', '') + ' Dust', dust: o };
+// Swords: the best weapons, and quicker to swing. They don't help with digging.
+export const metalSword = (matIndex) => METAL_SWORDS + matIndex;
+ITEMS[WOOD_SWORD] = { name: 'Wooden Sword', tool: { type: 'sword', speed: 1, tier: 0, damage: 5 } };
+ITEMS[STONE_SWORD] = { name: 'Stone Sword', tool: { type: 'sword', speed: 1, tier: 0, damage: 7 } };
+TOOL_MATERIALS.forEach((m, i) => {
+  ITEMS[metalSword(i)] = { name: `${m.name} Sword`, mat: m.key, tool: { type: 'sword', speed: 1, tier: 0, damage: 8 + m.dmg } };
+});
+export const isSword = (id) => ITEMS[id]?.tool?.type === 'sword';
+
+// Armour: four pieces in each material. Each point of armour takes 4% off the damage creatures do
+// (up to 80%). Leather comes from buffalo hide cured in the oven; metal armour is plates over wool padding.
+export const ARMOUR_PIECES = [
+  { key: 'helmet', name: 'Helmet', leather: 5, plates: 3, wool: 1 },
+  { key: 'chest', name: 'Chestplate', leather: 8, plates: 5, wool: 2 },
+  { key: 'legs', name: 'Leggings', leather: 7, plates: 4, wool: 2 },
+  { key: 'boots', name: 'Boots', leather: 4, plates: 2, wool: 1 },
+];
+// Metals that can be hammered into plates: 2 ingots make a plate at a crafting table, or the trip hammer
+// beats 1 ingot into a plate.
+export const PLATE_METALS = [
+  { key: 'bronze', name: 'Bronze', ingot: BRONZE_INGOT },
+  { key: 'iron', name: 'Iron', ingot: IRON_INGOT },
+  { key: 'steel', name: 'Steel', ingot: STEEL_INGOT },
+  { key: 'stainless', name: 'Stainless Steel', ingot: STAINLESS_INGOT },
+  { key: 'copper', name: 'Copper', ingot: COPPER_INGOT },
+];
+export const plateOf = (ingot) => PLATES + PLATE_METALS.findIndex((m) => m.ingot === ingot);
+PLATE_METALS.forEach((m, i) => { ITEMS[PLATES + i] = { name: `${m.name} Plate`, plate: m }; });
+export const ARMOUR_MATS = [
+  { key: 'leather', name: 'Leather', points: [1, 3, 2, 1] },
+  { key: 'bronze', name: 'Bronze', plate: BRONZE_INGOT, points: [2, 4, 3, 1] },
+  { key: 'iron', name: 'Iron', plate: IRON_INGOT, points: [2, 6, 5, 2] },
+  { key: 'steel', name: 'Steel', plate: STEEL_INGOT, points: [3, 7, 6, 3] },
+  { key: 'stainless', name: 'Stainless Steel', plate: STAINLESS_INGOT, points: [3, 8, 6, 3] },
+];
+export const armourId = (mat, piece) => ARMOUR + mat * 4 + piece;
+ARMOUR_MATS.forEach((m, mi) => ARMOUR_PIECES.forEach((p, pi) => {
+  ITEMS[armourId(mi, pi)] = { name: `${m.name} ${p.name}`, stack: 1, armour: { piece: pi, points: m.points[pi], mat: m.key } };
+}));
+ITEMS[HIDE] = { name: 'Buffalo Hide' };
+ITEMS[LEATHER] = { name: 'Leather' };
+
 const KIND_NAMES = { pick: 'Pickaxe', axe: 'Axe', shovel: 'Shovel' };
 const KIND_DAMAGE = { pick: 4, axe: 6, shovel: 4 }; // stone tools hit for 4 / 6 / 4
 TOOL_MATERIALS.forEach((m, i) => {
@@ -432,11 +538,11 @@ export const foodValue = (id) => ITEMS[id]?.food ?? 0;
 
 // Placeable block that can live in the inventory.
 export function isBlock(id) {
-  return id > 0 && id < 256 && !!BLOCKS[id] && !BLOCKS[id].liquid && !BLOCKS[id].variantOf;
+  return id > 0 && !!BLOCKS[id] && !BLOCKS[id].liquid && !BLOCKS[id].variantOf;
 }
 
 export function itemName(id) {
-  return isBlock(id) ? BLOCKS[id].name : ITEMS[id]?.name ?? '?';
+  return isBlock(id) ? BLOCKS[id].name : ITEMS[id]?.name ?? BLOCKS[id]?.name ?? '?';
 }
 
 export function maxStack(id) {
@@ -526,9 +632,27 @@ export const RECIPES = [
     { out: [kineticId('large', i), 1], in: [[kineticId('gear', i), 1], [mat, 4]], table: true, ...extra },
   );
 });
+RECIPES.push(
+  // storage and getting about
+  { out: [CHEST, 1], in: [[PLANKS, 8]], table: true },
+  { out: [IRON_CHEST, 1], in: [[CHEST, 2], [plateOf(IRON_INGOT), 2]], table: true, metal: IRON_INGOT },
+  { out: [LADDER, 3], in: [[STICK, 7]], table: true },
+  { out: [SCAFFOLD, 4], in: [[STICK, 6], [STRING, 1]], table: true },
+  { out: [SIGN, 3], in: [[PLANKS, 6], [STICK, 1]], table: true },
+  // weapons and armour
+  { out: [WOOD_SWORD, 1], in: [[PLANKS, 2], [STICK, 1]], table: true },
+  { out: [STONE_SWORD, 1], in: [[COBBLE, 2], [STICK, 1]], table: true },
+);
+PLATE_METALS.forEach((m, i) => RECIPES.push({ out: [PLATES + i, 1], in: [[m.ingot, 2]], table: true, metal: m.ingot }));
+ARMOUR_MATS.forEach((m, mi) => ARMOUR_PIECES.forEach((p, pi) => {
+  RECIPES.push(m.plate
+    ? { out: [armourId(mi, pi), 1], in: [[plateOf(m.plate), p.plates], [WOOL, p.wool]], table: true, metal: plateOf(m.plate) }
+    : { out: [armourId(mi, pi), 1], in: [[LEATHER, p.leather]], table: true, metal: LEATHER });
+}));
 // Metal tools. `metal` hides the recipe from the list until you're carrying that ingot.
 TOOL_MATERIALS.forEach((m, i) => {
   RECIPES.push(
+    { out: [metalSword(i), 1], in: [[m.ingot, 2], [STICK, 1]], table: true, metal: m.ingot },
     { out: [metalTool(i, 'pick'), 1], in: [[m.ingot, 3], [STICK, 2]], table: true, metal: m.ingot },
     { out: [metalTool(i, 'axe'), 1], in: [[m.ingot, 3], [STICK, 2]], table: true, metal: m.ingot },
     { out: [metalTool(i, 'shovel'), 1], in: [[m.ingot, 1], [STICK, 2]], table: true, metal: m.ingot },

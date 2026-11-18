@@ -188,7 +188,7 @@ export class Generator {
       heights[i + j * size] = this.height(x0 - MARGIN + i, z0 - MARGIN + j);
     }
     const hAt = (x, z) => heights[(x - x0 + MARGIN) + (z - z0 + MARGIN) * size];
-    const data = new Uint8Array(CHUNK_VOLUME);
+    const data = new Uint16Array(CHUNK_VOLUME); // block ids go above 255
     const veins = this.veinCells(cx, cz);
     const nC = CHUNK / VEIN_CELL;
     const oreAt = (x, y, z, lx, lz) => {

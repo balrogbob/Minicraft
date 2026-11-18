@@ -8,7 +8,7 @@ import {
   FLOUR, SUGAR, BUTTER, MILK_BUCKET, BREAD, COOKIE, CAKE, RAW_FISH, BAKED_FISH, BLOCKS, maxStack, stationKind,
   ORES, COAL_OR_CHARCOAL, IRON_INGOT, COPPER_INGOT, TIN_INGOT, ZINC_INGOT, ALUMINIUM_INGOT, SILVER_INGOT, GOLD_INGOT,
   BRONZE_INGOT, ELECTRUM_INGOT, STAINLESS_INGOT, STEEL_INGOT, AL_BRONZE_INGOT,
-  GRAVEL, FLINT, FLINT_DUST, CLAY_BALL, CLAY_DUST, BRICK, FIRE_CLAY, FIRE_BRICK, oreDust,
+  GRAVEL, FLINT, FLINT_DUST, CLAY_BALL, CLAY_DUST, BRICK, FIRE_CLAY, FIRE_BRICK, oreDust, HIDE, LEATHER,
 } from './blocks.js';
 
 // A recipe ingredient can be one id or a list of alternatives (coal or charcoal).
@@ -32,6 +32,7 @@ export const STATION_KINDS = {
       { out: [BREAD, 1], in: [[FLOUR, 3]], time: 6 },
       { out: [BAKED_FISH, 1], in: [[RAW_FISH, 1]], time: 5 },
       { out: [BRICK, 1], in: [[CLAY_BALL, 1]], time: 5 },
+      { out: [LEATHER, 1], in: [[HIDE, 1]], time: 6 }, // gently cured
     ],
   },
   smelter: {
@@ -74,6 +75,9 @@ export const STATION_KINDS = {
 };
 // The blast smelter: lined with fire bricks, it smelts everything the smelter does, twice as fast.
 STATION_KINDS.blast = { ...STATION_KINDS.smelter, name: 'Blast Smelter', speed: 2 };
+// Chests just hold things.
+STATION_KINDS.chest = { name: 'Chest', inputs: 18, storage: true, recipes: [] };
+STATION_KINDS.ironchest = { name: 'Iron-Banded Chest', inputs: 36, storage: true, recipes: [] };
 
 const key = (x, y, z) => `${x},${y},${z}`;
 
@@ -143,9 +147,10 @@ export class Stations {
       if (!world.chunkAt(x, z)) continue;
       const id = world.get(x, y, z);
       if (stationKind(id) !== st.kind) { this.map.delete(k); continue; }
+      const K = STATION_KINDS[st.kind];
+      if (K.storage) continue;
       const r = this.recipeFor(st);
       if (!r) st.progress = 0;
-      const K = STATION_KINDS[st.kind];
       if (K.powered) {
         const speed = powerAt(x, y, z);
         st.speed = speed;

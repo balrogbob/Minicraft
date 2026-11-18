@@ -7,6 +7,7 @@ import {
   isBed, isChair, isLamp, isCurtain, isDoor, doorId,
   OVEN, SMELTER, stationKind, maxStack, FISHING_ROD, RAW_FISH, TOOL_TIERS, LOG, LEAVES, SAPLING,
   BLAST_SMELTER, CRUSHER, WATER_BUCKET, WATER_WHEEL, isWaterId, isFlowing,
+  CHEST, IRON_CHEST, LADDER, SCAFFOLD, SIGN, SIGN_POST, isSign, isSword, ARMOUR_PIECES,
   isBlock, isTorch, isWheat, itemName, breakTime, dropsFor, foodValue,
 } from './blocks.js';
 import { createAtlas, createIcons, createCrackCanvases, createWaterCanvas, createHudIcons } from './textures.js';
@@ -24,10 +25,11 @@ import { ArrowManager } from './arrows.js';
 import { Stations, STATION_KINDS, isFuel } from './stations.js';
 import { Fishing } from './fishing.js';
 import { Kinetics } from './kinetics.js';
+import { Signs } from './signs.js';
 
 // v2 = the 16k x 16k streaming world (player state here, edited chunks in IndexedDB).
 // v1 = the old 128 x 128 world, migrated into the middle of the big world on first launch.
-const GAME_VERSION = '16'; // shown in the menu; bump with each release
+const GAME_VERSION = '17'; // shown in the menu; bump with each release
 const SAVE_KEY = 'minicraft-save-v2';
 const LEGACY_SAVE_KEY = 'minicraft-save-v1';
 const SETTINGS_KEY = 'minicraft-settings-v1';
@@ -127,7 +129,7 @@ mobs.onHurtPlayer = (amount, cause, from) => {
   const dx = player.pos.x - from.x, dz = player.pos.z - from.z, len = Math.hypot(dx, dz) || 1;
   player.kx = (dx / len) * 7; player.kz = (dz / len) * 7;
   if (player.onGround) player.vel.y = 4.5;
-  damage(amount, cause);
+  damage(armoured(amount), cause);
 };
 mobs.onShoot = (origin, dir, dmg) => arrows.shootThorn(origin, dir, dmg);
 
@@ -185,6 +187,13 @@ const lamps = new Map();
 const stations = new Stations(); // what's inside each oven and smelter
 const kinetics = new Kinetics(scene, atlas); // water wheels, shafts and gears, and what they drive
 const powerAt = (x, y, z) => kinetics.powerAt(x, y, z);
+const signs = new Signs(scene); // what's written on each sign
+// Armour worn: an item id (or null) for helmet, chestplate, leggings and boots.
+const armour = [null, null, null, null];
+const armourPoints = () => armour.reduce((t, id) => t + (id ? ITEMS[id].armour.points : 0), 0);
+// Each point of armour takes 4% off what creatures do to you, up to 80%.
+const armourShare = () => Math.min(0.8, armourPoints() * 0.04);
+const armoured = (amount) => amount * (1 - armourShare());
 let caneToday = 0; // raw sugar cane eaten since sunrise: the 5th gives you food poisoning
 const store = new ChunkStore();
 let worldReady = false; // false while a world is loading: nothing gets saved until the player is placed
@@ -214,7 +223,7 @@ async function migrateLegacyWorld(old) {
   const entries = [];
   const n = LEGACY_W / CHUNK, base = LEGACY_OFFSET / CHUNK;
   for (let cz = 0; cz < n; cz++) for (let cx = 0; cx < n; cx++) {
-    const data = new Uint8Array(CHUNK_VOLUME);
+    const data = new Uint16Array(CHUNK_VOLUME);
     for (let y = 0; y < H; y++) for (let lz = 0; lz < CHUNK; lz++) for (let lx = 0; lx < CHUNK; lx++) {
       const x = cx * CHUNK + lx, z = cz * CHUNK + lz;
       data[localIndex(lx, y, lz)] = blocks[x + z * LEGACY_W + y * LEGACY_W * LEGACY_W];
@@ -263,6 +272,7 @@ async function startWorld(save) {
   };
   mobs.reset(world);
   kinetics.clear();
+  signs.load(save?.signs);
   arrows.reset();
   lastSwing = 0;
   applyViewDistance();
@@ -293,6 +303,10 @@ async function startWorld(save) {
   lamps.clear();
   for (const [key, secs] of save?.lamps ?? []) if (typeof key === 'string' && Number.isFinite(secs)) lamps.set(key, secs);
   stations.load(save?.stations);
+  for (let i = 0; i < 4; i++) {
+    const id = save?.armour?.[i];
+    armour[i] = ITEMS[id]?.armour?.piece === i ? id : null;
+  }
   caneToday = Number.isFinite(save?.caneToday) ? save.caneToday : 0;
   air = MAX_AIR;
   dead = false;
@@ -354,6 +368,8 @@ function saveGame() {
     bed: bedSpawn,
     lamps: [...lamps],
     stations: stations.serialize(),
+    signs: signs.serialize(),
+    armour: [...armour],
     caneToday,
     time: sky.time,
   });
@@ -540,7 +556,7 @@ function respawnPlayer() {
 //   a well-fed player (hunger 16+) heals a point every 3 s, using up a little hunger.
 function updateHealth(dt, wasGround, prevY) {
   // falling: track the highest point since leaving the ground (including where this step started)
-  if (player.inWater || player.onGround && wasGround) fallTop = null;
+  if (player.inWater || player.climbing || player.onGround && wasGround) fallTop = null;
   if (!player.onGround && !player.inWater) fallTop = Math.max(fallTop ?? prevY, prevY, player.pos.y);
   else if (player.onGround && !wasGround && fallTop === null && !player.inWater) fallTop = prevY;
   if (player.onGround && !wasGround && fallTop !== null) {
@@ -624,17 +640,48 @@ function buildInventoryGrid() {
   };
   for (let i = 9; i < SLOTS; i++) make(i, $('inv-grid'));
   for (let i = 0; i < 9; i++) make(i, $('inv-hotbar'));
+  for (let k = 0; k < 4; k++) make(ARMOUR_SLOT + k, $('inv-armour'));
 }
+const ARMOUR_SLOT = 100; // the armour slots count as 100..103 in the inventory panel
 buildInventoryGrid();
 
+const armourPiece = (id) => ITEMS[id]?.armour?.piece ?? -1;
 function onInvSlot(i) {
   if (picked < 0) {
-    if (inventory.slots[i]) picked = i;
+    if (i >= ARMOUR_SLOT ? armour[i - ARMOUR_SLOT] : inventory.slots[i]) picked = i;
+  } else if (picked === i) {
+    picked = -1;
+  } else if (i >= ARMOUR_SLOT || picked >= ARMOUR_SLOT) {
+    // between the backpack and an armour slot: only the right piece goes in each slot
+    const [k, s] = i >= ARMOUR_SLOT ? [i - ARMOUR_SLOT, picked] : [picked - ARMOUR_SLOT, i];
+    if (s >= ARMOUR_SLOT) { picked = -1; renderInventory(); return; }
+    const item = inventory.slots[s];
+    if (item && armourPiece(item.id) !== k) toast(`That isn't ${ARMOUR_PIECES[k].name.toLowerCase()} armour`);
+    else {
+      const worn = armour[k];
+      armour[k] = item?.id ?? null;
+      inventory.slots[s] = worn ? { id: worn, count: 1 } : null;
+      sound.pop();
+      inventory.onChange();
+    }
+    picked = -1;
   } else {
     inventory.moveSlot(picked, i);
     picked = -1;
   }
   renderInventory();
+}
+
+// Tap with a piece of armour in hand to put it on (swapping with whatever you were wearing there).
+function wearHeld() {
+  const held = inventory.held();
+  const k = armourPiece(held.id);
+  const worn = armour[k];
+  armour[k] = held.id;
+  inventory.slots[inventory.selected] = worn ? { id: worn, count: 1 } : null;
+  inventory.onChange();
+  sound.pop();
+  toast(`Wearing ${itemName(held.id).toLowerCase()} · armour ${Math.round(armourShare() * 100)}%`, 1800);
 }
 
 // Is a block of this kind (a crafting table or butter churn) within reach?
@@ -652,6 +699,12 @@ function renderInventory() {
     invEls[i].innerHTML = slotHTML(inventory.slots[i]);
     invEls[i].classList.toggle('picked', i === picked);
   }
+  for (let k = 0; k < 4; k++) {
+    const el = invEls[ARMOUR_SLOT + k];
+    el.innerHTML = armour[k] ? slotHTML({ id: armour[k], count: 1 }) : `<span class="empty-armour">${['⛑', '👕', '👖', '👢'][k]}</span>`;
+    el.classList.toggle('picked', ARMOUR_SLOT + k === picked);
+  }
+  $('armour-total').textContent = armourPoints() ? `blocks ${Math.round(armourShare() * 100)}% of creature damage` : '';
   const hasTable = openedAt === TABLE || nearBlock(TABLE);
   const hasChurn = openedAt === CHURN || nearBlock(CHURN);
   $('table-status').textContent = `— crafting table ${hasTable ? '✓' : '✗'} · butter churn ${hasChurn ? '✓' : '✗'}`;
@@ -759,6 +812,7 @@ function openStation(x, y, z) {
   document.exitPointerLock?.();
   const K = STATION_KINDS[kind];
   $('station-title').textContent = K.name;
+  $('station').classList.toggle('storage', !!K.storage);
   // build the slots for this kind of station
   const make = (parent, area, i) => {
     const el = document.createElement('div');
@@ -770,9 +824,12 @@ function openStation(x, y, z) {
   };
   const ins = $('st-inputs');
   ins.innerHTML = '';
-  ins.style.gridTemplateColumns = `repeat(${K.inputs > 1 ? 2 : 1}, var(--slot))`;
+  ins.style.gridTemplateColumns = K.storage ? '' : `repeat(${K.inputs > 1 ? 2 : 1}, var(--slot))`;
   for (let i = 0; i < K.inputs; i++) make(ins, 'in', i);
-  for (const [id, area] of [['st-fuel', 'fuel'], ['st-out', 'out']]) { $(id).innerHTML = ''; if (area === 'out' || !K.powered) make($(id), area, 0); }
+  for (const [id, area] of [['st-fuel', 'fuel'], ['st-out', 'out']]) {
+    $(id).innerHTML = '';
+    if (!K.storage && (area === 'out' || !K.powered)) make($(id), area, 0);
+  }
   $('station').querySelector('.st-fuel-row').style.display = K.powered ? 'none' : '';
   $('st-inv').innerHTML = ''; $('st-hotbar').innerHTML = '';
   for (let i = 9; i < SLOTS; i++) make($('st-inv'), 'inv', i);
@@ -807,6 +864,11 @@ function renderStation() {
     el.innerHTML = slotHTML(stationSlot(area, i).get());
     el.classList.toggle('picked', !!stPicked && stPicked.area === area && stPicked.i === i);
   }
+  const K = STATION_KINDS[st.kind];
+  if (K.storage) {
+    $('st-status').textContent = `${st.inputs.filter(Boolean).length} of ${K.inputs} slots used`;
+    return;
+  }
   const r = stations.recipeFor(st);
   $('st-progress').style.width = `${r ? Math.min(100, (st.progress / r.time) * 100) : 0}%`;
   if (STATION_KINDS[st.kind].powered) {
@@ -820,6 +882,36 @@ function renderStation() {
   $('st-status').textContent = r ? (st.burn > 1e-9 || (st.fuel && isFuel(st.fuel.id)) ? `Making ${itemName(r.out[0]).toLowerCase()}…${fuelLeft}` : 'Needs fuel') :
     `Put ingredients in${fuelLeft}`;
 }
+
+// Chest buttons: move everything in the backpack (not the hotbar) into the chest, or take it all out.
+function chestMove(intoChest) {
+  const st = currentStation();
+  if (!st) return;
+  const put = (slots, from, i) => {
+    const s = from[i];
+    if (!s) return;
+    for (let j = 0; j < slots.length && s.count; j++) {
+      const t = slots[j];
+      if (t && t.id === s.id && t.count < maxStack(s.id)) { const k = Math.min(s.count, maxStack(s.id) - t.count); t.count += k; s.count -= k; }
+    }
+    for (let j = 0; j < slots.length && s.count; j++) if (!slots[j]) { slots[j] = { id: s.id, count: s.count }; s.count = 0; }
+    if (!s.count) from[i] = null;
+  };
+  if (intoChest) for (let i = 9; i < SLOTS; i++) put(st.inputs, inventory.slots, i);
+  else {
+    for (let i = 0; i < st.inputs.length; i++) {
+      const s = st.inputs[i];
+      if (!s) continue;
+      const left = inventory.add(s.id, s.count);
+      st.inputs[i] = left ? { id: s.id, count: left } : null;
+    }
+  }
+  sound.pop();
+  inventory.onChange();
+  renderStation();
+}
+$('btn-chest-in').addEventListener('click', () => chestMove(true));
+$('btn-chest-out').addEventListener('click', () => chestMove(false));
 
 function onStationSlot(area, i) {
   const st = currentStation();
@@ -866,7 +958,7 @@ function hitMob() {
   if (targetMob.mob.spec.hostile) {
     // fight a night creature: damage depends on what's in your hand
     const now = performance.now();
-    if (now - lastSwing < 450) return;
+    if (now - lastSwing < (isSword(inventory.heldId()) ? 300 : 450)) return; // swords swing quicker
     lastSwing = now;
     giveDrops(mobs.hurt(targetMob.mob, WEAPON_DAMAGE[inventory.heldId()] ?? ITEMS[inventory.heldId()]?.tool?.damage ?? 2, player.pos));
     return;
@@ -1023,6 +1115,38 @@ async function sleepUntilMorning() {
   paused = false;
 }
 
+// ---------- signs ----------
+let signAt = null; // the sign being written on
+function editSign(x, y, z) {
+  signAt = { x, y, z };
+  paused = true;
+  controls.reset();
+  document.exitPointerLock?.();
+  $('sign-text').value = signs.get(x, y, z);
+  $('sign-edit').classList.remove('hidden');
+  setTimeout(() => $('sign-text').focus(), 50);
+}
+function closeSign() {
+  if (!signAt) return;
+  const { x, y, z } = signAt;
+  if (isSign(world.get(x, y, z))) signs.set(x, y, z, $('sign-text').value);
+  signAt = null;
+  $('sign-text').blur();
+  $('sign-edit').classList.add('hidden');
+  paused = false;
+  saveGame();
+}
+$('btn-sign-done').addEventListener('click', closeSign);
+$('sign-text').addEventListener('input', (e) => {
+  // keep to 4 lines of 16 letters as you type
+  const lines = e.target.value.split('\n');
+  if (lines.length > 4 || lines.some((l) => l.length > 16)) {
+    const pos = e.target.selectionStart;
+    e.target.value = lines.slice(0, 4).map((l) => l.slice(0, 16)).join('\n');
+    e.target.selectionStart = e.target.selectionEnd = Math.min(pos, e.target.value.length);
+  }
+});
+
 function place() {
   if (paused) return;
   const held = inventory.held();
@@ -1037,6 +1161,7 @@ function place() {
     if (isDoor(tid)) { toggleDoor(tx, ty, tz); return; }
     if (isCurtain(tid)) { toggleCurtain(tx, ty, tz); return; }
     if (isLamp(tid)) { useLamp(tx, ty, tz, held); return; }
+    if (isSign(tid)) { editSign(tx, ty, tz); return; }
     if (stationKind(tid)) { sound.click(); openStation(tx, ty, tz); return; }
   }
   // sugar cane in hand: plant it if you're aiming at a good spot beside water, otherwise eat it
@@ -1048,7 +1173,18 @@ function place() {
   }
   if (held?.id === BUCKET || held?.id === WATER_BUCKET) { useBucket(held.id); return; }
   if (held && (foodValue(held.id) || ITEMS[held.id]?.drink)) { eat(held.id); return; }
+  if (held && ITEMS[held.id]?.armour) { wearHeld(); return; }
   if (!target || !held) return;
+  // ladders and scaffolding tapped with more of the same grow upward from the top of the column
+  if ((held.id === LADDER && BLOCKS[target.id].climb && target.id !== SCAFFOLD) || (held.id === SCAFFOLD && target.id === SCAFFOLD)) {
+    let ty = target.y;
+    while (ty < H - 1 && world.get(target.x, ty + 1, target.z) === target.id) ty++;
+    if (ty >= H - 1 || world.get(target.x, ty + 1, target.z) !== AIR) return;
+    world.setBlock(target.x, ty + 1, target.z, target.id);
+    sound.place('wood');
+    inventory.consumeHeld();
+    return;
+  }
   // what goes into the world: the block itself, or what an item plants (seeds -> young wheat)
   let id = isBlock(held.id) ? held.id : ITEMS[held.id]?.places;
   if (!id) return;
@@ -1092,11 +1228,22 @@ function place() {
     sound.place('wool');
     inventory.consumeHeld();
     return;
+  } else if (id === LADDER || id === SIGN) {
+    // fixed to the side of a solid block, facing out of it; a sign can also stand on top of one
+    if (there !== AIR || !BLOCKS[target.id].solid) return;
+    if (id === SIGN && target.ny === 1) id = SIGN_POST + facingTowardPlayer(x, z);
+    else if (target.ny !== 0) { toast(id === LADDER ? 'Ladders go on the side of a block' : 'Signs go on a wall or on top of a block'); return; }
+    else id += FACING_DIRS.findIndex(([dx, dz]) => dx === target.nx && dz === target.nz);
+    world.setBlock(x, y, z, id);
+    sound.place('wood');
+    inventory.consumeHeld();
+    if (isSign(id)) editSign(x, y, z);
+    return;
   } else if (id === LAMP || id === CARPET) {
     if (there !== AIR || !world.isSolid(x, y - 1, z)) { toast(`${BLOCKS[id].name}s need something solid underneath`); return; }
   } else {
     // chairs face you; curtains hang across your line of sight
-    if (id === CHAIR || id === OVEN || id === SMELTER || id === BLAST_SMELTER || id === CRUSHER) id += facingTowardPlayer(x, z); // the front faces you
+    if ([CHAIR, OVEN, SMELTER, BLAST_SMELTER, CRUSHER, CHEST, IRON_CHEST].includes(id)) id += facingTowardPlayer(x, z); // the front faces you
     else if (BLOCKS[id].kinetic) id = kineticVariant(id);
     else if (id === CURTAIN) id += facingTowardPlayer(x, z) % 2; // facing 0/2 -> hangs across x, 1/3 -> across z
     if (BLOCKS[id].solid && player.overlapsBlock(x, y, z)) return;
@@ -1206,6 +1353,7 @@ function breakBlock(x, y, z) {
     drops = [[DOOR, 1]];
   }
   if (isLamp(id)) lamps.delete(lampKey(x, y, z));
+  if (isSign(id)) signs.remove(x, y, z);
   if (stationKind(id)) giveDrops(stations.remove(x, y, z)); // whatever was inside comes back too
   if (isBed(id)) {
     // either half takes the whole bed with it
@@ -1214,6 +1362,12 @@ function breakBlock(x, y, z) {
     const used = (bx, by, bz) => bedSpawn && bedSpawn.x === bx && bedSpawn.y === by && bedSpawn.z === bz;
     if (used(x, y, z) || used(ox, oy, oz)) bedSpawn = null;
     drops = [[BED, 1]];
+  }
+  // scaffolding: the whole tower above comes down with it
+  if (id === SCAFFOLD) {
+    let n = 0;
+    for (let ty = y + 1; ty < H && world.get(x, ty, z) === SCAFFOLD; ty++) { world.setBlock(x, ty, z, AIR); n++; }
+    if (n) drops.push([SCAFFOLD, n]);
   }
   // cutting a tree's trunk with an axe brings down the whole tree above it
   const felled = id === LOG && ITEMS[inventory.heldId()]?.tool?.type === 'axe' ? treeAbove(x, y, z) : [];
@@ -1273,6 +1427,20 @@ function dropUnsupported(x, y, z) {
     if (world.get(tx, ty, tz) !== id) continue;
     world.setBlock(tx, ty, tz, AIR);
     inventory.add(TORCH, 1);
+  }
+  // ladders and signs fixed to it (each faces away from the block it hangs on), and a sign post on top
+  FACING_DIRS.forEach(([dx, dz], f) => {
+    const id = world.get(x + dx, y, z + dz);
+    if ((id === LADDER + f || id === SIGN + f)) {
+      world.setBlock(x + dx, y, z + dz, AIR);
+      if (id === SIGN + f) signs.remove(x + dx, y, z + dz);
+      inventory.add(id === SIGN + f ? SIGN : LADDER, 1);
+    }
+  });
+  if (BLOCKS[world.get(x, y + 1, z)]?.post) {
+    world.setBlock(x, y + 1, z, AIR);
+    signs.remove(x, y + 1, z);
+    inventory.add(SIGN, 1);
   }
   // lamps and carpets resting on it, and a door standing on it
   const above = world.get(x, y + 1, z);
@@ -1476,7 +1644,7 @@ function stepGame(now, dt) {
         if (m.spec.hostile) giveDrops(mobs.hurt(m, Math.round(2 + 6 * arrow.power), from));
         else mobs.bump(m, from);
       },
-      onHitPlayer: (dmg) => { if (!dead) damage(dmg, 'A thornspitter shot you full of thorns.'); },
+      onHitPlayer: (dmg) => { if (!dead) damage(armoured(dmg), 'A thornspitter shot you full of thorns.'); },
     });
     if (picked) { inventory.add(ARROW, picked); sound.pop(); }
     updateFishing(dt);
@@ -1487,6 +1655,7 @@ function stepGame(now, dt) {
   if (world.unsaved.size !== unsavedCount) { unsavedCount = world.unsaved.size; lastEditAt = now; }
   if (unsavedCount && now - lastEditAt > 1500 && worldReady) { world.saveChunks(); unsavedCount = 0; }
   kinetics.update(paused ? 0 : dt, world, { day: lightUniforms.uDay.value, flicker: lightUniforms.uFlicker.value, ambient: AMBIENT });
+  signs.update(dt, world, { day: lightUniforms.uDay.value, flicker: lightUniforms.uFlicker.value, ambient: AMBIENT });
   coordsTimer -= dt;
   if (coordsTimer <= 0) {
     coordsTimer = 0.25;
@@ -1534,7 +1703,7 @@ window.minicraft = {
   get paused() { return paused; },
   get health() { return health; }, set health(v) { health = v; renderHealth(); },
   get poisoned() { return poisoned; }, get dead() { return dead; }, get air() { return air; }, set air(v) { air = v; },
-  arrows, fishing, kinetics, damage, lamps, tickLamps, sleepUntilMorning, stations, openStation, closeStation,
+  arrows, fishing, kinetics, signs, armour, damage, place, editSign, closeSign, openInventory, closeInventory, chestMove, lamps, tickLamps, sleepUntilMorning, stations, openStation, closeStation,
   get caneToday() { return caneToday; },
   get bedSpawn() { return bedSpawn; },
 };

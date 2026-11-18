@@ -60,7 +60,8 @@
           <div class="inv-col">
             <div class="slot-grid" id="inv-grid"></div>
             <div class="slot-grid hotbar-row" id="inv-hotbar"></div>
-            <p class="hint">Tap a slot, then tap another to move or swap.</p>
+            <div class="armour-row"><span class="armour-label">Armour</span><div class="slot-grid" id="inv-armour"></div><span id="armour-total"></span></div>
+            <p class="hint">Tap a slot, then tap another to move or swap. Put armour in the armour slots to wear it.</p>
           </div>
           <div class="craft-col">
             <h3>Crafting <span id="table-status"></span></h3>
@@ -87,6 +88,7 @@
               <div class="st-out" id="st-out"></div>
             </div>
             <p class="hint" id="st-status"></p>
+            <div class="chest-buttons"><button class="btn" id="btn-chest-in">Put backpack in</button><button class="btn" id="btn-chest-out">Take all</button></div>
             <div class="slot-grid" id="st-inv"></div>
             <div class="slot-grid hotbar-row" id="st-hotbar"></div>
             <p class="hint">Tap a slot, then another, to move items in or out. Tap the result to collect it.</p>
@@ -95,6 +97,17 @@
             <h3>Makes</h3>
             <div id="st-recipes"></div>
           </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="sign-edit" class="overlay hidden">
+      <div class="panel sign-panel">
+        <div class="panel-head"><h2>Write on the sign</h2></div>
+        <div class="menu-items">
+          <textarea id="sign-text" rows="4" maxlength="70" spellcheck="false"></textarea>
+          <p class="hint">Up to 4 lines of 16 letters.</p>
+          <button class="btn wide" id="btn-sign-done">Done</button>
         </div>
       </div>
     </div>

@@ -159,6 +159,7 @@ export class Controls {
       if (document.pointerLockElement === L) this.hooks.scrollSlot(Math.sign(e.deltaY));
     }, { passive: true });
     window.addEventListener('keydown', (e) => {
+      if (e.target?.tagName === 'TEXTAREA' || e.target?.tagName === 'INPUT') return; // typing on a sign
       if (e.code === 'KeyE') { this.hooks.toggleInventory(); return; }
       if (this.hooks.isPaused()) return;
       if (/^Digit[1-9]$/.test(e.code)) this.hooks.selectSlot(+e.code.slice(5) - 1);

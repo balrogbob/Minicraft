@@ -8,10 +8,12 @@ import {
   TUNGSTEN_INGOT, BRONZE_INGOT, ELECTRUM_INGOT, STAINLESS_INGOT, STEEL_INGOT, AL_BRONZE_INGOT,
   FLINT, CLAY_BALL, BRICK, FIRE_CLAY, FIRE_BRICK, FLINT_DUST, CLAY_DUST, WATER_BUCKET, oreDust,
   WATER_WHEEL, KINETIC_MATS, kineticId,
+  LADDER, SCAFFOLD, SIGN, WOOD_SWORD, STONE_SWORD, metalSword, HIDE, LEATHER, ARMOUR_MATS, ARMOUR_PIECES, armourId,
+  PLATE_METALS, PLATES,
 } from './blocks.js';
 
 export const TILE = 16;
-export const ATLAS_COLS = 8;
+export const ATLAS_COLS = 16; // 16 x 16 tiles
 
 function mulberry32(a) {
   return function () {
@@ -375,6 +377,27 @@ Object.assign(P, {
     for (let y = 6; y < 12; y++) for (let x = 4; x < 12; x++) t.set(x, y, y === 6 || x === 4 || x === 11 ? [70, 70, 74] : [24, 22, 22]);
     for (let x = 5; x < 11; x++) t.set(x, 10, t.vary([200, 190, 170], 0.1)); // a little dust in the chute
   },
+});
+
+// Chests: planks bound with dark wood (or iron bands), with a lid line and a latch at the front.
+function chestFace(t, band, kind) {
+  P[T.PLANKS](t);
+  for (let i = 0; i < TILE; i++) {
+    for (const e of [0, 15]) { t.set(i, e, t.vary(band, 0.08)); t.set(e, i, t.vary(band, 0.08)); }
+  }
+  if (kind !== 'top') for (let x = 0; x < TILE; x++) t.set(x, 5, t.vary(shade(band, 0.8), 0.06)); // the lid's edge
+  if (kind === 'front') {
+    for (let y = 4; y < 8; y++) for (let x = 7; x < 9; x++) t.set(x, y, [200, 196, 186]);
+    t.set(7, 6, [60, 60, 64]); t.set(8, 6, [60, 60, 64]);
+  }
+}
+Object.assign(P, {
+  [T.CHEST_SIDE](t) { chestFace(t, [92, 62, 34], 'side'); },
+  [T.CHEST_TOP](t) { chestFace(t, [92, 62, 34], 'top'); },
+  [T.CHEST_FRONT](t) { chestFace(t, [92, 62, 34], 'front'); },
+  [T.IRON_CHEST_SIDE](t) { chestFace(t, [150, 154, 162], 'side'); for (let y = 0; y < TILE; y++) for (const x of [4, 11]) t.set(x, y, t.vary([130, 134, 142], 0.05)); },
+  [T.IRON_CHEST_TOP](t) { chestFace(t, [150, 154, 162], 'top'); for (let y = 0; y < TILE; y++) for (const x of [4, 11]) t.set(x, y, t.vary([130, 134, 142], 0.05)); },
+  [T.IRON_CHEST_FRONT](t) { chestFace(t, [150, 154, 162], 'front'); for (let y = 0; y < TILE; y++) for (const x of [3, 12]) t.set(x, y, t.vary([130, 134, 142], 0.05)); },
 });
 
 // A plank door: a frame with a centre board; the upper half has a four-pane window you can see through,
@@ -906,6 +929,83 @@ KINETIC_MATS.forEach((m, i) => {
   ITEM_PAINTERS[kineticId('gear', i)] = (ctx) => gearIcon(ctx, PART_COLORS[i], 6, 8, 1.6);
   ITEM_PAINTERS[kineticId('large', i)] = (ctx) => gearIcon(ctx, PART_COLORS[i], 7.9, 14, 1.8);
 });
+
+// ----- stage A: ladders, scaffolding, signs, swords, armour -----
+const PLANK = [[176, 132, 80], [128, 92, 52]];
+Object.assign(ITEM_PAINTERS, {
+  [LADDER](ctx) {
+    rect(ctx, 3, 0, 2, 16, PLANK[1]); rect(ctx, 11, 0, 2, 16, PLANK[1]);
+    for (const y of [2, 6, 10, 14]) rect(ctx, 5, y, 6, 1, PLANK[0]);
+  },
+  [SCAFFOLD](ctx) {
+    for (const x of [1, 13]) rect(ctx, x, 1, 2, 15, PLANK[1]);
+    rect(ctx, 1, 1, 14, 2, PLANK[0]); rect(ctx, 1, 8, 14, 1, PLANK[0]);
+    for (let i = 0; i < 10; i++) px(ctx, 3 + i, 3 + Math.floor(i * 0.5), PLANK[0]); // a brace
+  },
+  [SIGN](ctx) {
+    rect(ctx, 7, 9, 2, 7, [110, 80, 46]); // post
+    rect(ctx, 1, 2, 14, 8, PLANK[0]); rect(ctx, 1, 9, 14, 1, PLANK[1]);
+    for (const [y, w] of [[4, 10], [6, 8]]) rect(ctx, 3, y, w, 1, [70, 46, 24]); // writing
+  },
+});
+// sword: blade along the diagonal, a crossguard and a short grip
+function swordPainter(mat) {
+  const [m, md] = MAT[mat];
+  return (ctx) => {
+    for (let i = 0; i < 9; i++) { px(ctx, 6 + i, 9 - i, m); px(ctx, 6 + i, 10 - i, md); px(ctx, 5 + i, 9 - i, m); }
+    px(ctx, 15, 0, m);
+    for (const [x, y] of [[3, 9], [4, 10], [5, 11], [6, 12], [7, 13]]) px(ctx, x, y, [90, 70, 40]); // crossguard
+    for (let i = 0; i < 4; i++) { px(ctx, 1 + i, 14 - i, HANDLE[0]); px(ctx, 2 + i, 14 - i, HANDLE[1]); }
+  };
+}
+ITEM_PAINTERS[WOOD_SWORD] = swordPainter('wood');
+ITEM_PAINTERS[STONE_SWORD] = swordPainter('stone');
+TOOL_MATERIALS.forEach((m, i) => { ITEM_PAINTERS[metalSword(i)] = swordPainter(m.key); });
+const ARMOUR_COLORS = {
+  leather: [148, 96, 56], bronze: METAL_COLORS[BRONZE_INGOT], iron: METAL_COLORS[IRON_INGOT],
+  steel: METAL_COLORS[STEEL_INGOT], stainless: METAL_COLORS[STAINLESS_INGOT],
+};
+const ARMOUR_ART = [
+  ['................', '................', '....XXXXXXXX....', '...XHHHHHHHHX...', '..XHHHHHHHHHHX..', '..XHHHHHHHHHHX..', '..XHHXXXXXXHHX..',
+    '..XHX......XHX..', '..XHX......XHX..', '..XXX......XXX..', '................', '................', '................', '................', '................', '................'],
+  ['................', '..XXX......XXX..', '.XHHHX....XHHHX.', 'XHHHHHXXXXHHHHHX', 'XHHHHHHHHHHHHHHX', 'XXXHHHHHHHHHHXXX', '..XHHHHHHHHHHX..',
+    '..XHHHHHHHHHHX..', '..XHHHHHHHHHHX..', '..XHHHHHHHHHHX..', '..XHHHHHHHHHHX..', '..XHHHHHHHHHHX..', '..XXXXXXXXXXXX..', '................', '................', '................'],
+  ['................', '................', '...XXXXXXXXXX...', '...XHHHHHHHHX...', '...XHHHHHHHHX...', '...XHHHXXHHHX...', '...XHHHXXHHHX...',
+    '...XHHHXXHHHX...', '...XHHHXXHHHX...', '...XHHHXXHHHX...', '...XHHHXXHHHX...', '...XHHHXXHHHX...', '...XXXXXXXXXX...', '................', '................', '................'],
+  ['................', '................', '................', '................', '................', '..XXXX....XXXX..', '..XHHX....XHHX..',
+    '..XHHX....XHHX..', '..XHHX....XHHX..', '..XHHX....XHHX..', 'XXXHHX....XHHXXX', 'XHHHHX....XHHHHX', 'XHHHHX....XHHHHX', 'XXXXXX....XXXXXX', '................', '................'],
+];
+function armourPainter(c, piece) {
+  return (ctx) => ARMOUR_ART[piece].forEach((row, y) => [...row].forEach((ch, x) => {
+    if (ch === 'X') px(ctx, x, y, dim(c, 0.6));
+    else if (ch === 'H') px(ctx, x, y, (x + y) % 5 === 0 ? dim(c, 1.15).map((v) => Math.min(255, v)) : c);
+  }));
+}
+ARMOUR_MATS.forEach((m, mi) => ARMOUR_PIECES.forEach((p, pi) => { ITEM_PAINTERS[armourId(mi, pi)] = armourPainter(ARMOUR_COLORS[m.key], pi); }));
+// a flat metal plate seen at an angle, with rivets
+function platePainter(c) {
+  return (ctx) => {
+    for (let y = 3; y < 13; y++) for (let x = 2; x < 14; x++) {
+      if (x + (12 - y) * 0.3 > 14 || x < 2 + (12 - y) * 0.3) continue;
+      px(ctx, x, y, y === 3 ? dim(c, 1.15).map((v) => Math.min(255, v)) : y > 11 ? dim(c, 0.65) : c);
+    }
+    for (const [x, y] of [[4, 5], [11, 5], [4, 10], [11, 10]]) px(ctx, x, y, dim(c, 0.55));
+  };
+}
+PLATE_METALS.forEach((m, i) => { ITEM_PAINTERS[PLATES + i] = platePainter(METAL_COLORS[m.ingot]); });
+ITEM_PAINTERS[HIDE] = (ctx) => {
+  for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) {
+    const d = Math.hypot((x - 7.5) / 6.5, (y - 8) / 5.8) + Math.sin(x * 1.3) * 0.06 + Math.cos(y * 1.7) * 0.06;
+    if (d < 1) px(ctx, x, y, (x * 3 + y * 5) % 7 === 0 ? [58, 38, 22] : d > 0.82 ? [62, 42, 26] : [86, 58, 36]);
+  }
+};
+ITEM_PAINTERS[LEATHER] = (ctx) => {
+  for (let y = 2; y < 14; y++) for (let x = 2; x < 14; x++) {
+    if ((x === 2 || x === 13) && (y === 2 || y === 13)) continue;
+    px(ctx, x, y, y === 2 || x === 2 ? [176, 118, 70] : (x + y) % 6 === 0 ? [128, 80, 44] : [150, 98, 56]);
+  }
+  for (let x = 4; x < 12; x += 2) px(ctx, x, 12, [100, 64, 34]); // stitching
+};
 
 // Returns { id: dataURL } for every block and item.
 export function createIcons(atlas) {
