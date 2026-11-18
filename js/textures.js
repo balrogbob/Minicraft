@@ -2,7 +2,7 @@
 import {
   T, BLOCKS, isBlock, TORCH, STICK, COAL, WOOD_PICK, STONE_PICK, WOOD_AXE, STONE_AXE, WOOD_SHOVEL, STONE_SHOVEL,
   SEEDS, WHEAT, FLOUR, SUGAR, BUTTER, BREAD, COOKIE, CAKE, BUCKET, MILK_BUCKET, SLIME_BUCKET, FEATHER, MORTAR,
-  STRING, ARROW, BOW, COAL_DUST, SLIME_FUEL, BED, FURN_TABLE, CHAIR, LAMP, CARPET, CURTAIN, DOOR,
+  STRING, ARROW, BOW, COAL_DUST, SLIME_FUEL, BED, FURN_TABLE, CHAIR, LAMP, CARPET, CURTAIN, DOOR, CHARCOAL,
 } from './blocks.js';
 
 export const TILE = 16;
@@ -260,6 +260,19 @@ const P = {
       t.set(x, y, t.vary([c, c * 0.95, c * 0.86], 0.03));
     }
   },
+  // Oven: clay bricks with an arched mouth; the lit front glows with fire.
+  [T.OVEN_SIDE](t) { bricks(t, [164, 86, 60], [120, 100, 88]); },
+  [T.OVEN_TOP](t) { bricks(t, [140, 72, 52], [110, 92, 80]); },
+  [T.OVEN_FRONT](t) { bricks(t, [164, 86, 60], [120, 100, 88]); mouth(t, 'arch', false); },
+  [T.OVEN_FRONT_LIT](t) { bricks(t, [164, 86, 60], [120, 100, 88]); mouth(t, 'arch', true); },
+  // Smelter: dark stone bricks with a square mouth and a vent on top.
+  [T.SMELTER_SIDE](t) { bricks(t, [96, 96, 102], [64, 64, 70]); },
+  [T.SMELTER_TOP](t) {
+    bricks(t, [96, 96, 102], [64, 64, 70]);
+    for (let y = 4; y < 12; y++) for (let x = 4; x < 12; x++) t.set(x, y, (x + y) % 2 ? [40, 40, 44] : [24, 24, 28]); // vent grate
+  },
+  [T.SMELTER_FRONT](t) { bricks(t, [96, 96, 102], [64, 64, 70]); mouth(t, 'square', false); },
+  [T.SMELTER_FRONT_LIT](t) { bricks(t, [96, 96, 102], [64, 64, 70]); mouth(t, 'square', true); },
   [T.BEDROCK](t) {
     for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
       const g = 30 + t.r() * 100;
@@ -282,6 +295,31 @@ function doorPanel(t, upper) {
     }
   }
   if (!upper) { t.set(12, 2, [60, 60, 64]); t.set(12, 3, [90, 90, 96]); t.set(11, 3, [60, 60, 64]); } // handle
+}
+
+// Small bricks in staggered rows with mortar lines.
+function bricks(t, brick, mortar) {
+  for (let y = 0; y < TILE; y++) {
+    const offset = (y >> 2) % 2 ? 4 : 0;
+    for (let x = 0; x < TILE; x++) {
+      const line = y % 4 === 3 || (x + offset) % 8 === 7;
+      t.set(x, y, line ? t.vary(mortar, 0.06) : t.vary(brick, 0.1));
+    }
+  }
+}
+
+// A dark fire mouth in the lower half of a front face; when lit, filled with glowing embers and flames.
+function mouth(t, shape, lit) {
+  for (let y = 7; y < 15; y++) for (let x = 3; x < 13; x++) {
+    if (shape === 'arch' && y < 9 && Math.abs(x - 7.5) > 2.5 + (y - 7) * 1.5) continue;
+    const depth = (y - 7) / 8;
+    if (!lit) t.set(x, y, t.vary([26, 22, 20], 0.15));
+    else {
+      const flame = Math.sin(x * 1.7) * 1.5 + 11 - y;
+      t.set(x, y, flame > 1.5 ? t.vary([255, 220, 110], 0.08) : flame > 0 ? t.vary([250, 150, 40], 0.1) : t.vary([180 - depth * 40, 60, 24], 0.12));
+    }
+  }
+  for (let x = 2; x < 14; x++) t.set(x, 15, [70, 70, 74]); // a stone lip under the mouth
 }
 
 function wheatStage(t, stage) {
@@ -375,7 +413,7 @@ function drawIsoBlock(ctx, atlas, def) {
     ctx.drawImage(c, 0, 0);
   };
   const s = 1 / TILE;
-  face(def.side, [28 * s, 14 * s, 0, 28 * s, 4, 18], 0.25);
+  face(def.front ?? def.side, [28 * s, 14 * s, 0, 28 * s, 4, 18], 0.25);
   face(def.side, [28 * s, -14 * s, 0, 28 * s, 32, 32], 0.45);
   face(def.top, [28 * s, -14 * s, 28 * s, 14 * s, 4, 18], 0);
 }
@@ -561,6 +599,13 @@ Object.assign(ITEM_PAINTERS, {
     }
   },
   [SLIME_FUEL]: bucketPainter([46, 74, 36]),
+  [CHARCOAL](ctx) {
+    // a chunky lump of charred wood, with a little grain showing
+    for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) {
+      const d = Math.hypot((x - 7.5) / 5.5, (y - 8) / 4);
+      if (d < 1) px(ctx, x, y, d > 0.8 ? [22, 18, 16] : y % 3 === 0 ? [74, 56, 44] : [44, 36, 32]);
+    }
+  },
   [BED](ctx) {
     rect(ctx, 1, 10, 14, 2, [120, 84, 48]); // frame
     rect(ctx, 1, 12, 1, 3, [100, 70, 40]); rect(ctx, 14, 12, 1, 3, [100, 70, 40]); // legs

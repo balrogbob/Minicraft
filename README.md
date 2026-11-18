@@ -89,8 +89,12 @@ You aim with the crosshair in the middle of the screen. Volume, look speed and a
 2. Open 🎒 and craft **planks**, then **sticks** and a **crafting table**.
 3. Place the table. With a table nearby (or after tapping one), you can craft wooden tools.
 4. Stone needs a **pickaxe** to drop cobblestone. Use cobblestone to craft stone tools and stone bricks.
-5. Mine **coal ore** for coal. Combine it with sand at a table to make **glass**.
-6. Craft **torches** from 1 coal + 1 stick (no table needed). Tap the top of a block to stand one up,
+5. Mine **coal ore** for coal, or smelt logs into **charcoal**, which works anywhere coal does.
+6. Build a **smelter** (8 cobblestone) to make **glass** from sand and **stone** from cobblestone, and an
+   **oven** (6 cobblestone + 2 sand) to bake. Both burn sticks, planks, logs, coal or charcoal.
+   Until you have an oven, raw **sugar cane** keeps you going: a heart of health and half a food point
+   each, but eat five or more in a day and you'll get food poisoning.
+7. Craft **torches** from 1 coal or charcoal + 1 stick (no table needed). Tap the top of a block to stand one up,
    or the side of a block to hang it on the wall. If the block a torch sits on is broken, the torch goes back to your inventory.
 
 ### Food
@@ -104,13 +108,13 @@ You aim with the crosshair in the middle of the screen. Volume, look speed and a
 | Sugar | 1 sugar cane, with the mortar (not used up) | anywhere |
 | Milk Bucket | tap a yak holding an empty bucket | — |
 | Butter | 1 milk bucket (you get the bucket back) | next to a butter churn |
-| Bread (5 food) | 3 flour | crafting table |
-| 9 Cookies (2 food each) | 3 flour + 3 sugar + 1 butter, with a milk bucket (not used up) | crafting table |
-| Cake (12 food) | 3 flour + 3 sugar + 3 butter | crafting table |
+| Bread (5 food) | 3 flour | oven |
+| 9 Cookies (2 food each) | 3 flour + 3 sugar + 1 butter, with a milk bucket (not used up) | oven |
+| Cake (12 food) | 3 flour + 3 sugar + 3 butter | oven |
 | Wheat String | 1 slime bucket + 3 wheat (you get the bucket back) | anywhere |
 | Arrow | 1 feather + 1 cobblestone + 1 stick | crafting table |
 | Bow | 3 sticks + 3 wheat string | crafting table |
-| Coal Dust | 1 coal, with the mortar (not used up) | anywhere |
+| Coal Dust | 1 coal or charcoal, with the mortar (not used up) | anywhere |
 | Slime Fuel | 3 coal dust + 1 slime bucket (the fuel stays in the bucket) | anywhere |
 
 Tap a lamp holding slime fuel to pour in one unit (you keep the empty bucket). A lamp holds 3 units,
@@ -133,7 +137,19 @@ Chairs face you when you place them; doors take two blocks. Beds are two blocks 
 where you tap and the head (with the pillow) extends away from you. Tap a bed in the evening or at
 night to sleep until morning (not while a creature is lurking nearby); any tap sets it as your respawn point.
 
-Tap a crafting table or butter churn to open crafting there. The hunger bar holds 20 points (ten loaves).
+Tap a crafting table or butter churn to open crafting there.
+
+### Oven and smelter
+
+Tap one to open it, then move ingredients and fuel in from your inventory (tap a slot, then another).
+While it has fuel and ingredients it keeps cooking, a batch at a time; tap the result to collect it.
+Fuel lasts: stick 3 s, planks 8 s, log 15 s, coal or charcoal 40 s, and only burns while something's cooking.
+
+| Station | Makes |
+| --- | --- |
+| Oven (6 cobblestone + 2 sand) | bread, cookies, cake (see Food above) |
+| Smelter (8 cobblestone) | cobblestone → stone, sand → glass, log → charcoal |
+ The hunger bar holds 20 points (ten loaves).
 
 ## Code layout
 
@@ -148,6 +164,7 @@ Tap a crafting table or butter churn to open crafting there. The hunger bar hold
 | `js/player.js` | Player physics, collision and swimming |
 | `js/mobs.js` | Animals and night creatures: box models, behaviour and hunting, physics, spawning, difficulty |
 | `js/arrows.js` | Arrows and thorns: flight, hits, sticking in blocks, pick-up |
+| `js/stations.js` | Ovens and smelters: their contents, fuel, recipes and cooking |
 | `js/sky.js` | Day/night cycle: sky colour, fog, sun, moon, stars, world brightness |
 | `js/sound.js` | Web Audio sound effects |
 | `js/controls.js` | Touch joystick / look / tap / hold, plus desktop input |

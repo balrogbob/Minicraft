@@ -70,6 +70,35 @@
       </div>
     </div>
 
+    <div id="station" class="overlay hidden">
+      <div class="panel">
+        <div class="panel-head">
+          <h2 id="station-title">Oven</h2>
+          <button class="btn small" id="btn-close-station">✕</button>
+        </div>
+        <div class="panel-body">
+          <div class="inv-col">
+            <div class="station-row">
+              <div class="slot-grid" id="st-inputs"></div>
+              <div class="st-mid">
+                <div class="st-arrow"><div id="st-progress"></div></div>
+                <div class="st-fuel-row"><span id="st-flame">🔥</span><div id="st-fuel"></div></div>
+              </div>
+              <div class="st-out" id="st-out"></div>
+            </div>
+            <p class="hint" id="st-status"></p>
+            <div class="slot-grid" id="st-inv"></div>
+            <div class="slot-grid hotbar-row" id="st-hotbar"></div>
+            <p class="hint">Tap a slot, then another, to move items in or out. Tap the result to collect it.</p>
+          </div>
+          <div class="craft-col">
+            <h3>Makes</h3>
+            <div id="st-recipes"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <div id="menu" class="overlay hidden">
       <div class="panel menu-panel">
         <div class="panel-head">
