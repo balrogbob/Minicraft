@@ -118,10 +118,10 @@ The version number is shown at the bottom of the ☰ menu; bump `GAME_VERSION` i
 | --- | --- | --- |
 | Move | Drag on the left side of the screen (floating joystick) | WASD |
 | Look | Drag on the right side | Mouse (click to capture) |
-| Break | Hold your finger still on the right side | Hold left button |
+| Break | Double-tap and hold your finger still on the right side | Hold left button |
 | Place / use crafting table | Tap on the right side | Right click |
 | Tap an animal (bump, shear, pluck, milk…) | Tap it | Left or right click |
-| Hit a night creature | Tap it (hold to keep swinging) | Left or right click |
+| Hit a night creature | Tap it (double-tap and hold to keep swinging) | Left or right click |
 | Eat (or drink a slime bucket) | Tap with food in hand | Right click |
 | Sleep / open a door or curtain / fuel a lamp | Tap it | Right click |
 | Fish (cast / reel in) | Tap with the fishing rod in hand | Right click |
@@ -131,7 +131,7 @@ The version number is shown at the bottom of the ☰ menu; bump `GAME_VERSION` i
 | Wear armour | Tap with it in hand, or put it in an armour slot in 🎒 | Right click |
 | Write on a sign | Tap it (it asks as soon as you place it) | Right click |
 | Light a blasting charge | Tap it, then stand well back | Right click |
-| Ride a minecart | Tap it to get in, tap again to get out; forward pushes, back brakes; hold on it to pick it up | Right click / W / S |
+| Ride a minecart | Tap it to get in, tap again to get out; forward pushes, back brakes; double-tap and hold on it to pick it up | Right click / W / S |
 | See how a machine is running | Tap it with nothing (or a tool) in hand | Right click |
 | Open or shut a gate or trapdoor / flip a lever / press a button | Tap it | Right click |
 | Put something in an item frame / take it out | Tap it with the thing in hand / tap it | Right click |
@@ -151,7 +151,12 @@ The version number is shown at the bottom of the ☰ menu; bump `GAME_VERSION` i
 | World map | ☰ → World map, or tap the corner map | M |
 | Fly on / off (creative) | 🕊 button | F |
 | Fly up / down (creative) | ⤒ / ⤓ buttons | Space / Left Shift |
-| Copy and paste a build (creative) | Tap two corners with the copy wand, then tap to paste; hold still to clear | Right click / hold left button |
+| Copy and paste a build (creative) | Tap two corners with the copy wand, then tap to paste; double-tap and hold to clear | Right click / hold left button |
+
+On a touch screen, breaking needs a **double tap and hold**, so a finger resting on the look side while you
+walk doesn't dig: a single tap still places or uses, a quick double tap counts as one tap, and with the bow
+in hand you just hold to draw. (A tap's action waits a third of a second in case a second tap follows.) To go
+back to plain hold-to-break, change ☰ → **Touch breaking**.
 
 You aim with the crosshair in the middle of the screen. Volume, look speed, field of view and auto-jump are
 in the ☰ menu, and every keyboard key above can be changed under ☰ → **Keyboard keys**.
@@ -560,7 +565,7 @@ take it out). Frames hung on a **hopper** make it a **sorting hopper**: it only 
 that match one of its frames. A hopper under a running belt takes things off the belt as they pass over
 it (if it can), so a belt over a row of sorting hoppers sends each kind of thing to its own machine or chest.
 
-A **storage cart** carries 18 slots of things: tap it to open it, hold on it to pick it up (contents and
+A **storage cart** carries 18 slots of things: tap it to open it, double-tap and hold on it to pick it up (contents and
 all). On a **loader rail** a storage cart stops while hoppers fill it (a hopper pointing at the rail) or
 empty it (a hopper under the rail). It waits until nothing has moved for a moment, then rolls on.
 

@@ -71,7 +71,7 @@ function writeSave(obj, slot = settings.slot) {
 }
 // Settings live apart from the world so they survive "New world".
 const settings = (() => {
-  const defaults = { sens: 6, volume: 70, viewDistance: 6, perf: false, difficulty: 'worrying', wear: true, favs: [], slot: 0, fov: 72, keys: {}, tips: true };
+  const defaults = { sens: 6, volume: 70, viewDistance: 6, perf: false, difficulty: 'worrying', wear: true, favs: [], slot: 0, fov: 72, keys: {}, tips: true, doubleTap: true };
   let s;
   try { s = { ...defaults, ...JSON.parse(localStorage.getItem(SETTINGS_KEY)) }; } catch { s = { ...defaults }; }
   s.slot = Math.max(0, Math.min(SLOT_COUNT - 1, s.slot | 0));
@@ -2799,6 +2799,9 @@ function applyFov() {
 applyFov();
 $('fov').addEventListener('input', (e) => { settings.fov = +e.target.value; applyFov(); saveSettings(); });
 $('version').textContent = `Version ${GAME_VERSION}`;
+function updateBreakLabel() { $('btn-break').textContent = `Touch breaking: ${settings.doubleTap ? 'double-tap & hold' : 'hold'}`; }
+updateBreakLabel();
+$('btn-break').addEventListener('click', () => { settings.doubleTap = !settings.doubleTap; controls.doubleTapBreak = settings.doubleTap; updateBreakLabel(); saveSettings(); });
 function updateTipsLabel() { $('btn-tips').textContent = `Tooltips: ${settings.tips ? 'on' : 'off'}`; }
 updateTipsLabel();
 $('btn-tips').addEventListener('click', () => { settings.tips = !settings.tips; updateTipsLabel(); saveSettings(); if (!settings.tips) $('inv-tip').classList.remove('show'); });
@@ -2881,9 +2884,11 @@ controls = null;
     toggleMap: () => (worldMap.open ? closeMap() : !paused && !dead && openMap()),
     toggleFly,
     throwItem: (all) => throwHeld(all),
+    quickHold: () => inventory.heldId() === BOW,
     isPaused: () => paused,
   });
   controls.lookSens = settings.sens / 1000;
+  controls.doubleTapBreak = settings.doubleTap;
   applyKeys();
 }
 renderHotbar();
