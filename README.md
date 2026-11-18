@@ -91,7 +91,7 @@ You aim with the crosshair in the middle of the screen. Volume, look speed and a
 4. Stone needs a **pickaxe** to drop cobblestone. Use cobblestone to craft stone tools and stone bricks.
 5. Mine **coal ore** for coal, or smelt logs into **charcoal**, which works anywhere coal does.
 6. Build a **smelter** (8 cobblestone) to make **glass** from sand and **stone** from cobblestone, and an
-   **oven** (6 cobblestone + 2 sand) to bake. Both burn sticks, planks, logs, coal or charcoal.
+   **oven** (6 cobblestone + 2 sand) to bake. Both burn logs, planks, sticks, coal, charcoal or slime fuel.
    Until you have an oven, raw **sugar cane** keeps you going: a heart of health and half a food point
    each, but eat five or more in a day and you'll get food poisoning.
 7. Craft **torches** from 1 coal or charcoal + 1 stick (no table needed). Tap the top of a block to stand one up,
@@ -143,7 +143,9 @@ Tap a crafting table or butter churn to open crafting there.
 
 Tap one to open it, then move ingredients and fuel in from your inventory (tap a slot, then another).
 While it has fuel and ingredients it keeps cooking, a batch at a time; tap the result to collect it.
-Fuel lasts: stick 3 s, planks 8 s, log 15 s, coal or charcoal 40 s, and only burns while something's cooking.
+Each piece of fuel cooks a set number of items (an oven batch counts as one): log or planks 1, stick ½,
+coal or charcoal 10, slime fuel 40 (its empty bucket is left in the fuel slot). Fuel is only used while
+something is cooking, so whatever's left of a piece waits for the next job.
 
 | Station | Makes |
 | --- | --- |

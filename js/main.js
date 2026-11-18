@@ -744,7 +744,8 @@ function openStation(x, y, z) {
     const tools = (r.tools ?? []).map((id) => `<span class="ing tool" title="${itemName(id)} (not used up)"><img src="${icons[id]}" alt="">kept</span>`).join('');
     return `<div class="recipe">${ing}${tools}<span class="arrow">→</span><img class="outimg" src="${icons[r.out[0]]}" alt="">` +
       `<span class="name">${r.out[1] > 1 ? r.out[1] + ' × ' : ''}${itemName(r.out[0])}</span></div>`;
-  }).join('') + '<p class="hint">Fuel: sticks, planks, logs, coal or charcoal.</p>';
+  }).join('') + '<p class="hint">Fuel, in items cooked per piece: log or planks 1, stick ½, coal or charcoal 10, ' +
+    'slime fuel 40 (its bucket is left in the fuel slot). Fuel is only used while something is cooking.</p>';
   $('station').classList.remove('hidden');
   renderStation();
 }
@@ -767,8 +768,9 @@ function renderStation() {
   const r = stations.recipeFor(st);
   $('st-progress').style.width = `${r ? Math.min(100, (st.progress / r.time) * 100) : 0}%`;
   $('st-flame').style.opacity = st.burn > 0 ? String(0.35 + 0.65 * (st.burn / (st.burnMax || 1))) : '0.12';
-  $('st-status').textContent = st.burn > 0 ? (r ? `Making ${itemName(r.out[0]).toLowerCase()}…` : 'Burning') :
-    r ? (st.fuel ? 'Lighting…' : 'Needs fuel') : 'Put ingredients in';
+  const fuelLeft = st.burn > 1e-9 ? ` (fuel for ${+st.burn.toFixed(1)} more)` : '';
+  $('st-status').textContent = r ? (st.burn > 1e-9 || (st.fuel && isFuel(st.fuel.id)) ? `Making ${itemName(r.out[0]).toLowerCase()}…${fuelLeft}` : 'Needs fuel') :
+    `Put ingredients in${fuelLeft}`;
 }
 
 function onStationSlot(area, i) {

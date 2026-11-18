@@ -4,13 +4,15 @@
 // Each placed station keeps its contents here, keyed by position, and they're saved with the world.
 // Like crops and lamps, a station only works while its part of the world is loaded.
 import {
-  COAL, CHARCOAL, LOG, PLANKS, STICK, COBBLE, STONE, SAND, GLASS,
+  COAL, CHARCOAL, LOG, PLANKS, STICK, COBBLE, STONE, SAND, GLASS, SLIME_FUEL, BUCKET,
   FLOUR, SUGAR, BUTTER, MILK_BUCKET, BREAD, COOKIE, CAKE, BLOCKS, maxStack, stationKind,
 } from './blocks.js';
 
-// Seconds of burning each fuel gives.
-export const FUEL_SECONDS = { [STICK]: 3, [PLANKS]: 8, [LOG]: 15, [COAL]: 40, [CHARCOAL]: 40 };
-export const isFuel = (id) => id in FUEL_SECONDS;
+// How many items (or oven batches) each piece of fuel cooks. Fuel is only used up while something is
+// actually cooking, so what's left of a piece waits in the station for the next job.
+// Slime fuel burns out of its bucket and leaves the empty bucket in the fuel slot.
+export const FUEL_ITEMS = { [LOG]: 1, [PLANKS]: 1, [STICK]: 0.5, [COAL]: 10, [CHARCOAL]: 10, [SLIME_FUEL]: 40 };
+export const isFuel = (id) => id in FUEL_ITEMS;
 
 // Recipes are tried in order, so put the most specific first (cake before cookies before bread).
 // tools: needed in the station but not used up (the milk bucket for cookies).
@@ -102,23 +104,22 @@ export class Stations {
       const id = world.get(x, y, z);
       if (stationKind(id) !== st.kind) { this.map.delete(k); continue; }
       const r = this.recipeFor(st);
-      // light a new piece of fuel only when there's something to make
-      if (st.burn <= 0 && r && st.fuel) {
-        st.burn = st.burnMax = FUEL_SECONDS[st.fuel.id] ?? 0;
-        if (--st.fuel.count <= 0) st.fuel = null;
+      if (!r) st.progress = 0;
+      // light a new piece of fuel only when there's something to make and the last piece is used up
+      if (r && st.burn <= 1e-9 && st.fuel && isFuel(st.fuel.id)) {
+        st.burn = st.burnMax = FUEL_ITEMS[st.fuel.id];
+        if (st.fuel.id === SLIME_FUEL) st.fuel = { id: BUCKET, count: 1 }; // the bucket stays behind
+        else if (--st.fuel.count <= 0) st.fuel = null;
       }
-      if (st.burn > 0) {
-        st.burn = Math.max(0, st.burn - dt);
-        if (r) {
-          st.progress += dt;
-          if (st.progress >= r.time) { this.make(st, r); st.progress = 0; }
-        } else {
-          st.progress = 0;
-        }
-      } else {
-        st.progress = 0;
+      // cooking: fuel burns at one "item" per recipe time, so a log cooks exactly one item
+      const cooking = !!r && st.burn > 1e-9;
+      if (cooking) {
+        const step = Math.min(dt, st.burn * r.time);
+        st.burn = Math.max(0, st.burn - step / r.time);
+        st.progress += step;
+        if (st.progress >= r.time - 1e-9) { this.make(st, r); st.progress = 0; }
       }
-      const lit = st.burn > 0;
+      const lit = cooking;
       if (lit !== BLOCKS[id].lit) setLit(x, y, z, lit);
     }
   }
