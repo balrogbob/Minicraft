@@ -122,6 +122,9 @@ html, body {
 #sick.show { opacity: 1; animation: queasy 2.4s ease-in-out infinite alternate; }
 @keyframes queasy { from { filter: hue-rotate(0deg); } to { filter: hue-rotate(25deg); } }
 
+#sleep { position: absolute; inset: 0; background: #000; opacity: 0; pointer-events: none; transition: opacity 1.2s ease; }
+#sleep.show { opacity: 1; pointer-events: auto; }
+
 #charge {
   position: absolute; left: 50%; top: calc(50% + 18px); width: 44px; height: 5px; transform: translateX(-50%);
   background: rgba(0,0,0,0.45); border-radius: 3px; overflow: hidden; opacity: 0; pointer-events: none;

@@ -3,6 +3,8 @@ import {
   BLOCKS, RECIPES, TABLE, AIR, WATER, TORCH, TORCH_WALL_W, WALL_TORCH_DIRS,
   GRASS, DIRT, SAND, CHURN, SUGAR_CANE, BREAD, ITEMS, BOW, ARROW, BUCKET,
   WOOD_PICK, STONE_PICK, WOOD_AXE, STONE_AXE, WOOD_SHOVEL, STONE_SHOVEL,
+  BED, CHAIR, LAMP, CARPET, CURTAIN, DOOR, SLIME_FUEL, FACING_DIRS, MAX_LAMP_FUEL,
+  isBed, isChair, isLamp, isCurtain, isDoor, doorId,
   isBlock, isTorch, isWheat, itemName, breakTime, dropsFor, foodValue,
 } from './blocks.js';
 import { createAtlas, createIcons, createCrackCanvases, createWaterCanvas, createHudIcons } from './textures.js';
@@ -10,7 +12,7 @@ import { World, CHUNK, WORLD_SIZE, chunkKey } from './world.js';
 import { localIndex, CHUNK_VOLUME, H } from './terrain.js';
 import { ChunkStore } from './store.js';
 import { buildLegacyWorld, LEGACY_W } from './legacy.js';
-import { Sky } from './sky.js';
+import { Sky, DAY_LENGTH } from './sky.js';
 import { Sound } from './sound.js';
 import { Player } from './player.js';
 import { Inventory, SLOTS } from './inventory.js';
@@ -20,7 +22,7 @@ import { ArrowManager } from './arrows.js';
 
 // v2 = the 16k x 16k streaming world (player state here, edited chunks in IndexedDB).
 // v1 = the old 128 x 128 world, migrated into the middle of the big world on first launch.
-const GAME_VERSION = '10'; // shown in the menu; bump with each release
+const GAME_VERSION = '11'; // shown in the menu; bump with each release
 const SAVE_KEY = 'minicraft-save-v2';
 const LEGACY_SAVE_KEY = 'minicraft-save-v1';
 const SETTINGS_KEY = 'minicraft-settings-v1';
@@ -171,6 +173,9 @@ let dead = false;
 let fallTop = null; // highest point of the current fall, for fall damage
 const timers = { regen: 0, starve: 0, poison: 0, drown: 0 };
 let bowCharge = 0; // seconds the bow has been drawn (holding)
+let bedSpawn = null; // { x, y, z } of the bed you last used: where you respawn
+// Lit lamps: "x,y,z" -> seconds left in the fuel unit now burning (each unit lasts one in-game day).
+const lamps = new Map();
 const store = new ChunkStore();
 let worldReady = false; // false while a world is loading: nothing gets saved until the player is placed
 
@@ -266,6 +271,9 @@ async function startWorld(save) {
   day = Number.isFinite(save?.day) ? Math.max(1, save.day | 0) : 1;
   health = Number.isFinite(save?.health) && save.health > 0 ? Math.min(MAX_HEALTH, save.health) : MAX_HEALTH;
   poisoned = Number.isFinite(save?.poisoned) ? Math.max(0, save.poisoned) : 0;
+  bedSpawn = save?.bed && Number.isFinite(save.bed.x) ? save.bed : null;
+  lamps.clear();
+  for (const [key, secs] of save?.lamps ?? []) if (typeof key === 'string' && Number.isFinite(secs)) lamps.set(key, secs);
   air = MAX_AIR;
   dead = false;
   fallTop = null;
@@ -290,7 +298,18 @@ async function startWorld(save) {
 }
 
 function respawn() {
-  // open grass near the middle of the world, found from the terrain function (no chunks needed)
+  // at your bed if you've slept in one (and it's still there)
+  if (bedSpawn) {
+    const b = bedSpawn;
+    const loaded = !!world.chunkAt(b.x, b.z);
+    if (!loaded || isBed(world.get(b.x, b.y, b.z))) {
+      player.spawn(b.x + 0.5, b.y + 1, b.z + 0.5);
+      return;
+    }
+    bedSpawn = null;
+    toast('Your bed was missing, so you woke up back where you started');
+  }
+  // otherwise open grass near the middle of the world, found from the terrain function (no chunks needed)
   const s = world.generator.findSpawn();
   player.spawn(s.x + 0.5, s.h + 1, s.z + 0.5);
   player.yaw = Math.PI * 0.25;
@@ -312,6 +331,8 @@ function saveGame() {
     day,
     health,
     poisoned,
+    bed: bedSpawn,
+    lamps: [...lamps],
     time: sky.time,
   });
 }
@@ -692,6 +713,98 @@ function eat(id) {
 const waterBeside = (x, y, z) => world.isWater(x + 1, y, z) || world.isWater(x - 1, y, z) ||
   world.isWater(x, y, z + 1) || world.isWater(x, y, z - 1);
 
+// ---------- furniture ----------
+
+// Which of the four facings points from the block at (bx, bz) toward the player.
+function facingTowardPlayer(bx, bz) {
+  const vx = player.pos.x - (bx + 0.5), vz = player.pos.z - (bz + 0.5);
+  if (Math.abs(vz) >= Math.abs(vx)) return vz > 0 ? 0 : 2;
+  return vx < 0 ? 1 : 3;
+}
+
+function toggleDoor(x, y, z) {
+  const d = BLOCKS[world.get(x, y, z)];
+  const by = d.upper ? y - 1 : y; // the bottom half
+  if (!d.open && (player.overlapsBlock(x, by, z) || player.overlapsBlock(x, by + 1, z))) return; // don't shut it on yourself
+  world.setBlock(x, by, z, doorId(d.facing, !d.open, false));
+  if (isDoor(world.get(x, by + 1, z))) world.setBlock(x, by + 1, z, doorId(d.facing, !d.open, true));
+  sound.door(!d.open);
+}
+
+function toggleCurtain(x, y, z) {
+  const d = BLOCKS[world.get(x, y, z)];
+  world.setBlock(x, y, z, CURTAIN + d.axis + (d.open ? 0 : 2));
+  sound.swish();
+}
+
+const lampKey = (x, y, z) => `${x},${y},${z}`;
+function lampDaysLeft(x, y, z) {
+  const fuel = BLOCKS[world.get(x, y, z)].fuel;
+  if (!fuel) return 0;
+  return fuel - 1 + (lamps.get(lampKey(x, y, z)) ?? DAY_LENGTH) / DAY_LENGTH;
+}
+
+// Tap a lamp holding slime fuel to pour a unit in (the bucket stays with you); otherwise see how much is left.
+function useLamp(x, y, z, held) {
+  const fuel = BLOCKS[world.get(x, y, z)].fuel;
+  if (held?.id === SLIME_FUEL) {
+    if (fuel >= MAX_LAMP_FUEL) { toast('This lamp is already full'); return; }
+    world.setBlock(x, y, z, LAMP + fuel + 1);
+    if (!fuel) lamps.set(lampKey(x, y, z), DAY_LENGTH);
+    inventory.consumeHeld();
+    inventory.add(BUCKET, 1);
+    sound.pour();
+    toast(`Lamp fuel: ${fuel + 1} of ${MAX_LAMP_FUEL}`, 1500);
+    return;
+  }
+  if (!fuel) toast('This lamp is empty. Tap it holding slime fuel to fill it.', 2500);
+  else toast(`Lamp fuel: ${fuel} of ${MAX_LAMP_FUEL} (about ${lampDaysLeft(x, y, z).toFixed(1)} days left)`, 2500);
+}
+
+// Lamps burn one unit of fuel per in-game day, but only while their part of the world is loaded.
+function tickLamps(dt) {
+  for (const [key, secs] of lamps) {
+    const [x, y, z] = key.split(',').map(Number);
+    if (!world.chunkAt(x, z)) continue;
+    const id = world.get(x, y, z);
+    if (!isLamp(id) || !BLOCKS[id].fuel) { lamps.delete(key); continue; }
+    let left = secs - dt, fuel = BLOCKS[id].fuel;
+    while (left <= 0 && fuel > 0) { fuel--; left += DAY_LENGTH; }
+    if (fuel !== BLOCKS[id].fuel) world.setBlock(x, y, z, LAMP + fuel);
+    if (fuel > 0) lamps.set(key, left); else lamps.delete(key);
+  }
+}
+
+// Sleep from evening until sunrise (and remember this bed as where you respawn).
+const canSleepNow = () => sky.time > 0.46;
+function useBed(x, y, z) {
+  bedSpawn = { x, y, z };
+  if (!canSleepNow()) { toast('Respawn point set. You can only sleep in the evening or at night.', 2500); return; }
+  const lurking = mobs.mobs.some((m) => m.spec.hostile && !m.dying &&
+    Math.hypot(m.pos.x - player.pos.x, m.pos.z - player.pos.z) < 12 && Math.abs(m.pos.y - player.pos.y) < 6);
+  if (lurking) { toast('You can\'t sleep now: something is lurking nearby', 2500); return; }
+  sleepUntilMorning();
+}
+async function sleepUntilMorning() {
+  paused = true;
+  controls.reset();
+  $('sleep').classList.add('show');
+  await new Promise((r) => setTimeout(r, 1300));
+  const skipped = (1 - sky.time) * DAY_LENGTH; // seconds of night slept through
+  sky.time = 0.001;
+  day++;
+  tickLamps(skipped);
+  for (let i = 0; i < 6; i++) world.tickPlants(skipped / 6);
+  hunger = Math.max(0, hunger - 3); // a night's sleep makes you a bit peckish
+  renderHunger();
+  saveGame();
+  await new Promise((r) => setTimeout(r, 400));
+  $('sleep').classList.remove('show');
+  sound.wake();
+  toast(`Good morning! Day ${day}`, 2500);
+  paused = false;
+}
+
 function place() {
   if (paused) return;
   const held = inventory.held();
@@ -699,6 +812,13 @@ function place() {
   if (held?.id === BOW) { shootArrow(Math.max(0.25, Math.min(1, bowCharge / FULL_DRAW))); bowCharge = 0; return; }
   if (targetMob) { hitMob(); return; }
   if (target && (target.id === TABLE || target.id === CHURN)) { sound.click(); openInventory(target.id); return; }
+  if (target) {
+    const { x: tx, y: ty, z: tz, id: tid } = target;
+    if (isBed(tid)) { useBed(tx, ty, tz); return; }
+    if (isDoor(tid)) { toggleDoor(tx, ty, tz); return; }
+    if (isCurtain(tid)) { toggleCurtain(tx, ty, tz); return; }
+    if (isLamp(tid)) { useLamp(tx, ty, tz, held); return; }
+  }
   if (held && (foodValue(held.id) || ITEMS[held.id]?.drink)) { eat(held.id); return; }
   if (!target || !held) return;
   // what goes into the world: the block itself, or what an item plants (seeds -> young wheat)
@@ -720,7 +840,24 @@ function place() {
     if (there !== AIR || target.ny !== 1 || !(target.id === SUGAR_CANE || (ground && waterBeside(target.x, target.y, target.z)))) {
       toast('Sugar cane needs sand, grass or dirt right next to water'); return;
     }
-  } else if (BLOCKS[id].solid && player.overlapsBlock(x, y, z)) return;
+  } else if (id === DOOR) {
+    // a door stands on a block and takes two spaces; it faces you
+    if (there !== AIR || target.ny !== 1 || world.get(x, y + 1, z) !== AIR) { toast('A door needs two free spaces on top of a block'); return; }
+    if (player.overlapsBlock(x, y, z) || player.overlapsBlock(x, y + 1, z)) return;
+    const f = facingTowardPlayer(x, z);
+    world.setBlock(x, y, z, doorId(f, false, false));
+    world.setBlock(x, y + 1, z, doorId(f, false, true));
+    sound.place('wood');
+    inventory.consumeHeld();
+    return;
+  } else if (id === LAMP || id === CARPET) {
+    if (there !== AIR || !world.isSolid(x, y - 1, z)) { toast(`${BLOCKS[id].name}s need something solid underneath`); return; }
+  } else {
+    // beds and chairs face you; curtains hang across your line of sight
+    if (id === BED || id === CHAIR) id += facingTowardPlayer(x, z);
+    else if (id === CURTAIN) id += facingTowardPlayer(x, z) % 2; // facing 0/2 -> hangs across x, 1/3 -> across z
+    if (BLOCKS[id].solid && player.overlapsBlock(x, y, z)) return;
+  }
   world.setBlock(x, y, z, id);
   sound.place(BLOCKS[id].sound);
   inventory.consumeHeld();
@@ -779,7 +916,15 @@ function breakBlock(x, y, z) {
   const def = BLOCKS[id];
   if (!def || id === AIR) return;
   sound.breakBlock(def.sound);
-  const drops = dropsFor(id, inventory.heldId());
+  let drops = dropsFor(id, inventory.heldId());
+  if (isDoor(id)) {
+    // either half takes the whole door with it
+    const oy = def.upper ? y - 1 : y + 1;
+    if (isDoor(world.get(x, oy, z))) world.setBlock(x, oy, z, AIR);
+    drops = [[DOOR, 1]];
+  }
+  if (isLamp(id)) lamps.delete(lampKey(x, y, z));
+  if (isBed(id) && bedSpawn && bedSpawn.x === x && bedSpawn.y === y && bedSpawn.z === z) bedSpawn = null;
   world.setBlock(x, y, z, AIR);
   dropUnsupported(x, y, z);
   if (drops.length) {
@@ -800,6 +945,17 @@ function dropUnsupported(x, y, z) {
     if (world.get(tx, ty, tz) !== id) continue;
     world.setBlock(tx, ty, tz, AIR);
     inventory.add(TORCH, 1);
+  }
+  // lamps and carpets resting on it, and a door standing on it
+  const above = world.get(x, y + 1, z);
+  if (isLamp(above) || above === CARPET) {
+    lamps.delete(lampKey(x, y + 1, z));
+    world.setBlock(x, y + 1, z, AIR);
+    inventory.add(above === CARPET ? CARPET : LAMP, 1);
+  } else if (isDoor(above) && !BLOCKS[above].upper) {
+    world.setBlock(x, y + 1, z, AIR);
+    if (isDoor(world.get(x, y + 2, z))) world.setBlock(x, y + 2, z, AIR);
+    inventory.add(DOOR, 1);
   }
   for (let ty = y + 1; ty < H; ty++) {
     const id = world.get(x, ty, z);
@@ -974,6 +1130,7 @@ function stepGame(now, dt) {
     playMovementSounds(dt, wasGround, wasWater, fallSpeed);
     world.tickWater(dt);
     world.tickPlants(dt);
+    tickLamps(dt);
     updateHunger(dt);
     updateHealth(dt, wasGround, prevY);
     const picked = arrows.update(dt, {
@@ -1039,5 +1196,6 @@ window.minicraft = {
   get paused() { return paused; },
   get health() { return health; }, set health(v) { health = v; renderHealth(); },
   get poisoned() { return poisoned; }, get dead() { return dead; }, get air() { return air; }, set air(v) { air = v; },
-  arrows, damage,
+  arrows, damage, lamps, tickLamps, sleepUntilMorning,
+  get bedSpawn() { return bedSpawn; },
 };

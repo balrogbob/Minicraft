@@ -2,7 +2,7 @@
 import {
   T, BLOCKS, isBlock, TORCH, STICK, COAL, WOOD_PICK, STONE_PICK, WOOD_AXE, STONE_AXE, WOOD_SHOVEL, STONE_SHOVEL,
   SEEDS, WHEAT, FLOUR, SUGAR, BUTTER, BREAD, COOKIE, CAKE, BUCKET, MILK_BUCKET, SLIME_BUCKET, FEATHER, MORTAR,
-  STRING, ARROW, BOW,
+  STRING, ARROW, BOW, COAL_DUST, SLIME_FUEL, BED, FURN_TABLE, CHAIR, LAMP, CARPET, CURTAIN, DOOR,
 } from './blocks.js';
 
 export const TILE = 16;
@@ -217,6 +217,49 @@ const P = {
       else t.set(x, y, t.vary(y % 4 === 3 ? [130, 92, 54] : [172, 128, 78], 0.06));
     }
   },
+  [T.BLANKET](t) {
+    // a deep red quilt with cream stitching in a diamond pattern
+    for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+      const stitch = (x + y) % 8 === 0 || (x - y + 16) % 8 === 0;
+      t.set(x, y, stitch ? [222, 200, 170] : t.vary([152, 40, 44], 0.08));
+    }
+  },
+  [T.SHELF](t) {
+    // a wooden frame with two shelves: books on top, jars below
+    for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) t.set(x, y, t.vary([60, 40, 22], 0.1)); // dark back
+    const books = [[150, 40, 40], [40, 70, 130], [60, 110, 50], [170, 130, 50], [110, 60, 120]];
+    for (let x = 1; x < 15; x++) {
+      const c = books[(x * 3) % books.length], top = 2 + (x * 7 % 3);
+      for (let y = top; y < 7; y++) t.set(x, y, t.vary(c, 0.08));
+    }
+    for (const x0 of [2, 6, 10]) for (let y = 10; y < 15; y++) for (let x = x0; x < x0 + 3; x++) {
+      t.set(x, y, y === 10 ? [150, 120, 90] : t.vary([200, 210, 220], 0.06)); // jars with lids
+    }
+    for (let i = 0; i < TILE; i++) {
+      for (const y of [0, 7, 15]) t.set(i, y, t.vary([168, 128, 78], 0.06)); // shelves
+      for (const x of [0, 15]) t.set(x, i, t.vary([140, 104, 62], 0.06)); // sides
+    }
+  },
+  [T.FLAME](t) {
+    for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+      const d = Math.hypot(x - 7.5, (y - 9) * 0.7) / 8;
+      t.set(x, y, d < 0.35 ? [255, 250, 220] : d < 0.7 ? [255, 210, 90] : [240, 140, 40]);
+    }
+  },
+  [T.LAMP_EMPTY](t) {
+    t.fill([60, 58, 56], 0.15);
+    t.speckle([30, 28, 26], 0.3);
+  },
+  [T.DOOR_LOWER](t) { doorPanel(t, false); },
+  [T.DOOR_UPPER](t) { doorPanel(t, true); },
+  [T.CURTAIN](t) {
+    // soft cream fabric hanging in vertical folds
+    for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+      const fold = Math.sin((x / 16) * Math.PI * 4) * 0.5 + 0.5;
+      const c = 196 + fold * 44;
+      t.set(x, y, t.vary([c, c * 0.95, c * 0.86], 0.03));
+    }
+  },
   [T.BEDROCK](t) {
     for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
       const g = 30 + t.r() * 100;
@@ -224,6 +267,22 @@ const P = {
     }
   },
 };
+
+// A plank door: a frame with a centre board; the upper half has a four-pane window you can see through,
+// the lower half has the handle.
+function doorPanel(t, upper) {
+  for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+    const frame = x < 2 || x > 13 || (upper ? y < 2 : y > 13);
+    const window = upper && x > 3 && x < 12 && y > 3 && y < 12;
+    if (window) {
+      if (x === 7 || x === 8 || y === 7 || y === 8) t.set(x, y, [120, 84, 48]); // window bars
+      else t.set(x, y, [0, 0, 0], 0); // see-through glass
+    } else {
+      t.set(x, y, t.vary(frame ? [118, 82, 46] : x % 4 === 1 ? [140, 100, 58] : [166, 122, 74], 0.06));
+    }
+  }
+  if (!upper) { t.set(12, 2, [60, 60, 64]); t.set(12, 3, [90, 90, 96]); t.set(11, 3, [60, 60, 64]); } // handle
+}
 
 function wheatStage(t, stage) {
   const heights = [[3, 5], [6, 8], [10, 12], [12, 15]][stage];
@@ -494,6 +553,58 @@ Object.assign(ITEM_PAINTERS, {
   },
 });
 
+Object.assign(ITEM_PAINTERS, {
+  [COAL_DUST](ctx) {
+    for (let y = 8; y <= 14; y++) {
+      const half = Math.floor((y - 6) * 0.9);
+      for (let x = 8 - half; x <= 7 + half; x++) px(ctx, x, y, (x * 7 + y * 3) % 5 === 0 ? [90, 90, 94] : [36, 36, 40]);
+    }
+  },
+  [SLIME_FUEL]: bucketPainter([46, 74, 36]),
+  [BED](ctx) {
+    rect(ctx, 1, 10, 14, 2, [120, 84, 48]); // frame
+    rect(ctx, 1, 12, 1, 3, [100, 70, 40]); rect(ctx, 14, 12, 1, 3, [100, 70, 40]); // legs
+    rect(ctx, 1, 6, 2, 4, [120, 84, 48]); // headboard
+    rect(ctx, 3, 8, 12, 2, [236, 229, 214]); // mattress
+    rect(ctx, 7, 7, 8, 3, [152, 40, 44]); // blanket
+    rect(ctx, 3, 6, 4, 2, [246, 242, 232]); // pillow
+  },
+  [FURN_TABLE](ctx) {
+    rect(ctx, 1, 5, 14, 2, [176, 136, 86]); rect(ctx, 1, 7, 14, 1, [130, 96, 56]);
+    rect(ctx, 2, 8, 2, 7, [150, 112, 66]); rect(ctx, 12, 8, 2, 7, [150, 112, 66]);
+  },
+  [CHAIR](ctx) {
+    rect(ctx, 4, 1, 2, 14, [140, 102, 60]); // back post and leg
+    rect(ctx, 6, 3, 1, 5, [176, 136, 86]); // back rest
+    rect(ctx, 4, 8, 9, 2, [176, 136, 86]); // seat
+    rect(ctx, 11, 10, 2, 5, [140, 102, 60]); // front leg
+  },
+  [LAMP](ctx) {
+    rect(ctx, 7, 1, 2, 2, [120, 120, 124]); // handle
+    rect(ctx, 5, 3, 6, 1, [110, 110, 114]); // cap
+    rect(ctx, 5, 4, 6, 8, [190, 220, 232]); // glass
+    rect(ctx, 6, 5, 4, 6, [240, 246, 250]);
+    rect(ctx, 7, 7, 2, 4, [255, 210, 90]); // flame
+    rect(ctx, 4, 12, 8, 2, [120, 120, 124]); // base
+  },
+  [CARPET](ctx) {
+    for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) {
+      const d = Math.abs(x - 7.5) + Math.abs(y - 9.5) * 1.6;
+      if (d < 8) px(ctx, x, y, d > 6.5 ? [190, 176, 150] : (x + y) % 3 ? [236, 229, 214] : [214, 204, 184]);
+    }
+  },
+  [CURTAIN](ctx) {
+    rect(ctx, 1, 1, 14, 1, [120, 84, 48]); // rod
+    for (let x = 2; x <= 13; x++) for (let y = 2; y <= 14; y++) px(ctx, x, y, x % 3 === 0 ? [200, 188, 166] : [236, 226, 206]);
+  },
+  [DOOR](ctx) {
+    rect(ctx, 4, 0, 8, 16, [118, 82, 46]);
+    rect(ctx, 5, 1, 6, 14, [166, 122, 74]);
+    rect(ctx, 6, 2, 4, 4, [170, 210, 230]); rect(ctx, 7, 2, 1, 4, [118, 82, 46]); // window
+    px(ctx, 10, 9, [60, 60, 64]); // handle
+  },
+});
+
 // Small HUD icons (9x9 pixel art): heart, poisoned heart, air bubble.
 const HUD_ART = {
   heart: ['.XX...XX.', 'XHHX.XHHX', 'XHRRXRRRX', 'XRRRRRRRX', '.XRRRRRX.', '..XRRRX..', '...XRX...', '....X....', '.........'],
@@ -529,7 +640,7 @@ ITEM_PAINTERS[STONE_SHOVEL] = toolPainter('shovel', 'stone');
 export function createIcons(atlas) {
   const icons = {};
   for (const def of BLOCKS) {
-    if (!def || !isBlock(def.id) || def.shape === 'torch') continue;
+    if (!def || !isBlock(def.id) || def.shape === 'torch' || def.shape === 'model') continue; // (those have painted icons)
     const c = document.createElement('canvas');
     c.width = c.height = 64;
     const ctx = c.getContext('2d');
