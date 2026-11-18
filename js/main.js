@@ -53,17 +53,20 @@ atlas.generateMipmaps = false;
 atlas.colorSpace = THREE.SRGBColorSpace;
 const material = new THREE.MeshBasicMaterial({ map: atlas, vertexColors: true, alphaTest: 0.5 });
 
-// World lighting: each pixel gets max(daylight, torch light), so torches glow at night and
-// barely matter at noon. Daylight is a uniform (set by the sky); torch light is a vertex attribute.
+// World lighting: each pixel gets max(daylight x sunlight, torch light, faint ambient).
+// Sunlight and torch light are baked per vertex (how much of each reaches that spot);
+// daylight is a uniform set by the sky, so nights darken everything the sun reaches,
+// caves stay dark all day, and torches glow wherever they are.
+const AMBIENT = 0.03; // linear; just enough to make out cave walls without a torch
 const lightUniforms = { uDay: { value: 1 }, uFlicker: { value: 1 } };
 function addTorchLight(mat) {
   mat.onBeforeCompile = (shader) => {
     Object.assign(shader.uniforms, lightUniforms);
-    shader.vertexShader = 'attribute float torch;\nvarying float vTorch;\n' + shader.vertexShader
-      .replace('#include <color_vertex>', '#include <color_vertex>\nvTorch = torch;');
-    shader.fragmentShader = 'uniform float uDay;\nuniform float uFlicker;\nvarying float vTorch;\n' + shader.fragmentShader
+    shader.vertexShader = 'attribute float torch;\nattribute float sky;\nvarying float vTorch;\nvarying float vSky;\n' + shader.vertexShader
+      .replace('#include <color_vertex>', '#include <color_vertex>\nvTorch = torch;\nvSky = sky;');
+    shader.fragmentShader = 'uniform float uDay;\nuniform float uFlicker;\nvarying float vTorch;\nvarying float vSky;\n' + shader.fragmentShader
       .replace('#include <color_fragment>',
-        '#include <color_fragment>\ndiffuseColor.rgb *= max(vec3(uDay), vTorch * uFlicker * vec3(1.0, 0.86, 0.66));');
+        '#include <color_fragment>\ndiffuseColor.rgb *= max(vec3(max(uDay * vSky, ' + AMBIENT.toFixed(3) + ')), vTorch * uFlicker * vec3(1.0, 0.86, 0.66));');
   };
 }
 addTorchLight(material);
@@ -126,7 +129,8 @@ async function startWorld(save) {
   $('loading').classList.remove('hidden');
   if (world) world.dispose(scene);
   const seed = save?.seed ?? newSeed();
-  world = new World(seed);
+  // worlds saved before caves existed keep generating without them, so their edits still line up
+  world = new World(seed, save ? save.gen ?? 1 : undefined);
   $('load-text').textContent = 'Generating terrain…';
   setProgress(0.05);
   await nextFrame();
@@ -196,6 +200,7 @@ function saveGame() {
   if (!world || !player) return false;
   return writeSave({
     seed: world.seed,
+    gen: world.gen,
     mods: [...world.mods],
     inv: inventory.serialize(),
     player: { x: player.pos.x, y: player.pos.y, z: player.pos.z, yaw: player.yaw, pitch: player.pitch },
