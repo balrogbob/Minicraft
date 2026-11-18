@@ -402,6 +402,16 @@ export class World {
     this.flow.push([x + 1, y, z], [x - 1, y, z], [x, y + 1, z], [x, y - 1, z], [x, y, z + 1], [x, y, z - 1]);
   }
 
+  // Does the column of falling water at (x, y, z) come down onto a water wheel?
+  fallsOnWheel(x, y, z) {
+    for (let ty = y - 1; ty >= Math.max(0, y - 24); ty--) {
+      const id = this.get(x, ty, z);
+      if (isWheel(id)) return true;
+      if (id !== WATER_FALL) return false;
+    }
+    return false;
+  }
+
   // Can water rest on this cell and spread sideways over it? Anything but air, water and water wheels
   // (water runs on through those; the bottom of the world counts as a floor). Water running onto still
   // water just joins it.
@@ -794,6 +804,8 @@ export class World {
       const def = BLOCKS[id];
       if (isWaterId(id)) {
         const height = wheel ? WHEEL_STREAM : this.waterHeight(x, y, z, id);
+        // water falling onto a water wheel narrows to a stream, so the wheel's paddles show around it
+        const ins = id === WATER_FALL && this.fallsOnWheel(x, y, z) ? 0.25 : 0;
         for (const f of FACES) {
           if (f.n[1] < 0 && y === 0) continue;
           const nx = x + f.n[0], ny = y + f.n[1], nz = z + f.n[2];
@@ -801,11 +813,12 @@ export class World {
           const nid = isWheel(this.get(nx, ny, nz)) ? AIR : this.get(nx, ny, nz);
           if (nid !== AIR && !isWaterId(nid) && !BLOCKS[nid].transparent) continue;
           // between two water cells, only where this one stands higher than its neighbour
-          if (!wheel && isWaterId(nid) && (f.d === 1 || this.waterHeight(nx, ny, nz, nid) >= height)) continue;
+          if (!wheel && !ins && isWaterId(nid) && (f.d === 1 || this.waterHeight(nx, ny, nz, nid) >= height)) continue;
+          if (ins && f.d === 1 && isWaterId(nid)) continue;
           if (wheel && isWaterId(nid) && f.d !== 1) continue;
           for (const cr of f.corners) {
             const top = cr.o[1] === 1 ? (height === 1 || wheel ? height : this.waterCorner(x, y, z, cr.o[0], cr.o[2])) : cr.o[1];
-            const px = lx + cr.o[0], py = y + top, pz = lz + cr.o[2];
+            const px = lx + ins + cr.o[0] * (1 - 2 * ins), py = y + top, pz = lz + ins + cr.o[2] * (1 - 2 * ins);
             wpos.push(px, py, pz);
             // world-space UVs (wrapped every 64 blocks) so the texture tiles seamlessly and can scroll
             const ux = waterU + px, uz = waterV + pz;

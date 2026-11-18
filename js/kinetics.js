@@ -204,11 +204,6 @@ export class Kinetics {
     if (n.axis === 1) group.rotation.z = Math.PI / 2;
     else if (n.axis === 2) group.rotation.y = -Math.PI / 2;
     const spin = new THREE.Mesh(this.geometry(n.part, n.part === 'wheel' ? -1 : n.mat), material);
-    if (n.part === 'wheel') {
-      // drawn after the (see-through) water, so a wheel standing in a stream still shows its paddles
-      material.transparent = true;
-      spin.renderOrder = 2;
-    }
     const m = { id: n.id, group, spin, material, angle: n.angle ?? 0 };
     group.add(spin);
     this.scene.add(group);
@@ -241,9 +236,16 @@ export class Kinetics {
       }
     };
     if (part === 'wheel') {
-      boxes.push([0.98, 0.2, 0.2, 0, 0, 0, T.LOG_SIDE]); // axle
-      ring(8, 0.3, [0.84, 0.42, 0.06], tile, Math.PI / 8); // paddles
-      for (const cx of [-0.42, 0.42]) ring(8, 0.44, [0.06, 0.06, 0.38], T.LOG_SIDE, 0, cx); // a rim at each side
+      // bigger than its block (almost two across), so the paddles stand up out of the water around it
+      boxes.push([0.98, 0.24, 0.24, 0, 0, 0, T.LOG_SIDE]); // axle
+      for (let i = 0; i < 6; i++) boxes.push([0.06 + i * 0.004, 1.8, 0.08, 0, 0, (i * Math.PI) / 6, T.LOG_SIDE]); // spokes
+      ring(12, 0.7, [0.84, 0.5, 0.06], tile, Math.PI / 12); // paddles, reaching out to 0.95
+      for (const cx of [-0.42, 0.42]) {
+        for (let i = 0; i < 12; i++) { // a rim at each side
+          const a = (i + 0.5) * (Math.PI * 2) / 12;
+          boxes.push([i % 2 ? 0.06 : 0.065, 0.08, 0.5, Math.cos(a) * 0.9, Math.sin(a) * 0.9, a, T.LOG_SIDE, cx]);
+        }
+      }
     } else if (part === 'shaft') {
       boxes.push([1, 0.22, 0.22, 0, 0, 0, tile]);
     } else if (part === 'gear' || part === 'large') {
