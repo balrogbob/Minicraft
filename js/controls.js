@@ -13,6 +13,23 @@ const LOOK_SENS = 0.006; // radians per px (touch)
 const MOUSE_SENS = 0.0025;
 const JOY_RADIUS = 60;
 
+// Keyboard actions and their default keys (KeyboardEvent.code). The player can rebind them from the menu.
+export const KEY_ACTIONS = [
+  ['forward', 'Walk forward', 'KeyW'], ['back', 'Walk back', 'KeyS'], ['left', 'Step left', 'KeyA'], ['right', 'Step right', 'KeyD'],
+  ['jump', 'Jump / swim / fly up', 'Space'], ['down', 'Fly down (creative)', 'ShiftLeft'], ['inventory', 'Inventory', 'KeyE'],
+  ['map', 'World map', 'KeyM'], ['fly', 'Fly on/off (creative)', 'KeyF'],
+];
+export const DEFAULT_KEYS = Object.fromEntries(KEY_ACTIONS.map(([a, , k]) => [a, k]));
+// How a key code is shown: "KeyW" -> "W", "Digit3" -> "3", "ShiftLeft" -> "Left Shift".
+export function keyLabel(code) {
+  if (!code) return '—';
+  if (/^Key[A-Z]$/.test(code)) return code.slice(3);
+  if (/^Digit\d$/.test(code)) return code.slice(5);
+  const m = /^(Shift|Control|Alt|Meta)(Left|Right)$/.exec(code);
+  if (m) return `${m[2]} ${m[1] === 'Control' ? 'Ctrl' : m[1]}`;
+  return code.replace(/^Arrow/, 'Arrow ').replace(/^Numpad/, 'Num ');
+}
+
 // When the touch actually happened. Event timestamps use the same clock as performance.now(),
 // but aren't delayed by slow frames, so a quick tap during a lag spike still counts as a tap.
 const eventTime = (e) => (e.timeStamp > 0 && e.timeStamp <= performance.now() ? e.timeStamp : performance.now());
@@ -31,16 +48,20 @@ export class Controls {
     this.joyBase = document.getElementById('joy-base');
     this.joyKnob = document.getElementById('joy-knob');
     this.lookSens = LOOK_SENS;
+    this.binds = { ...DEFAULT_KEYS };
+    this.capture = null; // set while waiting for a key to rebind: called with its code
+    this.downTouch = false;
     this.bindTouch();
     this.bindDesktop();
   }
 
-  get jump() { return this.jumpTouch || this.keys.has('Space'); }
+  get jump() { return this.jumpTouch || this.keys.has(this.binds.jump); }
+  get down() { return this.downTouch || this.keys.has(this.binds.down); }
 
   reset() {
     this.joy = null; this.look = null;
     this.moveX = this.moveZ = 0;
-    this.breaking = false; this.jumpTouch = false;
+    this.breaking = false; this.jumpTouch = false; this.downTouch = false;
     this.keys.clear();
     this.showJoy(false);
   }
@@ -131,9 +152,9 @@ export class Controls {
     const keyBreak = this.mouseBreak;
     this.breaking = !!(lk?.breaking || keyBreak);
     if (!this.joy) {
-      const k = this.keys;
-      const x = (k.has('KeyD') ? 1 : 0) - (k.has('KeyA') ? 1 : 0);
-      const z = (k.has('KeyW') ? 1 : 0) - (k.has('KeyS') ? 1 : 0);
+      const k = this.keys, b = this.binds;
+      const x = (k.has(b.right) ? 1 : 0) - (k.has(b.left) ? 1 : 0);
+      const z = (k.has(b.forward) ? 1 : 0) - (k.has(b.back) ? 1 : 0);
       if (x || z || this.usingKeys) { this.moveX = x; this.moveZ = z; this.usingKeys = !!(x || z); }
     }
   }
@@ -159,12 +180,15 @@ export class Controls {
       if (document.pointerLockElement === L) this.hooks.scrollSlot(Math.sign(e.deltaY));
     }, { passive: true });
     window.addEventListener('keydown', (e) => {
+      if (this.capture) { e.preventDefault(); const f = this.capture; this.capture = null; f(e.code); return; }
       if (e.target?.tagName === 'TEXTAREA' || e.target?.tagName === 'INPUT') return; // typing on a sign
-      if (e.code === 'KeyE') { this.hooks.toggleInventory(); return; }
+      if (e.code === this.binds.inventory) { this.hooks.toggleInventory(); return; }
+      if (e.code === this.binds.map) { this.hooks.toggleMap?.(); return; }
       if (this.hooks.isPaused()) return;
+      if (e.code === this.binds.fly) { this.hooks.toggleFly?.(); return; }
       if (/^Digit[1-9]$/.test(e.code)) this.hooks.selectSlot(+e.code.slice(5) - 1);
       this.keys.add(e.code);
-      if (e.code === 'Space') e.preventDefault();
+      if (e.code === this.binds.jump || e.code === 'Space') e.preventDefault();
     });
     window.addEventListener('keyup', (e) => this.keys.delete(e.code));
     window.addEventListener('blur', () => { this.keys.clear(); this.mouseBreak = false; });

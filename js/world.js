@@ -3,7 +3,7 @@
 import * as THREE from 'three';
 import {
   BLOCKS, AIR, LEAVES, LOG, DIRT, GRASS, WATER, MAX_LIGHT, SUGAR_CANE, MAX_CANE_HEIGHT,
-  WATER_FLOW, WATER_FALL, WATER_WHEEL, isWaterId, isFlowing, waterLevel, LAVA, OBSIDIAN, PIPE, PUMP, SPOUT, T,
+  WATER_FLOW, WATER_FALL, WATER_WHEEL, isWaterId, isFlowing, waterLevel, LAVA, OBSIDIAN, PIPE, PUMP, SPOUT, T, FLOWERS, isFlower, FACING_DIRS,
 } from './blocks.js';
 
 // Water wheels let water run through their cell (and over them); see waterAt().
@@ -106,11 +106,13 @@ class Chunk {
     this.key = chunkKey(cx, cz);
     this.data = data;
     this.light = new Uint8Array(CHUNK_VOLUME); // torch light
+    this.tint = new Uint8Array(CHUNK_VOLUME); // the colour of that light (see TINTS in blocks.js)
     this.sky = new Uint8Array(CHUNK_VOLUME); // sunlight
     this.solid = null; // meshes
     this.water = null;
     this.growing = new Set(); // local indices of plants that can still grow
     this.machines = new Set(); // local indices of water wheels, shafts, gears and crushers
+    this.hives = new Set(); // local indices of bee hives
   }
 }
 
@@ -190,6 +192,16 @@ export class World {
     return c ? c.light[localIndex(x, y, z)] : 0;
   }
 
+  // The colour of the torch light in a cell (an index into TINTS).
+  tintAt(x, y, z) {
+    if (y < 0 || y >= H) return 0;
+    const c = this.chunkAt(x, z);
+    return c ? c.tint[localIndex(x, y, z)] : 0;
+  }
+
+  // Torch light for a vertex: its brightness (0..1), plus twice its colour index (decoded by the shader).
+  torchAt(x, y, z) { return lightBrightness(this.lightAt(x, y, z)) + 2 * this.tintAt(x, y, z); }
+
   skyAt(x, y, z) {
     if (y >= H) return MAX_LIGHT;
     if (y < 0) return 0;
@@ -227,9 +239,10 @@ export class World {
     // water nearby may now flow in, or drain away
     this.flow.push([x, y, z], [x + 1, y, z], [x - 1, y, z], [x, y + 1, z], [x, y - 1, z], [x, y, z + 1], [x, y, z - 1]);
     const def = BLOCKS[id];
-    const isMachine = (d) => !!(d?.kinetic || d?.machine || d?.hopper);
+    const isMachine = (d) => !!(d?.kinetic || d?.machine || d?.hopper || d?.sensor || d?.painting);
     if (isMachine(def)) c.machines.add(li); else c.machines.delete(li);
     if (isMachine(BLOCKS[old]) || isMachine(def)) this.machinesChanged = true;
+    if (def?.hive >= 0) c.hives.add(li); else c.hives.delete(li);
     // this cell, and the one below (a sugar cane that's no longer, or now is, the top), may start or stop growing
     this.refreshGrowth(c, x, y, z);
     if (y > 0) this.refreshGrowth(c, x, y - 1, z);
@@ -242,7 +255,7 @@ export class World {
     const n = BLOCKS[this.get(nx, y, nz)];
     if (!n || n.id === AIR) return false;
     if (n.shape === def.shape) return true;
-    if (def.shape === 'fence' && n.gate) return true;
+    if ((def.shape === 'fence' || def.shape === 'wall') && n.gate) return true;
     return n.shape === 'cube' && n.solid && (def.shape === 'pane' || !n.transparent);
   }
 
@@ -258,15 +271,52 @@ export class World {
       for (const [dx, dz] of dirs) m.push(arm(dx, dz, 6, 10, 6, 8, T.PLANKS), arm(dx, dz, 6, 10, 12, 14, T.PLANKS));
       return m;
     }
-    const m = [[7, 0, 7, 9, 16, 9, T.GLASS]];
-    for (const [dx, dz] of dirs) m.push(arm(dx, dz, 7, 9, 0, 16, T.GLASS));
+    if (def.shape === 'wall') {
+      // a thick post (left out where the wall just runs straight through), and a wall toward each neighbour
+      const tex = def.wallTex, straight = dirs.length === 2 && dirs[0][0] === -dirs[1][0] && dirs[0][1] === -dirs[1][1];
+      const up = this.get(x, y + 1, z) !== AIR;
+      const m = straight && !up ? [] : [[4, 0, 4, 12, 16, 12, tex]];
+      const wide = (dx, dz) => {
+        const [lo, hi] = dx > 0 ? [straight ? 8 : 12, 16] : dx < 0 ? [0, straight ? 8 : 4] : dz > 0 ? [straight ? 8 : 12, 16] : [0, straight ? 8 : 4];
+        const top = up ? 16 : 14;
+        return dx ? [lo, 0, 5, hi, top, 11, tex] : [5, 0, lo, 11, top, hi, tex];
+      };
+      for (const [dx, dz] of dirs) m.push(wide(dx, dz));
+      if (!dirs.length && !m.length) m.push([4, 0, 4, 12, 16, 12, tex]);
+      return m;
+    }
+    const glass = def.paneTex ?? T.GLASS;
+    const m = [[7, 0, 7, 9, 16, 9, glass]];
+    for (const [dx, dz] of dirs) m.push(arm(dx, dz, 7, 9, 0, 16, glass));
+    return m;
+  }
+
+  // Stairs turn their corners: a stair whose high side backs onto another stair at right angles becomes an
+  // outside corner (just a quarter up high); one whose low side meets one at right angles, an inside corner.
+  stairModel(x, y, z, def) {
+    const tex = def.model[0][6], f = def.facing;
+    const [fx, fz] = FACING_DIRS[f];
+    const half = (dx, dz) => [dx > 0 ? 8 : 0, dx < 0 ? 8 : 16, dz > 0 ? 8 : 0, dz < 0 ? 8 : 16];
+    const box = ([x0, x1, z0, z1]) => [x0, 8, z0, x1, 16, z1, tex];
+    const meet = (a, b) => [Math.max(a[0], b[0]), Math.min(a[1], b[1]), Math.max(a[2], b[2]), Math.min(a[3], b[3])];
+    const m = [[0, 0, 0, 16, 8, 16, tex]];
+    const back = half(-fx, -fz);
+    const behind = BLOCKS[this.get(x - fx, y, z - fz)], ahead = BLOCKS[this.get(x + fx, y, z + fz)];
+    const across = (n) => n?.stair && n.facing % 2 !== f % 2;
+    if (across(behind)) {
+      const [gx, gz] = FACING_DIRS[behind.facing];
+      m.push(box(meet(back, half(-gx, -gz))));
+    } else if (across(ahead)) {
+      const [gx, gz] = FACING_DIRS[ahead.facing];
+      m.push(box(back), box(meet(half(fx, fz), half(-gx, -gz))));
+    } else m.push(box(back));
     return m;
   }
 
   // Fences and shut gates are too tall to step or jump onto.
   isTall(x, y, z) {
     const def = BLOCKS[this.get(x, y, z)];
-    return def?.shape === 'fence' || (def?.gate && !def.open);
+    return def?.shape === 'fence' || def?.shape === 'wall' || (def?.gate && !def.open);
   }
 
   // What the player bumps into in a cell, as [x0, y0, z0, x1, y1, z1] boxes in world units (or null).
@@ -278,10 +328,10 @@ export class World {
     if (!c) return [[x, y, z, x + 1, y + 1, z + 1]];
     const def = BLOCKS[c.data[localIndex(x, y, z)]];
     if (!def || !def.solid) return null;
-    let boxes = def.boxes;
-    if (def.shape === 'fence' || def.shape === 'pane') {
-      // tall for fences (you can't hop over), with arms toward what they join so there's no gap
-      const top = def.shape === 'fence' ? 24 : 16, t = def.shape === 'fence' ? [6, 10] : [7, 9];
+    let boxes = def.stair ? this.stairModel(x, y, z, def).map((b) => b.slice(0, 6)) : def.boxes;
+    if (def.shape === 'fence' || def.shape === 'pane' || def.shape === 'wall') {
+      // tall for fences and walls (you can't hop over), with arms toward what they join so there's no gap
+      const top = def.shape === 'pane' ? 16 : 24, t = def.shape === 'fence' ? [6, 10] : def.shape === 'wall' ? [4, 12] : [7, 9];
       boxes = [[t[0], 0, t[0], t[1], top, t[1]]];
       for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
         if (!this.joins(def, x + dx, y, z + dz)) continue;
@@ -318,6 +368,10 @@ export class World {
     if (this.growTimer < 1) return;
     const elapsed = this.growTimer;
     this.growTimer = 0;
+    // bees: crops near a hive grow faster
+    const hives = this.hiveList();
+    const nearHive = (x, y, z) => hives.some(([hx, hy, hz]) => Math.abs(hx - x) + Math.abs(hz - z) <= 10 && Math.abs(hy - y) <= 6);
+    const season = this.growthRate ?? 1;
     for (const c of this.chunks.values()) {
       if (!c.growing.size) continue;
       for (const li of [...c.growing]) {
@@ -329,12 +383,50 @@ export class World {
           if (this.raining && this.skyAt(x, y + 1, z) >= MAX_LIGHT && Math.random() < elapsed / 25) this.setBlock(x, y, z, id + 1);
           continue;
         }
-        // plants grow twice as fast in the rain
-        const chance = elapsed * (this.raining ? 2 : 1) / (def.grows === 'up' ? GROW_SECONDS.cane : GROW_SECONDS.wheat);
+        if (def.grows === 'honey') { this.tickHive(x, y, z, id, elapsed); continue; }
+        // plants grow twice as fast in the rain, faster near bees, and with the seasons
+        let chance = elapsed * (this.raining ? 2 : 1) * season / (def.grows === 'up' ? GROW_SECONDS.cane : GROW_SECONDS.wheat);
+        if (hives.length && nearHive(x, y, z)) chance *= 1.5;
         if (Math.random() >= chance) continue;
         if (def.grows === 'up') this.setBlock(x, y + 1, z, SUGAR_CANE);
         else if (def.grows === 'tree') this.growTree(x, y, z);
         else this.setBlock(x, y, z, def.grows);
+      }
+    }
+  }
+
+  isFlowerAt(x, y, z) { return isFlower(this.get(x, y, z)); }
+
+  // Every loaded bee hive, as [x, y, z].
+  hiveList() {
+    const out = [];
+    for (const c of this.chunks.values()) for (const li of c.hives) out.push([c.cx * CHUNK + (li & 15), li >> 8, c.cz * CHUNK + ((li >> 4) & 15)]);
+    return out;
+  }
+
+  // A hive slowly fills with honey: faster with flowers around it (and slower in winter). As the bees
+  // work, now and then a new flower springs up on the grass nearby.
+  tickHive(x, y, z, id, elapsed) {
+    const key = `${x},${y},${z}`;
+    this.hiveFlowers ??= new Map();
+    let f = this.hiveFlowers.get(key);
+    if (!f || f.t < performance.now() - 30000) {
+      let n = 0;
+      for (let dy = -4; dy <= 2; dy++) for (let dz = -5; dz <= 5; dz++) for (let dx = -5; dx <= 5; dx++) if (isFlower(this.get(x + dx, y + dy, z + dz))) n++;
+      f = { n, t: performance.now() };
+      this.hiveFlowers.set(key, f);
+    }
+    const chance = elapsed * (1 + Math.min(8, f.n) / 2) * Math.max(0.3, this.growthRate ?? 1) / 240;
+    if (Math.random() >= chance) return;
+    this.setBlock(x, y, z, id + 1);
+    if (Math.random() < 0.5) {
+      const fx = x + Math.round((Math.random() - 0.5) * 8), fz = z + Math.round((Math.random() - 0.5) * 8);
+      for (let fy = y + 2; fy >= y - 6; fy--) {
+        if (this.get(fx, fy, fz) === GRASS) {
+          if (this.get(fx, fy + 1, fz) === AIR) this.setBlock(fx, fy + 1, fz, FLOWERS[Math.floor(Math.random() * FLOWERS.length)].id);
+          break;
+        }
+        if (this.get(fx, fy, fz) !== AIR) break;
       }
     }
   }
@@ -566,6 +658,7 @@ export class World {
         const next = isSky ? skyStep(level, dy === -1, id) : level - 1;
         if (next > nc[channel][li]) {
           nc[channel][li] = next;
+          if (!isSky) nc.tint[li] = c.tint[localIndex(x, y, z)]; // coloured light stays its colour as it spreads
           this.markCellDirty(nx, nz);
           queue.push(pack(nx, ny, nz));
         }
@@ -626,6 +719,7 @@ export class World {
     const emit = BLOCKS[id]?.light ?? 0;
     if (emit) {
       c.light[li] = emit;
+      c.tint[li] = BLOCKS[id].tint;
       this.spread('light', [pack(x, y, z)]);
     } else if (passes(id)) {
       this.spread('light', this.litNeighbours('light', x, y, z));
@@ -664,6 +758,7 @@ export class World {
       const e = BLOCKS[c.data[li]]?.light;
       if (e) {
         c.light[li] = e;
+        c.tint[li] = BLOCKS[c.data[li]].tint;
         lightQ.push(pack(x0 + (li & 15), li >> 8, z0 + ((li >> 4) & 15)));
       }
     }
@@ -694,8 +789,9 @@ export class World {
       const id = data[li];
       if (id < 15) continue; // (quick skip for the common blocks: none of these grow, flow or turn)
       const def = BLOCKS[id];
+      if (def?.hive >= 0) c.hives.add(li);
       if (def?.grows && this.canGrow(c, li & 15, li >> 8, (li >> 4) & 15)) c.growing.add(li);
-      else if (def?.kinetic || def?.machine || def?.hopper) { c.machines.add(li); this.machinesChanged = true; }
+      else if (def?.kinetic || def?.machine || def?.hopper || def?.sensor || def?.painting) { c.machines.add(li); this.machinesChanged = true; }
       else if (isFlowing(id)) this.flow.push([x0 + (li & 15), li >> 8, z0 + ((li >> 4) & 15)]); // water left running
     }
     this.dirty.add(c.key);
@@ -922,7 +1018,7 @@ export class World {
             const b = toLinear(f.shade);
             wcol.push(b, b, b);
             const fx = x + f.n[0], fy = y + f.n[1], fz = z + f.n[2];
-            wtl.push(lightBrightness(Math.max(this.lightAt(x, y, z), this.lightAt(fx, fy, fz))));
+            wtl.push(lightBrightness(Math.max(this.lightAt(x, y, z), this.lightAt(fx, fy, fz))) + 2 * this.tintAt(x, y, z));
             wsl.push(skyBrightness(Math.max(this.skyAt(x, y, z), this.skyAt(fx, fy, fz))));
           }
           windex.push(wcount, wcount + 1, wcount + 2, wcount, wcount + 2, wcount + 3);
@@ -941,12 +1037,12 @@ export class World {
         if (joins(this.get(x, y - 1, z))) model.push([5.5, 0, 5.5, 10.5, 5, 10.5, T.LEAD]);
         if (joins(this.get(x, y, z + 1))) model.push([5.5, 5.5, 11, 10.5, 10.5, 16, T.LEAD]);
         if (joins(this.get(x, y, z - 1))) model.push([5.5, 5.5, 0, 10.5, 10.5, 5, T.LEAD]);
-        vcount = this.addModel(lx, y, lz, { model }, lightBrightness(this.lightAt(x, y, z)), skyBrightness(this.skyAt(x, y, z)),
+        vcount = this.addModel(lx, y, lz, { model }, this.torchAt(x, y, z), skyBrightness(this.skyAt(x, y, z)),
           pos, uv, col, tl, sl, index, vcount);
         continue;
       }
-      if (def.shape === 'fence' || def.shape === 'pane') {
-        vcount = this.addModel(lx, y, lz, { model: this.joinedModel(x, y, z, def) }, lightBrightness(this.lightAt(x, y, z)), skyBrightness(this.skyAt(x, y, z)),
+      if (def.shape === 'fence' || def.shape === 'pane' || def.shape === 'wall') {
+        vcount = this.addModel(lx, y, lz, { model: this.joinedModel(x, y, z, def) }, this.torchAt(x, y, z), skyBrightness(this.skyAt(x, y, z)),
           pos, uv, col, tl, sl, index, vcount);
         continue;
       }
@@ -955,12 +1051,12 @@ export class World {
         continue;
       }
       if (def.shape === 'model') {
-        vcount = this.addModel(lx, y, lz, def, lightBrightness(this.lightAt(x, y, z)), skyBrightness(this.skyAt(x, y, z)),
+        vcount = this.addModel(lx, y, lz, def.stair ? { model: this.stairModel(x, y, z, def) } : def, this.torchAt(x, y, z), skyBrightness(this.skyAt(x, y, z)),
           pos, uv, col, tl, sl, index, vcount);
         continue;
       }
       if (def.shape === 'cross') {
-        vcount = this.addCross(lx, y, lz, def, lightBrightness(this.lightAt(x, y, z)), skyBrightness(this.skyAt(x, y, z)),
+        vcount = this.addCross(lx, y, lz, def, this.torchAt(x, y, z), skyBrightness(this.skyAt(x, y, z)),
           pos, uv, col, tl, sl, index, vcount);
         continue;
       }
@@ -997,7 +1093,7 @@ export class World {
           if (!s1) { sum += this.lightAt(x + cr.a[0], y + cr.a[1], z + cr.a[2]); sun += this.skyAt(x + cr.a[0], y + cr.a[1], z + cr.a[2]); n++; }
           if (!s2) { sum += this.lightAt(x + cr.b[0], y + cr.b[1], z + cr.b[2]); sun += this.skyAt(x + cr.b[0], y + cr.b[1], z + cr.b[2]); n++; }
           if (!cc && !(s1 && s2)) { sum += this.lightAt(x + cr.c[0], y + cr.c[1], z + cr.c[2]); sun += this.skyAt(x + cr.c[0], y + cr.c[1], z + cr.c[2]); n++; }
-          tl.push(lightBrightness(sum / n));
+          tl.push(lightBrightness(sum / n) + 2 * this.tintAt(nx, ny, nz));
           sl.push(skyBrightness(sun / n));
         }
         // flip the quad diagonal so AO interpolates without artifacts

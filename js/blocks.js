@@ -119,6 +119,15 @@ export const T = {
   GEARBOX: 136, FRAME_BACK: 137,
   MOSSY_BRICKS: 138, SHRINE_SIDE: 139, SHRINE_TOP: 140, SHRINE_SPENT: 141, CAULDRON: 142, CAULDRON_WATER: 143,
   BUSH: 144, BUSH_RIPE: 145,
+  GLOW_MUSHROOM: 146, CRYSTAL: 147, CRYSTAL_CLUSTER: 148, GEODE_SHELL: 149,
+  HIVE_SIDE: 150, HIVE_TOP: 151, HIVE_FRONT: 152, HIVE_FULL: 153, BELL: 154,
+  ALTAR_TOP: 155, ALTAR_SIDE: 156, TOMB_SHRINE: 157, CRYPT_SHRINE: 158, FORT_SHRINE: 159, SHRINE_GLYPH: 160,
+  DART_FRONT: 161, TRAP_PLATE: 162, FROST_BRICKS: 163, FORT_BRICKS: 164, CUT_SANDSTONE: 165,
+  OBSERVER_FACE: 166, OBSERVER_FACE_ON: 167, OBSERVER_SIDE: 168, GAUGE_FACE: 169, GAUGE_FACE_ON: 170, HARVESTER_FRONT: 171,
+  ENGINE_SIDE: 172, ENGINE_FRONT: 173, ENGINE_FRONT_ON: 174, ENGINE_TOP: 175,
+  PAINTED_DOOR: 176, // 176..195: the lower then upper half of a door painted in each colour
+  GLOW_LAMP: 196, // 196..205: a glow lamp in each colour
+  PILLAR_SIDE: 206, PILLAR_TOP: 207, SAND_PILLAR_SIDE: 208, SAND_PILLAR_TOP: 209, CANDLE: 210,
 };
 
 // Ores, deepest-reaching last. tier: the pickaxe tier needed to mine it (see TOOL_TIERS);
@@ -208,6 +217,14 @@ function block(id, o) {
     switch: o.switch ?? null, on: !!o.on, floor: !!o.floor, // levers, buttons and pressure plates
     frame: !!o.frame,
     water: o.water ?? 0, // a cauldron's water level (0..3)
+    hive: o.hive ?? -1, bell: !!o.bell, // a bee hive's honey level; the bell in the middle of a village
+    lair: !!o.lair, trap: !!o.trap, dart: !!o.dart, // lair shrines and a tomb's traps
+    sensor: o.sensor ?? null, harvester: !!o.harvester, engine: !!o.engine, // automation (see machines.js)
+    doorBase: o.doorBase ?? 0, // a door's first variant (each colour of door has its own 16)
+    tint: o.tint ?? 0, // the colour of the light it gives (see TINTS)
+    wallTex: o.wallTex ?? null, // the tile a wall is built of
+    paneTex: o.paneTex ?? null, // a coloured glass pane's tile
+    painting: o.painting ?? null, // { art, w, h }: a painting hung on a wall (see paintings.js)
   };
 }
 
@@ -349,8 +366,8 @@ const lampModel = (lit) => [
 const CARPET_MODEL = [[0, 0, 0, 16, 1, 16, T.WOOL]];
 const CURTAIN_CLOSED = [[0, 15, 7, 16, 16, 9, wood], [0, 0, 7.5, 16, 15, 8.5, T.CURTAIN]];
 const CURTAIN_OPEN = [[0, 15, 7, 16, 16, 9, wood], [0, 0, 7, 3, 15, 9, T.CURTAIN], [13, 0, 7, 16, 15, 9, T.CURTAIN]];
-const doorModel = (open, upper) => {
-  const tile = upper ? T.DOOR_UPPER : T.DOOR_LOWER;
+const doorModel = (open, upper, color = -1) => {
+  const tile = color < 0 ? (upper ? T.DOOR_UPPER : T.DOOR_LOWER) : T.PAINTED_DOOR + color * 2 + (upper ? 1 : 0);
   return open ? [[0, 0, 0, 3, 16, 16, tile]] : [[0, 0, 13, 16, 16, 16, tile]];
 };
 
@@ -386,7 +403,7 @@ for (let k = 0; k < 16; k++) {
   const f = k >> 2, open = (k >> 1) & 1, upper = k & 1;
   block(DOOR + k, {
     ...furniture, name: 'Door', model: rotateModel(doorModel(open, upper), f), solid: !open,
-    variantOf: k ? DOOR : 0, drop: upper ? 0 : DOOR, facing: f, open: !!open, upper: !!upper,
+    variantOf: k ? DOOR : 0, drop: upper ? 0 : DOOR, facing: f, open: !!open, upper: !!upper, doorBase: DOOR,
   });
 }
 
@@ -394,7 +411,7 @@ export const isBed = (id) => (id >= BED && id < BED + 4) || (id >= BED_FOOT && i
 export const isChair = (id) => id >= CHAIR && id < CHAIR + 4;
 export const isLamp = (id) => !!BLOCKS[id]?.lampBase;
 export const isCurtain = (id) => id >= CURTAIN && id < CURTAIN + 4;
-export const isDoor = (id) => id >= DOOR && id < DOOR + 16;
+export const isDoor = (id) => !!BLOCKS[id]?.doorBase;
 
 // Ovens and smelters: cube blocks whose front faces you; they glow while burning fuel.
 for (const [base, station, name, side, top, front, frontLit] of [
@@ -618,7 +635,7 @@ KINETIC_PARTS.forEach((part) => KINETIC_MATS.forEach((m, mat) => {
   }
 }));
 export const isKinetic = (id) => !!BLOCKS[id]?.kinetic;
-export const doorId = (facing, open, upper) => DOOR + facing * 4 + (open ? 2 : 0) + (upper ? 1 : 0);
+export const doorId = (facing, open, upper, base = DOOR) => base + facing * 4 + (open ? 2 : 0) + (upper ? 1 : 0);
 export const MAX_LAMP_FUEL = 3;
 
 // Non-block items.
@@ -1201,3 +1218,280 @@ for (let k = 0; k < 2; k++) {
   });
 }
 ITEMS[BERRIES] = { name: 'Berries', food: 2 };
+
+// ---------- caves, bees and villages ----------
+export const GLOW_MUSHROOM = 621, CRYSTAL_BLOCK = 622, CRYSTAL_CLUSTER = 623, GEODE_SHELL = 624,
+  BEE_HIVE = 625, // 625..628: + honey level 0..3 (3 is full)
+  VILLAGE_BELL = 629;
+export const CRYSTAL_SHARD = 1009, HONEY_BOTTLE = 1010, HONEYCOMB = 1011,
+  SALMON = 1012, BAKED_SALMON = 1013, ICEFISH = 1014, BAKED_ICEFISH = 1015, PUFFERFISH = 1016, OLD_BOOT = 1017;
+export const MAX_HONEY = 3;
+
+// glowing mushrooms carpet the floors of some caverns; they light the dark and can be picked and replanted
+block(GLOW_MUSHROOM, { name: 'Glowcap Mushroom', sound: 'leaves', tex: T.GLOW_MUSHROOM, transparent: true, solid: false, shape: 'cross', hardness: 0, light: 10 });
+// crystal geodes: a pale shell around a lining of glowing crystal
+block(GEODE_SHELL, { name: 'Calcite', tex: T.GEODE_SHELL, hardness: 2, tool: 'pick', needsTool: true });
+block(CRYSTAL_BLOCK, {
+  name: 'Crystal', sound: 'glass', tex: T.CRYSTAL, hardness: 1.5, tool: 'pick', needsTool: true, light: 9,
+  drop: () => [[CRYSTAL_SHARD, 3 + (Math.random() < 0.5 ? 1 : 0)]],
+});
+block(CRYSTAL_CLUSTER, {
+  name: 'Crystal Cluster', sound: 'glass', tex: T.CRYSTAL_CLUSTER, transparent: true, solid: false, shape: 'cross', hardness: 0.5, light: 11,
+  drop: () => [[CRYSTAL_SHARD, 2]],
+});
+// a bee hive, hung under the leaves of a tree: it slowly fills with honey (faster with flowers nearby)
+for (let k = 0; k <= MAX_HONEY; k++) {
+  block(BEE_HIVE + k, {
+    name: 'Bee Hive', sound: 'wood', top: T.HIVE_TOP, bottom: T.HIVE_TOP, side: T.HIVE_SIDE, front: k === MAX_HONEY ? T.HIVE_FULL : T.HIVE_FRONT,
+    hardness: 1, tool: 'axe', variantOf: k ? BEE_HIVE : 0, grows: k < MAX_HONEY ? 'honey' : null, hive: k,
+    drop: () => [[BEE_HIVE, 1], [HONEYCOMB, k]],
+  });
+}
+block(VILLAGE_BELL, {
+  name: 'Village Bell', sound: 'stone', transparent: true, hardness: 3, tool: 'pick', bell: true,
+  model: [[7, 13, 7, 9, 16, 9, T.LOG_SIDE], [4, 3, 4, 12, 13, 12, T.BELL], [3, 2, 3, 13, 4, 13, T.BELL], [7, 0, 7, 9, 2, 9, T.BELL]],
+  boxes: [[3, 0, 3, 13, 16, 13]],
+});
+
+ITEMS[CRYSTAL_SHARD] = { name: 'Crystal Shard' };
+ITEMS[HONEYCOMB] = { name: 'Honeycomb' };
+ITEMS[HONEY_BOTTLE] = { name: 'Honey Bottle', stack: 8, food: 6, about: 'you keep the bottle' };
+ITEMS[SALMON] = { name: 'Raw Salmon', food: 2, fish: true };
+ITEMS[BAKED_SALMON] = { name: 'Baked Salmon', food: 7, fish: true };
+ITEMS[ICEFISH] = { name: 'Raw Icefish', food: 2, fish: true };
+ITEMS[BAKED_ICEFISH] = { name: 'Baked Icefish', food: 6, fish: true };
+ITEMS[PUFFERFISH] = { name: 'Pufferfish', food: 1, about: 'poisonous to eat' };
+ITEMS[OLD_BOOT] = { name: 'Old Boot' };
+ITEMS[RAW_FISH].fish = true; ITEMS[BAKED_FISH].fish = true;
+export const isFish = (id) => !!ITEMS[id]?.fish;
+
+RECIPES.push(
+  { out: [BEE_HIVE, 1], in: [[PLANKS, 6], [HONEYCOMB, 2]], table: true },
+  { out: [LEATHER, 1], in: [[OLD_BOOT, 1]] },
+  { out: [GLASS, 1], in: [[CRYSTAL_SHARD, 2], [SAND, 1]] },
+);
+
+// ---------- survival: enchanting, meals, more dungeons ----------
+export const ENCHANT_ALTAR = 630,
+  TOMB_SHRINE = 631, CRYPT_SHRINE = 632, FORT_SHRINE = 633, // a lair's shrine; + 3 once its guardian is beaten
+  DART_TRAP = 637, // 637..640: + facing (the way it shoots)
+  TRAP_PLATE = 641, FROST_BRICKS = 642, FORT_BRICKS = 643, CUT_SANDSTONE = 644;
+export const SUN_SCARAB = 1018, FROST_HEART = 1019, EMBER_CORE = 1020, SUN_MASK = 1021, FROST_CIRCLET = 1022, EMBER_CROWN = 1023,
+  HONEY_TEA = 1024, MUSHROOM_STEW = 1025, FISH_PIE = 1026;
+
+block(ENCHANT_ALTAR, {
+  name: 'Enchanting Altar', top: T.ALTAR_TOP, bottom: T.OBSIDIAN, side: T.ALTAR_SIDE, hardness: 6, tool: 'pick', needsTool: true, tier: 3,
+  light: 6, blastproof: true, transparent: true,
+  model: [[0, 0, 0, 16, 10, 16, { top: T.ALTAR_TOP, side: T.ALTAR_SIDE, bottom: T.OBSIDIAN }], [6, 10, 6, 10, 13, 10, T.CRYSTAL, true]],
+  boxes: [[0, 0, 0, 16, 10, 16]],
+});
+// The guardians of the three new kinds of lair, and what each one leaves behind.
+export const LAIRS = {
+  tomb: { shrine: TOMB_SHRINE, boss: 'dunewarden', name: 'The Dune Warden', tile: T.TOMB_SHRINE, brick: T.CUT_SANDSTONE },
+  crypt: { shrine: CRYPT_SHRINE, boss: 'frostwraith', name: 'The Frost Wraith', tile: T.CRYPT_SHRINE, brick: T.FROST_BRICKS },
+  fortress: { shrine: FORT_SHRINE, boss: 'emberlord', name: 'The Ember Lord', tile: T.FORT_SHRINE, brick: T.FORT_BRICKS },
+};
+for (const l of Object.values(LAIRS)) {
+  block(l.shrine, { name: 'Shrine', top: T.SHRINE_GLYPH, bottom: l.brick, side: l.tile, hardness: Infinity, light: 8, blastproof: true, drop: 0, lair: true });
+  block(l.shrine + 3, { name: 'Quiet Shrine', top: T.SHRINE_SPENT, bottom: l.brick, side: l.tile, hardness: 6, tool: 'pick', needsTool: true, tier: 3 });
+}
+block(CUT_SANDSTONE, { name: 'Cut Sandstone', tex: T.CUT_SANDSTONE, hardness: 2, tool: 'pick', needsTool: true });
+block(FROST_BRICKS, { name: 'Frost Bricks', tex: T.FROST_BRICKS, hardness: 2.5, tool: 'pick', needsTool: true, sound: 'glass' });
+block(FORT_BRICKS, { name: 'Fortress Bricks', tex: T.FORT_BRICKS, hardness: 3, tool: 'pick', needsTool: true, blastproof: true });
+// a tomb's traps: stepping on a loose floor tile makes the dart traps in the walls nearby shoot at you
+block(TRAP_PLATE, { name: 'Cut Sandstone', tex: T.TRAP_PLATE, hardness: 2, tool: 'pick', needsTool: true, drop: CUT_SANDSTONE, trap: true });
+for (let f = 0; f < 4; f++) {
+  block(DART_TRAP + f, {
+    name: 'Dart Trap', side: T.CUT_SANDSTONE, top: T.CUT_SANDSTONE, bottom: T.CUT_SANDSTONE, front: T.DART_FRONT, facing: f,
+    hardness: 2.5, tool: 'pick', needsTool: true, variantOf: f ? DART_TRAP : 0, drop: DART_TRAP, dart: true,
+  });
+}
+
+// Boss trophies: crowns (helmets with a gift) and the hearts of the guardians, used for enchanting.
+ITEMS[SUN_SCARAB] = { name: 'Sun Scarab', about: 'from the Dune Warden' };
+ITEMS[FROST_HEART] = { name: 'Frost Heart', about: 'from the Frost Wraith' };
+ITEMS[EMBER_CORE] = { name: 'Ember Core', about: 'from the Ember Lord' };
+ITEMS[SUN_MASK] = { name: 'Sun Mask', stack: 1, armour: { piece: 0, points: 4 }, wearMax: 600, repair: GOLD_INGOT, guards: 'heat', about: 'the desert sun can\'t harm you' };
+ITEMS[FROST_CIRCLET] = { name: 'Frost Circlet', stack: 1, armour: { piece: 0, points: 4 }, wearMax: 600, repair: SILVER_INGOT, guards: 'chill', about: 'the cold can\'t touch you' };
+ITEMS[EMBER_CROWN] = { name: 'Ember Crown', stack: 1, armour: { piece: 0, points: 6 }, wearMax: 800, repair: GOLD_INGOT, guards: 'fire', about: 'lava doesn\'t burn you' };
+ITEMS[HONEY_TEA] = { name: 'Honey Tea', stack: 8, tea: ['warm', 300], about: 'feel warm inside: no chill' };
+// hearty meals: the better the meal, the longer you stay well fed (see main.js)
+ITEMS[MUSHROOM_STEW] = { name: 'Mushroom Stew', food: 8 };
+ITEMS[FISH_PIE] = { name: 'Fish Pie', food: 12 };
+
+// Creative mode's copy wand (only found in the creative palette): tap two corners to copy what's between
+// them, then tap to paste it; hold it still (as if breaking) to start over.
+export const COPY_WAND = 1027;
+ITEMS[COPY_WAND] = { name: 'Copy Wand', stack: 1, about: 'creative: copy and paste builds' };
+
+// Enchantments, put on at the altar. on: what they can go on; cost: what they take.
+const toolType = (id) => ITEMS[id]?.tool?.type;
+export const ENCHANTS = {
+  swift: { name: 'Swift', about: 'digs 40% faster', on: (id) => ['pick', 'axe', 'shovel'].includes(toolType(id)), cost: [[CRYSTAL_SHARD, 4]] },
+  sturdy: { name: 'Sturdy', about: 'wears half as fast', on: (id) => maxWear(id) > 0, cost: [[CRYSTAL_SHARD, 4], [GOLD_INGOT, 1]] },
+  keen: { name: 'Keen', about: 'hits 3 harder', on: (id) => ['sword', 'axe'].includes(toolType(id)), cost: [[CRYSTAL_SHARD, 6], [SUN_SCARAB, 1]] },
+  flame: { name: 'Flame', about: 'sets creatures alight', on: (id) => ['sword', 'axe'].includes(toolType(id)), cost: [[CRYSTAL_SHARD, 6], [EMBER_CORE, 1]] },
+  warmth: { name: 'Warmth', about: 'keeps out the cold', on: (id) => { const p = ITEMS[id]?.armour?.piece; return p !== undefined && p < 4; }, cost: [[CRYSTAL_SHARD, 4], [FROST_HEART, 1]] },
+};
+export const hasEnch = (slot, e) => !!slot?.ench?.includes(e);
+
+RECIPES.push(
+  { out: [ENCHANT_ALTAR, 1], in: [[OBSIDIAN, 4], [CRYSTAL_SHARD, 4], [GOLD_INGOT, 1]], table: true, metal: GOLD_INGOT },
+  { out: [CUT_SANDSTONE, 4], in: [[SANDSTONE, 4]], table: true },
+);
+
+// ---------- more automation: observers, gauges, harvesters, steam engines and switch rails ----------
+// An observer watches the block in front of it and gives a short pulse of signal (like a button) when
+// that block changes. A storage gauge reads the chest, machine or cauldron in front of it and gives a
+// steady signal while it holds anything (or, tapped to change it, only while it's full). Both are
+// switches, so they work doors, clutches, powered rails and switch rails; the signal also passes through
+// the block behind them.
+export const OBSERVER = 645, // 645..652: + facing (the way it looks) + 4 while signalling
+  GAUGE = 653, // 653..660: + facing + 4 while signalling
+  HARVESTER = 661, // 661..664: + facing (the way it reaps)
+  STEAM_ENGINE = 665, // 665..672: + facing (its firebox door) + 4 while it's burning
+  SWITCH_RAIL = 673; // 673..688: see switchRailId
+const sensorBase = { hardness: 1.5, tool: 'pick', sound: 'stone', side: T.OBSERVER_SIDE, top: T.OBSERVER_SIDE, bottom: T.OBSERVER_SIDE };
+for (let k = 0; k < 8; k++) {
+  const f = k & 3, on = k >= 4;
+  block(OBSERVER + k, {
+    ...sensorBase, name: 'Observer', front: on ? T.OBSERVER_FACE_ON : T.OBSERVER_FACE, facing: f, switch: 'observer', on, sensor: 'observer',
+    variantOf: k ? OBSERVER : 0, drop: OBSERVER,
+  });
+  block(GAUGE + k, {
+    ...sensorBase, name: 'Storage Gauge', front: on ? T.GAUGE_FACE_ON : T.GAUGE_FACE, facing: f, switch: 'gauge', on, sensor: 'gauge',
+    variantOf: k ? GAUGE : 0, drop: GAUGE, light: on ? 4 : 0,
+  });
+}
+// A harvester, driven by a shaft, reaps ripe crops (wheat, berries, sugar cane) in the 5 x 5 patch in
+// front of it, replants them, and passes the harvest to whatever is behind it, like a drill.
+for (let f = 0; f < 4; f++) {
+  block(HARVESTER + f, {
+    hardness: 2.5, tool: 'pick', sound: 'stone', name: 'Harvester', side: T.DRILL_SIDE, top: T.DRILL_SIDE, bottom: T.DRILL_SIDE,
+    front: T.HARVESTER_FRONT, facing: f, harvester: true, machine: { load: 3 }, variantOf: f ? HARVESTER : 0, drop: HARVESTER,
+  });
+}
+// A steam engine: a boiler that burns coal (or any fuel) put into it by hand or by a hopper, and turns
+// every shaft or gear that points into it, like a gearbox, with more power than a water wheel. It needs
+// water beside it (a cauldron with water in it will do).
+export const ENGINE_POWER = 16;
+for (let k = 0; k < 8; k++) {
+  const f = k & 3, on = k >= 4;
+  block(STEAM_ENGINE + k, {
+    hardness: 3, tool: 'pick', needsTool: true, sound: 'stone', name: 'Steam Engine', side: T.ENGINE_SIDE, top: T.ENGINE_TOP, bottom: T.ENGINE_SIDE,
+    front: on ? T.ENGINE_FRONT_ON : T.ENGINE_FRONT, facing: f, engine: true, lit: on, light: on ? 10 : 0,
+    kinetic: { part: 'engine', mat: 1, axis: -1 }, variantOf: k ? STEAM_ENGINE : 0, drop: STEAM_ENGINE,
+  });
+}
+// A switch rail joins a branch line to a straight one. It runs straight until it gets a signal (a lever
+// beside it, an observer, a gauge...), then switches carts onto the branch. Carts coming in off either
+// line always run on to the shared end (the stem).
+export const switchRailId = (stem, branch, curved) => SWITCH_RAIL + ((stem * 2 + (branch === (stem + 1) % 4 ? 0 : 1)) * 2) + (curved ? 1 : 0);
+for (let k = 0; k < 16; k++) {
+  const stem = k >> 2, branch = (k >> 1) & 1 ? (stem + 3) % 4 : (stem + 1) % 4, curved = !!(k & 1), straight = (stem + 2) % 4;
+  const [bx, bz] = FACING_DIRS[curved ? straight : branch];
+  block(SWITCH_RAIL + k, {
+    name: 'Switch Rail', sound: 'stone', transparent: true, solid: false, hardness: 0.7, tool: 'pick',
+    // the rail it's set to, and a little red lamp toward the end that's switched off
+    model: [...railModel({ ends: [stem, curved ? branch : straight] }), [7 + bx * 6, 0, 7 + bz * 6, 9 + bx * 6, 2, 9 + bz * 6, T.GOLD]],
+    rail: { ends: [stem, curved ? branch : straight], slope: -1, powered: false, junction: { stem, straight, branch, curved }, all: [stem, straight, branch] },
+    variantOf: k ? SWITCH_RAIL : 0, drop: SWITCH_RAIL,
+  });
+}
+RECIPES.push(
+  { out: [OBSERVER, 1], in: [[COBBLE, 6], [CRYSTAL_SHARD, 1], [IRON_INGOT, 1]], table: true, metal: IRON_INGOT },
+  { out: [GAUGE, 1], in: [[COBBLE, 4], [COPPER_INGOT, 2], [GLASS, 1]], table: true, metal: COPPER_INGOT },
+  { out: [HARVESTER, 1], in: [[STEEL_INGOT, 2], [IRON_INGOT, 3], [kineticId('gear', 1), 1]], table: true, metal: STEEL_INGOT },
+  { out: [STEAM_ENGINE, 1], in: [[IRON_INGOT, 6], [COPPER_INGOT, 4], [BRICKS, 4], [kineticId('gear', 1), 1]], table: true, metal: IRON_INGOT },
+  { out: [SWITCH_RAIL, 1], in: [[RAIL, 3], [LEVER, 1]], table: true, metal: IRON_INGOT },
+);
+
+// ---------- building: walls, pillars, painted doors, stained panes, lanterns, glow lamps, paintings ----------
+// Light colours: what colour a light-giving block lights its surroundings (index 0 is ordinary warm
+// firelight; glow lamps give 1 + their dye colour). The world carries each cell's colour along with
+// its light (see world.js), and the shader tints torch light by it.
+export const TINTS = [
+  [1, 0.86, 0.66], // firelight
+  [0.92, 0.95, 1], [0.62, 0.36, 1], [1, 0.32, 0.26], [1, 0.62, 0.24], [1, 0.95, 0.42],
+  [0.45, 1, 0.42], [0.3, 1, 0.95], [0.36, 0.55, 1], [0.8, 0.42, 1], [1, 0.56, 0.8],
+];
+export const WALL = 690, // 690..695: + material (see WALL_MATS)
+  PILLAR = 696, SAND_PILLAR = 697,
+  PAINTED_DOOR = 700, // 700..859: + colour * 16 + the door's usual variant
+  STAINED_PANE = 860, // 860..869: + colour
+  LANTERN = 870, HANGING_LANTERN = 871, CHANDELIER = 872,
+  GLOW_LAMP = 873, // 873..882: + colour
+  PAINTING = 883; // 883..914: + art * 4 + facing
+// Walls join up to each other and to solid blocks like fences do (see world.js), but chunky and stone.
+export const WALL_MATS = [
+  { name: 'Cobblestone', full: COBBLE, tex: T.COBBLE }, { name: 'Stone Brick', full: BRICKS, tex: T.BRICKS },
+  { name: 'Brick', full: CLAY_BRICKS, tex: T.CLAY_BRICKS }, { name: 'Sandstone', full: SANDSTONE, tex: T.SANDSTONE_SIDE },
+  { name: 'Mossy Stone Brick', full: MOSSY_BRICKS, tex: T.MOSSY_BRICKS }, { name: 'Cut Sandstone', full: CUT_SANDSTONE, tex: T.CUT_SANDSTONE },
+];
+WALL_MATS.forEach((m, i) => block(WALL + i, {
+  name: `${m.name} Wall`, shape: 'wall', sound: 'stone', tool: 'pick', needsTool: true, hardness: 2.5, transparent: true, wallTex: m.tex,
+  model: [[4, 0, 4, 12, 16, 12, m.tex], [0, 0, 5, 4, 14, 11, m.tex], [12, 0, 5, 16, 14, 11, m.tex]],
+}));
+block(PILLAR, { name: 'Stone Pillar', side: T.PILLAR_SIDE, top: T.PILLAR_TOP, bottom: T.PILLAR_TOP, hardness: 2.25, tool: 'pick', needsTool: true });
+block(SAND_PILLAR, { name: 'Sandstone Pillar', side: T.SAND_PILLAR_SIDE, top: T.SAND_PILLAR_TOP, bottom: T.SAND_PILLAR_TOP, hardness: 2, tool: 'pick', needsTool: true });
+COLORS.forEach((c, ci) => {
+  for (let k = 0; k < 16; k++) {
+    const f = k >> 2, open = (k >> 1) & 1, upper = k & 1, base = PAINTED_DOOR + ci * 16;
+    block(base + k, {
+      ...furniture, name: `${c.name} Door`, model: rotateModel(doorModel(open, upper, ci), f), solid: !open,
+      variantOf: k ? base : 0, drop: upper ? 0 : base, facing: f, open: !!open, upper: !!upper, doorBase: base, color: ci,
+    });
+  }
+  block(STAINED_PANE + ci, {
+    name: `${c.name} Glass Pane`, shape: 'pane', sound: 'glass', hardness: 0.4, transparent: true, color: ci,
+    model: [[0, 0, 7, 16, 16, 9, T.STAINED + ci]], paneTex: T.STAINED + ci,
+  });
+  block(GLOW_LAMP + ci, {
+    name: `${c.name} Glow Lamp`, tex: T.GLOW_LAMP + ci, sound: 'glass', hardness: 0.6, light: 14, tint: ci + 1, color: ci,
+  });
+});
+// a lantern stands on a block, or hangs from one on a short chain; a chandelier hangs from a ceiling
+const LANTERN_BOX = (y) => [[5, y, 5, 11, y + 1, 11, T.IRON], [5.5, y + 1, 5.5, 10.5, y + 6, 10.5, T.GLASS], [6.5, y + 1.5, 6.5, 9.5, y + 5, 9.5, T.FLAME, true],
+  [5, y + 6, 5, 11, y + 7, 11, T.IRON], [7, y + 7, 7, 9, y + 8, 9, T.IRON]];
+block(LANTERN, { name: 'Lantern', sound: 'stone', transparent: true, solid: false, hardness: 1, tool: 'pick', light: 14, model: LANTERN_BOX(0) });
+block(HANGING_LANTERN, {
+  name: 'Lantern', sound: 'stone', transparent: true, solid: false, hardness: 1, tool: 'pick', light: 14, variantOf: LANTERN, drop: LANTERN,
+  model: [...LANTERN_BOX(6), [7.5, 14, 7.5, 8.5, 16, 8.5, T.IRON]],
+});
+block(CHANDELIER, {
+  name: 'Chandelier', sound: 'stone', transparent: true, solid: false, hardness: 1, tool: 'pick', light: 15,
+  model: [
+    [7.5, 9, 7.5, 8.5, 16, 8.5, T.GOLD], [2, 8, 7.5, 14, 9, 8.5, T.GOLD], [7.5, 8, 2, 8.5, 9, 14, T.GOLD], [6, 7, 6, 10, 9, 10, T.GOLD],
+    ...[[2, 8], [14, 8], [8, 2], [8, 14]].flatMap(([x, z]) => [[x - 1, 9, z - 1, x + 1, 12, z + 1, T.CANDLE], [x - 0.5, 12, z - 0.5, x + 0.5, 13.5, z + 0.5, T.FLAME, true]]),
+  ],
+});
+// Paintings: hung on the side of a block, each shows one of the pictures in ART (drawn by paintings.js),
+// reaching right and up from the block it hangs in.
+export const ART = [
+  { name: 'Sunset Hills', w: 1, h: 1 }, { name: 'Night Sky', w: 1, h: 1 }, { name: 'The Sea', w: 2, h: 1 },
+  { name: 'Mountains', w: 2, h: 1 }, { name: 'Meadow', w: 2, h: 2 }, { name: 'The Lighthouse', w: 1, h: 2 },
+  { name: 'Desert Dunes', w: 2, h: 2 }, { name: 'The Long Valley', w: 4, h: 2 },
+];
+ART.forEach((a, ai) => {
+  for (let f = 0; f < 4; f++) {
+    block(PAINTING + ai * 4 + f, {
+      name: 'Painting', sound: 'wood', hardness: 0.5, tool: 'axe', transparent: true, solid: false, facing: f,
+      model: rotateModel([[0, 0, 0, 16, 16, 0.5, T.PLANKS]], f).map((b) => [...b.slice(0, 6), T.PLANKS]), painting: { art: ai, ...a },
+      variantOf: ai || f ? PAINTING : 0, drop: PAINTING,
+    });
+  }
+});
+export const isWall = (id) => BLOCKS[id]?.shape === 'wall';
+RECIPES.push(
+  ...WALL_MATS.map((m, i) => ({ out: [WALL + i, 6], in: [[m.full, 6]], table: true })),
+  { out: [PILLAR, 2], in: [[STONE, 2]], table: true },
+  { out: [SAND_PILLAR, 2], in: [[SANDSTONE, 2]], table: true },
+  ...COLORS.flatMap((c, i) => [
+    { out: [PAINTED_DOOR + i * 16, 1], in: [[DOOR, 1], [DYE + i, 1]], table: true, metal: DYE + i },
+    { out: [STAINED_PANE + i, 16], in: [[STAINED_GLASS + i, 6]], table: true, metal: STAINED_GLASS + i },
+    { out: [GLOW_LAMP + i, 2], in: [[CRYSTAL_SHARD, 2], [STAINED_GLASS + i, 1], [TORCH, 1]], table: true, metal: CRYSTAL_SHARD },
+  ]),
+  { out: [LANTERN, 1], in: [[IRON_INGOT, 2], [TORCH, 1]], table: true, metal: IRON_INGOT },
+  { out: [CHANDELIER, 1], in: [[GOLD_INGOT, 2], [TORCH, 4]], table: true, metal: GOLD_INGOT },
+  { out: [PAINTING, 1], in: [[STICK, 4], [WOOL, 1], [DYE + 2, 1]], table: true, metal: DYE + 2 },
+);

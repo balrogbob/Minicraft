@@ -113,6 +113,12 @@ export class Sound {
     this.noiseBurst({ type: 'bandpass', freq: 1800, q: 0.7, dur: 0.35, vol: 0.6 }, gain, 1);
   }
 
+  // a village bell: a bright strike with a long ring
+  ding() {
+    if (!this.ready) return;
+    for (const [f, v] of [[880, 0.25], [1320, 0.12], [2210, 0.06]]) this.voice({ type: 'sine', from: f, to: f * 0.998, dur: 2.2, vol: v, freq: 6000, attack: 0.005 });
+  }
+
   pop() { if (this.ready) this.tone(520 + Math.random() * 80, 0.09, 0.2, 'square', 900); }
 
   click() { if (this.ready) this.tone(800, 0.04, 0.08, 'square'); }
@@ -274,6 +280,30 @@ export class Sound {
       // a cheerful hum
       this.voice({ type: 'triangle', from: p(240, 270), to: p(320, 350), dur: 0.35, vol: 0.18 * gain, freq: 1600 });
       this.voice({ type: 'triangle', from: p(320, 350), to: p(260, 280), dur: 0.3, vol: 0.18 * gain, freq: 1600, delay: 0.32 });
+    } else if (kind === 'villager') {
+      // a thoughtful "hmm"
+      this.voice({ type: 'triangle', from: p(170, 200), to: p(140, 160), dur: 0.4, vol: 0.2 * gain, freq: 1200, attack: 0.05 });
+    } else if (kind === 'bee') {
+      this.voice({ type: 'sawtooth', from: p(210, 240), to: p(200, 250), dur: 0.5, vol: 0.05 * gain, freq: 900, vibrato: 40, attack: 0.08 });
+    } else if (kind === 'spider') {
+      // a dry clicking chitter
+      const n = hurt ? 2 : 4;
+      for (let i = 0; i < n; i++) setTimeout(() => this.ready && this.noiseBurst({ type: 'bandpass', freq: 4200, q: 4, dur: 0.025, vol: 0.3 * gain }, 1, 1), i * 70);
+      if (hurt) this.voice({ type: 'square', from: 1500, to: 900, dur: 0.1, vol: 0.12 * gain, freq: 3500 });
+    } else if (kind === 'dunewarden') {
+      // grinding sandstone and a hiss of sand
+      const f = hurt ? p(60, 70) : p(40, 46);
+      this.voice({ from: f, to: f * 0.75, dur: hurt ? 0.4 : 1.1, vol: 0.8 * gain, freq: 200, q: 3, attack: 0.12 });
+      this.noiseBurst({ type: 'highpass', freq: 2500, q: 1, dur: hurt ? 0.3 : 0.9, vol: 0.35 * gain }, 1, 1);
+    } else if (kind === 'frostwraith') {
+      // a cold, hollow wail
+      this.voice({ type: 'sine', from: hurt ? p(900, 1000) : p(520, 580), to: hurt ? 600 : p(300, 340), dur: hurt ? 0.4 : 1.4, vol: 0.3 * gain, freq: 2200, vibrato: 25, attack: 0.2 });
+      this.noiseBurst({ type: 'bandpass', freq: 3200, q: 2, dur: 0.8, vol: 0.2 * gain }, 1, 1);
+    } else if (kind === 'emberlord') {
+      // a roar over the crackle of fire
+      const f = hurt ? p(70, 80) : p(48, 56);
+      this.voice({ type: 'sawtooth', from: f, to: f * 0.7, dur: hurt ? 0.5 : 1.2, vol: 0.6 * gain, freq: 300, q: 2, attack: 0.1 });
+      for (let i = 0; i < 6; i++) setTimeout(() => this.ready && this.noiseBurst({ type: 'highpass', freq: 1800, q: 1, dur: 0.04, vol: 0.25 * gain }, 1, 1), i * 90 + Math.random() * 40);
     } else if (kind === 'newt') {
       this.voice({ type: 'sine', from: p(2400, 2700), to: p(3100, 3400), dur: hurt ? 0.1 : 0.06, vol: 0.12 * gain, freq: 6000 });
     }

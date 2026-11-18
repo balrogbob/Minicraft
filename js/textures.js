@@ -12,8 +12,10 @@ import {
   PLATE_METALS, PLATES,
   PIPE, SPOUT, BELT, HOPPER, WINDMILL, FILAMENT, DRILL_BIT,
   RAIL, POWERED_RAIL, CACTUS, MINECART, MAP, PAPER,
-  COLORS, DYE, CLUTCH, STORAGE_CART, LOADER_RAIL,
+  COLORS, DYE, CLUTCH, STORAGE_CART, LOADER_RAIL, SWITCH_RAIL, PAINTED_DOOR, PAINTING,
   BERRIES, GLASS_BOTTLE, NIGHT_TEA, HASTE_TEA, FIRE_TEA, HEAL_TEA, WOOD_SHIELD, IRON_SHIELD, KING_CROWN,
+  SUN_SCARAB, FROST_HEART, EMBER_CORE, SUN_MASK, FROST_CIRCLET, EMBER_CROWN, HONEY_TEA, MUSHROOM_STEW, FISH_PIE, COPY_WAND,
+  CRYSTAL_SHARD, HONEY_BOTTLE, HONEYCOMB, SALMON, BAKED_SALMON, ICEFISH, BAKED_ICEFISH, PUFFERFISH, OLD_BOOT,
   SALTPETRE, GUNPOWDER, LEAD_SINKER, WEIGHTED_ROD, LEAD_BUCKET, LAVA_BUCKET, GOLD_CLOCK, COMPASS, SILVER_ARROW, MIRROR_LAMP,
 } from './blocks.js';
 
@@ -575,6 +577,17 @@ function tinted(base, rgb, ref) {
   };
 }
 COLORS.forEach((c, i) => {
+  // painted doors: the plank door, painted (the window glass and its bars stay as they are)
+  for (const upper of [0, 1]) P[T.PAINTED_DOOR + i * 2 + upper] = tinted(upper ? T.DOOR_UPPER : T.DOOR_LOWER, i === 1 ? [70, 70, 80] : c.rgb, 140);
+  // glow lamps: a frosted block glowing in its colour, brightest in the middle
+  P[T.GLOW_LAMP + i] = (t) => {
+    const glow = i === 1 ? [150, 90, 230] : c.rgb.map((v) => Math.min(255, v * 0.6 + 110));
+    for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+      const edge = x === 0 || y === 0 || x === 15 || y === 15, d = Math.hypot(x - 7.5, y - 7.5);
+      t.set(x, y, edge ? [70, 66, 60] : t.vary(glow.map((v) => Math.min(255, v + (6 - d) * 10)), 0.04));
+    }
+    for (const k of [5, 10]) for (let j = 1; j < 15; j++) { t.set(k, j, shade(glow, 0.85)); t.set(j, k, shade(glow, 0.85)); }
+  };
   if (i) P[T.DYED_WOOL + i] = tinted(T.WOOL, c.rgb, 228);
   P[T.PAINTED + i] = tinted(T.PLANKS, c.rgb, 150);
   // stained glass: a coloured frame and a fine coloured mesh you can see through
@@ -669,6 +682,162 @@ P[T.TRAPDOOR] = (t) => {
   }
   for (const x of [3, 12]) for (const y of [3, 12]) t.set(x, y, [70, 70, 76]); // nails
 };
+
+// ----- caves, bees and villages -----
+P[T.GLOW_MUSHROOM] = (t) => {
+  for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) t.set(x, y, [0, 0, 0], 0);
+  for (const [cx, cy, r, h] of [[5, 7, 3.2, 6], [11, 9, 2.4, 5], [8, 12, 1.8, 3]]) {
+    for (let y = cy; y < Math.min(16, cy + h); y++) { t.set(Math.round(cx), y, t.vary([200, 220, 196], 0.08)); }
+    for (let y = cy - r; y <= cy; y++) for (let x = cx - r - 1; x <= cx + r + 1; x++) {
+      const d = Math.hypot((x - cx) / (r + 1), (y - cy) / r);
+      if (d < 1 && y <= cy) t.set(Math.round(x), Math.round(y), d > 0.7 ? [40, 150, 170] : t.r() < 0.25 ? [200, 255, 250] : t.vary([90, 220, 220], 0.1));
+    }
+  }
+};
+P[T.GEODE_SHELL] = (t) => { t.fill([214, 210, 200], 0.08); t.speckle([186, 182, 172], 0.2, 0.05); t.speckle([240, 238, 232], 0.08, 0.03); };
+P[T.CRYSTAL] = (t) => {
+  for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+    const facet = ((x * 3 + y * 5) >> 3) % 3;
+    t.set(x, y, t.vary([[150, 96, 214], [178, 128, 236], [122, 74, 186]][facet], 0.08));
+  }
+  for (let i = 0; i < 6; i++) { const x = (t.r() * 15) | 0, y = (t.r() * 15) | 0; t.set(x, y, [236, 210, 255]); t.set(x + 1, y + 1, [210, 170, 250]); }
+};
+P[T.CRYSTAL_CLUSTER] = (t) => {
+  for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) t.set(x, y, [0, 0, 0], 0);
+  for (const [cx, top, w] of [[7.5, 2, 1.6], [4, 7, 1.2], [11.5, 6, 1.3], [9.5, 9, 1]]) {
+    for (let y = top; y < 16; y++) for (let x = Math.floor(cx - w); x <= Math.ceil(cx + w); x++) {
+      const k = Math.min(1, (y - top + 1) / 3);
+      if (Math.abs(x - cx) <= w * k) t.set(x, y, x < cx ? [214, 176, 252] : t.vary([156, 100, 222], 0.08));
+    }
+  }
+};
+const hiveRings = (t) => {
+  for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) t.set(x, y, t.vary(y % 4 === 3 ? [176, 130, 52] : [222, 178, 82], 0.06));
+};
+P[T.HIVE_SIDE] = hiveRings;
+P[T.HIVE_TOP] = (t) => { t.fill([200, 156, 70], 0.06); for (let i = 0; i < 16; i++) { t.set(i, 0, [150, 110, 44]); t.set(i, 15, [150, 110, 44]); t.set(0, i, [150, 110, 44]); t.set(15, i, [150, 110, 44]); } };
+const hiveFront = (full) => (t) => {
+  hiveRings(t);
+  for (let y = 7; y < 11; y++) for (let x = 5; x < 11; x++) t.set(x, y, [44, 30, 14]); // the way in
+  if (full) for (const [x, y0, n] of [[3, 0, 6], [6, 3, 4], [12, 1, 7], [9, 11, 4], [2, 9, 5]]) for (let y = y0; y < y0 + n; y++) t.set(x, y, y === y0 + n - 1 ? [255, 200, 60] : [240, 170, 30]);
+};
+P[T.HIVE_FRONT] = hiveFront(false);
+P[T.HIVE_FULL] = hiveFront(true);
+P[T.BELL] = (t) => { for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) t.set(x, y, t.vary(shade([236, 196, 76], 0.8 + 0.25 * Math.sin(x * 0.5)), 0.05)); };
+
+// ----- enchanting and lairs -----
+P[T.ALTAR_SIDE] = (t) => {
+  P[T.OBSIDIAN](t);
+  for (let x = 0; x < TILE; x++) { t.set(x, 0, [196, 160, 64]); t.set(x, 1, [150, 116, 40]); }
+  for (const [x, y] of [[3, 6], [4, 7], [3, 8], [8, 5], [8, 9], [7, 7], [9, 7], [12, 6], [13, 7], [12, 8]]) t.set(x, y, [190, 140, 255]);
+};
+P[T.ALTAR_TOP] = (t) => {
+  P[T.OBSIDIAN](t);
+  for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+    const d = Math.hypot(x - 7.5, y - 7.5);
+    if (Math.abs(d - 6) < 0.6) t.set(x, y, [196, 160, 64]);
+    else if (Math.abs(d - 3.5) < 0.5) t.set(x, y, [170, 120, 240]);
+  }
+};
+const brickTile = (brick, mortar) => (t) => bricks(t, brick, mortar);
+P[T.CUT_SANDSTONE] = (t) => {
+  t.fill([214, 196, 140], 0.05);
+  for (let i = 0; i < 16; i++) { t.set(i, 0, [188, 168, 112]); t.set(i, 15, [176, 156, 100]); t.set(0, i, [196, 176, 120]); t.set(15, i, [176, 156, 100]); }
+  for (let x = 3; x < 13; x++) { t.set(x, 4, [190, 170, 116]); t.set(x, 11, [190, 170, 116]); }
+};
+P[T.TRAP_PLATE] = (t) => { P[T.CUT_SANDSTONE](t); t.set(5, 7, [176, 156, 100]); t.set(6, 8, [176, 156, 100]); t.set(10, 9, [180, 160, 104]); };
+P[T.DART_FRONT] = (t) => {
+  P[T.CUT_SANDSTONE](t);
+  for (const [x, y] of [[4, 6], [11, 6], [4, 10], [11, 10], [7, 8]]) { t.set(x, y, [40, 30, 20]); t.set(x + 1, y, [40, 30, 20]); t.set(x, y + 1, [60, 46, 30]); t.set(x + 1, y + 1, [60, 46, 30]); }
+};
+P[T.FROST_BRICKS] = brickTile([170, 210, 236], [120, 160, 196]);
+P[T.FORT_BRICKS] = brickTile([92, 34, 34], [44, 18, 22]);
+const lairShrine = (base, rune) => (t) => {
+  P[base](t);
+  for (let y = 4; y < 12; y++) for (let x = 5; x < 11; x++) if (x === 5 || x === 10 || y === 4 || y === 11) t.set(x, y, shade(rune, 0.45));
+  for (const [x, y] of [[7, 6], [8, 6], [7, 9], [8, 9], [6, 7], [9, 8], [7, 7], [8, 8]]) t.set(x, y, rune);
+};
+P[T.TOMB_SHRINE] = lairShrine(T.CUT_SANDSTONE, [255, 200, 60]);
+P[T.CRYPT_SHRINE] = lairShrine(T.FROST_BRICKS, [200, 250, 255]);
+P[T.FORT_SHRINE] = lairShrine(T.FORT_BRICKS, [255, 120, 40]);
+P[T.SHRINE_GLYPH] = (t) => {
+  t.fill([70, 66, 72], 0.08);
+  for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+    const d = Math.hypot(x - 7.5, y - 7.5);
+    if (d < 5 && (Math.abs(x - 7.5) < 1 || Math.abs(y - 7.5) < 1 || Math.abs(d - 4) < 0.6)) t.set(x, y, [250, 236, 200]);
+  }
+};
+
+// automation: an observer's stone face with a slit eye (red while it signals); a gauge's dial;
+// a harvester's blades; a steam engine's riveted boiler with its firebox door
+P[T.OBSERVER_SIDE] = (t) => {
+  for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) t.set(x, y, t.vary([112, 112, 116], 0.06));
+  frame(t, [78, 78, 84], 1);
+  for (let x = 3; x < 13; x++) t.set(x, 7, [90, 90, 96]);
+};
+const observerFace = (on) => (t) => {
+  P[T.OBSERVER_SIDE](t);
+  for (let y = 5; y < 11; y++) for (let x = 2; x < 14; x++) t.set(x, y, [40, 40, 46]);
+  for (let x = 4; x < 12; x++) t.set(x, 7, on ? [255, 70, 50] : [150, 150, 160]), t.set(x, 8, on ? [200, 40, 30] : [110, 110, 120]);
+};
+P[T.OBSERVER_FACE] = observerFace(false);
+P[T.OBSERVER_FACE_ON] = observerFace(true);
+const gaugeFace = (on) => (t) => {
+  P[T.OBSERVER_SIDE](t);
+  for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+    const d = Math.hypot(x - 7.5, y - 8.5);
+    if (d < 5.5) t.set(x, y, d > 4.6 ? [184, 116, 64] : [232, 226, 206]);
+  }
+  // the needle: down to the left when empty, swung up to the right when it signals
+  for (let i = 0; i < 4; i++) t.set(Math.round(7.5 + (on ? 1 : -1) * i * 0.8), Math.round(8.5 - i * (on ? 0.9 : -0.3)), on ? [220, 40, 30] : [40, 40, 50]);
+  t.set(7, 8, [40, 40, 50]);
+};
+P[T.GAUGE_FACE] = gaugeFace(false);
+P[T.GAUGE_FACE_ON] = gaugeFace(true);
+P[T.HARVESTER_FRONT] = (t) => {
+  P[T.DRILL_SIDE](t);
+  for (let y = 2; y < 14; y += 4) for (let x = 1; x < 15; x++) {
+    t.set(x, y, [210, 214, 222]); t.set(x, y + 1, x % 3 ? [150, 154, 164] : [96, 100, 110]);
+  }
+};
+P[T.ENGINE_SIDE] = (t) => {
+  for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) t.set(x, y, t.vary(shade([176, 104, 60], 0.85 + 0.15 * Math.sin(y * 0.9)), 0.04));
+  for (const y of [1, 14]) for (let x = 1; x < 15; x += 3) t.set(x, y, [230, 190, 120]);
+  for (const x of [0, 15]) for (let y = 0; y < TILE; y++) t.set(x, y, [70, 70, 76]);
+};
+P[T.ENGINE_TOP] = (t) => {
+  P[T.ENGINE_SIDE](t);
+  for (let y = 5; y < 11; y++) for (let x = 5; x < 11; x++) t.set(x, y, Math.hypot(x - 7.5, y - 7.5) < 2 ? [30, 30, 34] : [90, 92, 100]); // the chimney
+};
+const engineFront = (on) => (t) => {
+  P[T.ENGINE_SIDE](t);
+  for (let y = 6; y < 13; y++) for (let x = 3; x < 13; x++) {
+    const edge = y === 6 || y === 12 || x === 3 || x === 12;
+    t.set(x, y, edge ? [50, 50, 56] : on ? ((x + y) % 3 ? [255, 150, 40] : [255, 220, 90]) : [34, 30, 30]);
+  }
+  for (const [x, y] of [[5, 3], [10, 3]]) t.set(x, y, [210, 210, 220]); // gauges
+};
+P[T.ENGINE_FRONT] = engineFront(false);
+P[T.ENGINE_FRONT_ON] = engineFront(true);
+
+// pillars: fluted columns, with a rim on top
+const pillarSide = (c) => (t) => {
+  for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+    const groove = x % 4 === 1, rim = y < 1 || y > 14;
+    t.set(x, y, t.vary(shade(c, rim ? 0.82 : groove ? 0.78 : 1 - Math.abs(x % 4 - 2.5) * 0.04), 0.03));
+  }
+};
+const pillarTop = (c) => (t) => {
+  for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+    const d = Math.max(Math.abs(x - 7.5), Math.abs(y - 7.5));
+    t.set(x, y, t.vary(shade(c, d > 6 ? 0.8 : d > 4.5 ? 0.92 : 1), 0.03));
+  }
+};
+P[T.PILLAR_SIDE] = pillarSide([196, 194, 190]);
+P[T.PILLAR_TOP] = pillarTop([196, 194, 190]);
+P[T.SAND_PILLAR_SIDE] = pillarSide([226, 208, 152]);
+P[T.SAND_PILLAR_TOP] = pillarTop([226, 208, 152]);
+P[T.CANDLE] = (t) => { for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) t.set(x, y, t.vary([240, 232, 206], 0.03)); };
 
 // A plank door: a frame with a centre board; the upper half has a four-pane window you can see through,
 // the lower half has the handle.
@@ -1426,6 +1595,91 @@ ITEM_PAINTERS[KING_CROWN] = (ctx) => {
   for (const x of [4, 10]) rect(ctx, x, 6, 2, 2, [246, 206, 64]);
   px(ctx, 7, 10, [210, 40, 40]); px(ctx, 8, 10, [210, 40, 40]); px(ctx, 4, 10, [70, 140, 220]); px(ctx, 11, 10, [70, 140, 220]);
 };
+ITEM_PAINTERS[CRYSTAL_SHARD] = (ctx) => {
+  for (let y = 2; y < 15; y++) for (let x = 4; x < 12; x++) {
+    const w = y < 6 ? (y - 2) * 0.9 : (15 - y) * 0.45 + 0.6;
+    if (Math.abs(x - 7.5) > w) continue;
+    px(ctx, x, y, x < 7.5 ? [216, 180, 252] : y > 10 ? [120, 70, 182] : [160, 106, 226]);
+  }
+};
+ITEM_PAINTERS[HONEYCOMB] = (ctx) => {
+  for (let y = 3; y < 14; y++) for (let x = 2; x < 14; x++) {
+    const cell = ((x + (Math.floor(y / 3) % 2) * 2) % 4 === 0) || y % 3 === 0;
+    px(ctx, x, y, cell ? [190, 130, 30] : [246, 196, 64]);
+  }
+};
+ITEM_PAINTERS[HONEY_BOTTLE] = bottlePainter([236, 166, 30]);
+ITEM_PAINTERS[SALMON] = fishPainter([[196, 92, 80], [236, 150, 120], [150, 60, 56]]);
+ITEM_PAINTERS[BAKED_SALMON] = fishPainter([[200, 112, 60], [230, 160, 110], [150, 80, 40]], true);
+ITEM_PAINTERS[ICEFISH] = fishPainter([[170, 206, 226], [226, 240, 248], [110, 160, 196]]);
+ITEM_PAINTERS[BAKED_ICEFISH] = fishPainter([[190, 150, 100], [226, 200, 160], [150, 110, 70]], true);
+ITEM_PAINTERS[PUFFERFISH] = (ctx) => {
+  for (let y = 3; y < 14; y++) for (let x = 3; x < 13; x++) {
+    const d = Math.hypot(x - 8, y - 8.5);
+    if (d < 5) px(ctx, x, y, y > 9 ? [240, 232, 180] : [222, 196, 70]);
+  }
+  for (const [x, y] of [[2, 8], [8, 2], [13, 8], [8, 14], [4, 4], [12, 4], [4, 13], [12, 13]]) px(ctx, x, y, [150, 120, 40]);
+  px(ctx, 6, 7, [20, 20, 20]); px(ctx, 10, 7, [20, 20, 20]);
+};
+ITEM_PAINTERS[OLD_BOOT] = (ctx) => {
+  rect(ctx, 4, 2, 6, 9, [100, 70, 44]); rect(ctx, 4, 10, 10, 4, [100, 70, 44]); rect(ctx, 4, 14, 11, 1, [50, 36, 24]);
+  rect(ctx, 5, 3, 1, 6, [76, 52, 30]); px(ctx, 9, 6, [140, 104, 70]); px(ctx, 12, 11, [70, 120, 60]); px(ctx, 13, 11, [70, 120, 60]);
+};
+ITEM_PAINTERS[SUN_SCARAB] = (ctx) => {
+  for (let y = 3; y < 14; y++) for (let x = 3; x < 13; x++) {
+    const d = Math.hypot((x - 7.5) / 4.5, (y - 8.5) / 5);
+    if (d < 1) px(ctx, x, y, x === 7 || x === 8 ? [150, 100, 20] : d > 0.75 ? [200, 140, 30] : [250, 200, 60]);
+  }
+  rect(ctx, 6, 1, 4, 2, [220, 160, 40]);
+  for (const [x, y] of [[2, 6], [13, 6], [2, 10], [13, 10], [2, 13], [13, 13]]) px(ctx, x, y, [120, 80, 20]);
+};
+ITEM_PAINTERS[FROST_HEART] = (ctx) => {
+  for (let y = 2; y < 15; y++) for (let x = 1; x < 15; x++) {
+    const a = Math.hypot(x - 5, y - 5.5) < 3.6, b = Math.hypot(x - 10, y - 5.5) < 3.6, c = y >= 5 && Math.abs(x - 7.5) < (14 - y) * 0.75;
+    if (a || b || c) px(ctx, x, y, (x + y) % 4 === 0 ? [240, 252, 255] : x < 7 ? [176, 228, 250] : [110, 180, 226]);
+  }
+};
+ITEM_PAINTERS[EMBER_CORE] = (ctx) => {
+  for (let y = 2; y < 14; y++) for (let x = 2; x < 14; x++) {
+    const d = Math.hypot(x - 7.5, y - 7.5);
+    if (d < 5.6) px(ctx, x, y, d < 2.2 ? [255, 246, 180] : d < 3.8 ? [255, 170, 40] : (x * 3 + y) % 5 ? [180, 50, 20] : [90, 20, 10]);
+  }
+};
+function crownIcon(band, gem, spikes = true) {
+  return (ctx) => {
+    rect(ctx, 2, 8, 12, 5, band); rect(ctx, 2, 12, 12, 1, shade(band, 0.7));
+    if (spikes) for (const x of [2, 7, 12]) { rect(ctx, x, 4, 2, 4, band); px(ctx, x, 3, shade(band, 1.2)); }
+    rect(ctx, 7, 9, 2, 2, gem); px(ctx, 4, 10, gem); px(ctx, 11, 10, gem);
+  };
+}
+ITEM_PAINTERS[SUN_MASK] = (ctx) => {
+  for (let y = 2; y < 15; y++) for (let x = 2; x < 14; x++) {
+    const w = y < 10 ? 6 : 6 - (y - 10) * 0.8;
+    if (Math.abs(x - 7.5) <= w) px(ctx, x, y, y % 3 === 0 ? [40, 70, 160] : [236, 190, 50]);
+  }
+  rect(ctx, 4, 6, 3, 2, [30, 20, 10]); rect(ctx, 9, 6, 3, 2, [30, 20, 10]);
+};
+ITEM_PAINTERS[FROST_CIRCLET] = crownIcon([206, 230, 246], [120, 200, 255], false);
+ITEM_PAINTERS[EMBER_CROWN] = crownIcon([60, 40, 40], [255, 120, 30]);
+ITEM_PAINTERS[HONEY_TEA] = bottlePainter([214, 140, 40]);
+ITEM_PAINTERS[MUSHROOM_STEW] = (ctx) => {
+  rect(ctx, 2, 8, 12, 5, [150, 104, 60]); rect(ctx, 3, 13, 10, 1, [110, 74, 40]); rect(ctx, 2, 7, 12, 1, [120, 84, 48]);
+  rect(ctx, 3, 8, 10, 2, [190, 150, 100]);
+  for (const [x, y] of [[4, 6], [8, 5], [11, 6]]) { rect(ctx, x, y, 3, 2, [80, 210, 210]); px(ctx, x + 1, y + 2, [220, 230, 220]); }
+};
+ITEM_PAINTERS[FISH_PIE] = (ctx) => {
+  for (let y = 5; y < 14; y++) for (let x = 1; x < 15; x++) {
+    const d = Math.hypot((x - 7.5) / 6.6, (y - 9) / 4);
+    if (d < 1) px(ctx, x, y, d > 0.8 ? [180, 120, 50] : (x + y) % 3 ? [226, 176, 96] : [206, 150, 70]);
+  }
+  rect(ctx, 5, 8, 6, 1, [150, 96, 40]); px(ctx, 11, 7, [150, 96, 40]); px(ctx, 11, 9, [150, 96, 40]);
+};
+ITEM_PAINTERS[COPY_WAND] = (ctx) => {
+  for (let i = 0; i < 10; i++) { px(ctx, 3 + i, 12 - i, [120, 80, 160]); px(ctx, 4 + i, 12 - i, [90, 56, 130]); }
+  rect(ctx, 11, 1, 4, 4, [250, 230, 120]); px(ctx, 13, 0, [255, 255, 220]); px(ctx, 15, 3, [255, 255, 220]); px(ctx, 10, 2, [255, 255, 220]);
+  rect(ctx, 12, 2, 2, 2, [255, 255, 255]);
+  rect(ctx, 1, 13, 3, 2, [200, 170, 90]);
+};
 ITEM_PAINTERS[CLUTCH] = (ctx) => {
   rect(ctx, 0, 7, 16, 3, [150, 150, 150]); rect(ctx, 0, 7, 16, 1, [180, 180, 180]);
   rect(ctx, 5, 3, 6, 11, IRON_C); rect(ctx, 7, 2, 2, 13, [104, 110, 134]); rect(ctx, 5, 3, 6, 1, [160, 164, 172]);
@@ -1433,6 +1687,25 @@ ITEM_PAINTERS[CLUTCH] = (ctx) => {
 ITEM_PAINTERS[STORAGE_CART] = (ctx) => {
   ITEM_PAINTERS[MINECART](ctx);
   rect(ctx, 3, 1, 10, 6, [122, 82, 48]); rect(ctx, 3, 1, 10, 1, [92, 60, 34]); rect(ctx, 7, 3, 2, 2, [160, 164, 172]);
+};
+COLORS.forEach((c, i) => {
+  const rgb = i === 1 ? [70, 70, 80] : c.rgb;
+  ITEM_PAINTERS[PAINTED_DOOR + i * 16] = (ctx) => {
+    rect(ctx, 4, 0, 8, 16, shade(rgb, 0.7));
+    rect(ctx, 5, 1, 6, 14, rgb);
+    rect(ctx, 6, 2, 4, 4, [170, 210, 230]); rect(ctx, 7, 2, 1, 4, shade(rgb, 0.7));
+    px(ctx, 10, 9, [60, 60, 64]);
+  };
+});
+ITEM_PAINTERS[PAINTING] = (ctx) => {
+  rect(ctx, 1, 2, 14, 12, [120, 84, 48]);
+  rect(ctx, 2, 3, 12, 10, [120, 180, 230]);
+  rect(ctx, 2, 9, 12, 4, [90, 150, 70]); rect(ctx, 5, 7, 4, 3, [70, 130, 60]);
+  rect(ctx, 10, 4, 2, 2, [255, 220, 90]);
+};
+ITEM_PAINTERS[SWITCH_RAIL] = (ctx) => {
+  railIcon([150, 154, 162])(ctx);
+  rect(ctx, 11, 6, 5, 2, [150, 154, 162]); rect(ctx, 12, 9, 4, 2, [150, 154, 162]); rect(ctx, 6, 6, 3, 3, [210, 40, 30]);
 };
 ITEM_PAINTERS[LOADER_RAIL] = (ctx) => { railIcon([150, 154, 162])(ctx); rect(ctx, 5, 5, 6, 6, IRON_C); rect(ctx, 6, 6, 4, 4, [70, 72, 80]); };
 
@@ -1500,4 +1773,41 @@ export function createIcons(atlas) {
     icons[id] = c.toDataURL();
   }
   return icons;
+}
+
+// ----- seasons -----
+// Repaint the leaves and grass tiles of the atlas for a season (0 spring, 1 summer, 2 autumn, 3 winter).
+const AUTUMN = [[206, 96, 36], [226, 150, 40], [170, 60, 34], [196, 170, 60]];
+export function paintSeason(canvas, season) {
+  const ctx = canvas.getContext('2d');
+  const put = (tile, recolour) => {
+    const t = new Tile(mulberry32(1000 + tile * 7919));
+    P[tile](t);
+    for (let i = 0; i < t.d.length; i += 4) {
+      if (!t.d[i + 3]) continue;
+      const c = recolour([t.d[i], t.d[i + 1], t.d[i + 2]], i / 4);
+      if (!c) { t.d[i + 3] = 0; continue; }
+      t.d[i] = clamp(c[0]); t.d[i + 1] = clamp(c[1]); t.d[i + 2] = clamp(c[2]);
+    }
+    ctx.putImageData(new ImageData(t.d, TILE, TILE), (tile % ATLAS_COLS) * TILE, Math.floor(tile / ATLAS_COLS) * TILE);
+  };
+  const greenish = (c) => c[1] > c[0] + 12 && c[1] > c[2];
+  const hash = (i) => ((i * 2654435761) >>> 0) / 4294967296;
+  const mix = (a, b, k) => [a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k, a[2] + (b[2] - a[2]) * k];
+  put(T.LEAVES, (c, i) => {
+    const lum = (c[0] + c[1] + c[2]) / 3 / 80;
+    if (season === 0) return mix(c, [120, 190, 70], 0.35);
+    if (season === 2) return shade(AUTUMN[Math.floor(hash(i) * 4)], 0.7 + lum * 0.4);
+    if (season === 3) return hash(i) < 0.35 ? null : mix(c, [110, 96, 70], 0.6);
+    return c;
+  });
+  const grass = (c, i) => {
+    if (!greenish(c)) return c;
+    if (season === 0) return mix(c, [120, 190, 70], 0.25);
+    if (season === 2) return mix(c, [176, 160, 70], 0.45);
+    if (season === 3) return mix(c, [226, 232, 236], 0.55 + hash(i) * 0.25);
+    return c;
+  };
+  put(T.GRASS_TOP, grass);
+  put(T.GRASS_SIDE, grass);
 }
