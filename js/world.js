@@ -1,12 +1,14 @@
 // Voxel world: storage, terrain generation, chunk meshing, raycasting.
 import * as THREE from 'three';
-import { BLOCKS, AIR, GRASS, DIRT, STONE, LOG, LEAVES, SAND, COAL_ORE, BEDROCK } from './blocks.js';
+import { BLOCKS, AIR, GRASS, DIRT, STONE, LOG, LEAVES, SAND, COAL_ORE, BEDROCK, WATER } from './blocks.js';
 import { TILE, ATLAS_COLS } from './textures.js';
 
 export const CHUNK = 16;
 export const WORLD_CHUNKS = 8; // world is WORLD_CHUNKS x WORLD_CHUNKS chunks
 export const W = CHUNK * WORLD_CHUNKS; // 128 blocks wide
 export const H = 64; // blocks tall
+export const SEA_LEVEL = 24; // water fills every open cell at or below this height
+const WATER_TOP = 0.875; // surface sits a little below the block top
 
 // ---------- noise ----------
 function mulberry32(a) {
@@ -82,6 +84,8 @@ export class World {
     this.mods = new Map(); // index -> id, player edits (for saving)
     this.chunkMeshes = new Map();
     this.dirty = new Set();
+    this.flow = []; // cells to re-check for water spreading into them
+    this.flowTimer = 0;
   }
 
   idx(x, y, z) { return x + z * W + y * W * W; }
@@ -97,8 +101,11 @@ export class World {
   isSolid(x, y, z) {
     if (y < 0 || x < 0 || z < 0 || x >= W || z >= W) return true;
     if (y >= H) return false;
-    return this.data[x + z * W + y * W * W] !== AIR;
+    const id = this.data[x + z * W + y * W * W];
+    return id !== AIR && id !== WATER;
   }
+
+  isWater(x, y, z) { return this.get(x, y, z) === WATER; }
 
   // Player edit: records the change and marks chunks for remeshing.
   setBlock(x, y, z, id) {
@@ -113,6 +120,31 @@ export class World {
     if (lx === CHUNK - 1) this.markDirty(cx + 1, cz);
     if (lz === 0) this.markDirty(cx, cz - 1);
     if (lz === CHUNK - 1) this.markDirty(cx, cz + 1);
+    if (id === AIR) this.flow.push([x, y, z]);
+  }
+
+  // Water spreads into open cells at or below sea level that touch water from the side or above.
+  // Bounded by SEA_LEVEL, so it can flood holes and caves you dig by the sea, but never runs away.
+  tickWater(dt) {
+    if (!this.flow.length) return;
+    this.flowTimer += dt;
+    if (this.flowTimer < 0.25) return;
+    this.flowTimer = 0;
+    const batch = this.flow;
+    this.flow = [];
+    const seen = new Set();
+    for (const [x, y, z] of batch) {
+      const k = this.idx(x, y, z);
+      if (seen.has(k) || y > SEA_LEVEL || this.get(x, y, z) !== AIR) continue;
+      seen.add(k);
+      const wet = this.isWater(x + 1, y, z) || this.isWater(x - 1, y, z) || this.isWater(x, y, z + 1) ||
+        this.isWater(x, y, z - 1) || this.isWater(x, y + 1, z);
+      if (!wet) continue;
+      this.setBlock(x, y, z, WATER);
+      for (const [dx, dy, dz] of [[1, 0, 0], [-1, 0, 0], [0, 0, 1], [0, 0, -1], [0, -1, 0]]) {
+        if (this.get(x + dx, y + dy, z + dz) === AIR) this.flow.push([x + dx, y + dy, z + dz]);
+      }
+    }
   }
 
   markDirty(cx, cz) {
@@ -135,13 +167,15 @@ export class World {
     const n1 = makePerlin(rand), n2 = makePerlin(rand), n3 = makePerlin(rand);
     const heights = new Int16Array(W * W);
     for (let z = 0; z < W; z++) for (let x = 0; x < W; x++) {
-      const base = n1(x / 64, z / 64, 4) * 12;
-      const detail = n2(x / 18, z / 18, 2) * 2.5;
-      const mountain = Math.max(0, n3(x / 80, z / 80, 3)) * 30;
-      let h = Math.round(28 + base + detail + mountain);
+      // "continent" noise decides land vs. lakes/sea; hills and mountains only rise on land
+      const cont = n1(x / 70, z / 70, 4);
+      const land = cont * 34;
+      const detail = n2(x / 18, z / 18, 2) * 3;
+      const mountain = Math.max(0, n3(x / 80, z / 80, 3)) * 30 * Math.min(1, Math.max(0, cont * 5));
+      let h = Math.round(SEA_LEVEL + 4 + land + detail + mountain);
       h = Math.max(6, Math.min(H - 14, h));
       heights[x + z * W] = h;
-      const sandy = h <= 25;
+      const sandy = h <= SEA_LEVEL + 1;
       for (let y = 0; y <= h; y++) {
         let id;
         if (y === 0) id = BEDROCK;
@@ -150,6 +184,7 @@ export class World {
         else id = y === h ? GRASS : DIRT;
         this.data[this.idx(x, y, z)] = id;
       }
+      for (let y = h + 1; y <= SEA_LEVEL; y++) this.data[this.idx(x, y, z)] = WATER;
     }
     // trees
     for (let z = 3; z < W - 3; z++) for (let x = 3; x < W - 3; x++) {
@@ -176,6 +211,8 @@ export class World {
   // ---------- meshing ----------
   buildChunkGeometry(cx, cz) {
     const pos = [], uv = [], col = [], index = [];
+    const wpos = [], wuv = [], wcol = [], windex = [];
+    let wcount = 0;
     const data = this.data;
     const tileUV = 1 / ATLAS_COLS;
     const eps = 0.5 / (TILE * ATLAS_COLS); // half-texel inset to avoid atlas bleeding
@@ -190,6 +227,25 @@ export class World {
       const id = data[x + z * W + y * W * W];
       if (id === AIR) continue;
       const def = BLOCKS[id];
+      if (id === WATER) {
+        const surface = this.get(x, y + 1, z) !== WATER;
+        for (const f of FACES) {
+          const nid = f.n[1] < 0 && y === 0 ? STONE : this.get(x + f.n[0], y + f.n[1], z + f.n[2]);
+          if (nid === WATER || (nid !== AIR && !BLOCKS[nid].transparent)) continue;
+          for (const c of f.corners) {
+            const top = c.o[1] === 1 && surface ? WATER_TOP : c.o[1];
+            const px = x + c.o[0], py = y + top, pz = z + c.o[2];
+            wpos.push(px, py, pz);
+            // world-space UVs so the texture tiles seamlessly and can scroll
+            if (f.d === 1) wuv.push(px, pz); else if (f.d === 0) wuv.push(pz, py); else wuv.push(px, py);
+            const b = toLinear(f.shade);
+            wcol.push(b, b, b);
+          }
+          windex.push(wcount, wcount + 1, wcount + 2, wcount, wcount + 2, wcount + 3);
+          wcount += 4;
+        }
+        continue;
+      }
       for (const f of FACES) {
         const nx = x + f.n[0], ny = y + f.n[1], nz = z + f.n[2];
         if (ny < 0) continue;
@@ -227,17 +283,21 @@ export class World {
         vcount += 4;
       }
     }
-    const g = new THREE.BufferGeometry();
-    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-    g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
-    g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
-    g.setIndex(index);
-    g.computeBoundingSphere();
-    return g;
+    const geo = (p, u, c, i) => {
+      const g = new THREE.BufferGeometry();
+      g.setAttribute('position', new THREE.Float32BufferAttribute(p, 3));
+      g.setAttribute('uv', new THREE.Float32BufferAttribute(u, 2));
+      g.setAttribute('color', new THREE.Float32BufferAttribute(c, 3));
+      g.setIndex(i);
+      g.computeBoundingSphere();
+      return g;
+    };
+    return { solid: geo(pos, uv, col, index), water: wcount ? geo(wpos, wuv, wcol, windex) : null };
   }
 
   // Rebuild up to `max` dirty chunks, nearest to (px, pz) first.
-  remeshDirty(scene, material, px, pz, max = Infinity) {
+  // materials: { solid, water }
+  remeshDirty(scene, materials, px, pz, max = Infinity) {
     if (!this.dirty.size) return 0;
     const list = [...this.dirty].map((k) => {
       const [cx, cz] = k.split(',').map(Number);
@@ -249,14 +309,21 @@ export class World {
       if (n >= max) break;
       this.dirty.delete(c.k);
       const geo = this.buildChunkGeometry(c.cx, c.cz);
-      let mesh = this.chunkMeshes.get(c.k);
-      if (mesh) {
-        mesh.geometry.dispose();
-        mesh.geometry = geo;
-      } else {
-        mesh = new THREE.Mesh(geo, material);
-        this.chunkMeshes.set(c.k, mesh);
-        scene.add(mesh);
+      let entry = this.chunkMeshes.get(c.k);
+      if (!entry) { entry = { solid: null, water: null }; this.chunkMeshes.set(c.k, entry); }
+      for (const kind of ['solid', 'water']) {
+        const g = geo[kind];
+        let mesh = entry[kind];
+        if (mesh) {
+          mesh.geometry.dispose();
+          if (g) mesh.geometry = g;
+          else { scene.remove(mesh); entry[kind] = null; }
+        } else if (g) {
+          mesh = new THREE.Mesh(g, materials[kind]);
+          if (kind === 'water') mesh.renderOrder = 1;
+          entry[kind] = mesh;
+          scene.add(mesh);
+        }
       }
       n++;
     }
@@ -264,11 +331,13 @@ export class World {
   }
 
   dispose(scene) {
-    for (const m of this.chunkMeshes.values()) { scene.remove(m); m.geometry.dispose(); }
+    for (const e of this.chunkMeshes.values()) {
+      for (const m of [e.solid, e.water]) if (m) { scene.remove(m); m.geometry.dispose(); }
+    }
     this.chunkMeshes.clear();
   }
 
-  // Voxel DDA raycast. Returns { x, y, z, id, nx, ny, nz } for the first non-air block hit.
+  // Voxel DDA raycast. Returns { x, y, z, id, nx, ny, nz } for the first solid block hit (water is ignored).
   raycast(origin, dir, maxDist) {
     let x = Math.floor(origin.x), y = Math.floor(origin.y), z = Math.floor(origin.z);
     const sx = Math.sign(dir.x), sy = Math.sign(dir.y), sz = Math.sign(dir.z);
@@ -281,7 +350,7 @@ export class World {
     let nx = 0, ny = 0, nz = 0, t = 0;
     while (t <= maxDist) {
       const id = this.get(x, y, z);
-      if (id !== AIR) return { x, y, z, id, nx, ny, nz };
+      if (id !== AIR && id !== WATER) return { x, y, z, id, nx, ny, nz };
       if (tmx < tmy && tmx < tmz) { x += sx; t = tmx; tmx += tdx; nx = -sx; ny = 0; nz = 0; }
       else if (tmy < tmz) { y += sy; t = tmy; tmy += tdy; nx = 0; ny = -sy; nz = 0; }
       else { z += sz; t = tmz; tmz += tdz; nx = 0; ny = 0; nz = -sz; }

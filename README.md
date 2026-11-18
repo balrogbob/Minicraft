@@ -3,7 +3,10 @@
 A small block-building game for the browser, built with [three.js](https://threejs.org/).
 It is designed for Android tablets (touch controls) but also plays with keyboard and mouse.
 
-- Procedurally generated 128×128×64 world with hills, sand flats, trees and coal ore
+- Procedurally generated 128×128×64 world with hills, lakes and seas, beaches, trees and coal ore
+- Water you can swim in. It flows into holes you dig next to it, as long as they're at or below sea level
+- Day/night cycle (12 minutes) with sunrise and sunset skies, sun, moon and stars
+- Synthesised sound effects for digging, breaking, placing, footsteps and splashing, with no audio files
 - Break and place blocks, with break times that depend on the tool you hold
 - Recipe-based crafting: some recipes need a crafting table nearby
 - Pixel-art textures are all generated in code at startup, with no image files
@@ -32,11 +35,11 @@ On Android Chrome, use **⋮ → Add to Home screen** to get a fullscreen, lands
 | Look | Drag on the right side | Mouse (click to capture) |
 | Break | Hold your finger still on the right side | Hold left button |
 | Place / use crafting table | Tap on the right side | Right click |
-| Jump | ⤒ button (auto-jump also steps up 1-block ledges) | Space |
+| Jump / swim up | ⤒ button (auto-jump also steps up 1-block ledges) | Space |
 | Select item | Tap a hotbar slot | 1–9 / mouse wheel |
 | Inventory & crafting | 🎒 button | E |
 
-You aim with the crosshair in the middle of the screen.
+You aim with the crosshair in the middle of the screen. Volume, look speed and auto-jump are in the ☰ menu.
 
 ## How to progress
 
@@ -52,8 +55,10 @@ You aim with the crosshair in the middle of the screen.
 | --- | --- |
 | `js/blocks.js` | Block & item definitions, break times, drops, recipes |
 | `js/textures.js` | Procedural texture atlas, item icons, break cracks |
-| `js/world.js` | Terrain generation, chunk meshing (face culling + AO), raycasting |
-| `js/player.js` | Player physics and collision |
+| `js/world.js` | Terrain generation, chunk meshing (face culling + AO, separate water mesh), water flow, raycasting |
+| `js/player.js` | Player physics, collision and swimming |
+| `js/sky.js` | Day/night cycle: sky colour, fog, sun, moon, stars, world brightness |
+| `js/sound.js` | Web Audio sound effects |
 | `js/controls.js` | Touch joystick / look / tap / hold, plus desktop input |
 | `js/inventory.js` | 36-slot inventory |
 | `js/main.js` | Rendering, game loop, HUD, crafting UI, saving |
