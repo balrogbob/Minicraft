@@ -6,7 +6,8 @@
 // physics as the player (gravity, block collisions, stepping up one block) and float in water.
 // They aren't saved: they're spawned fresh around wherever you are.
 import * as THREE from 'three';
-import { AIR, WATER, LEAVES, LOG, GRASS, SAND, DIRT, WOOL, BUCKET, MILK_BUCKET, SLIME_BUCKET, FEATHER, COAL, COBBLE, ARROW, HIDE, SNOW_GRASS, SNOW, KING_CROWN, GOLD_INGOT, MOSSY_BRICKS, RAW_FISH, BAKED_FISH, WHEAT, SALMON, BAKED_SALMON, ICEFISH, BAKED_ICEFISH } from './blocks.js';
+import { AIR, WATER, LEAVES, LOG, GRASS, SAND, DIRT, WOOL, BUCKET, MILK_BUCKET, SLIME_BUCKET, FEATHER, COAL, COBBLE, ARROW, HIDE, SNOW_GRASS, SNOW, KING_CROWN, GOLD_INGOT, MOSSY_BRICKS, RAW_FISH, BAKED_FISH, WHEAT, SALMON, BAKED_SALMON, ICEFISH, BAKED_ICEFISH,
+  SUN_SCARAB, FROST_HEART, EMBER_CORE, SUN_MASK, FROST_CIRCLET, EMBER_CROWN, SILVER_INGOT, OBSIDIAN, STRING } from './blocks.js';
 import { SEA_LEVEL, H } from './terrain.js';
 import { skyBrightness, lightBrightness } from './world.js';
 import { THORN_SPEED, THORN_GRAVITY } from './arrows.js';
@@ -64,6 +65,30 @@ const VILLAGER_LOOKS = {
   fisher: { robe: 0x3a6a8a, apron: 0xc8b88a, legs: 0x2a3a4a, hat: 'cap' },
   cleric: { robe: 0x7a3a8a, apron: 0xd8c050, legs: 0x5a2a6a, hat: 'hood' },
 };
+
+// A hulking golem with a sunken head, huge fists and glowing eyes (mossbacks, and the Ember Lord).
+function golem(b, root, { stone, dark, moss, eye }) {
+  const parts = { legs: [], arms: [] };
+  const torso = parts.torso = b.pivot(root, [0, 1.0, 0]);
+  b.box(torso, [1.15, 0.95, 0.8], stone, [0, 0.45, 0]);
+  b.box(torso, [1.2, 0.22, 0.85], moss, [0, 0.98, -0.02]); // mossy shoulders
+  b.box(torso, [0.5, 0.2, 0.06], moss, [0.25, 0.62, 0.41]);
+  const head = parts.head = b.pivot(torso, [0, 0.95, 0.28]);
+  b.box(head, [0.48, 0.4, 0.42], dark, [0, 0.1, 0.1]);
+  b.box(head, [0.52, 0.1, 0.12], moss, [0, 0.3, 0.27]); // mossy brow
+  for (const s of [-1, 1]) {
+    b.box(head, [0.1, 0.06, 0.03], eye, [s * 0.12, 0.17, 0.32], true);
+    const arm = b.pivot(torso, [s * 0.74, 0.85, 0]);
+    b.box(arm, [0.36, 1.1, 0.4], stone, [0, -0.5, 0.05]);
+    b.box(arm, [0.38, 0.12, 0.42], moss, [0, 0.02, 0.05]);
+    b.box(arm, [0.44, 0.34, 0.46], dark, [0, -1.1, 0.08]); // fist
+    parts.arms.push(arm);
+    const leg = b.pivot(root, [s * 0.3, 1.0, 0]);
+    b.box(leg, [0.42, 1.0, 0.46], dark, [0, -0.5, 0]);
+    parts.legs.push(leg);
+  }
+  return parts;
+}
 
 // ---------- species ----------
 // Models face +z with their feet at y = 0. Sizes are in blocks.
@@ -241,30 +266,7 @@ const SPECIES = {
     avoidWater: true, hostile: true, hp: 30, damage: 7, reach: 1.9, attackEvery: 1.6, weight: 25, heavy: true,
     cause: 'A mossback flattened you.',
     drops: () => [[COBBLE, Math.random() < 0.5 ? 3 : 2]],
-    build(b, root) {
-      // a hulking golem of mossy stone with a sunken head, huge fists and amber eyes
-      const stone = 0x6f6f69, dark = 0x55554f, moss = 0x4c7a2e, eye = 0xffb02e;
-      const parts = { legs: [], arms: [] };
-      const torso = parts.torso = b.pivot(root, [0, 1.0, 0]);
-      b.box(torso, [1.15, 0.95, 0.8], stone, [0, 0.45, 0]);
-      b.box(torso, [1.2, 0.22, 0.85], moss, [0, 0.98, -0.02]); // mossy shoulders
-      b.box(torso, [0.5, 0.2, 0.06], moss, [0.25, 0.62, 0.41]);
-      const head = parts.head = b.pivot(torso, [0, 0.95, 0.28]);
-      b.box(head, [0.48, 0.4, 0.42], dark, [0, 0.1, 0.1]);
-      b.box(head, [0.52, 0.1, 0.12], moss, [0, 0.3, 0.27]); // mossy brow
-      for (const s of [-1, 1]) {
-        b.box(head, [0.1, 0.06, 0.03], eye, [s * 0.12, 0.17, 0.32], true);
-        const arm = b.pivot(torso, [s * 0.74, 0.85, 0]);
-        b.box(arm, [0.36, 1.1, 0.4], stone, [0, -0.5, 0.05]);
-        b.box(arm, [0.38, 0.12, 0.42], moss, [0, 0.02, 0.05]);
-        b.box(arm, [0.44, 0.34, 0.46], dark, [0, -1.1, 0.08]); // fist
-        parts.arms.push(arm);
-        const leg = b.pivot(root, [s * 0.3, 1.0, 0]);
-        b.box(leg, [0.42, 1.0, 0.46], dark, [0, -0.5, 0]);
-        parts.legs.push(leg);
-      }
-      return parts;
-    },
+    build(b, root) { return golem(b, root, { stone: 0x6f6f69, dark: 0x55554f, moss: 0x4c7a2e, eye: 0xffb02e }); },
   },
 
   thornspitter: {
@@ -310,6 +312,109 @@ const SPECIES = {
       b.box(crown, [0.56, 0.12, 0.5], 0xf0c838, [0, 0, 0]);
       for (const [x, z] of [[-0.22, 0.2], [0, 0.2], [0.22, 0.2], [-0.22, -0.2], [0.22, -0.2]]) b.box(crown, [0.1, 0.16, 0.08], 0xf8d850, [x, 0.13, z]);
       b.box(crown, [0.08, 0.08, 0.04], 0xd02828, [0, 0.03, 0.26], true);
+      return parts;
+    },
+  },
+
+  // cave spiders: quick, low and nasty; their bite poisons you. They only live underground.
+  spider: {
+    w: 0.9, h: 0.5, speed: 1.4, chaseSpeed: 4.2, fleeSpeed: 4.2, sink: 0.4, stride: 16, legSwing: 0.5,
+    avoidWater: true, hostile: true, caveOnly: true, hp: 8, damage: 2, reach: 1.3, attackEvery: 1, weight: 30, poisons: 6,
+    cause: 'A cave spider\'s bite was too much for you.',
+    drops: () => (Math.random() < 0.5 ? [[STRING, 1]] : []),
+    build(b, root) {
+      const body = 0x2a2420, dark = 0x16120e, eye = 0xff3030;
+      const parts = { legs: [] };
+      b.box(root, [0.5, 0.3, 0.55], body, [0, 0.3, -0.2]); // abdomen
+      const head = parts.head = b.pivot(root, [0, 0.28, 0.15]);
+      b.box(head, [0.34, 0.24, 0.3], dark, [0, 0, 0.1]);
+      for (const sx of [-1, 1]) for (const k of [0, 1]) b.box(head, [0.05, 0.05, 0.02], eye, [sx * (0.05 + k * 0.08), 0.06 - k * 0.04, 0.26], true);
+      for (const z of [0.2, 0.08, -0.04, -0.16]) for (const sx of [-1, 1]) {
+        const leg = b.pivot(root, [sx * 0.18, 0.3, z]);
+        b.box(leg, [0.5, 0.05, 0.05], dark, [sx * 0.25, -0.05, 0]);
+        b.box(leg, [0.05, 0.3, 0.05], dark, [sx * 0.48, -0.18, 0]);
+        parts.legs.push(leg);
+      }
+      return parts;
+    },
+  },
+
+  // the guardian of a desert tomb: a towering wrapped figure in a striped headdress that hurls sand
+  dunewarden: {
+    w: 1.0, h: 2.8, speed: 0.8, chaseSpeed: 2.2, fleeSpeed: 2.2, sink: 2, stride: 4, legSwing: 0.4,
+    avoidWater: true, hostile: true, boss: true, noBurn: true, hp: 120, damage: 5, ranged: { min: 3, max: 14, every: 1.3 }, weight: 0,
+    name: 'The Dune Warden', cause: 'The Dune Warden buried you in sand.', shot: 'sand',
+    drops: () => [[SUN_SCARAB, 1], [SUN_MASK, 1], [GOLD_INGOT, 3 + Math.floor(Math.random() * 3)]],
+    build(b, root) {
+      const wrap = 0xd8caa0, dark = 0xa89870, blue = 0x2a4aa0, gold = 0xe8b830;
+      const parts = { legs: [], arms: [] };
+      const torso = parts.torso = b.pivot(root, [0, 1.3, 0]);
+      b.box(torso, [0.8, 1.1, 0.5], wrap, [0, 0.55, 0]);
+      for (let k = 0; k < 4; k++) b.box(torso, [0.82, 0.05, 0.52], dark, [0, 0.15 + k * 0.28, 0]);
+      b.box(torso, [0.86, 0.2, 0.54], gold, [0, 1.0, 0]); // collar
+      const head = parts.head = b.pivot(torso, [0, 1.15, 0]);
+      b.box(head, [0.5, 0.55, 0.5], wrap, [0, 0.27, 0]);
+      for (const sx of [-1, 1]) {
+        b.box(head, [0.1, 0.06, 0.03], 0xffd040, [sx * 0.12, 0.32, 0.26], true);
+        b.box(head, [0.14, 0.7, 0.5], blue, [sx * 0.32, 0.12, -0.02]); // headdress lappets
+        for (let k = 0; k < 4; k++) b.box(head, [0.15, 0.06, 0.51], gold, [sx * 0.32, -0.15 + k * 0.17, -0.02]);
+      }
+      b.box(head, [0.56, 0.12, 0.56], gold, [0, 0.58, 0]);
+      for (const sx of [-1, 1]) {
+        const arm = b.pivot(torso, [sx * 0.52, 0.95, 0]);
+        b.box(arm, [0.24, 1.0, 0.24], wrap, [0, -0.5, 0]);
+        parts.arms.push(arm);
+        const leg = b.pivot(root, [sx * 0.2, 1.3, 0]);
+        b.box(leg, [0.3, 1.3, 0.32], wrap, [0, -0.65, 0]);
+        parts.legs.push(leg);
+      }
+      return parts;
+    },
+  },
+
+  // the guardian of an ice crypt: a pale, hooded wraith that flings shards of ice that chill you to the bone
+  frostwraith: {
+    w: 1.0, h: 2.6, speed: 0.9, chaseSpeed: 2.4, fleeSpeed: 2.4, sink: 2, stride: 3, legSwing: 0.2,
+    avoidWater: true, hostile: true, boss: true, noBurn: true, hp: 110, damage: 4, ranged: { min: 5, max: 15, every: 1.5 }, weight: 0,
+    name: 'The Frost Wraith', cause: 'The Frost Wraith froze you solid.', shot: 'frost',
+    drops: () => [[FROST_HEART, 1], [FROST_CIRCLET, 1], [SILVER_INGOT, 3 + Math.floor(Math.random() * 3)]],
+    build(b, root) {
+      const robe = 0xb8d8ec, dark = 0x6a8aa8, glow = 0x9ff0ff;
+      const parts = { legs: [], arms: [] };
+      const torso = parts.torso = b.pivot(root, [0, 0.9, 0]);
+      b.box(torso, [1.0, 0.9, 0.7], robe, [0, -0.4, 0]); // the robe's wide hem
+      b.box(torso, [0.8, 1.0, 0.55], robe, [0, 0.5, 0]);
+      for (const x of [-0.35, -0.1, 0.15, 0.38]) b.box(torso, [0.14, 0.3, 0.14], dark, [x, -0.9, 0.2]); // ragged hem
+      const head = parts.head = b.pivot(torso, [0, 1.05, 0]);
+      b.box(head, [0.62, 0.62, 0.62], robe, [0, 0.3, -0.04]); // hood
+      b.box(head, [0.46, 0.42, 0.04], 0x101828, [0, 0.26, 0.28]); // the dark inside of the hood
+      for (const sx of [-1, 1]) b.box(head, [0.08, 0.08, 0.03], glow, [sx * 0.11, 0.3, 0.3], true);
+      for (const sx of [-1, 1]) {
+        const arm = b.pivot(torso, [sx * 0.52, 0.9, 0]);
+        b.box(arm, [0.22, 0.95, 0.22], robe, [0, -0.45, 0]);
+        b.box(arm, [0.16, 0.2, 0.16], glow, [0, -0.98, 0], true);
+        parts.arms.push(arm);
+        const leg = b.pivot(root, [sx * 0.2, 0.4, 0]);
+        b.box(leg, [0.2, 0.4, 0.2], dark, [0, -0.2, 0]);
+        parts.legs.push(leg);
+      }
+      return parts;
+    },
+  },
+
+  // the guardian of a deep fortress: a great golem of black rock with lava in its cracks. Standing close
+  // to it burns.
+  emberlord: {
+    w: 1.8, h: 3.2, speed: 0.75, chaseSpeed: 2.4, fleeSpeed: 2.4, sink: 2, stride: 3.2, legSwing: 0.45,
+    avoidWater: true, hostile: true, boss: true, noBurn: true, hp: 170, damage: 10, reach: 2.8, attackEvery: 1.6, weight: 0, heavy: true, burns: true,
+    name: 'The Ember Lord', cause: 'The Ember Lord burned you to cinders.',
+    drops: () => [[EMBER_CORE, 1], [EMBER_CROWN, 1], [OBSIDIAN, 4], [GOLD_INGOT, 2]],
+    build(b, root) {
+      const parts = golem(b, root, { stone: 0x3a2e2e, dark: 0x241c1c, moss: 0xff6a1a, eye: 0xffe060 });
+      root.scale.setScalar(1.45);
+      const crown = b.pivot(parts.head, [0, 0.36, 0.1]);
+      b.box(crown, [0.56, 0.12, 0.5], 0x2a2020, [0, 0, 0]);
+      for (const [x, z] of [[-0.22, 0.2], [0, 0.2], [0.22, 0.2], [-0.22, -0.2], [0.22, -0.2]]) b.box(crown, [0.1, 0.2, 0.08], 0xff7a20, [x, 0.15, z], true);
       return parts;
     },
   },
@@ -467,8 +572,10 @@ const SPECIES = {
 };
 
 export const MOB_KINDS = Object.keys(SPECIES);
+export { SPECIES };
 export const PROFESSIONS = ['farmer', 'smith', 'fisher', 'cleric'];
 const HOSTILE_KINDS = MOB_KINDS.filter((k) => SPECIES[k].hostile && !SPECIES[k].boss);
+const SURFACE_KINDS = HOSTILE_KINDS.filter((k) => !SPECIES[k].caveOnly);
 const ANIMAL_CAP = MAX_MOBS;
 
 // How night creatures behave at each difficulty:
@@ -691,9 +798,9 @@ export class MobManager {
     const x = Math.floor(player.pos.x + Math.cos(a) * d), z = Math.floor(player.pos.z + Math.sin(a) * d);
     if (!w.chunkAt(x, z)) return;
     const s = this.surface(x, z);
-    let y = -1;
+    let y = -1, surface = false;
     if (s && s.id !== WATER && Math.random() < 0.5) {
-      y = s.y + 1;
+      y = s.y + 1; surface = true;
     } else {
       // somewhere in a cave below: a floor with two open blocks above it
       for (let yy = 2 + Math.floor(Math.random() * Math.max(4, (s ? s.y : 40) - 4)); yy > 1; yy--) {
@@ -703,8 +810,10 @@ export class MobManager {
     if (y < 1 || y >= H - 2 || !w.isSolid(x, y - 1, z) || w.isWater(x, y, z) || w.isWater(x, y - 1, z)) return;
     const light = Math.max(w.skyAt(x, y, z) * ctx.daylight, w.lightAt(x, y, z));
     if (light >= 7) return;
-    let r = Math.random() * HOSTILE_KINDS.reduce((t, k) => t + SPECIES[k].weight, 0), kind = HOSTILE_KINDS[0];
-    for (const k of HOSTILE_KINDS) { r -= SPECIES[k].weight; if (r <= 0) { kind = k; break; } }
+    // (cave spiders keep to the dark under a roof of rock)
+    const kinds = surface || w.skyAt(x, y, z) > 0 ? SURFACE_KINDS : HOSTILE_KINDS;
+    let r = Math.random() * kinds.reduce((t, k) => t + SPECIES[k].weight, 0), kind = kinds[0];
+    for (const k of kinds) { r -= SPECIES[k].weight; if (r <= 0) { kind = k; break; } }
     if (!this.hasRoom(kind, x + 0.5, y, z + 0.5)) return;
     this.spawn(kind, x + 0.5, y, z + 0.5);
   }
@@ -897,7 +1006,7 @@ export class MobManager {
         const drop = 0.5 * THORN_GRAVITY * flight * flight;
         const aim = new THREE.Vector3(player.pos.x, player.pos.y + 1.2 + drop, player.pos.z).sub(origin).normalize();
         this.sound?.spit();
-        this.onShoot?.(origin, aim, spec.damage * diff.dmg);
+        this.onShoot?.(origin, aim, spec.damage * diff.dmg, m.kind);
       }
     } else {
       m.state = 'chase';
@@ -905,7 +1014,7 @@ export class MobManager {
       if (d < spec.reach && Math.abs(ey) < 1.6 && m.attackCD <= 0) {
         m.attackCD = spec.attackEvery / diff.speed;
         m.swingT = 0.3;
-        this.onHurtPlayer?.(spec.damage * diff.dmg, spec.cause, m.pos.clone());
+        this.onHurtPlayer?.(spec.damage * diff.dmg, spec.cause, m.pos.clone(), m.kind);
       }
     }
     m.closeEnough = !spec.ranged && d < spec.reach * 0.6;

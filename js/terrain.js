@@ -10,6 +10,7 @@ import {
   BRICKS, MOSSY_BRICKS, COBBLE, BOSS_SHRINE, LOOT_CHEST, BERRY_BUSH,
   GLOW_MUSHROOM, CRYSTAL_BLOCK, CRYSTAL_CLUSTER, GEODE_SHELL, BEE_HIVE, MAX_HONEY, VILLAGE_BELL,
   PLANKS, GLASS_PANE, FURN_TABLE, CHEST, TORCH_WALL_W, doorId, slabId, WHEAT_0, BLOCKS,
+  LAIRS, CUT_SANDSTONE, TRAP_PLATE, DART_TRAP, FROST_BRICKS, FORT_BRICKS, OBSIDIAN,
 } from './blocks.js';
 
 export const CHUNK = 16;
@@ -107,6 +108,7 @@ const VEIN_KINDS = [...ORES, { id: GRAVEL, y: [4, 52], chance: 0.02, big: true }
 const SNOW_LINE = 46; // mountain tops this high are capped with snow
 const LAVA_LEVEL = 6; // deep cave floors at or below this height are flooded with lava
 const DUNGEON_CHANCE = 0.025; // chunks with a dungeon room deep underground
+const LAIR_CHANCE = { tomb: 0.03, crypt: 0.03, fortress: 0.012 }; // chunks with a desert tomb, ice crypt or deep fortress
 const GEODE_CHANCE = 0.045; // chunks with a crystal geode in the rock
 const CAVE_LAKE_LEVEL = 13; // in some cave systems, everything up to here is flooded with water
 const HIVE_CHANCE = 0.08; // temperate trees with a bee hive under their leaves
@@ -349,6 +351,7 @@ export class Generator {
     this.caverns(data, cx, cz, hAt);
     if (hash3(this.seed ^ 0x7a3b9c1d, cx, 91, cz) < GEODE_CHANCE) this.geode(data, cx, cz, hAt);
     if (hash3(this.seed ^ 0x1d2c3b4a, cx, 77, cz) < DUNGEON_CHANCE) this.dungeon(data, cx, cz, hAt);
+    else this.lair(data, cx, cz);
     this.village(data, cx, cz, hAt);
     return data;
   }
@@ -563,6 +566,56 @@ export class Generator {
     data[localIndex(8, y0 + 1, 8)] = BOSS_SHRINE;
     data[localIndex(4, y0 + 1, 12)] = LOOT_CHEST;
     if (r(0x0a1b2c40, 0, 0, 0) < 0.5) data[localIndex(12, y0 + 1, 4)] = LOOT_CHEST;
+  }
+
+  // The other lairs: a sandstone tomb under the desert (with dart traps), a crypt of frost bricks under
+  // the tundra, and, anywhere, a fortress down by the lava. { kind, x, y, z (the shrine), y0 } or null.
+  lairAt(cx, cz) {
+    const roll = hash3(this.seed ^ 0x6b43a9b5, cx, 79, cz);
+    if (roll >= 0.03 || this.dungeonAt(cx, cz)) return null;
+    const x0 = cx * CHUNK, z0 = cz * CHUNK;
+    const biome = this.biomeAt(x0 + 8, z0 + 8);
+    let kind = biome === 'desert' ? 'tomb' : biome === 'tundra' ? 'crypt' : null;
+    if (!kind || roll >= LAIR_CHANCE[kind]) kind = roll < LAIR_CHANCE.fortress ? 'fortress' : null;
+    if (!kind) return null;
+    let h = H;
+    for (let z = z0 + 3; z <= z0 + 13; z++) for (let x = x0 + 3; x <= x0 + 13; x++) h = Math.min(h, this.height(x, z));
+    const y0 = kind === 'fortress' ? 3 : Math.min(h - 11, 30);
+    if (y0 < 3 || (kind !== 'fortress' && y0 < 10)) return null;
+    return { kind, x: x0 + 8, y: y0 + 1, z: z0 + 8, y0 };
+  }
+
+  lair(data, cx, cz) {
+    const L = this.lairAt(cx, cz);
+    if (!L) return;
+    const { y0, kind } = L;
+    const x0 = cx * CHUNK, z0 = cz * CHUNK;
+    const r = (k, x, y, z) => hash3(this.seed ^ k, x0 + x, y, z0 + z);
+    const wall = { tomb: [CUT_SANDSTONE, SANDSTONE], crypt: [FROST_BRICKS, ICE], fortress: [FORT_BRICKS, OBSIDIAN] }[kind];
+    const top = kind === 'fortress' ? 7 : 6;
+    for (let y = y0; y <= y0 + top; y++) for (let lz = 3; lz <= 13; lz++) for (let lx = 3; lx <= 13; lx++) {
+      const edge = lx === 3 || lx === 13 || lz === 3 || lz === 13 || y === y0 || y === y0 + top;
+      let id = AIR;
+      if (edge) id = r(0x0b1c2d3e, lx, y, lz) < 0.25 ? wall[1] : wall[0];
+      if (y === y0 && !edge && kind === 'tomb') id = r(0x0b1c2d3f, lx, y, lz) < 0.18 && Math.abs(lx - 8) + Math.abs(lz - 8) > 2 ? TRAP_PLATE : CUT_SANDSTONE;
+      // a fortress has channels of lava along its floor, inside the walls
+      if (y === y0 && kind === 'fortress' && (lx === 4 || lx === 12 || lz === 4 || lz === 12) && !(lx === 8 || lz === 8)) id = LAVA;
+      data[localIndex(lx, y, lz)] = id;
+    }
+    for (const [lx, lz] of [[5, 5], [11, 5], [5, 11], [11, 11]]) for (let y = y0 + 1; y < y0 + top; y++) data[localIndex(lx, y, lz)] = wall[kind === 'crypt' ? 1 : 0];
+    // dart traps in the tomb's walls, aimed into the room
+    if (kind === 'tomb') {
+      for (const k of [4, 6, 10, 12]) {
+        data[localIndex(k, y0 + 2, 3)] = DART_TRAP + 0; data[localIndex(k, y0 + 2, 13)] = DART_TRAP + 2;
+        data[localIndex(3, y0 + 2, k)] = DART_TRAP + 3; data[localIndex(13, y0 + 2, k)] = DART_TRAP + 1;
+      }
+    }
+    const side = Math.floor(r(0x0b1c2d40, 0, 0, 0) * 4);
+    const [dx, dz] = [[8, 3], [8, 13], [3, 8], [13, 8]][side];
+    for (let y = y0 + 1; y <= y0 + 2; y++) data[localIndex(dx, y, dz)] = AIR;
+    data[localIndex(8, y0 + 1, 8)] = LAIRS[kind].shrine;
+    data[localIndex(6, y0 + 1, 10)] = LOOT_CHEST;
+    if (r(0x0b1c2d41, 0, 0, 0) < 0.6) data[localIndex(10, y0 + 1, 6)] = LOOT_CHEST;
   }
 
   // Open grass near the world centre, away from trees and cave mouths.

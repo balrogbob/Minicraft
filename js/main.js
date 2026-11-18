@@ -18,6 +18,7 @@ import {
   ANVIL, LOOT_CHEST, BOSS_SHRINE, SPENT_SHRINE, CAULDRON, GLASS_BOTTLE, maxWear,   BERRY_BUSH, BERRIES, STAINLESS_INGOT, STEEL_INGOT, COPPER_INGOT, WHEAT, COBBLE, FEATHER, COAL, CORNFLOWER,
   IRON_INGOT, GOLD_INGOT, SILVER_INGOT, ELECTRUM_INGOT, TUNGSTEN_INGOT, GUNPOWDER, NIGHT_TEA, HASTE_TEA, FIRE_TEA, HEAL_TEA, IRON_SHIELD, BAKED_FISH,
   GLOW_MUSHROOM, CRYSTAL_SHARD, HONEY_BOTTLE, HONEYCOMB, BEE_HIVE, MAX_HONEY, VILLAGE_BELL, SALMON, BAKED_SALMON, ICEFISH, PUFFERFISH, OLD_BOOT,
+  ENCHANT_ALTAR, LAIRS, ENCHANTS, hasEnch, HONEY_TEA, CRYSTAL_BLOCK, SUN_SCARAB, FROST_HEART, EMBER_CORE, OBSIDIAN, SANDSTONE,
   STICK, STRING, PAPER, CAKE, COOKIE, LEATHER, FISHING_ROD as ROD, WEIGHTED_ROD as WROD, SEEDS, FLOUR, BUTTER,
 } from './blocks.js';
 import { createAtlas, createIcons, createCrackCanvases, createWaterCanvas, createHudIcons, paintSeason } from './textures.js';
@@ -30,7 +31,7 @@ import { Sound } from './sound.js';
 import { Player } from './player.js';
 import { Inventory, SLOTS } from './inventory.js';
 import { Controls } from './controls.js';
-import { MobManager, DIFFICULTY, DIFFICULTY_ORDER } from './mobs.js';
+import { MobManager, DIFFICULTY, DIFFICULTY_ORDER, SPECIES } from './mobs.js';
 import { ArrowManager } from './arrows.js';
 import { Stations, STATION_KINDS, isFuel } from './stations.js';
 import { Fishing } from './fishing.js';
@@ -140,15 +141,20 @@ const WEAPON_DAMAGE = { [WOOD_SHOVEL]: 3, [STONE_SHOVEL]: 4, [WOOD_PICK]: 3, [ST
 let lastSwing = 0; // time of the last swing at a creature (a short pause between swings, in real time)
 
 // A creature's hit knocks you back away from it.
-mobs.onHurtPlayer = (amount, cause, from) => {
+mobs.onHurtPlayer = (amount, cause, from, kind) => {
   if (dead) return;
+  if (SPECIES[kind]?.poisons && !shieldBlocks(from, 0)) {
+    poisoned = Math.max(poisoned, SPECIES[kind].poisons);
+    toast('The spider\'s bite poisoned you!', 1800);
+    renderHealth();
+  }
   const dx = player.pos.x - from.x, dz = player.pos.z - from.z, len = Math.hypot(dx, dz) || 1;
   player.kx = (dx / len) * 7; player.kz = (dz / len) * 7;
   if (player.onGround) player.vel.y = 4.5;
   if (shieldBlocks(from, amount)) return;
   damage(armoured(amount), cause);
 };
-mobs.onShoot = (origin, dir, dmg) => arrows.shootThorn(origin, dir, dmg);
+mobs.onShoot = (origin, dir, dmg, kind) => { const a = arrows.shootThorn(origin, dir, dmg); if (a) a.from = kind; };
 
 function giveDrops(drops) {
   for (const [id, n] of drops) {
@@ -221,6 +227,7 @@ const boostAt = (x, y, z) => ([[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0,
 // Armour worn: an item id (or null) for helmet, chestplate, leggings and boots.
 const armour = [null, null, null, null, null]; // (the fifth is the shield)
 const armourWear = [0, 0, 0, 0, 0];
+const armourEnch = [null, null, null, null, null]; // enchantments on what you're wearing
 const armourPoints = () => armour.reduce((t, id) => t + (id ? ITEMS[id].armour.points : 0), 0);
 // Each point of armour takes 4% off what creatures do to you, up to 80%.
 const armourShare = () => Math.min(0.8, armourPoints() * 0.04);
@@ -345,6 +352,7 @@ async function startWorld(save) {
     const id = save?.armour?.[i];
     armour[i] = ITEMS[id]?.armour?.piece === i ? id : null;
     armourWear[i] = armour[i] ? Math.max(0, +save?.armourWear?.[i] || 0) : 0;
+    armourEnch[i] = armour[i] && Array.isArray(save?.armourEnch?.[i]) ? save.armourEnch[i] : null;
   }
   for (const k of Object.keys(effects)) effects[k] = Math.max(0, +save?.effects?.[k] || 0);
   caneToday = Number.isFinite(save?.caneToday) ? save.caneToday : 0;
@@ -425,6 +433,7 @@ function saveGame() {
     carts: carts.serialize(),
     armour: [...armour],
     armourWear: [...armourWear],
+    armourEnch: [...armourEnch],
     effects: { ...effects },
     caneToday,
     weather: { raining: weather.raining, timer: Math.round(weather.timer) },
@@ -463,7 +472,8 @@ let nameTimer;
 function showItemName() {
   const id = inventory.heldId();
   const el = $('item-name');
-  el.textContent = id ? itemName(id) : '';
+  const ench = inventory.held()?.ench;
+  el.textContent = id ? itemName(id) + (ench?.length ? ` (${ench.map((e) => ENCHANTS[e]?.name).join(', ')})` : '') : '';
   el.classList.add('show');
   clearTimeout(nameTimer);
   nameTimer = setTimeout(() => el.classList.remove('show'), 1200);
@@ -476,7 +486,7 @@ function slotHTML(s) {
     const left = Math.max(0, 1 - s.wear / maxWear(s.id));
     bar = `<span class="wear"><i style="--w:${Math.round(left * 100)}%;--wc:hsl(${Math.round(left * 120)},70%,45%)"></i></span>`;
   }
-  return `<img src="${icons[s.id]}" alt=""><span class="count">${s.count > 1 ? s.count : ''}</span>${bar}`;
+  return `<img src="${icons[s.id]}" alt=""${s.ench?.length ? ' class="enchanted"' : ''}><span class="count">${s.count > 1 ? s.count : ''}</span>${bar}`;
 }
 
 const hotbarEls = [];
@@ -535,10 +545,11 @@ function renderHunger() {
 let starvingWarned = false;
 function updateHunger(dt) {
   const moving = Math.hypot(player.vel.x, player.vel.z) > 0.5;
-  const rate = (1 / 80 + (moving ? 1 / 40 : 0) + (controls.breaking ? 1 / 50 : 0)) * (poisoned > 0 ? 4 : 1);
+  const rate = (1 / 80 + (moving ? 1 / 40 : 0) + (controls.breaking ? 1 / 50 : 0)) * (poisoned > 0 ? 4 : 1) *
+    (effects.fed > 0 ? 0.5 : 1) * (ailments.heat >= 1 ? 2 : 1);
   hunger = Math.max(0, hunger - rate * dt);
-  // starving: you can only stagger along until you eat something
-  player.speedMul = hunger <= 0 ? 0.45 : 1;
+  // starving: you can only stagger along until you eat something; the cold slows you too
+  player.speedMul = (hunger <= 0 ? 0.45 : 1) * (ailments.chill >= 1 ? 0.7 : 1);
   if (hunger <= 0 && !starvingWarned) { starvingWarned = true; toast('You\'re starving! Eat something to get your strength back.', 4000); }
   if (hunger > 2) starvingWarned = false;
   renderHunger();
@@ -651,7 +662,7 @@ function updateHealth(dt, wasGround, prevY) {
     if ((timers.cactus = (timers.cactus ?? 0) - dt) <= 0) { timers.cactus = 0.5; damage(1, 'You hugged a cactus.'); }
   } else timers.cactus = 0;
   // lava burns: 3 points every half second
-  if (player.inLava && !(effects.fire > 0)) {
+  if (player.inLava && !(effects.fire > 0) && !guarded('fire')) {
     if ((timers.lava -= dt) <= 0) { timers.lava = 0.5; damage(3, 'You tried to swim in lava.'); }
   } else timers.lava = 0;
   // starving
@@ -666,8 +677,8 @@ function updateHealth(dt, wasGround, prevY) {
   }
   $('sick').classList.toggle('show', poisoned > 0);
   // healing
-  if (health < MAX_HEALTH && hunger >= 16 && poisoned <= 0) {
-    if ((timers.regen += dt) >= 3) {
+  if (health < MAX_HEALTH && hunger >= (effects.fed > 0 ? 10 : 16) && poisoned <= 0) {
+    if ((timers.regen += dt) >= (effects.fed > 0 ? 2 : 3)) {
       timers.regen = 0;
       health = Math.min(MAX_HEALTH, health + 1);
       hunger = Math.max(0, hunger - 0.5);
@@ -760,10 +771,11 @@ function onInvSlot(i) {
     const item = inventory.slots[s];
     if (item && armourPiece(item.id) !== k) toast(k === 4 ? 'That isn\'t a shield' : `That isn't ${ARMOUR_PIECES[k].name.toLowerCase()} armour`);
     else {
-      const worn = armour[k], wornWear = armourWear[k];
+      const worn = armour[k], wornWear = armourWear[k], wornEnch = armourEnch[k];
       armour[k] = item?.id ?? null;
       armourWear[k] = item?.wear ?? 0;
-      inventory.slots[s] = worn ? { id: worn, count: 1, ...(wornWear ? { wear: wornWear } : {}) } : null;
+      armourEnch[k] = item?.ench ?? null;
+      inventory.slots[s] = worn ? { id: worn, count: 1, ...(wornWear ? { wear: wornWear } : {}), ...(wornEnch ? { ench: wornEnch } : {}) } : null;
       sound.pop();
       inventory.onChange();
     }
@@ -779,10 +791,11 @@ function onInvSlot(i) {
 function wearHeld() {
   const held = inventory.held();
   const k = armourPiece(held.id);
-  const worn = armour[k], wornWear = armourWear[k];
+  const worn = armour[k], wornWear = armourWear[k], wornEnch = armourEnch[k];
   armour[k] = held.id;
   armourWear[k] = held.wear ?? 0;
-  inventory.slots[inventory.selected] = worn ? { id: worn, count: 1, ...(wornWear ? { wear: wornWear } : {}) } : null;
+  armourEnch[k] = held.ench ?? null;
+  inventory.slots[inventory.selected] = worn ? { id: worn, count: 1, ...(wornWear ? { wear: wornWear } : {}), ...(wornEnch ? { ench: wornEnch } : {}) } : null;
   inventory.onChange();
   sound.pop();
   toast(k === 4 ? `Carrying ${itemName(held.id).toLowerCase()}: it stops hits from in front of you` : `Wearing ${itemName(held.id).toLowerCase()} · armour ${Math.round(armourShare() * 100)}%`, 1800);
@@ -805,7 +818,7 @@ function renderInventory() {
   }
   for (let k = 0; k < 5; k++) {
     const el = invEls[ARMOUR_SLOT + k];
-    el.innerHTML = armour[k] ? slotHTML({ id: armour[k], count: 1, wear: armourWear[k] }) : `<span class="empty-armour">${['⛑', '👕', '👖', '👢', '🛡'][k]}</span>`;
+    el.innerHTML = armour[k] ? slotHTML({ id: armour[k], count: 1, wear: armourWear[k], ench: armourEnch[k] }) : `<span class="empty-armour">${['⛑', '👕', '👖', '👢', '🛡'][k]}</span>`;
     el.classList.toggle('picked', ARMOUR_SLOT + k === picked);
   }
   $('armour-total').textContent = armourPoints() ? `blocks ${Math.round(armourShare() * 100)}% of creature damage` : '';
@@ -887,7 +900,7 @@ function sortSlots(slots, from = 0, to = slots.length) {
   for (let i = from; i < to; i++) {
     const s = slots[i];
     if (!s) continue;
-    const same = !s.wear && items.find((t) => t.id === s.id && !t.wear && t.count < maxStack(t.id));
+    const same = !s.wear && !s.ench && items.find((t) => t.id === s.id && !t.wear && !t.ench && t.count < maxStack(t.id));
     if (same) {
       const k = Math.min(s.count, maxStack(s.id) - same.count);
       same.count += k;
@@ -1118,7 +1131,10 @@ function hitMob() {
     const now = performance.now();
     if (now - lastSwing < (isSword(inventory.heldId()) ? 300 : 450)) return; // swords swing quicker
     lastSwing = now;
-    giveDrops(mobs.hurt(targetMob.mob, WEAPON_DAMAGE[inventory.heldId()] ?? ITEMS[inventory.heldId()]?.tool?.damage ?? 2, player.pos));
+    const held = inventory.held(), m = targetMob.mob;
+    const dmg = (WEAPON_DAMAGE[inventory.heldId()] ?? ITEMS[inventory.heldId()]?.tool?.damage ?? 2) + (hasEnch(held, 'keen') ? 3 : 0);
+    if (hasEnch(held, 'flame') && !m.spec.burns) m.burning = 4;
+    giveDrops(mobs.hurt(m, dmg, player.pos));
     wearOutHeld(1);
     return;
   }
@@ -1166,6 +1182,11 @@ function eat(id) {
   if (hunger > MAX_HUNGER - 1) { toast('You\'re not hungry'); return; } // (hunger drains constantly, so never exactly full)
   hunger = Math.min(MAX_HUNGER, hunger + foodValue(id));
   inventory.consumeHeld();
+  if (foodValue(id) >= 6) {
+    const was = effects.fed > 0;
+    effects.fed = Math.max(effects.fed, foodValue(id) * 20); // a hearty meal keeps you going: the better the meal, the longer
+    if (!was) toast(`Ate ${itemName(id).toLowerCase()}: you feel well fed`, 1600);
+  }
   if (id === HONEY_BOTTLE) { inventory.add(GLASS_BOTTLE, 1); health = Math.min(MAX_HEALTH, health + 2); renderHealth(); }
   if (id === PUFFERFISH) { poisoned = Math.max(poisoned, 15); toast('Ugh! The pufferfish was poisonous.', 2500); renderHealth(); }
   sound.eat();
@@ -1282,14 +1303,37 @@ function tickLamps(dt) {
 }
 
 // Sleep from evening until sunrise (and remember this bed as where you respawn).
-const canSleepNow = () => sky.time > 0.46;
+const canSleepNow = () => sky.time > 0.46 || weather.raining;
 function useBed(x, y, z) {
   bedSpawn = { x, y, z };
-  if (!canSleepNow()) { toast('Respawn point set. You can only sleep in the evening or at night.', 2500); return; }
+  if (!canSleepNow()) { toast('Respawn point set. You can only sleep in the evening, at night or through a storm.', 2500); return; }
   const lurking = mobs.mobs.some((m) => m.spec.hostile && !m.dying &&
     Math.hypot(m.pos.x - player.pos.x, m.pos.z - player.pos.z) < 12 && Math.abs(m.pos.y - player.pos.y) < 6);
   if (lurking) { toast('You can\'t sleep now: something is lurking nearby', 2500); return; }
+  if (sky.time <= 0.46) { napThroughStorm(); return; }
+  if (weather.raining) weather.set(false); // the storm blows over in the night
   sleepUntilMorning();
+}
+// Sleeping through a storm in the daytime: you nap a few hours and wake to clear skies.
+async function napThroughStorm() {
+  paused = true;
+  controls.reset();
+  $('sleep').classList.add('show');
+  await new Promise((r) => setTimeout(r, 1000));
+  const skip = Math.min(0.12, 0.46 - sky.time);
+  sky.time += skip;
+  weather.set(false);
+  const secs = skip * DAY_LENGTH;
+  stations.tick(secs, world, setStationLit, powerAt, boostAt);
+  tickLamps(secs);
+  world.tickPlants(secs);
+  hunger = Math.max(0, hunger - 1);
+  renderHunger();
+  await new Promise((r) => setTimeout(r, 300));
+  $('sleep').classList.remove('show');
+  sound.wake();
+  toast('You nap until the storm blows over', 2500);
+  paused = false;
 }
 async function sleepUntilMorning() {
   paused = true;
@@ -1319,6 +1363,7 @@ async function sleepUntilMorning() {
 function wearOutHeld(n) {
   const s = inventory.held();
   if (!settings.wear || !s || !maxWear(s.id)) return;
+  if (hasEnch(s, 'sturdy') && Math.random() < 0.5) return;
   s.wear = (s.wear ?? 0) + n;
   if (s.wear >= maxWear(s.id)) {
     inventory.slots[inventory.selected] = null;
@@ -1331,11 +1376,12 @@ function wearArmour(k = -1, n = 1) {
   if (!settings.wear) return;
   for (let i = 0; i < 5; i++) {
     if (!armour[i] || (k >= 0 ? i !== k : i === 4)) continue;
+    if (armourEnch[i]?.includes('sturdy') && Math.random() < 0.5) continue;
     armourWear[i] += n;
     if (armourWear[i] >= maxWear(armour[i])) {
       toast(`Your ${itemName(armour[i]).toLowerCase()} fell apart!`, 2000);
       sound.breakBlock('stone');
-      armour[i] = null; armourWear[i] = 0;
+      armour[i] = null; armourWear[i] = 0; armourEnch[i] = null;
     }
   }
 }
@@ -1366,11 +1412,13 @@ function useAnvil() {
 }
 
 // ---------- teas ----------
-const effects = { night: 0, haste: 0, fire: 0, heal: 0 }; // seconds left of each
-const EFFECT_ICONS = { night: '🌙', haste: '⛏', fire: '🔥', heal: '💚' };
+const effects = { night: 0, haste: 0, fire: 0, heal: 0, warm: 0, fed: 0 }; // seconds left of each
+const EFFECT_ICONS = { night: '🌙', haste: '⛏', fire: '🔥', heal: '💚', warm: '🍯', fed: '🍗' };
 function drinkTea(id) {
   const [kind, secs] = ITEMS[id].tea;
   effects[kind] = Math.max(effects[kind], secs);
+  if (kind === 'heal') { poisoned = 0; ailments.chill = 0; ailments.heat = 0; renderHealth(); } // a healing tea cures what ails you
+  if (kind === 'warm') ailments.chill = 0;
   inventory.consumeHeld();
   if (inventory.add(GLASS_BOTTLE, 1)) toast('Inventory full');
   sound.gulp();
@@ -1381,8 +1429,38 @@ function tickEffects(dt) {
   if (effects.heal > 0 && health < MAX_HEALTH) { health = Math.min(MAX_HEALTH, health + dt * 1.2); renderHealth(); }
   lightUniforms.uAmbient.value = effects.night > 0 ? 0.3 : AMBIENT;
 }
-const effectsText = () => Object.entries(effects).filter(([, t]) => t > 0)
-  .map(([k, t]) => `${EFFECT_ICONS[k]} ${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}`).join('  ');
+const effectsText = () => [...Object.entries(effects).filter(([, t]) => t > 0)
+  .map(([k, t]) => `${EFFECT_ICONS[k]} ${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}`),
+...(ailments.chill >= 1 ? ['🥶 chilled'] : ailments.chill > 0.5 ? ['🥶 cold'] : []), ...(ailments.heat >= 1 ? ['🥵 heatstroke'] : ailments.heat > 0.5 ? ['🥵 hot'] : [])].join('  ');
+
+// ---------- ailments ----------
+// The tundra (and temperate land in winter) is bitterly cold at night and in snow: out under the sky
+// without warm clothes (three pieces of armour, or a Warmth enchantment), a fire or torch nearby, or a
+// honey tea, you get chilled: slow, and slowly hurt. The desert sun at midday and its sandstorms give you
+// heatstroke if your head is bare: you go hungry twice as fast, and it hurts. A healing tea cures both.
+const ailments = { chill: 0, heat: 0 }; // 0..1 as they build up; 1 or more and you're suffering
+const guarded = (what) => armour.some((id) => ITEMS[id]?.guards === what);
+function tickAilments(dt) {
+  if (dead) return;
+  const x = Math.floor(player.pos.x), z = Math.floor(player.pos.z), head = Math.min(H - 1, Math.floor(player.eye.y));
+  const biome = world.generator.biomeAt(x, z), outside = world.skyAt(x, head, z) >= 10;
+  const coldLand = biome === 'tundra' || (biome === 'temperate' && seasonOf(day) === 3);
+  const cold = coldLand && outside && (sky.light < 0.45 || (weather.raining && weather.level > 0.3));
+  const warm = effects.warm > 0 || guarded('chill') || armourEnch.some((e) => e?.includes('warmth')) ||
+    armour.slice(0, 4).filter(Boolean).length >= 3 || world.lightAt(x, head, z) >= 9 || ridingMob;
+  ailments.chill = Math.max(0, ailments.chill + (cold && !warm ? dt / 45 : -dt / 12));
+  const sun = sky.light > 0.95 && sky.time > 0.15 && sky.time < 0.35;
+  const hot = biome === 'desert' && outside && (sun || (weather.raining && weather.level > 0.5));
+  const shaded = armour[0] || effects.fire > 0 || guarded('heat');
+  ailments.heat = Math.max(0, ailments.heat + (hot && !shaded ? dt / 50 : -dt / 15));
+  for (const k of ['chill', 'heat']) {
+    if (ailments[k] < 1) { timers[k] = 0; if (ailments[k] < 0.5) warned[k] = false; continue; }
+    if (!warned[k]) { warned[k] = true; toast(k === 'chill' ? 'You\'re chilled to the bone! Find warmth, wrap up, or drink honey tea.' : 'Heatstroke! Get out of the sun, cover your head, or drink a healing tea.', 3500); }
+    if ((timers[k] = (timers[k] ?? 0) + dt) >= (k === 'chill' ? 8 : 10)) { timers[k] = 0; if (health > 1) damage(1, k === 'chill' ? 'You froze.' : 'Heatstroke.'); }
+  }
+  ailments.chill = Math.min(1.5, ailments.chill); ailments.heat = Math.min(1.5, ailments.heat);
+}
+const warned = { chill: false, heat: false };
 
 // ---------- dungeons ----------
 // Deep underground, rare stone-brick rooms hold a shrine and a chest or two of loot. Come near an
@@ -1392,9 +1470,25 @@ const LOOT = [
   [TUNGSTEN_INGOT, 1, 2, 0.15], [GUNPOWDER, 2, 6, 0.5], [SILVER_ARROW, 4, 8, 0.4], [BAKED_FISH, 2, 4, 0.6],
   [NIGHT_TEA, 1, 2, 0.35], [HASTE_TEA, 1, 2, 0.3], [FIRE_TEA, 1, 1, 0.25], [HEAL_TEA, 1, 2, 0.3], [IRON_SHIELD, 1, 1, 0.12],
 ];
-function rollLoot() {
+// A lair's chests also hold things from its own land: crystal and gold in a tomb, frost and silver in a
+// crypt, obsidian and fire tea in a fortress.
+const LAIR_LOOT = {
+  tomb: [[GOLD_INGOT, 2, 5, 0.9], [CRYSTAL_SHARD, 3, 8, 0.8], [HASTE_TEA, 1, 2, 0.4]],
+  crypt: [[SILVER_INGOT, 2, 5, 0.9], [CRYSTAL_SHARD, 3, 8, 0.8], [HONEY_TEA, 1, 2, 0.5]],
+  fortress: [[TUNGSTEN_INGOT, 1, 3, 0.8], [OBSIDIAN, 4, 8, 0.7], [FIRE_TEA, 1, 2, 0.6], [CRYSTAL_SHARD, 4, 10, 0.8]],
+};
+function lairNear(x, y, z) {
+  const cx = Math.floor(x / CHUNK), cz = Math.floor(z / CHUNK);
+  for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) {
+    const L = world.generator.lairAt(cx + dx, cz + dz);
+    if (L && Math.abs(L.x - x) <= 6 && Math.abs(L.z - z) <= 6 && y >= L.y0 && y <= L.y0 + 8) return L;
+  }
+  return null;
+}
+function rollLoot(x, y, z) {
   const out = [];
-  for (const [id, a, b, p] of LOOT) if (Math.random() < p) out.push([id, a + Math.floor(Math.random() * (b - a + 1))]);
+  const table = [...LOOT, ...((x !== undefined && LAIR_LOOT[lairNear(x, y, z)?.kind]) || [])];
+  for (const [id, a, b, p] of table) if (Math.random() < p) out.push([id, a + Math.floor(Math.random() * (b - a + 1))]);
   return out.length ? out : [[IRON_INGOT, 3]];
 }
 let bossTimer = 0;
@@ -1407,21 +1501,129 @@ function tickBoss(dt) {
     const d = world.generator.dungeonAt(pcx + dx, pcz + dz);
     if (!d || world.get(d.x, d.y, d.z) !== BOSS_SHRINE) continue;
     if (Math.hypot(d.x + 0.5 - player.pos.x, d.z + 0.5 - player.pos.z) > 9 || Math.abs(d.y - player.pos.y) > 5) continue;
-    const k = `${d.x},${d.y},${d.z}`;
-    if (mobs.mobs.some((m) => m.shrine === k && !m.dying)) continue;
-    const m = mobs.spawn('mossking', d.x + 0.5, d.y, d.z + 2.5);
-    m.shrine = k;
-    if (settings.difficulty !== 'peaceful') m.angry = 1e6;
-    sound.boom(0.4);
-    toast('The Mossback King rises from the shrine!', 3000);
+    raiseBoss(d.x, d.y, d.z, 'mossking', BOSS_SHRINE, SPENT_SHRINE, 'The Mossback King');
   }
+  // the lairs: a desert tomb, a frozen crypt, a fortress deep down by the lava
+  for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) {
+    const L = world.generator.lairAt(pcx + dx, pcz + dz);
+    if (!L) continue;
+    const info = LAIRS[L.kind];
+    if (world.get(L.x, L.y, L.z) !== info.shrine) continue;
+    if (Math.hypot(L.x + 0.5 - player.pos.x, L.z + 0.5 - player.pos.z) > 7 || Math.abs(L.y - player.pos.y) > 4) continue;
+    raiseBoss(L.x, L.y, L.z, info.boss, info.shrine, info.shrine + 3, info.name);
+  }
+}
+function raiseBoss(x, y, z, kind, shrine, spent, name) {
+  const k = `${x},${y},${z}`;
+  if (mobs.mobs.some((m) => m.shrine === k && !m.dying)) return;
+  const m = mobs.spawn(kind, x + 0.5, y, z + 2.5);
+  if (!m) return;
+  Object.assign(m, { shrine: k, shrineId: shrine, spentId: spent, bossName: name });
+  if (settings.difficulty !== 'peaceful') m.angry = 1e6;
+  sound.boom(0.4);
+  toast(`${name} rises from the shrine!`, 3000);
 }
 mobs.onDefeat = (m) => {
   if (!m.spec.boss || !m.shrine) return;
   const [x, y, z] = m.shrine.split(',').map(Number);
-  if (world.get(x, y, z) === BOSS_SHRINE) world.setBlock(x, y, z, SPENT_SHRINE);
-  toast('The Mossback King is defeated! The shrine falls quiet.', 4000);
+  const shrine = m.shrineId ?? BOSS_SHRINE, spent = m.spentId ?? SPENT_SHRINE;
+  if (world.get(x, y, z) === shrine) world.setBlock(x, y, z, spent);
+  toast(`${m.bossName ?? 'The Mossback King'} is defeated! The shrine falls quiet.`, 4000);
 };
+
+// ---------- fire and traps ----------
+// The Ember Lord scorches anyone close (unless the fire can't touch them); creatures struck with a
+// Flame weapon burn for a few seconds; and stepping on a tomb's pressure plate sets its dart traps off.
+const FACE_DIR = [[0, 1], [-1, 0], [0, -1], [1, 0]]; // facing 0..3 -> [dx, dz]
+let fireTimer = 0, trapCool = 0, onPlate = null;
+function tickHazards(dt) {
+  if (dead) return;
+  if ((fireTimer += dt) >= 1) {
+    fireTimer = 0;
+    for (const m of mobs.mobs) {
+      if (m.dying) continue;
+      if (m.spec.burns && m.pos.distanceTo(player.pos) < 2.6 && !(effects.fire > 0) && !guarded('fire')) damage(armoured(2), 'The Ember Lord burned you to a crisp.');
+      if (m.burning > 0) {
+        m.burning -= 1;
+        if (m.spec.hostile) giveDrops(mobs.hurt(m, 2, m.pos.clone().add(new THREE.Vector3(0, 0, 0.01))));
+        else m.burning = 0;
+      }
+    }
+  }
+  trapCool = Math.max(0, trapCool - dt);
+  const fx = Math.floor(player.pos.x), fz = Math.floor(player.pos.z), fy = Math.floor(player.pos.y - 0.05);
+  // a plate goes off once as you step onto it (not again until you step off and back on)
+  const plate = player.onGround && BLOCKS[world.get(fx, fy, fz)]?.trap ? `${fx},${fy},${fz}` : null;
+  if (plate === onPlate) return;
+  onPlate = plate;
+  if (!plate || trapCool > 0) return;
+  trapCool = 1;
+  sound.click();
+  let fired = 0;
+  for (let y = fy; y <= fy + 4; y++) for (let z = fz - 9; z <= fz + 9; z++) for (let x = fx - 9; x <= fx + 9; x++) {
+    const b = BLOCKS[world.get(x, y, z)];
+    if (!b?.dart) continue;
+    const [ddx, ddz] = FACE_DIR[b.facing ?? 0];
+    const ox = x + 0.5 + ddx * 0.6, oz = z + 0.5 + ddz * 0.6, oy = y + 0.5;
+    // only traps facing you, roughly in line with you
+    const tx = player.pos.x - ox, tz = player.pos.z - oz;
+    const along = tx * ddx + tz * ddz, across = Math.abs(tx * ddz - tz * ddx);
+    if (along <= 0 || across > 1.6) continue;
+    const dir = new THREE.Vector3(player.pos.x - ox, player.pos.y + 1 - oy, player.pos.z - oz).normalize();
+    const a = arrows.shootThorn(new THREE.Vector3(ox, oy, oz), dir, 2);
+    if (a) a.trap = true;
+    fired++;
+  }
+  if (fired) toast('Click! Darts fly from the walls!', 1200);
+}
+
+// ---------- the enchanting altar ----------
+// Hold a tool, weapon or piece of armour and tap the altar: it offers the enchantments that suit what
+// you hold, each paid for in crystal shards and, for the strongest, a trophy from a lair's guardian.
+let altarOpen = false;
+function openAltar() {
+  altarOpen = true;
+  tradingWith = null;
+  paused = true;
+  controls.reset();
+  document.exitPointerLock?.();
+  sound.chime?.() ?? sound.pop();
+  $('trade-title').textContent = 'Enchanting Altar';
+  $('trade').classList.remove('hidden');
+  renderEnchants();
+}
+function renderEnchants() {
+  const list = $('trades');
+  list.innerHTML = '';
+  const held = inventory.held();
+  const opts = held ? Object.entries(ENCHANTS).filter(([, e]) => e.on(held.id)) : [];
+  $('trade-hint').textContent = !held ? 'Hold a tool, weapon or piece of armour to enchant it.' :
+    !opts.length ? `${itemName(held.id)} can't be enchanted.` : `Enchant your ${itemName(held.id).toLowerCase()}:`;
+  for (const [key, e] of opts) {
+    const row = document.createElement('div');
+    row.className = 'recipe';
+    const have = e.cost.every(([id, n]) => inventory.count(id) >= n);
+    const done = hasEnch(held, key);
+    row.innerHTML = e.cost.map(([id, n]) => `<span class="ing${inventory.count(id) >= n ? '' : ' missing'}" title="${itemName(id)}"><img src="${icons[id]}" alt="">${n}</span>`).join('') +
+      `<span class="arrow">→</span><span class="name"><b>${e.name}</b>: ${e.about}</span>`;
+    const btn = document.createElement('button');
+    btn.className = 'btn';
+    btn.textContent = done ? 'Done' : 'Enchant';
+    btn.disabled = done || !have || held.count > 1;
+    btn.addEventListener('click', () => {
+      const h = inventory.held();
+      if (!h || hasEnch(h, key) || !e.cost.every(([id, n]) => inventory.count(id) >= n)) return;
+      for (const [id, n] of e.cost) inventory.remove(id, n);
+      h.ench = [...(h.ench ?? []), key];
+      inventory.onChange();
+      sound.levelUp?.() ?? sound.pop();
+      toast(`${itemName(h.id)} is now ${e.name}`, 1800);
+      renderEnchants();
+    });
+    row.appendChild(btn);
+    list.appendChild(row);
+  }
+}
 function renderBossBar() {
   const boss = mobs.mobs.find((m) => m.spec.boss && !m.dying && m.pos.distanceTo(player.pos) < 32);
   $('boss-bar').classList.toggle('hidden', !boss);
@@ -1508,7 +1710,7 @@ function openTrade(m) {
   $('trade').classList.remove('hidden');
   renderTrades();
 }
-function closeTrade() { $('trade').classList.add('hidden'); tradingWith = null; paused = false; }
+function closeTrade() { $('trade').classList.add('hidden'); tradingWith = null; altarOpen = false; paused = false; }
 function renderTrades() {
   const list = $('trades');
   list.innerHTML = '';
@@ -1770,6 +1972,7 @@ function place() {
       } else toast(lv >= MAX_HONEY ? 'The hive is full of honey: tap it holding a glass bottle' : `The bees are making honey (${lv}/${MAX_HONEY})`, 2000);
       return;
     }
+    if (tid === ENCHANT_ALTAR) { openAltar(); return; }
     if (BLOCKS[tid].bell) {
       const v = world.generator.nearestVillage(tx, tz, 1);
       sound.ding?.() ?? sound.pop();
@@ -1797,7 +2000,7 @@ function place() {
     if (tid === LOOT_CHEST) {
       // a dungeon chest: its loot is put in the first time it's opened
       const st = stations.get(tx, ty, tz, 'chest');
-      rollLoot().forEach(([id, n], i) => { st.inputs[i * 2 % st.inputs.length] = { id, count: n }; });
+      rollLoot(tx, ty, tz).forEach(([id, n], i) => { st.inputs[i * 2 % st.inputs.length] = { id, count: n }; });
       world.setBlock(tx, ty, tz, CHEST);
     }
     if (stationKind(tid)) { sound.click(); openStation(tx, ty, tz); return; }
@@ -2150,7 +2353,7 @@ function updateBreaking(dt) {
   const held = inventory.heldId();
   const t = breakTime(target.id, held);
   if (!isFinite(t)) { crack.visible = false; return; }
-  breakState.progress += dt * (effects.haste > 0 ? 1.5 : 1) / Math.max(t, 0.05);
+  breakState.progress += dt * (effects.haste > 0 ? 1.5 : 1) * (hasEnch(inventory.held(), 'swift') ? 1.4 : 1) / Math.max(t, 0.05);
   breakState.tick = (breakState.tick || 0) - dt;
   if (breakState.tick <= 0) { sound.dig(BLOCKS[target.id].sound); breakState.tick = 0.24; }
   if (breakState.progress >= 1) {
@@ -2546,6 +2749,8 @@ function stepGame(now, dt) {
     tickSwitches(dt);
     tickEffects(dt);
     tickBoss(dt);
+    tickHazards(dt);
+    tickAilments(dt);
     renderBossBar();
     updateHunger(dt);
     updateHealth(dt, wasGround, prevY);
@@ -2556,7 +2761,11 @@ function stepGame(now, dt) {
         if (m.spec.hostile) giveDrops(mobs.hurt(m, Math.round(2 + 6 * arrow.power) * (arrow.silver ? 2 : 1), from));
         else mobs.bump(m, from);
       },
-      onHitPlayer: (dmg, from) => { if (!dead && !shieldBlocks(from, dmg)) damage(armoured(dmg), 'A thornspitter shot you full of thorns.'); },
+      onHitPlayer: (dmg, from, a) => {
+        if (dead || shieldBlocks(from, dmg)) return;
+        damage(armoured(dmg), a?.from && SPECIES[a.from] ? SPECIES[a.from].cause : a?.trap ? 'A dart trap got you.' : 'A thornspitter shot you full of thorns.');
+        if (SPECIES[a?.from]?.shot === 'frost' && !guarded('chill')) { ailments.chill = Math.min(1.5, ailments.chill + 0.35); }
+      },
     });
     for (const id of picked) { inventory.add(id, 1); sound.pop(); }
     updateFishing(dt);
@@ -2644,5 +2853,5 @@ window.minicraft = {
   arrows, fishing, kinetics, bees, catchAt, seasonOf, applySeason, set day(v) { day = v; applySeason(); }, frames, signalAt, setSwitch, machines, carts, minimap, signs, armour, damage, placeRail, getInCart, getOutOfCart,
   get riding() { return riding; }, explode, lightFuse, fuses, clockTime, compassText, place, editSign, closeSign, openInventory, closeInventory, chestMove, lamps, tickLamps, sleepUntilMorning, stations, openStation, closeStation,
   get caneToday() { return caneToday; }, get waypoints() { return waypoints; }, toggleWaypoint, sortSlots, weather, openTrade, closeTrade, mountMob, dismount, get ridingMob() { return ridingMob; }, effects, armourWear, useAnvil, rollLoot, settings,
-  get bedSpawn() { return bedSpawn; },
+  get bedSpawn() { return bedSpawn; }, ailments, armourEnch, openAltar, lairNear, useBed, eat, drinkTea,
 };

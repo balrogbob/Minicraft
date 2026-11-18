@@ -92,6 +92,8 @@ html, body {
   border: 2px solid transparent; border-radius: 4px; touch-action: manipulation;
 }
 .slot img { position: absolute; inset: 12%; width: 76%; height: 76%; image-rendering: pixelated; pointer-events: none; }
+.slot img.enchanted { filter: drop-shadow(0 0 3px #c58cff) drop-shadow(0 0 2px #8ad8ff); animation: shimmer 2.4s ease-in-out infinite; }
+@keyframes shimmer { 50% { filter: drop-shadow(0 0 5px #e0b8ff) drop-shadow(0 0 3px #b0f0ff); } }
 .slot .count {
   position: absolute; right: 3px; bottom: 0; font-size: calc(var(--slot) * 0.3); font-weight: 700;
   text-shadow: 1px 1px 0 #000, -1px 1px 0 #000, 1px -1px 0 #000, -1px -1px 0 #000; pointer-events: none;

@@ -5,7 +5,7 @@
 // Like crops and lamps, a station only works while its part of the world is loaded.
 import {
   COAL, CHARCOAL, LOG, PLANKS, STICK, COBBLE, STONE, SAND, GLASS, SLIME_FUEL, BUCKET,
-  SALMON, BAKED_SALMON, ICEFISH, BAKED_ICEFISH,
+  SALMON, BAKED_SALMON, ICEFISH, BAKED_ICEFISH, HONEY_TEA, HONEYCOMB, MUSHROOM_STEW, FISH_PIE, GLOW_MUSHROOM,
   FLOUR, SUGAR, BUTTER, MILK_BUCKET, BREAD, COOKIE, CAKE, RAW_FISH, BAKED_FISH, BLOCKS, maxStack, stationKind,
   ORES, COAL_OR_CHARCOAL, IRON_INGOT, COPPER_INGOT, TIN_INGOT, ZINC_INGOT, ALUMINIUM_INGOT, SILVER_INGOT, GOLD_INGOT,
   BRONZE_INGOT, ELECTRUM_INGOT, STAINLESS_INGOT, STEEL_INGOT, AL_BRONZE_INGOT,
@@ -37,6 +37,8 @@ export const STATION_KINDS = {
       { out: [BREAD, 1], in: [[FLOUR, 3]], time: 6 },
       { out: [BAKED_FISH, 1], in: [[RAW_FISH, 1]], time: 5 },
       { out: [BAKED_SALMON, 1], in: [[SALMON, 1]], time: 5 },
+      { out: [MUSHROOM_STEW, 1], in: [[GLOW_MUSHROOM, 3], [BUTTER, 1]], time: 8 },
+      ...[BAKED_FISH, BAKED_SALMON, BAKED_ICEFISH].map((f) => ({ out: [FISH_PIE, 1], in: [[f, 1], [FLOUR, 2], [BUTTER, 1]], time: 10 })),
       { out: [BAKED_ICEFISH, 1], in: [[ICEFISH, 1]], time: 5 },
       { out: [BRICK, 1], in: [[CLAY_BALL, 1]], time: 5 },
       { out: [LEATHER, 1], in: [[HIDE, 1]], time: 6 }, // gently cured
@@ -116,6 +118,7 @@ STATION_KINDS.cauldron = {
     { out: [FIRE_TEA, 1], in: [[GLASS_BOTTLE, 1], [POPPY, 1], [CACTUS, 1]], time: 8 },
     { out: [HEAL_TEA, 1], in: [[GLASS_BOTTLE, 1], [LAVENDER, 1], [DAISY, 1]], time: 8 },
     { out: [HEAL_TEA, 1], in: [[GLASS_BOTTLE, 1], [BERRIES, 3]], time: 8 },
+    { out: [HONEY_TEA, 1], in: [[GLASS_BOTTLE, 1], [HONEYCOMB, 1]], time: 8 },
   ],
 };
 // Chests just hold things.
@@ -234,7 +237,7 @@ export class Stations {
     this.map.clear();
     for (const [k, st] of list ?? []) {
       if (typeof k !== 'string' || !STATION_KINDS[st?.kind]) continue;
-      const clean = (s) => (s && s.id && s.count > 0 ? { id: s.id, count: s.count, ...(s.wear > 0 ? { wear: s.wear } : {}) } : null);
+      const clean = (s) => (s && s.id && s.count > 0 ? { id: s.id, count: s.count, ...(s.wear > 0 ? { wear: s.wear } : {}), ...(Array.isArray(s.ench) && s.ench.length ? { ench: s.ench } : {}) } : null);
       const n = STATION_KINDS[st.kind].inputs;
       this.map.set(k, {
         kind: st.kind,

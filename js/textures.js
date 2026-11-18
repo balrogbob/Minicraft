@@ -14,6 +14,7 @@ import {
   RAIL, POWERED_RAIL, CACTUS, MINECART, MAP, PAPER,
   COLORS, DYE, CLUTCH, STORAGE_CART, LOADER_RAIL,
   BERRIES, GLASS_BOTTLE, NIGHT_TEA, HASTE_TEA, FIRE_TEA, HEAL_TEA, WOOD_SHIELD, IRON_SHIELD, KING_CROWN,
+  SUN_SCARAB, FROST_HEART, EMBER_CORE, SUN_MASK, FROST_CIRCLET, EMBER_CROWN, HONEY_TEA, MUSHROOM_STEW, FISH_PIE,
   CRYSTAL_SHARD, HONEY_BOTTLE, HONEYCOMB, SALMON, BAKED_SALMON, ICEFISH, BAKED_ICEFISH, PUFFERFISH, OLD_BOOT,
   SALTPETRE, GUNPOWDER, LEAD_SINKER, WEIGHTED_ROD, LEAD_BUCKET, LAVA_BUCKET, GOLD_CLOCK, COMPASS, SILVER_ARROW, MIRROR_LAMP,
 } from './blocks.js';
@@ -712,6 +713,49 @@ const hiveFront = (full) => (t) => {
 P[T.HIVE_FRONT] = hiveFront(false);
 P[T.HIVE_FULL] = hiveFront(true);
 P[T.BELL] = (t) => { for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) t.set(x, y, t.vary(shade([236, 196, 76], 0.8 + 0.25 * Math.sin(x * 0.5)), 0.05)); };
+
+// ----- enchanting and lairs -----
+P[T.ALTAR_SIDE] = (t) => {
+  P[T.OBSIDIAN](t);
+  for (let x = 0; x < TILE; x++) { t.set(x, 0, [196, 160, 64]); t.set(x, 1, [150, 116, 40]); }
+  for (const [x, y] of [[3, 6], [4, 7], [3, 8], [8, 5], [8, 9], [7, 7], [9, 7], [12, 6], [13, 7], [12, 8]]) t.set(x, y, [190, 140, 255]);
+};
+P[T.ALTAR_TOP] = (t) => {
+  P[T.OBSIDIAN](t);
+  for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+    const d = Math.hypot(x - 7.5, y - 7.5);
+    if (Math.abs(d - 6) < 0.6) t.set(x, y, [196, 160, 64]);
+    else if (Math.abs(d - 3.5) < 0.5) t.set(x, y, [170, 120, 240]);
+  }
+};
+const brickTile = (brick, mortar) => (t) => bricks(t, brick, mortar);
+P[T.CUT_SANDSTONE] = (t) => {
+  t.fill([214, 196, 140], 0.05);
+  for (let i = 0; i < 16; i++) { t.set(i, 0, [188, 168, 112]); t.set(i, 15, [176, 156, 100]); t.set(0, i, [196, 176, 120]); t.set(15, i, [176, 156, 100]); }
+  for (let x = 3; x < 13; x++) { t.set(x, 4, [190, 170, 116]); t.set(x, 11, [190, 170, 116]); }
+};
+P[T.TRAP_PLATE] = (t) => { P[T.CUT_SANDSTONE](t); t.set(5, 7, [176, 156, 100]); t.set(6, 8, [176, 156, 100]); t.set(10, 9, [180, 160, 104]); };
+P[T.DART_FRONT] = (t) => {
+  P[T.CUT_SANDSTONE](t);
+  for (const [x, y] of [[4, 6], [11, 6], [4, 10], [11, 10], [7, 8]]) { t.set(x, y, [40, 30, 20]); t.set(x + 1, y, [40, 30, 20]); t.set(x, y + 1, [60, 46, 30]); t.set(x + 1, y + 1, [60, 46, 30]); }
+};
+P[T.FROST_BRICKS] = brickTile([170, 210, 236], [120, 160, 196]);
+P[T.FORT_BRICKS] = brickTile([92, 34, 34], [44, 18, 22]);
+const lairShrine = (base, rune) => (t) => {
+  P[base](t);
+  for (let y = 4; y < 12; y++) for (let x = 5; x < 11; x++) if (x === 5 || x === 10 || y === 4 || y === 11) t.set(x, y, shade(rune, 0.45));
+  for (const [x, y] of [[7, 6], [8, 6], [7, 9], [8, 9], [6, 7], [9, 8], [7, 7], [8, 8]]) t.set(x, y, rune);
+};
+P[T.TOMB_SHRINE] = lairShrine(T.CUT_SANDSTONE, [255, 200, 60]);
+P[T.CRYPT_SHRINE] = lairShrine(T.FROST_BRICKS, [200, 250, 255]);
+P[T.FORT_SHRINE] = lairShrine(T.FORT_BRICKS, [255, 120, 40]);
+P[T.SHRINE_GLYPH] = (t) => {
+  t.fill([70, 66, 72], 0.08);
+  for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+    const d = Math.hypot(x - 7.5, y - 7.5);
+    if (d < 5 && (Math.abs(x - 7.5) < 1 || Math.abs(y - 7.5) < 1 || Math.abs(d - 4) < 0.6)) t.set(x, y, [250, 236, 200]);
+  }
+};
 
 // A plank door: a frame with a centre board; the upper half has a four-pane window you can see through,
 // the lower half has the handle.
@@ -1498,6 +1542,55 @@ ITEM_PAINTERS[PUFFERFISH] = (ctx) => {
 ITEM_PAINTERS[OLD_BOOT] = (ctx) => {
   rect(ctx, 4, 2, 6, 9, [100, 70, 44]); rect(ctx, 4, 10, 10, 4, [100, 70, 44]); rect(ctx, 4, 14, 11, 1, [50, 36, 24]);
   rect(ctx, 5, 3, 1, 6, [76, 52, 30]); px(ctx, 9, 6, [140, 104, 70]); px(ctx, 12, 11, [70, 120, 60]); px(ctx, 13, 11, [70, 120, 60]);
+};
+ITEM_PAINTERS[SUN_SCARAB] = (ctx) => {
+  for (let y = 3; y < 14; y++) for (let x = 3; x < 13; x++) {
+    const d = Math.hypot((x - 7.5) / 4.5, (y - 8.5) / 5);
+    if (d < 1) px(ctx, x, y, x === 7 || x === 8 ? [150, 100, 20] : d > 0.75 ? [200, 140, 30] : [250, 200, 60]);
+  }
+  rect(ctx, 6, 1, 4, 2, [220, 160, 40]);
+  for (const [x, y] of [[2, 6], [13, 6], [2, 10], [13, 10], [2, 13], [13, 13]]) px(ctx, x, y, [120, 80, 20]);
+};
+ITEM_PAINTERS[FROST_HEART] = (ctx) => {
+  for (let y = 2; y < 15; y++) for (let x = 1; x < 15; x++) {
+    const a = Math.hypot(x - 5, y - 5.5) < 3.6, b = Math.hypot(x - 10, y - 5.5) < 3.6, c = y >= 5 && Math.abs(x - 7.5) < (14 - y) * 0.75;
+    if (a || b || c) px(ctx, x, y, (x + y) % 4 === 0 ? [240, 252, 255] : x < 7 ? [176, 228, 250] : [110, 180, 226]);
+  }
+};
+ITEM_PAINTERS[EMBER_CORE] = (ctx) => {
+  for (let y = 2; y < 14; y++) for (let x = 2; x < 14; x++) {
+    const d = Math.hypot(x - 7.5, y - 7.5);
+    if (d < 5.6) px(ctx, x, y, d < 2.2 ? [255, 246, 180] : d < 3.8 ? [255, 170, 40] : (x * 3 + y) % 5 ? [180, 50, 20] : [90, 20, 10]);
+  }
+};
+function crownIcon(band, gem, spikes = true) {
+  return (ctx) => {
+    rect(ctx, 2, 8, 12, 5, band); rect(ctx, 2, 12, 12, 1, shade(band, 0.7));
+    if (spikes) for (const x of [2, 7, 12]) { rect(ctx, x, 4, 2, 4, band); px(ctx, x, 3, shade(band, 1.2)); }
+    rect(ctx, 7, 9, 2, 2, gem); px(ctx, 4, 10, gem); px(ctx, 11, 10, gem);
+  };
+}
+ITEM_PAINTERS[SUN_MASK] = (ctx) => {
+  for (let y = 2; y < 15; y++) for (let x = 2; x < 14; x++) {
+    const w = y < 10 ? 6 : 6 - (y - 10) * 0.8;
+    if (Math.abs(x - 7.5) <= w) px(ctx, x, y, y % 3 === 0 ? [40, 70, 160] : [236, 190, 50]);
+  }
+  rect(ctx, 4, 6, 3, 2, [30, 20, 10]); rect(ctx, 9, 6, 3, 2, [30, 20, 10]);
+};
+ITEM_PAINTERS[FROST_CIRCLET] = crownIcon([206, 230, 246], [120, 200, 255], false);
+ITEM_PAINTERS[EMBER_CROWN] = crownIcon([60, 40, 40], [255, 120, 30]);
+ITEM_PAINTERS[HONEY_TEA] = bottlePainter([214, 140, 40]);
+ITEM_PAINTERS[MUSHROOM_STEW] = (ctx) => {
+  rect(ctx, 2, 8, 12, 5, [150, 104, 60]); rect(ctx, 3, 13, 10, 1, [110, 74, 40]); rect(ctx, 2, 7, 12, 1, [120, 84, 48]);
+  rect(ctx, 3, 8, 10, 2, [190, 150, 100]);
+  for (const [x, y] of [[4, 6], [8, 5], [11, 6]]) { rect(ctx, x, y, 3, 2, [80, 210, 210]); px(ctx, x + 1, y + 2, [220, 230, 220]); }
+};
+ITEM_PAINTERS[FISH_PIE] = (ctx) => {
+  for (let y = 5; y < 14; y++) for (let x = 1; x < 15; x++) {
+    const d = Math.hypot((x - 7.5) / 6.6, (y - 9) / 4);
+    if (d < 1) px(ctx, x, y, d > 0.8 ? [180, 120, 50] : (x + y) % 3 ? [226, 176, 96] : [206, 150, 70]);
+  }
+  rect(ctx, 5, 8, 6, 1, [150, 96, 40]); px(ctx, 11, 7, [150, 96, 40]); px(ctx, 11, 9, [150, 96, 40]);
 };
 ITEM_PAINTERS[CLUTCH] = (ctx) => {
   rect(ctx, 0, 7, 16, 3, [150, 150, 150]); rect(ctx, 0, 7, 16, 1, [180, 180, 180]);

@@ -121,6 +121,8 @@ export const T = {
   BUSH: 144, BUSH_RIPE: 145,
   GLOW_MUSHROOM: 146, CRYSTAL: 147, CRYSTAL_CLUSTER: 148, GEODE_SHELL: 149,
   HIVE_SIDE: 150, HIVE_TOP: 151, HIVE_FRONT: 152, HIVE_FULL: 153, BELL: 154,
+  ALTAR_TOP: 155, ALTAR_SIDE: 156, TOMB_SHRINE: 157, CRYPT_SHRINE: 158, FORT_SHRINE: 159, SHRINE_GLYPH: 160,
+  DART_FRONT: 161, TRAP_PLATE: 162, FROST_BRICKS: 163, FORT_BRICKS: 164, CUT_SANDSTONE: 165,
 };
 
 // Ores, deepest-reaching last. tier: the pickaxe tier needed to mine it (see TOOL_TIERS);
@@ -211,6 +213,7 @@ function block(id, o) {
     frame: !!o.frame,
     water: o.water ?? 0, // a cauldron's water level (0..3)
     hive: o.hive ?? -1, bell: !!o.bell, // a bee hive's honey level; the bell in the middle of a village
+    lair: !!o.lair, trap: !!o.trap, dart: !!o.dart, // lair shrines and a tomb's traps
   };
 }
 
@@ -1255,4 +1258,68 @@ RECIPES.push(
   { out: [BEE_HIVE, 1], in: [[PLANKS, 6], [HONEYCOMB, 2]], table: true },
   { out: [LEATHER, 1], in: [[OLD_BOOT, 1]] },
   { out: [GLASS, 1], in: [[CRYSTAL_SHARD, 2], [SAND, 1]] },
+);
+
+// ---------- survival: enchanting, meals, more dungeons ----------
+export const ENCHANT_ALTAR = 630,
+  TOMB_SHRINE = 631, CRYPT_SHRINE = 632, FORT_SHRINE = 633, // a lair's shrine; + 3 once its guardian is beaten
+  DART_TRAP = 637, // 637..640: + facing (the way it shoots)
+  TRAP_PLATE = 641, FROST_BRICKS = 642, FORT_BRICKS = 643, CUT_SANDSTONE = 644;
+export const SUN_SCARAB = 1018, FROST_HEART = 1019, EMBER_CORE = 1020, SUN_MASK = 1021, FROST_CIRCLET = 1022, EMBER_CROWN = 1023,
+  HONEY_TEA = 1024, MUSHROOM_STEW = 1025, FISH_PIE = 1026;
+
+block(ENCHANT_ALTAR, {
+  name: 'Enchanting Altar', top: T.ALTAR_TOP, bottom: T.OBSIDIAN, side: T.ALTAR_SIDE, hardness: 6, tool: 'pick', needsTool: true, tier: 3,
+  light: 6, blastproof: true, transparent: true,
+  model: [[0, 0, 0, 16, 10, 16, { top: T.ALTAR_TOP, side: T.ALTAR_SIDE, bottom: T.OBSIDIAN }], [6, 10, 6, 10, 13, 10, T.CRYSTAL, true]],
+  boxes: [[0, 0, 0, 16, 10, 16]],
+});
+// The guardians of the three new kinds of lair, and what each one leaves behind.
+export const LAIRS = {
+  tomb: { shrine: TOMB_SHRINE, boss: 'dunewarden', name: 'The Dune Warden', tile: T.TOMB_SHRINE, brick: T.CUT_SANDSTONE },
+  crypt: { shrine: CRYPT_SHRINE, boss: 'frostwraith', name: 'The Frost Wraith', tile: T.CRYPT_SHRINE, brick: T.FROST_BRICKS },
+  fortress: { shrine: FORT_SHRINE, boss: 'emberlord', name: 'The Ember Lord', tile: T.FORT_SHRINE, brick: T.FORT_BRICKS },
+};
+for (const l of Object.values(LAIRS)) {
+  block(l.shrine, { name: 'Shrine', top: T.SHRINE_GLYPH, bottom: l.brick, side: l.tile, hardness: Infinity, light: 8, blastproof: true, drop: 0, lair: true });
+  block(l.shrine + 3, { name: 'Quiet Shrine', top: T.SHRINE_SPENT, bottom: l.brick, side: l.tile, hardness: 6, tool: 'pick', needsTool: true, tier: 3 });
+}
+block(CUT_SANDSTONE, { name: 'Cut Sandstone', tex: T.CUT_SANDSTONE, hardness: 2, tool: 'pick', needsTool: true });
+block(FROST_BRICKS, { name: 'Frost Bricks', tex: T.FROST_BRICKS, hardness: 2.5, tool: 'pick', needsTool: true, sound: 'glass' });
+block(FORT_BRICKS, { name: 'Fortress Bricks', tex: T.FORT_BRICKS, hardness: 3, tool: 'pick', needsTool: true, blastproof: true });
+// a tomb's traps: stepping on a loose floor tile makes the dart traps in the walls nearby shoot at you
+block(TRAP_PLATE, { name: 'Cut Sandstone', tex: T.TRAP_PLATE, hardness: 2, tool: 'pick', needsTool: true, drop: CUT_SANDSTONE, trap: true });
+for (let f = 0; f < 4; f++) {
+  block(DART_TRAP + f, {
+    name: 'Dart Trap', side: T.CUT_SANDSTONE, top: T.CUT_SANDSTONE, bottom: T.CUT_SANDSTONE, front: T.DART_FRONT, facing: f,
+    hardness: 2.5, tool: 'pick', needsTool: true, variantOf: f ? DART_TRAP : 0, drop: DART_TRAP, dart: true,
+  });
+}
+
+// Boss trophies: crowns (helmets with a gift) and the hearts of the guardians, used for enchanting.
+ITEMS[SUN_SCARAB] = { name: 'Sun Scarab', about: 'from the Dune Warden' };
+ITEMS[FROST_HEART] = { name: 'Frost Heart', about: 'from the Frost Wraith' };
+ITEMS[EMBER_CORE] = { name: 'Ember Core', about: 'from the Ember Lord' };
+ITEMS[SUN_MASK] = { name: 'Sun Mask', stack: 1, armour: { piece: 0, points: 4 }, wearMax: 600, repair: GOLD_INGOT, guards: 'heat', about: 'the desert sun can\'t harm you' };
+ITEMS[FROST_CIRCLET] = { name: 'Frost Circlet', stack: 1, armour: { piece: 0, points: 4 }, wearMax: 600, repair: SILVER_INGOT, guards: 'chill', about: 'the cold can\'t touch you' };
+ITEMS[EMBER_CROWN] = { name: 'Ember Crown', stack: 1, armour: { piece: 0, points: 6 }, wearMax: 800, repair: GOLD_INGOT, guards: 'fire', about: 'lava doesn\'t burn you' };
+ITEMS[HONEY_TEA] = { name: 'Honey Tea', stack: 8, tea: ['warm', 300], about: 'feel warm inside: no chill' };
+// hearty meals: the better the meal, the longer you stay well fed (see main.js)
+ITEMS[MUSHROOM_STEW] = { name: 'Mushroom Stew', food: 8 };
+ITEMS[FISH_PIE] = { name: 'Fish Pie', food: 12 };
+
+// Enchantments, put on at the altar. on: what they can go on; cost: what they take.
+const toolType = (id) => ITEMS[id]?.tool?.type;
+export const ENCHANTS = {
+  swift: { name: 'Swift', about: 'digs 40% faster', on: (id) => ['pick', 'axe', 'shovel'].includes(toolType(id)), cost: [[CRYSTAL_SHARD, 4]] },
+  sturdy: { name: 'Sturdy', about: 'wears half as fast', on: (id) => maxWear(id) > 0, cost: [[CRYSTAL_SHARD, 4], [GOLD_INGOT, 1]] },
+  keen: { name: 'Keen', about: 'hits 3 harder', on: (id) => ['sword', 'axe'].includes(toolType(id)), cost: [[CRYSTAL_SHARD, 6], [SUN_SCARAB, 1]] },
+  flame: { name: 'Flame', about: 'sets creatures alight', on: (id) => ['sword', 'axe'].includes(toolType(id)), cost: [[CRYSTAL_SHARD, 6], [EMBER_CORE, 1]] },
+  warmth: { name: 'Warmth', about: 'keeps out the cold', on: (id) => { const p = ITEMS[id]?.armour?.piece; return p !== undefined && p < 4; }, cost: [[CRYSTAL_SHARD, 4], [FROST_HEART, 1]] },
+};
+export const hasEnch = (slot, e) => !!slot?.ench?.includes(e);
+
+RECIPES.push(
+  { out: [ENCHANT_ALTAR, 1], in: [[OBSIDIAN, 4], [CRYSTAL_SHARD, 4], [GOLD_INGOT, 1]], table: true, metal: GOLD_INGOT },
+  { out: [CUT_SANDSTONE, 4], in: [[SANDSTONE, 4]], table: true },
 );
