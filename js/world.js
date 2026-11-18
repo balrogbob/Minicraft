@@ -72,6 +72,29 @@ function skyStep(level, down, id) {
   return down && level === MAX_LIGHT && id !== LEAVES && !isWaterId(id) ? MAX_LIGHT : level - 1;
 }
 
+// The nearest of a block's boxes (in 1/16 block) hit by a ray: { t, n: the face's normal } or null.
+function rayBoxes(o, d, x, y, z, boxes, maxDist) {
+  let best = null;
+  const oo = [o.x, o.y, o.z], dd = [d.x, d.y, d.z];
+  for (const b of boxes) {
+    const min = [x + b[0] / 16, y + b[1] / 16, z + b[2] / 16], max = [x + b[3] / 16, y + b[4] / 16, z + b[5] / 16];
+    let t0 = 0, t1 = maxDist, axis = -1, ok = true;
+    for (let a = 0; a < 3 && ok; a++) {
+      if (Math.abs(dd[a]) < 1e-9) { if (oo[a] < min[a] || oo[a] > max[a]) ok = false; continue; }
+      let ta = (min[a] - oo[a]) / dd[a], tb = (max[a] - oo[a]) / dd[a];
+      if (ta > tb) [ta, tb] = [tb, ta];
+      if (ta > t0) { t0 = ta; axis = a; }
+      t1 = Math.min(t1, tb);
+      if (t0 > t1) ok = false;
+    }
+    if (!ok || (best && t0 >= best.t)) continue;
+    const n = [0, 0, 0];
+    if (axis >= 0) n[axis] = -Math.sign(dd[axis]);
+    best = { t: t0, n };
+  }
+  return best;
+}
+
 const NEIGHBOURS = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]];
 const SIDES = [[1, 0], [-1, 0], [0, 1], [0, -1]];
 const passes = (id) => id === AIR || BLOCKS[id].transparent;
@@ -212,6 +235,64 @@ export class World {
     if (y > 0) this.refreshGrowth(c, x, y - 1, z);
   }
 
+  // ---------- fences, panes and collision ----------
+
+  // Does a fence or pane at (x, y, z) reach out toward its neighbour at (nx, y, nz)?
+  joins(def, nx, y, nz) {
+    const n = BLOCKS[this.get(nx, y, nz)];
+    if (!n || n.id === AIR) return false;
+    if (n.shape === def.shape) return true;
+    if (def.shape === 'fence' && n.gate) return true;
+    return n.shape === 'cube' && n.solid && (def.shape === 'pane' || !n.transparent);
+  }
+
+  // The model of a fence or pane, with arms toward whatever it joins.
+  joinedModel(x, y, z, def) {
+    const dirs = [[1, 0], [-1, 0], [0, 1], [0, -1]].filter(([dx, dz]) => this.joins(def, x + dx, y, z + dz));
+    const arm = (dx, dz, a, b, y0, y1, tile) => {
+      const [lo, hi] = dx > 0 ? [b, 16] : dx < 0 ? [0, a] : dz > 0 ? [b, 16] : [0, a];
+      return dx ? [lo, y0, 7, hi, y1, 9, tile] : [7, y0, lo, 9, y1, hi, tile];
+    };
+    if (def.shape === 'fence') {
+      const m = [[6, 0, 6, 10, 16, 10, T.PLANKS]];
+      for (const [dx, dz] of dirs) m.push(arm(dx, dz, 6, 10, 6, 8, T.PLANKS), arm(dx, dz, 6, 10, 12, 14, T.PLANKS));
+      return m;
+    }
+    const m = [[7, 0, 7, 9, 16, 9, T.GLASS]];
+    for (const [dx, dz] of dirs) m.push(arm(dx, dz, 7, 9, 0, 16, T.GLASS));
+    return m;
+  }
+
+  // Fences and shut gates are too tall to step or jump onto.
+  isTall(x, y, z) {
+    const def = BLOCKS[this.get(x, y, z)];
+    return def?.shape === 'fence' || (def?.gate && !def.open);
+  }
+
+  // What the player bumps into in a cell, as [x0, y0, z0, x1, y1, z1] boxes in world units (or null).
+  // Unloaded chunks and the world floor are solid.
+  collisionBoxes(x, y, z) {
+    if (y < 0) return [[x, y, z, x + 1, y + 1, z + 1]];
+    if (y >= H) return null;
+    const c = this.chunkAt(x, z);
+    if (!c) return [[x, y, z, x + 1, y + 1, z + 1]];
+    const def = BLOCKS[c.data[localIndex(x, y, z)]];
+    if (!def || !def.solid) return null;
+    let boxes = def.boxes;
+    if (def.shape === 'fence' || def.shape === 'pane') {
+      // tall for fences (you can't hop over), with arms toward what they join so there's no gap
+      const top = def.shape === 'fence' ? 24 : 16, t = def.shape === 'fence' ? [6, 10] : [7, 9];
+      boxes = [[t[0], 0, t[0], t[1], top, t[1]]];
+      for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        if (!this.joins(def, x + dx, y, z + dz)) continue;
+        boxes.push(dx > 0 ? [t[1], 0, t[0], 16, top, t[1]] : dx < 0 ? [0, 0, t[0], t[0], top, t[1]]
+          : dz > 0 ? [t[0], 0, t[1], t[1], top, 16] : [t[0], 0, 0, t[1], top, t[0]]);
+      }
+    }
+    if (!boxes) return [[x, y, z, x + 1, y + 1, z + 1]];
+    return boxes.map(([a, b, cc, d, e, f]) => [x + a / 16, y + b / 16, z + cc / 16, x + d / 16, y + e / 16, z + f / 16]);
+  }
+
   // ---------- plant growth ----------
 
   canGrow(c, x, y, z) {
@@ -242,9 +323,15 @@ export class World {
       for (const li of [...c.growing]) {
         const id = c.data[li];
         const def = BLOCKS[id];
-        const chance = elapsed / (def.grows === 'up' ? GROW_SECONDS.cane : GROW_SECONDS.wheat);
-        if (Math.random() >= chance) continue;
         const x = c.cx * CHUNK + (li & 15), z = c.cz * CHUNK + ((li >> 4) & 15), y = li >> 8;
+        if (def.grows === 'fill') {
+          // a cauldron out in the rain slowly fills up
+          if (this.raining && this.skyAt(x, y + 1, z) >= MAX_LIGHT && Math.random() < elapsed / 25) this.setBlock(x, y, z, id + 1);
+          continue;
+        }
+        // plants grow twice as fast in the rain
+        const chance = elapsed * (this.raining ? 2 : 1) / (def.grows === 'up' ? GROW_SECONDS.cane : GROW_SECONDS.wheat);
+        if (Math.random() >= chance) continue;
         if (def.grows === 'up') this.setBlock(x, y + 1, z, SUGAR_CANE);
         else if (def.grows === 'tree') this.growTree(x, y, z);
         else this.setBlock(x, y, z, def.grows);
@@ -858,6 +945,11 @@ export class World {
           pos, uv, col, tl, sl, index, vcount);
         continue;
       }
+      if (def.shape === 'fence' || def.shape === 'pane') {
+        vcount = this.addModel(lx, y, lz, { model: this.joinedModel(x, y, z, def) }, lightBrightness(this.lightAt(x, y, z)), skyBrightness(this.skyAt(x, y, z)),
+          pos, uv, col, tl, sl, index, vcount);
+        continue;
+      }
       if (def.shape === 'torch') {
         vcount = this.addTorch(lx, y, lz, def, pos, uv, col, tl, sl, index, vcount);
         continue;
@@ -1033,7 +1125,13 @@ export class World {
     let nx = 0, ny = 0, nz = 0, t = 0;
     while (t <= maxDist) {
       const id = this.get(x, y, z);
-      if (id !== AIR && (!BLOCKS[id].liquid || (liquids && (id === WATER || id === LAVA))) && (!solidOnly || BLOCKS[id].solid)) return { x, y, z, id, nx, ny, nz, t };
+      if (id !== AIR && (!BLOCKS[id].liquid || (liquids && (id === WATER || id === LAVA))) && (!solidOnly || BLOCKS[id].solid)) {
+        // slabs, stairs, gates and trapdoors: the ray must hit one of their boxes, not just their cell
+        const boxes = BLOCKS[id].boxes;
+        if (!boxes) return { x, y, z, id, nx, ny, nz, t };
+        const hit = rayBoxes(origin, dir, x, y, z, boxes, maxDist);
+        if (hit) return { x, y, z, id, nx: hit.n[0], ny: hit.n[1], nz: hit.n[2], t: hit.t };
+      }
       if (tmx < tmy && tmx < tmz) { x += sx; t = tmx; tmx += tdx; nx = -sx; ny = 0; nz = 0; }
       else if (tmy < tmz) { y += sy; t = tmy; tmy += tdy; nx = 0; ny = -sy; nz = 0; }
       else { z += sz; t = tmz; tmz += tdz; nx = 0; ny = 0; nz = -sz; }

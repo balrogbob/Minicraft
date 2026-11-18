@@ -12,6 +12,9 @@ const PUSH_SPEED = 4.5; // as fast as pushing it yourself gets it going
 const SLOPE_PULL = 7;
 const FRICTION = 0.35;
 const RAIL_TOP = 0.1; // the cart's floor sits this far above the rail's block
+const HOLD = 1.5; // seconds a storage cart waits on a loader rail after the last thing moves in or out
+export const CART_SLOTS = 18;
+const newStore = () => ({ kind: 'chest', inputs: new Array(CART_SLOTS).fill(null), fuel: null, out: null });
 
 // The rail shape in a cell, or null.
 const railAt = (world, x, y, z) => BLOCKS[world.get(x, y, z)]?.rail ?? null;
@@ -60,22 +63,28 @@ export class Carts {
       shadedBox([0.06, 0.42, 0.84], 0x8a8e98, [0.4, 0.35, 0]), shadedBox([0.06, 0.42, 0.84], 0x8a8e98, [-0.4, 0.35, 0]),
       ...[[0.33, 0.3], [-0.33, 0.3], [0.33, -0.3], [-0.33, -0.3]].map(([x, z]) => shadedBox([0.1, 0.18, 0.18], 0x2a2a2e, [x, 0.08, z])),
     ];
+    // a storage cart carries a chest
+    this.chestParts = [
+      shadedBox([0.7, 0.42, 0.8], 0x7a5230, [0, 0.38, 0]), shadedBox([0.72, 0.1, 0.82], 0x5c3c22, [0, 0.62, 0]),
+      shadedBox([0.12, 0.14, 0.04], 0x9a9ea8, [0, 0.5, 0.42]),
+    ];
   }
 
   // Set a cart on the rail at (x, y, z), facing the end most in line with `look`.
-  add(world, x, y, z, look) {
+  add(world, x, y, z, look, storage = false) {
     const r = railAt(world, x, y, z);
     if (!r) return null;
     const along = (d) => FACING_DIRS[d][0] * look.x + FACING_DIRS[d][1] * look.z;
     const [a, b] = r.ends;
     const to = along(a) >= along(b) ? a : b;
-    return this.spawn({ x, y, z, from: to === a ? b : a, to, s: 0.5, speed: 0 });
+    return this.spawn({ x, y, z, from: to === a ? b : a, to, s: 0.5, speed: 0, store: storage ? newStore() : null });
   }
 
   spawn(c) {
     const material = new THREE.MeshBasicMaterial({ vertexColors: true });
     const group = new THREE.Group();
     for (const g of this.parts) group.add(new THREE.Mesh(g, material));
+    if (c.store) for (const g of this.chestParts) group.add(new THREE.Mesh(g, material));
     const cart = { ...c, group, material, pos: new THREE.Vector3(), yaw: 0, pitch: 0 };
     this.scene.add(group);
     this.carts.push(cart);
@@ -135,9 +144,18 @@ export class Carts {
       if (c.speed < 0) {
         if (r.slope >= 0) { this.turnAround(c); c.speed = -c.speed; } else c.speed = 0; // rolls back down
       }
+      // a storage cart waits on a loader rail while it's filled or emptied, then rolls on
+      if (c.holding) {
+        c.speed = 0;
+        if ((c.hold -= dt) <= 0) { c.holding = false; c.released = true; c.speed = 4; }
+      }
       let dist = c.speed * dt;
       while (dist > 1e-6) {
-        const step = Math.min(dist, 1 - c.s);
+        let step = Math.min(dist, 1 - c.s);
+        if (r.loader && c.store && !c.released && c.s < 0.5 && c.s + step >= 0.5) {
+          c.s = 0.5; c.speed = 0; c.holding = true; c.hold = HOLD;
+          break;
+        }
         c.s += step; dist -= step;
         if (c.s < 1 - 1e-9) break;
         const next = railBeyond(world, c.x, c.y, c.z, c.to);
@@ -148,11 +166,18 @@ export class Carts {
         c.from = entry;
         c.to = r.ends[0] === entry ? r.ends[1] : r.ends[0];
         c.s = 0;
+        c.released = false;
       }
       this.place(c, r);
       this.light(c, world, light);
     }
   }
+
+  // The storage cart standing on a rail cell, if any.
+  storageAt(x, y, z) { return this.carts.find((c) => c.store && c.x === x && c.y === y && c.z === z) ?? null; }
+
+  // Hoppers filling or emptying a storage cart on a loader rail keep it waiting there a moment longer.
+  busy(c) { if (c.holding) c.hold = HOLD; }
 
   turnAround(c) { [c.from, c.to] = [c.to, c.from]; c.s = 1 - c.s; }
 
@@ -182,14 +207,25 @@ export class Carts {
     return best;
   }
 
-  serialize() { return this.carts.map((c) => [c.x, c.y, c.z, c.from, c.to, +c.s.toFixed(3)]); }
+  serialize() {
+    return this.carts.map((c) => {
+      const a = [c.x, c.y, c.z, c.from, c.to, +c.s.toFixed(3)];
+      if (c.store) a.push(c.store.inputs.map((it) => (it ? [it.id, it.count] : 0)));
+      return a;
+    });
+  }
 
   load(list) {
     this.clear();
     for (const a of list ?? []) {
       if (!Array.isArray(a) || !a.slice(0, 5).every(Number.isFinite)) continue;
-      const [x, y, z, from, to, s] = a;
-      this.spawn({ x, y, z, from, to, s: Math.min(1, Math.max(0, +s || 0)), speed: 0 });
+      const [x, y, z, from, to, s, items] = a;
+      let store = null;
+      if (Array.isArray(items)) {
+        store = newStore();
+        items.slice(0, CART_SLOTS).forEach((it, i) => { if (Array.isArray(it) && it[0] > 0 && it[1] > 0) store.inputs[i] = { id: it[0], count: it[1] }; });
+      }
+      this.spawn({ x, y, z, from, to, s: Math.min(1, Math.max(0, +s || 0)), speed: 0, store });
     }
   }
 }

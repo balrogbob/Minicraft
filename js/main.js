@@ -12,6 +12,11 @@ import {
   RAIL, POWERED_RAIL, MINECART, MAP, ICE, isRail, railId,
   LAVA, BLAST_CHARGE, LEAD_BUCKET, LAVA_BUCKET, GOLD_CLOCK, COMPASS, SILVER_ARROW, MIRROR_LAMP, WEIGHTED_ROD, isRod, metalTool, TOOL_MATERIALS,
   isBlock, isTorch, isWheat, itemName, breakTime, dropsFor, foodValue,
+  COLORS, DYE, WOOL, dyedWool, dyedCarpet, DYED_WOOL, DYED_CARPET, STAINED_GLASS, PAINTED_PLANKS, GLASS, PLANKS,
+  isFlower, isSlab, slabId, SHAPE_MATS, FENCE_GATE, TRAPDOOR, isGate, isTrapdoor,
+  LEVER, BUTTON, PRESSURE_PLATE, ITEM_FRAME, LOADER_RAIL, STORAGE_CART, isFrame,
+  ANVIL, LOOT_CHEST, BOSS_SHRINE, SPENT_SHRINE, CAULDRON, GLASS_BOTTLE, maxWear,   BERRY_BUSH, BERRIES, STAINLESS_INGOT, STEEL_INGOT, COPPER_INGOT, WHEAT, COBBLE, FEATHER, COAL, CORNFLOWER,
+  IRON_INGOT, GOLD_INGOT, SILVER_INGOT, ELECTRUM_INGOT, TUNGSTEN_INGOT, GUNPOWDER, NIGHT_TEA, HASTE_TEA, FIRE_TEA, HEAL_TEA, IRON_SHIELD, BAKED_FISH,
 } from './blocks.js';
 import { createAtlas, createIcons, createCrackCanvases, createWaterCanvas, createHudIcons } from './textures.js';
 import { World, CHUNK, WORLD_SIZE, chunkKey } from './world.js';
@@ -32,10 +37,12 @@ import { Signs } from './signs.js';
 import { Machines } from './machines.js';
 import { Carts, railBeyond } from './carts.js';
 import { MiniMap } from './minimap.js';
+import { Frames } from './frames.js';
+import { Weather } from './weather.js';
 
 // v2 = the 16k x 16k streaming world (player state here, edited chunks in IndexedDB).
 // v1 = the old 128 x 128 world, migrated into the middle of the big world on first launch.
-const GAME_VERSION = '17'; // shown in the menu; bump with each release
+const GAME_VERSION = '18'; // shown in the menu; bump with each release
 const SAVE_KEY = 'minicraft-save-v2';
 const LEGACY_SAVE_KEY = 'minicraft-save-v1';
 const SETTINGS_KEY = 'minicraft-settings-v1';
@@ -51,7 +58,7 @@ function writeSave(obj) {
 }
 // Settings live apart from the world so they survive "New world".
 const settings = (() => {
-  const defaults = { sens: 6, volume: 70, viewDistance: 6, perf: false, difficulty: 'worrying' };
+  const defaults = { sens: 6, volume: 70, viewDistance: 6, perf: false, difficulty: 'worrying', wear: true, favs: [] };
   try { return { ...defaults, ...JSON.parse(localStorage.getItem(SETTINGS_KEY)) }; } catch { return defaults; }
 })();
 function saveSettings() {
@@ -85,15 +92,15 @@ const material = new THREE.MeshBasicMaterial({ map: atlas, vertexColors: true, a
 // daylight is a uniform set by the sky, so nights darken everything the sun reaches,
 // caves stay dark all day, and torches glow wherever they are.
 const AMBIENT = 0.03; // linear; just enough to make out cave walls without a torch
-const lightUniforms = { uDay: { value: 1 }, uFlicker: { value: 1 } };
+const lightUniforms = { uDay: { value: 1 }, uFlicker: { value: 1 }, uAmbient: { value: AMBIENT } };
 function addTorchLight(mat) {
   mat.onBeforeCompile = (shader) => {
     Object.assign(shader.uniforms, lightUniforms);
     shader.vertexShader = 'attribute float torch;\nattribute float sky;\nvarying float vTorch;\nvarying float vSky;\n' + shader.vertexShader
       .replace('#include <color_vertex>', '#include <color_vertex>\nvTorch = torch;\nvSky = sky;');
-    shader.fragmentShader = 'uniform float uDay;\nuniform float uFlicker;\nvarying float vTorch;\nvarying float vSky;\n' + shader.fragmentShader
+    shader.fragmentShader = 'uniform float uDay;\nuniform float uFlicker;\nuniform float uAmbient;\nvarying float vTorch;\nvarying float vSky;\n' + shader.fragmentShader
       .replace('#include <color_fragment>',
-        '#include <color_fragment>\ndiffuseColor.rgb *= max(vec3(max(uDay * vSky, ' + AMBIENT.toFixed(3) + ')), vTorch * uFlicker * vec3(1.0, 0.86, 0.66));');
+        '#include <color_fragment>\ndiffuseColor.rgb *= max(vec3(max(uDay * vSky, uAmbient)), vTorch * uFlicker * vec3(1.0, 0.86, 0.66));');
   };
 }
 addTorchLight(material);
@@ -135,6 +142,7 @@ mobs.onHurtPlayer = (amount, cause, from) => {
   const dx = player.pos.x - from.x, dz = player.pos.z - from.z, len = Math.hypot(dx, dz) || 1;
   player.kx = (dx / len) * 7; player.kz = (dz / len) * 7;
   if (player.onGround) player.vel.y = 4.5;
+  if (shieldBlocks(from, amount)) return;
   damage(armoured(amount), cause);
 };
 mobs.onShoot = (origin, dir, dmg) => arrows.shootThorn(origin, dir, dmg);
@@ -199,15 +207,20 @@ const machines = new Machines(scene, icons); // pumps, drills, hoppers and belts
 const carts = new Carts(scene); // minecarts on rails
 let riding = null; // the minecart you're sitting in
 const minimap = new MiniMap($('map'), atlasCanvas);
+const frames = new Frames(scene, icons); // what's shown in each item frame
+const weather = new Weather(scene);
+let ridingMob = null; // the camel you're riding
+machines.frames = frames; machines.carts = carts;
 // Bellows blowing into an oven or smelter (while they're turned) make it work half as fast again.
 const boostAt = (x, y, z) => ([[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]]
   .some(([dx, dy, dz]) => world.get(x + dx, y + dy, z + dz) === BELLOWS && powerAt(x + dx, y + dy, z + dz) > 0) ? 1.5 : 1);
 // Armour worn: an item id (or null) for helmet, chestplate, leggings and boots.
-const armour = [null, null, null, null];
+const armour = [null, null, null, null, null]; // (the fifth is the shield)
+const armourWear = [0, 0, 0, 0, 0];
 const armourPoints = () => armour.reduce((t, id) => t + (id ? ITEMS[id].armour.points : 0), 0);
 // Each point of armour takes 4% off what creatures do to you, up to 80%.
 const armourShare = () => Math.min(0.8, armourPoints() * 0.04);
-const armoured = (amount) => amount * (1 - armourShare());
+const armoured = (amount) => { if (amount > 0) wearArmour(); return amount * (1 - armourShare()); };
 let caneToday = 0; // raw sugar cane eaten since sunrise: the 5th gives you food poisoning
 const store = new ChunkStore();
 let worldReady = false; // false while a world is loading: nothing gets saved until the player is placed
@@ -288,9 +301,12 @@ async function startWorld(save) {
   kinetics.clear();
   for (const [k, f] of fuses) removeFuse(k, f);
   signs.load(save?.signs);
+  frames.load(save?.frames);
+  pressedButtons.clear(); pressedPlates.clear();
   machines.load(save?.machines);
   carts.load(save?.carts);
   riding = null;
+  ridingMob = null;
   arrows.reset();
   lastSwing = 0;
   applyViewDistance();
@@ -321,11 +337,16 @@ async function startWorld(save) {
   lamps.clear();
   for (const [key, secs] of save?.lamps ?? []) if (typeof key === 'string' && Number.isFinite(secs)) lamps.set(key, secs);
   stations.load(save?.stations);
-  for (let i = 0; i < 4; i++) {
+  for (let i = 0; i < 5; i++) {
     const id = save?.armour?.[i];
     armour[i] = ITEMS[id]?.armour?.piece === i ? id : null;
+    armourWear[i] = armour[i] ? Math.max(0, +save?.armourWear?.[i] || 0) : 0;
   }
+  for (const k of Object.keys(effects)) effects[k] = Math.max(0, +save?.effects?.[k] || 0);
   caneToday = Number.isFinite(save?.caneToday) ? save.caneToday : 0;
+  waypoints = Array.isArray(save?.waypoints) ? save.waypoints.filter((w) => w && [w.x, w.y, w.z].every(Number.isFinite)).map((w) => ({ x: w.x, y: w.y, z: w.z, name: String(w.name ?? 'Mark').slice(0, 16) })).slice(0, 12) : [];
+  if (save?.weather) weather.set(!!save.weather.raining, Math.max(10, +save.weather.timer || 60));
+  else weather.set(false);
   air = MAX_AIR;
   dead = false;
   fallTop = null;
@@ -341,6 +362,14 @@ async function startWorld(save) {
     setProgress(ready);
     if (ready >= 1) break;
     await nextFrame();
+  }
+  // pets come back where you left them (or beside you, if that's far away)
+  for (const [kind, x, y, z, sitting] of save?.pets ?? []) {
+    if (!['wolf', 'camel'].includes(kind) || ![x, y, z].every(Number.isFinite)) continue;
+    const far = Math.hypot(x - player.pos.x, z - player.pos.z) > 40;
+    const m = far ? mobs.spawn(kind, player.pos.x + 1.5, player.pos.y + 0.2, player.pos.z + 1.5) : mobs.spawn(kind, x, y, z);
+    mobs.setTame(m);
+    m.sitting = !!sitting && !far;
   }
   $('loading').classList.add('hidden');
   worldReady = true;
@@ -387,10 +416,16 @@ function saveGame() {
     lamps: [...lamps],
     stations: stations.serialize(),
     signs: signs.serialize(),
+    frames: frames.serialize(),
     machines: machines.serialize(),
     carts: carts.serialize(),
     armour: [...armour],
+    armourWear: [...armourWear],
+    effects: { ...effects },
     caneToday,
+    weather: { raining: weather.raining, timer: Math.round(weather.timer) },
+    pets: mobs.pets(),
+    waypoints,
     time: sky.time,
   });
 }
@@ -432,7 +467,12 @@ function showItemName() {
 
 function slotHTML(s) {
   if (!s) return '';
-  return `<img src="${icons[s.id]}" alt=""><span class="count">${s.count > 1 ? s.count : ''}</span>`;
+  let bar = '';
+  if (s.wear > 0 && maxWear(s.id)) {
+    const left = Math.max(0, 1 - s.wear / maxWear(s.id));
+    bar = `<span class="wear"><i style="--w:${Math.round(left * 100)}%;--wc:hsl(${Math.round(left * 120)},70%,45%)"></i></span>`;
+  }
+  return `<img src="${icons[s.id]}" alt=""><span class="count">${s.count > 1 ? s.count : ''}</span>${bar}`;
 }
 
 const hotbarEls = [];
@@ -585,7 +625,7 @@ function respawnPlayer() {
 //   a well-fed player (hunger 16+) heals a point every 3 s, using up a little hunger.
 function updateHealth(dt, wasGround, prevY) {
   // falling: track the highest point since leaving the ground (including where this step started)
-  if (riding || player.inWater || player.inLava || player.climbing || player.onGround && wasGround) fallTop = null;
+  if (riding || ridingMob || player.inWater || player.inLava || player.climbing || player.onGround && wasGround) fallTop = null;
   if (!player.onGround && !player.inWater) fallTop = Math.max(fallTop ?? prevY, prevY, player.pos.y);
   else if (player.onGround && !wasGround && fallTop === null && !player.inWater) fallTop = prevY;
   if (player.onGround && !wasGround && fallTop !== null) {
@@ -607,7 +647,7 @@ function updateHealth(dt, wasGround, prevY) {
     if ((timers.cactus = (timers.cactus ?? 0) - dt) <= 0) { timers.cactus = 0.5; damage(1, 'You hugged a cactus.'); }
   } else timers.cactus = 0;
   // lava burns: 3 points every half second
-  if (player.inLava) {
+  if (player.inLava && !(effects.fire > 0)) {
     if ((timers.lava -= dt) <= 0) { timers.lava = 0.5; damage(3, 'You tried to swim in lava.'); }
   } else timers.lava = 0;
   // starving
@@ -679,7 +719,7 @@ function buildInventoryGrid() {
   };
   for (let i = 9; i < SLOTS; i++) make(i, $('inv-grid'));
   for (let i = 0; i < 9; i++) make(i, $('inv-hotbar'));
-  for (let k = 0; k < 4; k++) make(ARMOUR_SLOT + k, $('inv-armour'));
+  for (let k = 0; k < 5; k++) make(ARMOUR_SLOT + k, $('inv-armour'));
 }
 const ARMOUR_SLOT = 100; // the armour slots count as 100..103 in the inventory panel
 buildInventoryGrid();
@@ -695,11 +735,12 @@ function onInvSlot(i) {
     const [k, s] = i >= ARMOUR_SLOT ? [i - ARMOUR_SLOT, picked] : [picked - ARMOUR_SLOT, i];
     if (s >= ARMOUR_SLOT) { picked = -1; renderInventory(); return; }
     const item = inventory.slots[s];
-    if (item && armourPiece(item.id) !== k) toast(`That isn't ${ARMOUR_PIECES[k].name.toLowerCase()} armour`);
+    if (item && armourPiece(item.id) !== k) toast(k === 4 ? 'That isn\'t a shield' : `That isn't ${ARMOUR_PIECES[k].name.toLowerCase()} armour`);
     else {
-      const worn = armour[k];
+      const worn = armour[k], wornWear = armourWear[k];
       armour[k] = item?.id ?? null;
-      inventory.slots[s] = worn ? { id: worn, count: 1 } : null;
+      armourWear[k] = item?.wear ?? 0;
+      inventory.slots[s] = worn ? { id: worn, count: 1, ...(wornWear ? { wear: wornWear } : {}) } : null;
       sound.pop();
       inventory.onChange();
     }
@@ -715,12 +756,13 @@ function onInvSlot(i) {
 function wearHeld() {
   const held = inventory.held();
   const k = armourPiece(held.id);
-  const worn = armour[k];
+  const worn = armour[k], wornWear = armourWear[k];
   armour[k] = held.id;
-  inventory.slots[inventory.selected] = worn ? { id: worn, count: 1 } : null;
+  armourWear[k] = held.wear ?? 0;
+  inventory.slots[inventory.selected] = worn ? { id: worn, count: 1, ...(wornWear ? { wear: wornWear } : {}) } : null;
   inventory.onChange();
   sound.pop();
-  toast(`Wearing ${itemName(held.id).toLowerCase()} · armour ${Math.round(armourShare() * 100)}%`, 1800);
+  toast(k === 4 ? `Carrying ${itemName(held.id).toLowerCase()}: it stops hits from in front of you` : `Wearing ${itemName(held.id).toLowerCase()} · armour ${Math.round(armourShare() * 100)}%`, 1800);
 }
 
 // Is a block of this kind (a crafting table or butter churn) within reach?
@@ -738,9 +780,9 @@ function renderInventory() {
     invEls[i].innerHTML = slotHTML(inventory.slots[i]);
     invEls[i].classList.toggle('picked', i === picked);
   }
-  for (let k = 0; k < 4; k++) {
+  for (let k = 0; k < 5; k++) {
     const el = invEls[ARMOUR_SLOT + k];
-    el.innerHTML = armour[k] ? slotHTML({ id: armour[k], count: 1 }) : `<span class="empty-armour">${['⛑', '👕', '👖', '👢'][k]}</span>`;
+    el.innerHTML = armour[k] ? slotHTML({ id: armour[k], count: 1, wear: armourWear[k] }) : `<span class="empty-armour">${['⛑', '👕', '👖', '👢', '🛡'][k]}</span>`;
     el.classList.toggle('picked', ARMOUR_SLOT + k === picked);
   }
   $('armour-total').textContent = armourPoints() ? `blocks ${Math.round(armourShare() * 100)}% of creature damage` : '';
@@ -749,11 +791,21 @@ function renderInventory() {
   $('table-status').textContent = `— crafting table ${hasTable ? '✓' : '✗'} · butter churn ${hasChurn ? '✓' : '✗'}`;
   const list = $('recipes');
   list.innerHTML = '';
-  RECIPES.forEach((r) => {
+  const query = $('recipe-search').value.trim().toLowerCase();
+  const favs = new Set(settings.favs);
+  // favourites first, then everything else in the usual order
+  const shown = RECIPES.filter((r) => favs.has(recipeKey(r))).concat(RECIPES.filter((r) => !favs.has(recipeKey(r))));
+  let count = 0;
+  shown.forEach((r) => {
     if (r.metal && countOf(r.metal) <= 0) return; // metal tools only show up once you have that metal
+    const fav = favs.has(recipeKey(r));
+    if (favOnly && !fav) return;
+    if (query && ![r.out[0], ...r.in.flatMap(([id]) => idsOf(id))].some((id) => itemName(id).toLowerCase().includes(query))) return;
     const stationOk = (!r.table || hasTable) && (!r.churn || hasChurn);
     const haveAll = r.in.every(([id, n]) => countOf(id) >= n) && (r.tools ?? []).every((id) => inventory.count(id) > 0);
     const canMake = haveAll && stationOk && inventory.room(r.out[0]) >= r.out[1];
+    if (canMakeOnly && !canMake) return;
+    count++;
     const row = document.createElement('div');
     row.className = 'recipe' + (stationOk ? '' : ' locked');
     const ings = r.in.map(([id, n]) => {
@@ -770,6 +822,17 @@ function renderInventory() {
     const where = r.churn ? ' (churn)' : r.table ? ' 🛠' : '';
     row.innerHTML = `${ings}${tools}<span class="arrow">→</span><img class="outimg" src="${icons[r.out[0]]}" alt="">` +
       `<span class="name">${r.out[1] > 1 ? r.out[1] + ' × ' : ''}${itemName(r.out[0])}${also}${where}</span>`;
+    const star = document.createElement('button');
+    star.className = 'fav' + (fav ? ' on' : '');
+    star.textContent = fav ? '★' : '☆';
+    star.title = fav ? 'Remove from favourites' : 'Add to favourites';
+    star.addEventListener('click', () => {
+      const k = recipeKey(r);
+      settings.favs = fav ? settings.favs.filter((f) => f !== k) : [...settings.favs, k];
+      saveSettings();
+      renderInventory();
+    });
+    row.appendChild(star);
     const btn = document.createElement('button');
     btn.className = 'btn';
     btn.textContent = 'Craft';
@@ -785,7 +848,34 @@ function renderInventory() {
     row.appendChild(btn);
     list.appendChild(row);
   });
+  if (!count) list.innerHTML = `<p class="hint">${query ? `Nothing matches "${query.replace(/[<>&"]/g, '')}".` : favOnly ? 'No favourites yet: tap the ☆ beside a recipe.' : 'Nothing you can make right now.'}</p>`;
 }
+
+// What a recipe is called in the favourites list: what it makes and from what.
+const recipeKey = (r) => `${r.out[0]}x${r.out[1]}:${r.in.map(([id, n]) => idsOf(id).join('|') + 'x' + n).join(',')}`;
+let favOnly = false, canMakeOnly = false;
+$('recipe-search').addEventListener('input', () => renderInventory());
+$('btn-fav-only').addEventListener('click', (e) => { favOnly = !favOnly; e.currentTarget.classList.toggle('on', favOnly); renderInventory(); });
+$('btn-can-make').addEventListener('click', (e) => { canMakeOnly = !canMakeOnly; e.currentTarget.classList.toggle('on', canMakeOnly); renderInventory(); });
+
+// Tidy a run of slots: stacks of the same thing are combined, and everything is put in order.
+function sortSlots(slots, from = 0, to = slots.length) {
+  const items = [];
+  for (let i = from; i < to; i++) {
+    const s = slots[i];
+    if (!s) continue;
+    const same = !s.wear && items.find((t) => t.id === s.id && !t.wear && t.count < maxStack(t.id));
+    if (same) {
+      const k = Math.min(s.count, maxStack(s.id) - same.count);
+      same.count += k;
+      if (s.count - k) items.push({ ...s, count: s.count - k });
+    } else items.push({ ...s });
+  }
+  items.sort((a, b) => a.id - b.id || b.count - a.count);
+  for (let i = from; i < to; i++) slots[i] = items[i - from] ?? null;
+}
+$('btn-sort').addEventListener('click', () => { sortSlots(inventory.slots, 9); picked = -1; sound.pop(); inventory.onChange(); });
+$('btn-chest-sort').addEventListener('click', () => { const st = currentStation(); if (!st) return; sortSlots(st.inputs); stPicked = null; sound.pop(); renderStation(); });
 
 // A recipe ingredient can be one id or a list of alternatives (coal or charcoal).
 const idsOf = (spec) => (Array.isArray(spec) ? spec : [spec]);
@@ -831,7 +921,7 @@ function setStationLit(x, y, z, lit) {
   world.setBlock(x, y, z, d.stationBase + d.facing + (lit ? 4 : 0));
 }
 
-const currentStation = () => openStationAt && stations.get(openStationAt.x, openStationAt.y, openStationAt.z, openStationAt.kind);
+const currentStation = () => openStationAt && (openStationAt.cart ? openStationAt.cart.store : stations.get(openStationAt.x, openStationAt.y, openStationAt.z, openStationAt.kind));
 
 function stationSlot(area, i) {
   const st = currentStation();
@@ -841,16 +931,16 @@ function stationSlot(area, i) {
   return { get: () => inventory.slots[i], set: (v) => { inventory.slots[i] = v; } };
 }
 
-function openStation(x, y, z) {
-  const kind = stationKind(world.get(x, y, z));
-  stations.get(x, y, z, kind);
-  openStationAt = { x, y, z, kind };
+function openStation(x, y, z, cart = null) {
+  const kind = cart ? 'chest' : stationKind(world.get(x, y, z));
+  if (!cart) stations.get(x, y, z, kind);
+  openStationAt = { x, y, z, kind, cart };
   stPicked = null;
   paused = true;
   controls.reset();
   document.exitPointerLock?.();
   const K = STATION_KINDS[kind];
-  $('station-title').textContent = K.name;
+  $('station-title').textContent = cart ? 'Storage Cart' : K.name;
   $('station').classList.toggle('storage', !!K.storage);
   // build the slots for this kind of station
   const make = (parent, area, i) => {
@@ -883,7 +973,8 @@ function openStation(x, y, z) {
     'against any face; gear it up for more speed.' + (kind === 'crusher' ? ' Ore dust smelts into ingots, so crushing ore doubles what you get.' : '') + '</p>'
     : '<p class="hint">Fuel, in items cooked per piece: log or planks 1, stick ½, coal or charcoal 10, ' +
     'slime fuel 40, lava bucket 100 (their buckets are left in the fuel slot). Fuel is only used while something is cooking.' +
-    (K.speed ? ' A blast smelter works twice as fast on the same fuel.' : '') + '</p>');
+    (K.speed ? ' A blast smelter works twice as fast on the same fuel.' : '') +
+    (K.water ? ' It needs water: tap it with a water bucket (or leave it out in the rain). Every two teas use a level.' : '') + '</p>');
   $('station').classList.remove('hidden');
   renderStation();
 }
@@ -917,6 +1008,10 @@ function renderStation() {
     $('st-status').textContent = r && st.speed > 0 ? `${verb} ${itemName(idsOf(r.in[0][0])[0]).toLowerCase()}… ${power}` : `${r ? '' : 'Put something in. '}${power}`;
     return;
   }
+  if (K.water && !(BLOCKS[world.get(openStationAt.x, openStationAt.y, openStationAt.z)]?.water > 0)) {
+    $('st-status').textContent = 'The cauldron is dry: tap it with a water bucket, or leave it out in the rain';
+    return;
+  }
   $('st-flame').style.opacity = st.burn > 0 ? String(0.35 + 0.65 * (st.burn / (st.burnMax || 1))) : '0.12';
   const fuelLeft = st.burn > 1e-9 ? ` (fuel for ${+st.burn.toFixed(1)} more)` : '';
   $('st-status').textContent = r ? (st.burn > 1e-9 || (st.fuel && isFuel(st.fuel.id)) ? `Making ${itemName(r.out[0]).toLowerCase()}…${fuelLeft}` : 'Needs fuel') :
@@ -934,7 +1029,7 @@ function chestMove(intoChest) {
       const t = slots[j];
       if (t && t.id === s.id && t.count < maxStack(s.id)) { const k = Math.min(s.count, maxStack(s.id) - t.count); t.count += k; s.count -= k; }
     }
-    for (let j = 0; j < slots.length && s.count; j++) if (!slots[j]) { slots[j] = { id: s.id, count: s.count }; s.count = 0; }
+    for (let j = 0; j < slots.length && s.count; j++) if (!slots[j]) { slots[j] = { ...s }; s.count = 0; }
     if (!s.count) from[i] = null;
   };
   if (intoChest) for (let i = 9; i < SLOTS; i++) put(st.inputs, inventory.slots, i);
@@ -942,8 +1037,8 @@ function chestMove(intoChest) {
     for (let i = 0; i < st.inputs.length; i++) {
       const s = st.inputs[i];
       if (!s) continue;
-      const left = inventory.add(s.id, s.count);
-      st.inputs[i] = left ? { id: s.id, count: left } : null;
+      const left = inventory.addItem(s);
+      st.inputs[i] = left ? { ...s, count: left } : null;
     }
   }
   sound.pop();
@@ -959,7 +1054,7 @@ function onStationSlot(area, i) {
   // tapping the result collects it
   if (area === 'out' && !stPicked) {
     if (st.out) {
-      const left = inventory.add(st.out.id, st.out.count);
+      const left = inventory.addItem(st.out);
       st.out = left ? { id: st.out.id, count: left } : null;
       if (left) toast('Inventory full'); else sound.pop();
     }
@@ -1001,9 +1096,12 @@ function hitMob() {
     if (now - lastSwing < (isSword(inventory.heldId()) ? 300 : 450)) return; // swords swing quicker
     lastSwing = now;
     giveDrops(mobs.hurt(targetMob.mob, WEAPON_DAMAGE[inventory.heldId()] ?? ITEMS[inventory.heldId()]?.tool?.damage ?? 2, player.pos));
+    wearOutHeld(1);
     return;
   }
   const r = mobs.interact(targetMob.mob, player.pos, inventory.heldId());
+  if (r.trade) { openTrade(targetMob.mob); return; }
+  if (r.ride) { mountMob(targetMob.mob); return; }
   for (const [id, n] of r.take) inventory.remove(id, n);
   for (const [id, n] of r.give) {
     if (inventory.add(id, n) > 0) toast('Inventory full');
@@ -1070,10 +1168,11 @@ function bedPartner(x, y, z) {
   return d.foot ? [x - dx, y, z - dz] : [x + dx, y, z + dz];
 }
 
-function toggleDoor(x, y, z) {
+const bedPartnerOr = (x, y, z, id) => (isBed(id) ? bedPartner(x, y, z) : [x, y, z]);
+function toggleDoor(x, y, z, force = false) {
   const d = BLOCKS[world.get(x, y, z)];
   const by = d.upper ? y - 1 : y; // the bottom half
-  if (!d.open && (player.overlapsBlock(x, by, z) || player.overlapsBlock(x, by + 1, z))) return; // don't shut it on yourself
+  if (!force && !d.open && (player.overlapsBlock(x, by, z) || player.overlapsBlock(x, by + 1, z))) return; // don't shut it on yourself
   world.setBlock(x, by, z, doorId(d.facing, !d.open, false));
   if (isDoor(world.get(x, by + 1, z))) world.setBlock(x, by + 1, z, doorId(d.facing, !d.open, true));
   sound.door(!d.open);
@@ -1083,6 +1182,40 @@ function toggleCurtain(x, y, z) {
   const d = BLOCKS[world.get(x, y, z)];
   world.setBlock(x, y, z, CURTAIN + d.axis + (d.open ? 0 : 2));
   sound.swish();
+}
+
+// Fence gates and trapdoors swing open and shut when tapped (or switched: see signals).
+function toggleHatch(x, y, z, open) {
+  const d = BLOCKS[world.get(x, y, z)];
+  const want = open ?? !d.open;
+  if (want === d.open) return;
+  const base = d.gate ? FENCE_GATE + d.axis : TRAPDOOR + d.facing;
+  world.setBlock(x, y, z, base + (want ? (d.gate ? 2 : 4) : 0));
+  sound.door(want);
+}
+
+const isCarpet = (id) => id === CARPET || (id > DYED_CARPET && id <= DYED_CARPET + 9);
+// Tap a block holding a dye to colour it: wool, carpet, glass and planks (plain or already coloured),
+// or the writing on a sign. Returns true if it took the dye.
+function dyeBlock(x, y, z, c) {
+  const id = world.get(x, y, z), def = BLOCKS[id];
+  let to = 0;
+  if (isSign(id)) {
+    signs.setColor(x, y, z, c);
+    inventory.consumeHeld();
+    sound.pop();
+    toast(`The writing is ${COLORS[c].name.toLowerCase()} now`, 1500);
+    return true;
+  }
+  if (id === WOOL || (id > DYED_WOOL && id <= DYED_WOOL + 9)) to = dyedWool(c);
+  else if (isCarpet(id)) to = dyedCarpet(c);
+  else if (id === GLASS || (id >= STAINED_GLASS && id < STAINED_GLASS + 10)) to = STAINED_GLASS + c;
+  else if (id === PLANKS || (id >= PAINTED_PLANKS && id < PAINTED_PLANKS + 10)) to = PAINTED_PLANKS + c;
+  if (!to || to === id) return false;
+  world.setBlock(x, y, z, to);
+  inventory.consumeHeld();
+  sound.place(def.sound);
+  return true;
 }
 
 const lampKey = (x, y, z) => `${x},${y},${z}`;
@@ -1155,6 +1288,298 @@ async function sleepUntilMorning() {
   paused = false;
 }
 
+// ---------- wear and repair ----------
+// Tools, weapons, armour and shields wear a little with each use and break when worn out (unless wear
+// is turned off in the menu). An anvil puts them right with a piece of what they're made of.
+function wearOutHeld(n) {
+  const s = inventory.held();
+  if (!settings.wear || !s || !maxWear(s.id)) return;
+  s.wear = (s.wear ?? 0) + n;
+  if (s.wear >= maxWear(s.id)) {
+    inventory.slots[inventory.selected] = null;
+    sound.breakBlock('stone');
+    toast(`Your ${itemName(s.id).toLowerCase()} broke!`, 2000);
+  }
+  inventory.onChange();
+}
+function wearArmour(k = -1, n = 1) {
+  if (!settings.wear) return;
+  for (let i = 0; i < 5; i++) {
+    if (!armour[i] || (k >= 0 ? i !== k : i === 4)) continue;
+    armourWear[i] += n;
+    if (armourWear[i] >= maxWear(armour[i])) {
+      toast(`Your ${itemName(armour[i]).toLowerCase()} fell apart!`, 2000);
+      sound.breakBlock('stone');
+      armour[i] = null; armourWear[i] = 0;
+    }
+  }
+}
+// A shield stops a hit (or a thorn) coming from in front of you; it wears by how hard the hit was.
+function shieldBlocks(from, amount) {
+  if (!armour[4] || !from) return false;
+  const look = player.lookDir();
+  const dx = from.x - player.pos.x, dz = from.z - player.pos.z, len = Math.hypot(dx, dz) || 1;
+  const lookLen = Math.hypot(look.x, look.z) || 1;
+  if ((dx * look.x + dz * look.z) / (len * lookLen) < 0.35) return false; // from the side or behind
+  wearArmour(4, Math.max(1, Math.ceil(amount)));
+  sound.place('stone');
+  toast('Blocked!', 600);
+  return true;
+}
+function useAnvil() {
+  const s = inventory.held();
+  if (!s || !maxWear(s.id)) { toast('Hold a worn tool, weapon, piece of armour or shield and tap the anvil to repair it', 2500); return; }
+  if (!s.wear) { toast(`Your ${itemName(s.id).toLowerCase()} doesn't need repairing`); return; }
+  const mat = ITEMS[s.id].repair;
+  if (inventory.count(mat) < 1) { toast(`You need ${itemName(mat).toLowerCase()} to repair this`); return; }
+  inventory.remove(mat, 1);
+  s.wear = Math.max(0, Math.round(s.wear - maxWear(s.id) * 0.5));
+  if (!s.wear) delete s.wear;
+  inventory.onChange();
+  sound.place('stone');
+  toast(`Repaired with ${itemName(mat).toLowerCase()}: ${Math.round(100 - ((s.wear ?? 0) / maxWear(s.id)) * 100)}% as good as new`, 2000);
+}
+
+// ---------- teas ----------
+const effects = { night: 0, haste: 0, fire: 0, heal: 0 }; // seconds left of each
+const EFFECT_ICONS = { night: '🌙', haste: '⛏', fire: '🔥', heal: '💚' };
+function drinkTea(id) {
+  const [kind, secs] = ITEMS[id].tea;
+  effects[kind] = Math.max(effects[kind], secs);
+  inventory.consumeHeld();
+  if (inventory.add(GLASS_BOTTLE, 1)) toast('Inventory full');
+  sound.gulp();
+  toast(`${itemName(id)}: you ${ITEMS[id].about}`, 2000);
+}
+function tickEffects(dt) {
+  for (const k of Object.keys(effects)) effects[k] = Math.max(0, effects[k] - dt);
+  if (effects.heal > 0 && health < MAX_HEALTH) { health = Math.min(MAX_HEALTH, health + dt * 1.2); renderHealth(); }
+  lightUniforms.uAmbient.value = effects.night > 0 ? 0.3 : AMBIENT;
+}
+const effectsText = () => Object.entries(effects).filter(([, t]) => t > 0)
+  .map(([k, t]) => `${EFFECT_ICONS[k]} ${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}`).join('  ');
+
+// ---------- dungeons ----------
+// Deep underground, rare stone-brick rooms hold a shrine and a chest or two of loot. Come near an
+// active shrine and its guardian, the Mossback King, rises to meet you; beat it and the shrine goes quiet.
+const LOOT = [
+  [IRON_INGOT, 2, 6, 0.8], [GOLD_INGOT, 1, 3, 0.5], [SILVER_INGOT, 1, 3, 0.4], [ELECTRUM_INGOT, 1, 2, 0.25],
+  [TUNGSTEN_INGOT, 1, 2, 0.15], [GUNPOWDER, 2, 6, 0.5], [SILVER_ARROW, 4, 8, 0.4], [BAKED_FISH, 2, 4, 0.6],
+  [NIGHT_TEA, 1, 2, 0.35], [HASTE_TEA, 1, 2, 0.3], [FIRE_TEA, 1, 1, 0.25], [HEAL_TEA, 1, 2, 0.3], [IRON_SHIELD, 1, 1, 0.12],
+];
+function rollLoot() {
+  const out = [];
+  for (const [id, a, b, p] of LOOT) if (Math.random() < p) out.push([id, a + Math.floor(Math.random() * (b - a + 1))]);
+  return out.length ? out : [[IRON_INGOT, 3]];
+}
+let bossTimer = 0;
+function tickBoss(dt) {
+  if ((bossTimer -= dt) > 0) return;
+  bossTimer = 1;
+  if (dead) return;
+  const pcx = Math.floor(player.pos.x / CHUNK), pcz = Math.floor(player.pos.z / CHUNK);
+  for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) {
+    const d = world.generator.dungeonAt(pcx + dx, pcz + dz);
+    if (!d || world.get(d.x, d.y, d.z) !== BOSS_SHRINE) continue;
+    if (Math.hypot(d.x + 0.5 - player.pos.x, d.z + 0.5 - player.pos.z) > 9 || Math.abs(d.y - player.pos.y) > 5) continue;
+    const k = `${d.x},${d.y},${d.z}`;
+    if (mobs.mobs.some((m) => m.shrine === k && !m.dying)) continue;
+    const m = mobs.spawn('mossking', d.x + 0.5, d.y, d.z + 2.5);
+    m.shrine = k;
+    if (settings.difficulty !== 'peaceful') m.angry = 1e6;
+    sound.boom(0.4);
+    toast('The Mossback King rises from the shrine!', 3000);
+  }
+}
+mobs.onDefeat = (m) => {
+  if (!m.spec.boss || !m.shrine) return;
+  const [x, y, z] = m.shrine.split(',').map(Number);
+  if (world.get(x, y, z) === BOSS_SHRINE) world.setBlock(x, y, z, SPENT_SHRINE);
+  toast('The Mossback King is defeated! The shrine falls quiet.', 4000);
+};
+function renderBossBar() {
+  const boss = mobs.mobs.find((m) => m.spec.boss && !m.dying && m.pos.distanceTo(player.pos) < 32);
+  $('boss-bar').classList.toggle('hidden', !boss);
+  if (!boss) return;
+  $('boss-name').textContent = boss.spec.name;
+  $('boss-fill').style.width = `${Math.max(0, (boss.hp / boss.spec.hp) * 100)}%`;
+}
+
+// ---------- riding camels ----------
+function mountMob(m) {
+  ridingMob = m;
+  m.ridden = true;
+  player.vel.set(0, 0, 0);
+  sound.mob(m.kind, 0.8);
+  toast('Steer with the joystick (or WASD). Tap to get off.', 2500);
+}
+function dismount() {
+  if (!ridingMob) return;
+  ridingMob.ridden = false;
+  player.spawn(ridingMob.pos.x + 1.1, ridingMob.pos.y + 0.3, ridingMob.pos.z);
+  ridingMob = null;
+}
+function followMount() {
+  if (!mobs.mobs.includes(ridingMob)) { ridingMob = null; return; }
+  player.pos.set(ridingMob.pos.x, ridingMob.pos.y + 1.55, ridingMob.pos.z);
+  player.vel.set(0, 0, 0);
+  player.onGround = true;
+  player.updateWaterState();
+}
+mobs.onPetKill = (drops) => giveDrops(drops);
+
+// ---------- the wandering trader ----------
+// Turns up now and then on a fine day with four offers, rolled from these: what you give -> what you get.
+const TRADES = [
+  [[WHEAT, 24], [TUNGSTEN_INGOT, 1]], [[LOG, 16], [ELECTRUM_INGOT, 2]], [[COBBLE, 48], [GOLD_INGOT, 2]],
+  [[WOOL, 8], [SILVER_INGOT, 2]], [[BREAD, 6], [GUNPOWDER, 4]], [[RAW_FISH, 8], [NIGHT_TEA, 1]],
+  [[SAND, 32], [STAINLESS_INGOT, 1]], [[FEATHER, 6], [SILVER_ARROW, 6]], [[IRON_INGOT, 4], [TUNGSTEN_INGOT, 1]],
+  [[COAL, 16], [STEEL_INGOT, 2]], [[BERRIES, 12], [HEAL_TEA, 1]], [[SUGAR_CANE, 16], [COPPER_INGOT, 4]],
+  [[CORNFLOWER, 4], [HASTE_TEA, 1]], [[COPPER_INGOT, 8], [IRON_SHIELD, 1]],
+];
+mobs.onTraderSpawn = (m) => {
+  const pool = [...TRADES];
+  m.trades = [];
+  for (let i = 0; i < 4 && pool.length; i++) m.trades.push(pool.splice(Math.floor(Math.random() * pool.length), 1)[0]);
+  toast('A wandering trader has turned up nearby', 3000);
+};
+let tradingWith = null;
+function openTrade(m) {
+  if (!m.trades) mobs.onTraderSpawn(m);
+  tradingWith = m;
+  paused = true;
+  controls.reset();
+  document.exitPointerLock?.();
+  sound.mob('trader', 1);
+  $('trade').classList.remove('hidden');
+  renderTrades();
+}
+function closeTrade() { $('trade').classList.add('hidden'); tradingWith = null; paused = false; }
+function renderTrades() {
+  const list = $('trades');
+  list.innerHTML = '';
+  for (const [[gid, gn], [oid, on]] of tradingWith.trades) {
+    const row = document.createElement('div');
+    row.className = 'recipe';
+    const have = inventory.count(gid) >= gn;
+    row.innerHTML = `<span class="ing${have ? '' : ' missing'}" title="${itemName(gid)}"><img src="${icons[gid]}" alt="">${gn}</span>` +
+      `<span class="arrow">→</span><img class="outimg" src="${icons[oid]}" alt=""><span class="name">${on > 1 ? on + ' × ' : ''}${itemName(oid)}</span>`;
+    const btn = document.createElement('button');
+    btn.className = 'btn';
+    btn.textContent = 'Trade';
+    btn.disabled = !have || inventory.room(oid) < on;
+    btn.addEventListener('click', () => {
+      if (inventory.count(gid) < gn) return;
+      inventory.remove(gid, gn);
+      inventory.add(oid, on);
+      sound.pop();
+      renderTrades();
+    });
+    row.appendChild(btn);
+    list.appendChild(row);
+  }
+}
+$('btn-close-trade').addEventListener('click', closeTrade);
+$('trade').addEventListener('click', (e) => { if (e.target.id === 'trade') closeTrade(); });
+
+// ---------- switches and signals ----------
+// Levers (flip on and off), buttons (on for a moment) and pressure plates (on while something stands on
+// them) switch on the things beside them: doors, gates and trapdoors open, clutches engage and powered
+// rails push carts along. A switch fixed to a block also reaches whatever touches that block.
+const SIDES6 = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]];
+const pressedButtons = new Map(); // "x,y,z" -> seconds until it pops back out
+const pressedPlates = new Map(); // "x,y,z" -> seconds since anything stood on it
+const attachedTo = (x, y, z, d) => (d.floor ? [x, y - 1, z] : [x - FACING_DIRS[d.facing][0], y, z - FACING_DIRS[d.facing][1]]);
+function signalAt(x, y, z) {
+  for (const [dx, dy, dz] of SIDES6) {
+    const nx = x + dx, ny = y + dy, nz = z + dz;
+    const d = BLOCKS[world.get(nx, ny, nz)];
+    if (d?.switch) { if (d.on) return true; continue; }
+    if (!d?.solid || d.shape !== 'cube') continue;
+    // a switch fixed to this block passes its signal through it
+    for (const [ex, ey, ez] of SIDES6) {
+      const sx = nx + ex, sy = ny + ey, sz = nz + ez, s = BLOCKS[world.get(sx, sy, sz)];
+      if (!s?.switch || !s.on) continue;
+      const [ax, ay, az] = attachedTo(sx, sy, sz, s);
+      if (ax === nx && ay === ny && az === nz) return true;
+    }
+  }
+  return false;
+}
+kinetics.signalAt = signalAt;
+
+function setSwitch(x, y, z, on) {
+  const d = BLOCKS[world.get(x, y, z)];
+  if (!d?.switch || d.on === on) return;
+  const id = d.switch === 'lever' ? LEVER + (d.floor ? 4 : d.facing) + (on ? 5 : 0)
+    : d.switch === 'button' ? BUTTON + d.facing + (on ? 4 : 0) : PRESSURE_PLATE + (on ? 1 : 0);
+  world.setBlock(x, y, z, id);
+  sound.click();
+  signalChanged(x, y, z);
+}
+
+// A switch at (x, y, z) changed: everything it can reach catches up.
+function signalChanged(x, y, z) {
+  const cells = new Map();
+  const add = (cx, cy, cz) => { for (const [dx, dy, dz] of SIDES6) cells.set(`${cx + dx},${cy + dy},${cz + dz}`, [cx + dx, cy + dy, cz + dz]); };
+  add(x, y, z);
+  for (const [dx, dy, dz] of SIDES6) if (BLOCKS[world.get(x + dx, y + dy, z + dz)]?.solid) add(x + dx, y + dy, z + dz);
+  world.machinesChanged = true; // clutches
+  for (const [cx, cy, cz] of cells.values()) {
+    const id = world.get(cx, cy, cz), d = BLOCKS[id];
+    if (isGate(id) || isTrapdoor(id)) toggleHatch(cx, cy, cz, signalAt(cx, cy, cz));
+    else if (isDoor(id)) {
+      const by = d.upper ? cy - 1 : cy;
+      const on = signalAt(cx, by, cz) || signalAt(cx, by + 1, cz);
+      if (on !== d.open) toggleDoor(cx, cy, cz, true);
+    }
+  }
+}
+
+// Buttons pop back out; pressure plates go down under you, animals and creatures, and up again after.
+function tickSwitches(dt) {
+  for (const [k, t] of pressedButtons) {
+    if (t - dt > 0) { pressedButtons.set(k, t - dt); continue; }
+    pressedButtons.delete(k);
+    const [x, y, z] = k.split(',').map(Number);
+    if (world.chunkAt(x, z)) setSwitch(x, y, z, false);
+  }
+  const standing = new Set();
+  const feet = (px, py, pz) => {
+    const x = Math.floor(px), y = Math.floor(py + 0.05), z = Math.floor(pz);
+    if (BLOCKS[world.get(x, y, z)]?.switch === 'plate') standing.add(lampKey(x, y, z));
+  };
+  if (!dead && !riding) feet(player.pos.x, player.pos.y, player.pos.z);
+  for (const m of mobs.mobs) if (!m.dying) feet(m.pos.x, m.pos.y, m.pos.z);
+  for (const k of standing) {
+    pressedPlates.set(k, 0);
+    const [x, y, z] = k.split(',').map(Number);
+    if (!BLOCKS[world.get(x, y, z)].on) setSwitch(x, y, z, true);
+  }
+  for (const [k, t] of pressedPlates) {
+    if (standing.has(k)) continue;
+    if (t + dt < 0.4) { pressedPlates.set(k, t + dt); continue; }
+    pressedPlates.delete(k);
+    const [x, y, z] = k.split(',').map(Number);
+    if (world.chunkAt(x, z)) setSwitch(x, y, z, false);
+  }
+}
+
+// ---------- item frames ----------
+// Tap an empty frame holding something to put one in it; tap a full one to take it out.
+function useFrame(x, y, z, held) {
+  const item = frames.get(x, y, z);
+  if (item) {
+    frames.remove(x, y, z);
+    giveDrops([[item, 1]]);
+    return;
+  }
+  if (!held) { toast('Tap the frame holding something to show it here. On a hopper, it only lets matching things through.', 3500); return; }
+  frames.set(x, y, z, held.id);
+  inventory.consumeHeld();
+  sound.place('wood');
+}
+
 // ---------- rails and minecarts ----------
 // A rail you place joins up to two rails beside it (or a block higher or lower, as a slope), preferring
 // ones already pointing at it, and they bend round to meet it.
@@ -1187,6 +1612,7 @@ function placeRail(x, y, z, powered) {
   for (const c of pick) {
     const [nx, ny, nz, dy] = c.n;
     const nr = BLOCKS[world.get(nx, ny, nz)].rail, back = (c.d + 2) % 4;
+    if (nr.loader) continue; // loader rails stay straight
     if (nr.ends.includes(back) && (dy !== -1 || nr.slope === back)) continue; // already joined
     const keep = joinedEnds(nx, ny, nz).find((e) => e !== back);
     const nends = keep === undefined ? [back, (back + 2) % 4] : [keep, back];
@@ -1257,21 +1683,52 @@ function place() {
   // with the bow in hand a tap always shoots (a quick, short shot), whatever you're looking at
   if (held?.id === BOW) { shootArrow(Math.max(0.25, Math.min(1, bowCharge / FULL_DRAW))); bowCharge = 0; return; }
   if (riding) { getOutOfCart(); return; }
-  if (targetCart) { getInCart(targetCart.cart); return; }
+  if (ridingMob) { dismount(); return; }
+  if (targetCart) {
+    const c = targetCart.cart;
+    if (c.store) { sound.click(); openStation(c.x, c.y, c.z, c); } else getInCart(c);
+    return;
+  }
   if (targetMob) { hitMob(); return; }
-  if (held?.id === MINECART && target && isRail(target.id)) {
-    if (carts.add(world, target.x, target.y, target.z, player.lookDir())) { inventory.consumeHeld(); sound.place('stone'); }
+  if ((held?.id === MINECART || held?.id === STORAGE_CART) && target && isRail(target.id)) {
+    if (carts.add(world, target.x, target.y, target.z, player.lookDir(), held.id === STORAGE_CART)) { inventory.consumeHeld(); sound.place('stone'); }
     return;
   }
   if (target && (target.id === TABLE || target.id === CHURN)) { sound.click(); openInventory(target.id); return; }
   if (target) {
     const { x: tx, y: ty, z: tz, id: tid } = target;
+    if (held?.id === MAP && (isSign(tid) || isBed(tid))) { toggleWaypoint(tx, ty, tz, tid); return; }
     if (isBed(tid)) { useBed(tx, ty, tz); return; }
     if (isDoor(tid)) { toggleDoor(tx, ty, tz); return; }
     if (isCurtain(tid)) { toggleCurtain(tx, ty, tz); return; }
+    if (isGate(tid) || isTrapdoor(tid)) { toggleHatch(tx, ty, tz); return; }
+    if (BLOCKS[tid].switch === 'lever') { setSwitch(tx, ty, tz, !BLOCKS[tid].on); return; }
+    if (BLOCKS[tid].switch === 'button') { setSwitch(tx, ty, tz, true); pressedButtons.set(lampKey(tx, ty, tz), 1.5); return; }
+    if (isFrame(tid)) { useFrame(tx, ty, tz, held); return; }
+    if (tid === BERRY_BUSH + 1) {
+      world.setBlock(tx, ty, tz, BERRY_BUSH);
+      sound.breakBlock('leaves');
+      giveDrops([[BERRIES, 2 + (Math.random() < 0.5 ? 1 : 0)]]);
+      return;
+    }
+    if (held && ITEMS[held.id]?.dye !== undefined && dyeBlock(tx, ty, tz, ITEMS[held.id].dye)) return;
     if (isLamp(tid)) { useLamp(tx, ty, tz, held); return; }
     if (isSign(tid)) { editSign(tx, ty, tz); return; }
     if (tid === BLAST_CHARGE) { lightFuse(tx, ty, tz); toast('The fuse is lit! Stand back…', 1500); return; }
+    if (tid === ANVIL) { useAnvil(); return; }
+    if (BLOCKS[tid].station === 'cauldron' && held?.id === WATER_BUCKET) {
+      world.setBlock(tx, ty, tz, CAULDRON + 3);
+      inventory.slots[inventory.selected] = { id: BUCKET, count: 1 };
+      inventory.onChange();
+      sound.splash(false);
+      return;
+    }
+    if (tid === LOOT_CHEST) {
+      // a dungeon chest: its loot is put in the first time it's opened
+      const st = stations.get(tx, ty, tz, 'chest');
+      rollLoot().forEach(([id, n], i) => { st.inputs[i * 2 % st.inputs.length] = { id, count: n }; });
+      world.setBlock(tx, ty, tz, CHEST);
+    }
     if (stationKind(tid)) { sound.click(); openStation(tx, ty, tz); return; }
     if (BLOCKS[tid].machine || BLOCKS[tid].kinetic) {
       // tap a machine (or a wheel or windmill) to see how it's running
@@ -1291,6 +1748,7 @@ function place() {
   if (held?.id === BUCKET || held?.id === WATER_BUCKET) { useBucket(held.id); return; }
   if (held?.id === LEAD_BUCKET || held?.id === LAVA_BUCKET) { useLeadBucket(held.id); return; }
   if (held && (foodValue(held.id) || ITEMS[held.id]?.drink)) { eat(held.id); return; }
+  if (held && ITEMS[held.id]?.tea) { drinkTea(held.id); return; }
   if (held && ITEMS[held.id]?.armour) { wearHeld(); return; }
   if (!target || !held) return;
   // ladders and scaffolding tapped with more of the same grow upward from the top of the column
@@ -1316,6 +1774,27 @@ function place() {
   } else if (isWheat(id)) {
     // seeds go on top of grass or dirt
     if (there !== AIR || target.ny !== 1 || (target.id !== GRASS && target.id !== DIRT)) { toast('Plant seeds on top of grass or dirt'); return; }
+  } else if (id === BERRY_BUSH) {
+    if (there !== AIR || target.ny !== 1 || (target.id !== GRASS && target.id !== DIRT)) { toast('Plant berry bushes on top of grass or dirt'); return; }
+  } else if (isFlower(id)) {
+    if (there !== AIR || target.ny !== 1 || (target.id !== GRASS && target.id !== DIRT)) { toast('Plant flowers on top of grass or dirt'); return; }
+  } else if (isSlab(id)) {
+    // a slab onto a slab of the same kind makes the full block; otherwise it goes in the top or bottom
+    // half of the space, by where on the block you tap
+    const s = BLOCKS[id].slab;
+    const tslab = BLOCKS[target.id].slab;
+    if (tslab && tslab.mat === s.mat && ((target.ny === 1 && !tslab.top) || (target.ny === -1 && tslab.top))) {
+      world.setBlock(target.x, target.y, target.z, SHAPE_MATS[s.mat].full);
+      sound.place(BLOCKS[id].sound);
+      inventory.consumeHeld();
+      return;
+    }
+    const hitY = player.eye.y + player.lookDir().y * target.t - target.y;
+    const top = target.ny === -1 || (target.ny === 0 && hitY > 0.5);
+    if (there !== AIR && !isWaterId(there)) return;
+    const half = BLOCKS[slabId(s.mat, top)].boxes[0];
+    if (player.overlapsBlock(x, y + half[1] / 16, z) && player.pos.y < y + half[4] / 16 && player.pos.y + 1.8 > y + half[1] / 16) return;
+    id = slabId(s.mat, top);
   } else if (id === SAPLING) {
     if (there !== AIR || target.ny !== 1 || (target.id !== GRASS && target.id !== DIRT)) { toast('Plant saplings on top of grass or dirt'); return; }
   } else if (id === SUGAR_CANE) {
@@ -1346,11 +1825,25 @@ function place() {
     sound.place('wool');
     inventory.consumeHeld();
     return;
-  } else if (id === RAIL || id === POWERED_RAIL) {
-    // rails lie on top of a block, and bend to join the rails next to them
+  } else if (id === RAIL || id === POWERED_RAIL || id === LOADER_RAIL) {
+    // rails lie on top of a block, and bend to join the rails next to them (loader rails just run straight)
     if (there !== AIR || target.ny !== 1 || !BLOCKS[target.id].solid) { toast('Rails go on top of a block'); return; }
-    placeRail(x, y, z, id === POWERED_RAIL);
+    if (id === LOADER_RAIL) world.setBlock(x, y, z, LOADER_RAIL + (facingTowardPlayer(x, z) % 2));
+    else placeRail(x, y, z, id === POWERED_RAIL);
     sound.place('stone');
+    inventory.consumeHeld();
+    return;
+  } else if (id === LEVER || id === BUTTON || id === ITEM_FRAME || id === PRESSURE_PLATE) {
+    // switches and frames are fixed to the side of a solid block (a lever can also stand on top of one,
+    // and a pressure plate only goes on top)
+    if (there !== AIR || !BLOCKS[target.id].solid) return;
+    const side = FACING_DIRS.findIndex(([dx, dz]) => dx === target.nx && dz === target.nz);
+    if (id === PRESSURE_PLATE) { if (target.ny !== 1) { toast('Pressure plates go on top of a block'); return; } }
+    else if (id === LEVER && target.ny === 1) id = LEVER + 4;
+    else if (target.ny !== 0) { toast(`${BLOCKS[id].name}s go on the side of a block`); return; }
+    else id += side;
+    world.setBlock(x, y, z, id);
+    sound.place(BLOCKS[id].sound);
     inventory.consumeHeld();
     return;
   } else if (id === LADDER || id === SIGN) {
@@ -1364,7 +1857,7 @@ function place() {
     inventory.consumeHeld();
     if (isSign(id)) editSign(x, y, z);
     return;
-  } else if (id === LAMP || id === MIRROR_LAMP || id === CARPET) {
+  } else if (id === LAMP || id === MIRROR_LAMP || isCarpet(id)) {
     if (there !== AIR || !world.isSolid(x, y - 1, z)) { toast(`${BLOCKS[id].name}s need something solid underneath`); return; }
   } else {
     // chairs face you; curtains hang across your line of sight
@@ -1374,6 +1867,9 @@ function place() {
     else if (id === HOPPER) id += target.ny === 1 ? 4 : FACING_DIRS.findIndex(([dx, dz]) => dx === -target.nx && dz === -target.nz); // into the block you tapped
     else if (BLOCKS[id].kinetic) id = kineticVariant(id);
     else if (id === CURTAIN) id += facingTowardPlayer(x, z) % 2; // facing 0/2 -> hangs across x, 1/3 -> across z
+    else if (BLOCKS[id].stair) id += facingTowardPlayer(x, z); // you walk up them away from you
+    else if (id === FENCE_GATE) id += facingTowardPlayer(x, z) % 2; // across your way
+    else if (id === TRAPDOOR) id += target.ny === 0 ? FACING_DIRS.findIndex(([dx, dz]) => dx === -target.nx && dz === -target.nz) : (facingTowardPlayer(x, z) + 2) % 4; // hinged on the block you tap
     if (BLOCKS[id].solid && player.overlapsBlock(x, y, z)) return;
   }
   world.setBlock(x, y, z, id);
@@ -1474,7 +1970,7 @@ function removeFuse(k, f) {
   fuses.delete(k);
 }
 const blastable = (def) => def && !def.blastproof && !def.liquid && !def.station && !def.kinetic && def.hardness !== Infinity &&
-  (def.shape === 'cube' || def.shape === 'cross' || def.shape === 'torch' || def.climb || def.sign);
+  (def.shape === 'cube' || def.shape === 'cross' || def.shape === 'torch' || def.climb || def.sign || def.slab || def.stair || def.shape === 'fence' || def.shape === 'pane');
 function explode(x, y, z) {
   world.setBlock(x, y, z, AIR);
   const R = BLAST_RADIUS, gathered = new Map();
@@ -1552,10 +2048,12 @@ function updateBreaking(dt) {
   if (controls.breaking && targetCart) {
     breakState.cart = (breakState.cart ?? 0) + dt;
     if (breakState.cart >= 0.5) {
-      carts.remove(targetCart.cart);
+      const c = targetCart.cart;
+      if (openStationAt?.cart === c) closeStation();
+      carts.remove(c);
       targetCart = null;
       breakState.cart = 0;
-      giveDrops([[MINECART, 1]]);
+      giveDrops([[c.store ? STORAGE_CART : MINECART, 1], ...(c.store?.inputs ?? []).filter(Boolean).map((it) => [it.id, it.count])]);
     }
     crack.visible = false;
     return;
@@ -1579,7 +2077,7 @@ function updateBreaking(dt) {
   const held = inventory.heldId();
   const t = breakTime(target.id, held);
   if (!isFinite(t)) { crack.visible = false; return; }
-  breakState.progress += dt / Math.max(t, 0.05);
+  breakState.progress += dt * (effects.haste > 0 ? 1.5 : 1) / Math.max(t, 0.05);
   breakState.tick = (breakState.tick || 0) - dt;
   if (breakState.tick <= 0) { sound.dig(BLOCKS[target.id].sound); breakState.tick = 0.24; }
   if (breakState.progress >= 1) {
@@ -1602,6 +2100,8 @@ function breakBlock(x, y, z) {
   if (!def || id === AIR) return;
   sound.breakBlock(def.sound);
   let drops = dropsFor(id, inventory.heldId());
+  if (id === LOOT_CHEST) drops.push(...rollLoot());
+  if (ITEMS[inventory.heldId()]?.tool?.type === def.tool && def.hardness > 0) wearOutHeld(1);
   if (isDoor(id)) {
     // either half takes the whole door with it
     const oy = def.upper ? y - 1 : y + 1;
@@ -1610,6 +2110,8 @@ function breakBlock(x, y, z) {
   }
   if (isLamp(id)) lamps.delete(lampKey(x, y, z));
   if (isSign(id)) signs.remove(x, y, z);
+  if (isSign(id) || isBed(id)) { dropWaypoint(x, y, z); dropWaypoint(...bedPartnerOr(x, y, z, id)); }
+  if (isFrame(id)) { const item = frames.remove(x, y, z); if (item) drops.push([item, 1]); }
   if (stationKind(id)) giveDrops(stations.remove(x, y, z)); // whatever was inside comes back too
   if (def.machine) giveDrops(machines.removeAt(x, y, z)); // and whatever was on a belt or in a drill
   if (isBed(id)) {
@@ -1629,6 +2131,7 @@ function breakBlock(x, y, z) {
   // cutting a tree's trunk with an axe brings down the whole tree above it
   const felled = id === LOG && ITEMS[inventory.heldId()]?.tool?.type === 'axe' ? treeAbove(x, y, z) : [];
   world.setBlock(x, y, z, id === ICE ? WATER : AIR); // ice melts into water
+  if (def.switch) signalChanged(x, y, z);
   dropUnsupported(x, y, z);
   for (const [lx, ly, lz] of felled) {
     world.setBlock(lx, ly, lz, AIR);
@@ -1687,13 +2190,22 @@ function dropUnsupported(x, y, z) {
   }
   // ladders and signs fixed to it (each faces away from the block it hangs on), and a sign post on top
   FACING_DIRS.forEach(([dx, dz], f) => {
-    const id = world.get(x + dx, y, z + dz);
-    if ((id === LADDER + f || id === SIGN + f)) {
+    const id = world.get(x + dx, y, z + dz), d = BLOCKS[id];
+    const hung = id === LADDER + f || id === SIGN + f || id === ITEM_FRAME + f || (d?.switch && !d.floor && d.facing === f);
+    if (hung) {
       world.setBlock(x + dx, y, z + dz, AIR);
       if (id === SIGN + f) signs.remove(x + dx, y, z + dz);
-      inventory.add(id === SIGN + f ? SIGN : LADDER, 1);
+      if (id === ITEM_FRAME + f) { const item = frames.remove(x + dx, y, z + dz); if (item) inventory.add(item, 1); }
+      inventory.add(d.drop, 1);
+      if (d.switch) signalChanged(x + dx, y, z + dz);
     }
   });
+  const onTop = BLOCKS[world.get(x, y + 1, z)];
+  if (onTop?.switch && onTop.floor) {
+    world.setBlock(x, y + 1, z, AIR);
+    inventory.add(onTop.drop, 1);
+    signalChanged(x, y + 1, z);
+  }
   if (BLOCKS[world.get(x, y + 1, z)]?.post) {
     world.setBlock(x, y + 1, z, AIR);
     signs.remove(x, y + 1, z);
@@ -1704,7 +2216,7 @@ function dropUnsupported(x, y, z) {
   if (isRail(above)) {
     world.setBlock(x, y + 1, z, AIR);
     inventory.add(BLOCKS[above].drop, 1);
-  } else if (isLamp(above) || above === CARPET) {
+  } else if (isLamp(above) || isCarpet(above)) {
     lamps.delete(lampKey(x, y + 1, z));
     world.setBlock(x, y + 1, z, AIR);
     inventory.add(BLOCKS[above].drop, 1);
@@ -1715,7 +2227,7 @@ function dropUnsupported(x, y, z) {
   }
   for (let ty = y + 1; ty < H; ty++) {
     const id = world.get(x, ty, z);
-    if (!isWheat(id) && id !== SUGAR_CANE && id !== SAPLING) break;
+    if (!isWheat(id) && id !== SUGAR_CANE && id !== SAPLING && !isFlower(id) && id !== BERRY_BUSH && id !== BERRY_BUSH + 1) break;
     for (const [d, n] of dropsFor(id, 0)) inventory.add(d, n);
     world.setBlock(x, ty, z, AIR);
     if (id !== SUGAR_CANE) break;
@@ -1733,6 +2245,9 @@ $('btn-menu').addEventListener('click', () => {
 });
 $('btn-close-menu').addEventListener('click', () => { $('menu').classList.add('hidden'); paused = false; });
 $('btn-autojump').addEventListener('click', () => { player.autoJump = !player.autoJump; updateAutoJumpLabel(); saveGame(); });
+function updateWearLabel() { $('btn-wear').textContent = `Tool wear: ${settings.wear ? 'on' : 'off'}`; }
+updateWearLabel();
+$('btn-wear').addEventListener('click', () => { settings.wear = !settings.wear; updateWearLabel(); saveSettings(); });
 $('btn-save').addEventListener('click', () => toast(saveGame() ? 'World saved' : 'Could not save (storage unavailable)'));
 $('btn-new').addEventListener('click', () => {
   // (startWorld(null) also clears the stored chunks)
@@ -1845,6 +2360,22 @@ function playMovementSounds(dt, wasGround, wasWater, fallSpeed) {
   }
 }
 
+// ---------- map waypoints ----------
+// Holding a map, tap a sign (or a bed) to mark it on the map, named by the sign's first line; tap it
+// again to take the mark off. Marks off the edge of the map show as arrows pointing toward them.
+let waypoints = []; // [{ x, y, z, name }]
+function toggleWaypoint(x, y, z, id) {
+  if (isBed(id)) { const d = BLOCKS[id]; if (d.foot) [x, y, z] = bedPartner(x, y, z); }
+  const i = waypoints.findIndex((w) => w.x === x && w.y === y && w.z === z);
+  if (i >= 0) { const [w] = waypoints.splice(i, 1); toast(`Took ${w.name} off the map`, 1500); sound.click(); return; }
+  if (waypoints.length >= 12) { toast('The map has room for 12 marks: take one off first'); return; }
+  const name = isSign(id) ? (signs.get(x, y, z).split('\n')[0].trim() || 'Sign') : 'Bed';
+  waypoints.push({ x, y, z, name: name.slice(0, 16) });
+  toast(`Marked ${name} on the map`, 1500);
+  sound.pop();
+}
+const dropWaypoint = (x, y, z) => { waypoints = waypoints.filter((w) => !(w.x === x && w.y === y && w.z === z)); };
+
 // ---------- clock and compass ----------
 // The gold clock reads the time of day (sunrise is 6:00, sunset 18:00); the compass shows which way you
 // face and which way home is (your bed, or where the world started you).
@@ -1905,9 +2436,10 @@ function stepGame(now, dt) {
   if (!paused && here) {
     controls.update();
     const wasGround = player.onGround, wasWater = player.inWater, fallSpeed = -player.vel.y, prevY = player.pos.y;
-    carts.update(dt, world, powerAt, riding && { cart: riding, push: controls.moveZ, look: player.lookDir() },
-      { day: lightUniforms.uDay.value, flicker: lightUniforms.uFlicker.value, ambient: AMBIENT });
+    carts.update(dt, world, (x, y, z) => powerAt(x, y, z) || (signalAt(x, y, z) ? 1 : 0), riding && { cart: riding, push: controls.moveZ, look: player.lookDir() },
+      { day: lightUniforms.uDay.value, flicker: lightUniforms.uFlicker.value, ambient: lightUniforms.uAmbient.value });
     if (riding) followCart();
+    else if (ridingMob) followMount();
     else player.update(dt, { moveX: controls.moveX, moveZ: controls.moveZ, jump: controls.jump });
     if (player.pos.y < -20) respawn();
     playMovementSounds(dt, wasGround, wasWater, fallSpeed);
@@ -1916,44 +2448,56 @@ function stepGame(now, dt) {
     world.tickLeaves(dt);
     tickLamps(dt);
     tickFuses(dt);
+    tickSwitches(dt);
+    tickEffects(dt);
+    tickBoss(dt);
+    renderBossBar();
     updateHunger(dt);
     updateHealth(dt, wasGround, prevY);
     const picked = arrows.update(dt, {
-      world, mobs, player, light: { day: lightUniforms.uDay.value, flicker: lightUniforms.uFlicker.value, ambient: AMBIENT },
+      world, mobs, player, light: { day: lightUniforms.uDay.value, flicker: lightUniforms.uFlicker.value, ambient: lightUniforms.uAmbient.value },
       // arrows bump animals, and hurt creatures more the further the bow was drawn
       onHitMob: (m, arrow, from) => {
         if (m.spec.hostile) giveDrops(mobs.hurt(m, Math.round(2 + 6 * arrow.power) * (arrow.silver ? 2 : 1), from));
         else mobs.bump(m, from);
       },
-      onHitPlayer: (dmg) => { if (!dead) damage(armoured(dmg), 'A thornspitter shot you full of thorns.'); },
+      onHitPlayer: (dmg, from) => { if (!dead && !shieldBlocks(from, dmg)) damage(armoured(dmg), 'A thornspitter shot you full of thorns.'); },
     });
     for (const id of picked) { inventory.add(id, 1); sound.pop(); }
     updateFishing(dt);
-    mobs.update(dt, player, { day: lightUniforms.uDay.value, flicker: lightUniforms.uFlicker.value, ambient: AMBIENT },
-      { difficulty: difficulty(), daylight: sky.light, playerDead: dead });
+    mobs.update(dt, player, { day: lightUniforms.uDay.value, flicker: lightUniforms.uFlicker.value, ambient: lightUniforms.uAmbient.value },
+      { difficulty: difficulty(), daylight: sky.light, playerDead: dead, ride: ridingMob && { moveX: controls.moveX, moveZ: controls.moveZ, yaw: player.yaw } });
+    if (ridingMob) followMount();
   }
   // write edited chunks to storage shortly (1.5 s) after the player stops changing them
   if (world.unsaved.size !== unsavedCount) { unsavedCount = world.unsaved.size; lastEditAt = now; }
   if (unsavedCount && now - lastEditAt > 1500 && worldReady) { world.saveChunks(); unsavedCount = 0; }
-  kinetics.update(paused ? 0 : dt, world, { day: lightUniforms.uDay.value, flicker: lightUniforms.uFlicker.value, ambient: AMBIENT });
+  kinetics.update(paused ? 0 : dt, world, { day: lightUniforms.uDay.value, flicker: lightUniforms.uFlicker.value, ambient: lightUniforms.uAmbient.value });
   tickBlasts(dt);
   minimap.show(!paused && inventory.heldId() === MAP);
-  minimap.update(world, player, bedSpawn ?? (world.spawnCache ??= world.generator.findSpawn()));
+  minimap.update(world, player, bedSpawn ?? (world.spawnCache ??= world.generator.findSpawn()), waypoints);
   try {
-    machines.tick(paused ? 0 : dt, world, kinetics, stations, { day: lightUniforms.uDay.value, flicker: lightUniforms.uFlicker.value, ambient: AMBIENT });
+    machines.tick(paused ? 0 : dt, world, kinetics, stations, { day: lightUniforms.uDay.value, flicker: lightUniforms.uFlicker.value, ambient: lightUniforms.uAmbient.value });
   } catch (err) { reportError(err); }
-  signs.update(dt, world, { day: lightUniforms.uDay.value, flicker: lightUniforms.uFlicker.value, ambient: AMBIENT });
+  frames.update(dt, world, { day: lightUniforms.uDay.value, flicker: lightUniforms.uFlicker.value, ambient: lightUniforms.uAmbient.value });
+  signs.update(dt, world, { day: lightUniforms.uDay.value, flicker: lightUniforms.uFlicker.value, ambient: lightUniforms.uAmbient.value });
   coordsTimer -= dt;
   if (coordsTimer <= 0) {
     coordsTimer = 0.25;
     $('coords').textContent = `Day ${day}   X ${Math.floor(player.pos.x)}  Y ${Math.floor(player.pos.y)}  Z ${Math.floor(player.pos.z)}` +
-      (inventory.count(GOLD_CLOCK) ? `   🕰 ${clockTime()}` : '') + (inventory.count(COMPASS) ? `   🧭 ${compassText()}` : '');
+      (inventory.count(GOLD_CLOCK) ? `   🕰 ${clockTime()}` : '') + (inventory.count(COMPASS) ? `   🧭 ${compassText()}` : '') +
+      (effectsText() ? `   ${effectsText()}` : '');
   }
 
   const eye = player.eye;
   camera.position.copy(eye);
   camera.rotation.set(player.pitch, player.yaw, 0);
 
+  const biome = world.generator.biomeAt(Math.floor(player.pos.x), Math.floor(player.pos.z));
+  weather.update(paused ? 0 : dt, eye, biome, world.skyAt(Math.floor(eye.x), Math.min(H - 1, Math.floor(eye.y) + 1), Math.floor(eye.z)));
+  sky.weather = { overcast: weather.overcast, level: weather.level, kind: weather.kind };
+  world.raining = weather.raining && biome !== 'desert';
+  sound.weather(paused ? 0 : weather.level, weather.kind);
   const before = sky.time;
   sky.update(paused ? 0 : dt, eye, lightUniforms.uDay, player.eyeInWater);
   if (sky.time < before) { day++; caneToday = 0; toast(`Day ${day}`, 2500); } // the clock wrapped round to sunrise
@@ -1994,8 +2538,8 @@ window.minicraft = {
   get paused() { return paused; },
   get health() { return health; }, set health(v) { health = v; renderHealth(); },
   get poisoned() { return poisoned; }, get dead() { return dead; }, get air() { return air; }, set air(v) { air = v; },
-  arrows, fishing, kinetics, machines, carts, minimap, signs, armour, damage, placeRail, getInCart, getOutOfCart,
+  arrows, fishing, kinetics, frames, signalAt, setSwitch, machines, carts, minimap, signs, armour, damage, placeRail, getInCart, getOutOfCart,
   get riding() { return riding; }, explode, lightFuse, fuses, clockTime, compassText, place, editSign, closeSign, openInventory, closeInventory, chestMove, lamps, tickLamps, sleepUntilMorning, stations, openStation, closeStation,
-  get caneToday() { return caneToday; },
+  get caneToday() { return caneToday; }, get waypoints() { return waypoints; }, toggleWaypoint, sortSlots, weather, openTrade, closeTrade, mountMob, dismount, get ridingMob() { return ridingMob; }, effects, armourWear, useAnvil, rollLoot, settings,
   get bedSpawn() { return bedSpawn; },
 };

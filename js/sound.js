@@ -259,8 +259,42 @@ export class Sound {
       const n = hurt ? 2 : 5;
       for (let i = 0; i < n; i++) setTimeout(() => this.ready && this.noiseBurst({ type: 'highpass', freq: 3500, q: 1, dur: 0.03, vol: 0.35 * gain }, 1, 1), i * 45);
       if (hurt) this.voice({ type: 'triangle', from: 1200, to: 700, dur: 0.12, vol: 0.15 * gain, freq: 3000 });
+    } else if (kind === 'mossking') {
+      const f = hurt ? p(52, 60) : p(34, 40);
+      this.voice({ from: f, to: f * 0.7, dur: hurt ? 0.5 : 1.3, vol: 0.9 * gain, freq: 180, q: 3, attack: 0.15 });
+      this.noiseBurst({ type: 'lowpass', freq: 200, q: 1, dur: hurt ? 0.4 : 1, vol: 0.6 * gain }, 1, 1);
+    } else if (kind === 'wolf') {
+      // a yip, or a short howl
+      if (hurt || Math.random() < 0.6) this.voice({ type: 'triangle', from: p(700, 800), to: p(1000, 1100), dur: 0.12, vol: 0.25 * gain, freq: 2500 });
+      else this.voice({ type: 'sine', from: p(420, 460), to: p(640, 700), dur: 1.1, vol: 0.22 * gain, freq: 1800, attack: 0.2, vibrato: 8 });
+    } else if (kind === 'camel') {
+      const f = hurt ? p(150, 170) : p(110, 130);
+      this.voice({ from: f, to: f * 0.7, dur: hurt ? 0.3 : 0.7, vol: 0.45 * gain, freq: 600, q: 2, attack: 0.05, vibrato: 18 });
+    } else if (kind === 'trader') {
+      // a cheerful hum
+      this.voice({ type: 'triangle', from: p(240, 270), to: p(320, 350), dur: 0.35, vol: 0.18 * gain, freq: 1600 });
+      this.voice({ type: 'triangle', from: p(320, 350), to: p(260, 280), dur: 0.3, vol: 0.18 * gain, freq: 1600, delay: 0.32 });
     } else if (kind === 'newt') {
       this.voice({ type: 'sine', from: p(2400, 2700), to: p(3100, 3400), dur: hurt ? 0.1 : 0.06, vol: 0.12 * gain, freq: 6000 });
     }
+  }
+
+  // A steady hiss of rain (or the wind of a sandstorm), faded in and out: level 0..1.
+  weather(level, kind = 'rain') {
+    if (!this.ctx) return;
+    if (!this.rain) {
+      const src = this.ctx.createBufferSource();
+      src.buffer = this.noise; src.loop = true;
+      const f = this.ctx.createBiquadFilter();
+      const g = this.ctx.createGain(); g.gain.value = 0;
+      src.connect(f); f.connect(g); g.connect(this.master);
+      src.start();
+      this.rain = { f, g };
+    }
+    const sand = kind === 'sand', snow = kind === 'snow';
+    this.rain.f.type = sand ? 'bandpass' : 'lowpass';
+    this.rain.f.frequency.value = sand ? 700 : snow ? 500 : 2600;
+    const want = this.muted ? 0 : level * (snow ? 0.08 : sand ? 0.25 : 0.18);
+    this.rain.g.gain.setTargetAtTime(want, this.ctx.currentTime, 0.4);
   }
 }

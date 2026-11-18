@@ -59,6 +59,7 @@ export class Kinetics {
   // A short description of what's driving a machine (for its panel), or a power source's output.
   statusAt(x, y, z) {
     const n = this.nodes.get(key(x, y, z));
+    if (n?.part === 'clutch' && !n.engaged) return 'Disengaged: switch it on with a lever, button or pressure plate beside it';
     if (n && n.part !== 'machine' && n.net != null) {
       const net = this.nets[n.net];
       if (n.part === 'windmill') return n.power ? `Windmill: ${fmt(n.power)} power at this height` : 'Becalmed: the sails need clear space all round';
@@ -86,12 +87,25 @@ export class Kinetics {
     }
     const at = (x, y, z) => nodes.get(key(x, y, z));
     // the parts a part turns, with the speed ratio (sign: which way round)
+    // a clutch only passes power on while it's switched on
+    for (const n of nodes.values()) if (n.part === 'clutch') n.engaged = !!this.signalAt?.(n.x, n.y, n.z);
+    const open = (m) => m && m.part !== 'machine' && !(m.part === 'clutch' && !m.engaged);
     const links = (n) => {
       const out = [];
+      if (n.part === 'clutch' && !n.engaged) return out;
+      if (n.part === 'gearbox') {
+        // every face of a gearbox is the end of an axle: it turns whatever shaft or gear points into it
+        for (let a = 0; a < 3; a++) for (const s of [1, -1]) {
+          const m = at(n.x + UNIT[a][0] * s, n.y + UNIT[a][1] * s, n.z + UNIT[a][2] * s);
+          if (open(m) && (m.axis === a || m.part === 'gearbox')) out.push([m, 1, null, true]);
+        }
+        return out;
+      }
       const a = UNIT[n.axis];
       for (const s of [1, -1]) {
         const m = at(n.x + a[0] * s, n.y + a[1] * s, n.z + a[2] * s);
-        if (m && m.part !== 'machine' && m.axis === n.axis) out.push([m, 1, null]);
+        if (open(m) && m.axis === n.axis) out.push([m, 1, null]);
+        else if (open(m) && m.part === 'gearbox') out.push([m, 1, null, true]);
       }
       if (n.part === 'gear' || n.part === 'large') {
         const [u, v] = [UNIT[(n.axis + 1) % 3], UNIT[(n.axis + 2) % 3]];
@@ -124,7 +138,7 @@ export class Kinetics {
         const n = queue.shift();
         n.net = nets.length;
         net.parts.push(n);
-        for (const [m, r, d] of links(n)) {
+        for (const [m, r, d, loose] of links(n)) {
           const want = n.rel * r;
           if (m.rel === null) {
             m.rel = want;
@@ -135,7 +149,7 @@ export class Kinetics {
               m.phase = tn + Math.PI + Math.PI / teeth(m) - m.rel * t0;
             }
             queue.push(m);
-          } else if (Math.abs(m.rel - want) > 1e-6) net.jammed = true;
+          } else if (loose ? Math.abs(Math.abs(m.rel) - Math.abs(want)) > 1e-6 : Math.abs(m.rel - want) > 1e-6) net.jammed = true;
         }
       }
       nets.push(net);
@@ -146,7 +160,7 @@ export class Kinetics {
       for (let a = 0; a < 3 && n.net === null; a++) {
         for (const s of [1, -1]) {
           const m = at(n.x - UNIT[a][0] * s, n.y - UNIT[a][1] * s, n.z - UNIT[a][2] * s);
-          if (m && m.part !== 'machine' && m.axis === a) { n.net = m.net; n.drive = m; nets[m.net].machines.push(n); break; }
+          if (m && m.part !== 'machine' && (m.axis === a || m.part === 'gearbox') && !(m.part === 'clutch' && !m.engaged)) { n.net = m.net; n.drive = m; nets[m.net].machines.push(n); break; }
         }
       }
     }
@@ -230,7 +244,7 @@ export class Kinetics {
       if (!n || n.id !== m.id) { this.removeMesh(k, m); }
     }
     for (const [k, n] of this.nodes) {
-      if (n.part === 'machine') continue;
+      if (n.part === 'machine' || n.part === 'gearbox') continue;
       let m = this.meshes.get(k);
       if (!m) m = this.addMesh(k, n);
       m.angle += n.speed * TURN_RATE * dt;
@@ -302,6 +316,9 @@ export class Kinetics {
       }
     } else if (part === 'shaft') {
       boxes.push([1, 0.22, 0.22, 0, 0, 0, tile]);
+    } else if (part === 'clutch') {
+      // a shaft with an iron collar round the middle
+      boxes.push([1, 0.22, 0.22, 0, 0, 0, tile], [0.36, 0.42, 0.42, 0, 0, 0, T.IRON], [0.08, 0.5, 0.5, 0, 0, 0, T.LEAD]);
     } else if (part === 'gear' || part === 'large') {
       // hub, spokes, a rim, and teeth around it. Pitch radii add up to the distance between meshing
       // gears (1 block side by side; a diagonal for large + small) and the teeth are the same size on both.

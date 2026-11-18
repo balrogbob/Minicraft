@@ -50,6 +50,16 @@ export class Inventory {
     return n;
   }
 
+  // Add a whole stack (keeping how worn it is). Returns how many did not fit.
+  addItem(s) {
+    if (!s.wear) return this.add(s.id, s.count);
+    const i = this.slots.findIndex((x) => !x);
+    if (i < 0) return s.count;
+    this.slots[i] = { ...s };
+    this.onChange();
+    return 0;
+  }
+
   remove(id, n) {
     for (let i = SLOTS - 1; i >= 0 && n > 0; i--) {
       const s = this.slots[i];
@@ -89,7 +99,7 @@ export class Inventory {
     if (!o || !Array.isArray(o.slots)) return;
     for (let i = 0; i < SLOTS; i++) {
       const s = o.slots[i];
-      this.slots[i] = s && s.id && s.count > 0 ? { id: s.id, count: s.count } : null;
+      this.slots[i] = s && s.id && s.count > 0 ? { id: s.id, count: s.count, ...(s.wear > 0 ? { wear: s.wear } : {}) } : null;
     }
     this.selected = Math.min(8, Math.max(0, o.selected | 0));
     this.onChange();

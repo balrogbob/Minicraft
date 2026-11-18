@@ -10,6 +10,7 @@ import {
   BRONZE_INGOT, ELECTRUM_INGOT, STAINLESS_INGOT, STEEL_INGOT, AL_BRONZE_INGOT,
   GRAVEL, FLINT, FLINT_DUST, CLAY_BALL, CLAY_DUST, BRICK, FIRE_CLAY, FIRE_BRICK, oreDust, HIDE, LEATHER,
   LAVA_BUCKET, LEAD_BUCKET, SALTPETRE, SANDSTONE, WHEAT, SUGAR_CANE, COAL_DUST, PLATE_METALS, PLATES, TUNGSTEN_INGOT, FILAMENT,
+  GLASS_BOTTLE, NIGHT_TEA, HASTE_TEA, FIRE_TEA, HEAL_TEA, BERRIES, CORNFLOWER, DANDELION, POPPY, CACTUS, LAVENDER, DAISY, CAULDRON,
 } from './blocks.js';
 
 // A recipe ingredient can be one id or a list of alternatives (coal or charcoal).
@@ -103,6 +104,17 @@ STATION_KINDS.hammer = {
 };
 // The blast smelter: lined with fire bricks, it smelts everything the smelter does, twice as fast.
 STATION_KINDS.blast = { ...STATION_KINDS.smelter, name: 'Blast Smelter', speed: 2 };
+// The cauldron: brews teas over a fire, from its water. Every two teas use up a level of water.
+STATION_KINDS.cauldron = {
+  name: 'Cauldron', inputs: 2, water: true, noLit: true,
+  recipes: [
+    { out: [NIGHT_TEA, 1], in: [[GLASS_BOTTLE, 1], [CORNFLOWER, 1]], time: 8 },
+    { out: [HASTE_TEA, 1], in: [[GLASS_BOTTLE, 1], [DANDELION, 1]], time: 8 },
+    { out: [FIRE_TEA, 1], in: [[GLASS_BOTTLE, 1], [POPPY, 1], [CACTUS, 1]], time: 8 },
+    { out: [HEAL_TEA, 1], in: [[GLASS_BOTTLE, 1], [LAVENDER, 1], [DAISY, 1]], time: 8 },
+    { out: [HEAL_TEA, 1], in: [[GLASS_BOTTLE, 1], [BERRIES, 3]], time: 8 },
+  ],
+};
 // Chests just hold things.
 STATION_KINDS.chest = { name: 'Chest', inputs: 18, storage: true, recipes: [] };
 STATION_KINDS.ironchest = { name: 'Iron-Banded Chest', inputs: 36, storage: true, recipes: [] };
@@ -178,7 +190,7 @@ export class Stations {
       if (stationKind(id) !== st.kind) { this.map.delete(k); continue; }
       const K = STATION_KINDS[st.kind];
       if (K.storage) continue;
-      const r = this.recipeFor(st);
+      const r = K.water && !(BLOCKS[id].water > 0) ? null : this.recipeFor(st); // a dry cauldron can't brew
       if (!r) st.progress = 0;
       if (K.powered) {
         const speed = powerAt(x, y, z);
@@ -202,10 +214,14 @@ export class Stations {
         const step = Math.min(sdt, st.burn * r.time);
         st.burn = Math.max(0, st.burn - step / r.time);
         st.progress += step;
-        if (st.progress >= r.time - 1e-9) { this.make(st, r); st.progress = 0; }
+        if (st.progress >= r.time - 1e-9) {
+          this.make(st, r); st.progress = 0;
+          if (K.water && (st.brews = (st.brews ?? 0) + 1) % 2 === 0) world.setBlock(x, y, z, CAULDRON + BLOCKS[id].water - 1);
+        }
       }
+      st.cooking = cooking;
       const lit = cooking;
-      if (lit !== BLOCKS[id].lit) setLit(x, y, z, lit);
+      if (!K.noLit && lit !== BLOCKS[id].lit) setLit(x, y, z, lit);
     }
   }
 
@@ -215,13 +231,13 @@ export class Stations {
     this.map.clear();
     for (const [k, st] of list ?? []) {
       if (typeof k !== 'string' || !STATION_KINDS[st?.kind]) continue;
-      const clean = (s) => (s && s.id && s.count > 0 ? { id: s.id, count: s.count } : null);
+      const clean = (s) => (s && s.id && s.count > 0 ? { id: s.id, count: s.count, ...(s.wear > 0 ? { wear: s.wear } : {}) } : null);
       const n = STATION_KINDS[st.kind].inputs;
       this.map.set(k, {
         kind: st.kind,
         inputs: Array.from({ length: n }, (_, i) => clean(st.inputs?.[i])),
         fuel: clean(st.fuel), out: clean(st.out),
-        burn: Math.max(0, +st.burn || 0), burnMax: Math.max(0, +st.burnMax || 0), progress: Math.max(0, +st.progress || 0),
+        burn: Math.max(0, +st.burn || 0), burnMax: Math.max(0, +st.burnMax || 0), progress: Math.max(0, +st.progress || 0), brews: st.brews | 0,
       });
     }
   }

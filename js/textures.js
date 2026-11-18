@@ -12,6 +12,8 @@ import {
   PLATE_METALS, PLATES,
   PIPE, SPOUT, BELT, HOPPER, WINDMILL, FILAMENT, DRILL_BIT,
   RAIL, POWERED_RAIL, CACTUS, MINECART, MAP, PAPER,
+  COLORS, DYE, CLUTCH, STORAGE_CART, LOADER_RAIL,
+  BERRIES, GLASS_BOTTLE, NIGHT_TEA, HASTE_TEA, FIRE_TEA, HEAL_TEA, WOOD_SHIELD, IRON_SHIELD, KING_CROWN,
   SALTPETRE, GUNPOWDER, LEAD_SINKER, WEIGHTED_ROD, LEAD_BUCKET, LAVA_BUCKET, GOLD_CLOCK, COMPASS, SILVER_ARROW, MIRROR_LAMP,
 } from './blocks.js';
 
@@ -559,6 +561,114 @@ Object.assign(P, {
   },
   [T.GOLD](t) { for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) t.set(x, y, t.vary(shade([250, 210, 70], 0.88 + 0.12 * Math.sin((x - y) * 0.7)), 0.04)); },
 });
+
+// ----- colour, flowers and building -----
+// Paint a base tile, then tint every pixel toward a dye colour by its brightness.
+function tinted(base, rgb, ref) {
+  return (t) => {
+    P[base](t);
+    for (let i = 0; i < t.d.length; i += 4) {
+      if (!t.d[i + 3]) continue;
+      const k = (t.d[i] + t.d[i + 1] + t.d[i + 2]) / 3 / ref;
+      t.d[i] = clamp(rgb[0] * k); t.d[i + 1] = clamp(rgb[1] * k); t.d[i + 2] = clamp(rgb[2] * k);
+    }
+  };
+}
+COLORS.forEach((c, i) => {
+  if (i) P[T.DYED_WOOL + i] = tinted(T.WOOL, c.rgb, 228);
+  P[T.PAINTED + i] = tinted(T.PLANKS, c.rgb, 150);
+  // stained glass: a coloured frame and a fine coloured mesh you can see through
+  P[T.STAINED + i] = (t) => {
+    for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+      const edge = x === 0 || y === 0 || x === 15 || y === 15;
+      if (edge) t.set(x, y, t.vary(shade(c.rgb, 0.8), 0.06));
+      else if ((x + y) % 2 === 0 && (y % 4 !== 2)) t.set(x, y, t.vary(c.rgb, 0.08));
+      else if (x + y === 8 && x > 2 && x < 6) t.set(x, y, [240, 248, 255]);
+      else t.set(x, y, [0, 0, 0], 0);
+    }
+  };
+});
+// flowers: a green stem and leaves under a bloom
+const BLOOMS = [
+  { petal: [206, 40, 36], eye: [30, 24, 20], shape: 'cup' }, // poppy
+  { petal: [246, 206, 40], eye: [226, 150, 30], shape: 'round' }, // dandelion
+  { petal: [70, 110, 222], eye: [40, 50, 120], shape: 'star' }, // cornflower
+  { petal: [150, 104, 206], eye: [120, 76, 176], shape: 'spike' }, // lavender
+  { petal: [248, 248, 244], eye: [240, 200, 50], shape: 'star' }, // daisy
+];
+BLOOMS.forEach((b, i) => {
+  P[T.FLOWER0 + i] = (t) => {
+    for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) t.set(x, y, [0, 0, 0], 0);
+    const top = b.shape === 'spike' ? 3 : 6;
+    for (let y = top + 2; y < TILE; y++) t.set(7, y, t.vary([70, 140, 50], 0.1));
+    t.set(6, 11, [80, 156, 56]); t.set(5, 10, [80, 156, 56]); t.set(8, 12, [80, 156, 56]); t.set(9, 11, [80, 156, 56]);
+    if (b.shape === 'spike') {
+      for (let y = 1; y < 9; y++) { t.set(7, y, t.vary(b.petal, 0.15)); if (y % 2) { t.set(6, y, t.vary(b.petal, 0.15)); t.set(8, y + 1, t.vary(b.eye, 0.1)); } }
+      return;
+    }
+    const cx = 7.5, cy = top;
+    for (let y = cy - 4; y <= cy + 3; y++) for (let x = 3; x <= 12; x++) {
+      const dx = x - cx, dy = y - cy, d = Math.hypot(dx, dy);
+      let on = d < 3.4;
+      if (b.shape === 'star') on = d < 3.6 && (Math.abs(dx) < 1 || Math.abs(dy) < 1 || Math.abs(Math.abs(dx) - Math.abs(dy)) < 1);
+      if (b.shape === 'cup') on = d < 3.5 && dy > -3;
+      if (on) t.set(x, y, d < 1.2 ? b.eye : t.vary(b.petal, 0.1));
+    }
+  };
+});
+P[T.GEARBOX] = (t) => {
+  P[T.COBBLE](t);
+  frame(t, [96, 98, 104], 2);
+  for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+    const d = Math.hypot(x - 7.5, y - 7.5);
+    if (d < 4.6 && d > 2.2) t.set(x, y, t.vary(((Math.atan2(y - 7.5, x - 7.5) * 8 / Math.PI) | 0) % 2 ? [150, 152, 158] : [118, 120, 128], 0.05));
+    else if (d <= 2.2) t.set(x, y, [70, 70, 76]);
+  }
+};
+P[T.MOSSY_BRICKS] = (t) => {
+  P[T.BRICKS](t);
+  for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+    const n = Math.sin(x * 0.9 + y * 0.4) + Math.cos(y * 1.1 - x * 0.3) + t.r() * 0.8;
+    if (n > 0.9 || (y < 3 && t.r() < 0.5)) t.set(x, y, t.vary(t.r() < 0.5 ? [72, 112, 46] : [92, 134, 58], 0.12));
+  }
+};
+P[T.SHRINE_SIDE] = (t) => {
+  P[T.MOSSY_BRICKS](t);
+  for (let y = 4; y < 12; y++) for (let x = 5; x < 11; x++) if ((x === 5 || x === 10 || y === 4 || y === 11)) t.set(x, y, [60, 62, 58]);
+  for (const [x, y] of [[7, 6], [8, 6], [7, 9], [8, 9], [6, 7], [9, 8]]) t.set(x, y, [150, 230, 120]); // a glowing rune
+};
+const shrineTop = (glow) => (t) => {
+  t.fill([96, 98, 92], 0.08);
+  for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+    const d = Math.hypot(x - 7.5, y - 7.5);
+    if (d < 5) t.set(x, y, glow ? t.vary(d < 2.5 ? [200, 255, 170] : [110, 200, 90], 0.08) : t.vary([60, 66, 58], 0.08));
+    else if (x === 0 || y === 0 || x === 15 || y === 15) t.set(x, y, [72, 112, 46]);
+  }
+};
+P[T.SHRINE_TOP] = shrineTop(true);
+P[T.SHRINE_SPENT] = shrineTop(false);
+P[T.CAULDRON] = (t) => { t.fill([52, 52, 58], 0.08); for (let x = 0; x < TILE; x++) { t.set(x, 0, [86, 86, 94]); t.set(x, 15, [36, 36, 40]); } };
+P[T.CAULDRON_WATER] = (t) => { for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) t.set(x, y, t.vary(Math.sin(x * 0.8 + y * 0.5) > 0.6 ? [96, 150, 226] : [52, 100, 200], 0.06)); };
+const bush = (ripe) => (t) => {
+  for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+    if (t.r() < 0.12) { t.set(x, y, [0, 0, 0], 0); continue; }
+    t.set(x, y, t.vary(t.r() < 0.35 ? [40, 92, 34] : [58, 120, 44], 0.25));
+  }
+  if (ripe) for (const [x, y] of [[3, 3], [10, 2], [6, 7], [13, 9], [2, 11], [9, 12], [12, 5], [5, 14]]) { t.set(x, y, [196, 30, 52]); t.set(x + 1, y, [150, 20, 40]); t.set(x, y + 1, [150, 20, 40]); t.set(x + 1, y + 1, [120, 14, 30]); t.set(x, y - 1, [240, 120, 130]); }
+};
+P[T.BUSH] = bush(false);
+P[T.BUSH_RIPE] = bush(true);
+P[T.FRAME_BACK] = (t) => { t.fill([128, 88, 52], 0.06); t.speckle([110, 74, 42], 0.15, 0.05); };
+P[T.TRAPDOOR] = (t) => {
+  P[T.PLANKS](t);
+  for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+    const frame = x < 2 || y < 2 || x > 13 || y > 13;
+    const hole = !frame && (x === 5 || x === 10) && y > 3 && y < 12;
+    if (frame) t.set(x, y, t.vary([126, 92, 54], 0.06));
+    else if (hole) t.set(x, y, [0, 0, 0], 0);
+  }
+  for (const x of [3, 12]) for (const y of [3, 12]) t.set(x, y, [70, 70, 76]); // nails
+};
 
 // A plank door: a frame with a centre board; the upper half has a four-pane window you can see through,
 // the lower half has the handle.
@@ -1272,16 +1382,105 @@ Object.assign(ITEM_PAINTERS, {
   },
 });
 
+COLORS.forEach((c, i) => { ITEM_PAINTERS[DYE + i] = dustPainter(c.rgb); });
+function bottlePainter(fill) {
+  return (ctx) => {
+    rect(ctx, 7, 1, 2, 3, [180, 140, 90]); // cork
+    rect(ctx, 6, 4, 4, 2, [190, 220, 236]);
+    for (let y = 6; y < 15; y++) for (let x = 3; x < 13; x++) {
+      const d = Math.hypot((x - 7.5) / 4.6, (y - 10.5) / 4.4);
+      if (d >= 1) continue;
+      const edge = d > 0.82;
+      px(ctx, x, y, edge ? [170, 205, 225] : fill && y >= 8 ? (x < 6 ? shade(fill, 1.2) : fill) : [214, 236, 246]);
+    }
+    px(ctx, 5, 9, [255, 255, 255]);
+  };
+}
+ITEM_PAINTERS[GLASS_BOTTLE] = bottlePainter(null);
+ITEM_PAINTERS[BERRIES] = (ctx) => {
+  for (const [x, y] of [[4, 6], [8, 4], [9, 9], [5, 10], [11, 6]]) {
+    rect(ctx, x, y, 3, 3, [190, 28, 50]); px(ctx, x, y, [246, 130, 140]); px(ctx, x + 2, y + 2, [120, 14, 30]);
+  }
+  rect(ctx, 8, 1, 1, 3, [70, 120, 40]); rect(ctx, 9, 2, 3, 1, [86, 150, 56]);
+};
+ITEM_PAINTERS[NIGHT_TEA] = bottlePainter([60, 80, 190]);
+ITEM_PAINTERS[HASTE_TEA] = bottlePainter([226, 176, 40]);
+ITEM_PAINTERS[FIRE_TEA] = bottlePainter([206, 64, 40]);
+ITEM_PAINTERS[HEAL_TEA] = bottlePainter([150, 96, 196]);
+function shieldPainter(face, rim) {
+  return (ctx) => {
+    for (let y = 1; y < 15; y++) for (let x = 2; x < 14; x++) {
+      const w = y < 9 ? 6 : 6 - (y - 9) * 0.9;
+      if (Math.abs(x - 7.5) > w) continue;
+      const edge = Math.abs(x - 7.5) > w - 1.2 || y === 1;
+      px(ctx, x, y, edge ? rim : (x + y) % 5 === 0 ? shade(face, 0.85) : face);
+    }
+    rect(ctx, 7, 4, 2, 7, rim); rect(ctx, 5, 6, 6, 2, rim);
+  };
+}
+ITEM_PAINTERS[WOOD_SHIELD] = shieldPainter([160, 118, 70], [110, 112, 120]);
+ITEM_PAINTERS[IRON_SHIELD] = shieldPainter([176, 180, 190], [100, 104, 112]);
+ITEM_PAINTERS[KING_CROWN] = (ctx) => {
+  rect(ctx, 2, 8, 12, 5, [236, 190, 50]); rect(ctx, 2, 12, 12, 1, [190, 140, 30]);
+  for (const x of [2, 7, 12]) { rect(ctx, x, 4, 2, 4, [246, 206, 64]); px(ctx, x, 3, [255, 236, 120]); }
+  for (const x of [4, 10]) rect(ctx, x, 6, 2, 2, [246, 206, 64]);
+  px(ctx, 7, 10, [210, 40, 40]); px(ctx, 8, 10, [210, 40, 40]); px(ctx, 4, 10, [70, 140, 220]); px(ctx, 11, 10, [70, 140, 220]);
+};
+ITEM_PAINTERS[CLUTCH] = (ctx) => {
+  rect(ctx, 0, 7, 16, 3, [150, 150, 150]); rect(ctx, 0, 7, 16, 1, [180, 180, 180]);
+  rect(ctx, 5, 3, 6, 11, IRON_C); rect(ctx, 7, 2, 2, 13, [104, 110, 134]); rect(ctx, 5, 3, 6, 1, [160, 164, 172]);
+};
+ITEM_PAINTERS[STORAGE_CART] = (ctx) => {
+  ITEM_PAINTERS[MINECART](ctx);
+  rect(ctx, 3, 1, 10, 6, [122, 82, 48]); rect(ctx, 3, 1, 10, 1, [92, 60, 34]); rect(ctx, 7, 3, 2, 2, [160, 164, 172]);
+};
+ITEM_PAINTERS[LOADER_RAIL] = (ctx) => { railIcon([150, 154, 162])(ctx); rect(ctx, 5, 5, 6, 6, IRON_C); rect(ctx, 6, 6, 4, 4, [70, 72, 80]); };
+
+// An isometric drawing of a model block (furniture, stairs, fences...) for blocks with no painted icon,
+// matching drawIsoBlock: +z faces to the left, +x faces to the right.
+function drawIsoModel(ctx, atlas, model) {
+  const S = (x, y, z) => [4 + 28 * x + 28 * (1 - z), 18 + 14 * x - 14 * (1 - z) + 28 * (1 - y)];
+  const boxes = [...model].sort((a, b) => (a[0] + a[3] + a[1] + a[4] + a[2] + a[5]) - (b[0] + b[3] + b[1] + b[4] + b[2] + b[5]));
+  const k = 1 / 16;
+  for (const [x0, y0, z0, x1, y1, z1, tiles] of boxes) {
+    const tileOf = (f) => (typeof tiles === 'number' ? tiles : tiles[f]);
+    const face = (tile, m, sx, sy, sw, sh, shadeAmt) => {
+      if (sw <= 0 || sh <= 0) return;
+      const c = document.createElement('canvas');
+      c.width = c.height = 64;
+      const l = c.getContext('2d');
+      l.imageSmoothingEnabled = false;
+      l.setTransform(...m);
+      const tx = (tile % ATLAS_COLS) * TILE, ty = Math.floor(tile / ATLAS_COLS) * TILE;
+      l.drawImage(atlas, tx + sx, ty + sy, sw, sh, sx, sy, sw, sh);
+      if (shadeAmt) { l.globalCompositeOperation = 'source-atop'; l.fillStyle = `rgba(0,0,0,${shadeAmt})`; l.fillRect(sx, sy, sw, sh); }
+      ctx.drawImage(c, 0, 0);
+    };
+    // top (y = y1): tile u = x, v = z
+    let o = S(0, y1 * k, 0);
+    face(tileOf('top'), [28 * k, 14 * k, -28 * k, 14 * k, o[0], o[1]], x0, z0, x1 - x0, z1 - z0, 0);
+    // front (+z, z = z1): tile u = x, v = 16 - y
+    o = S(0, 1, z1 * k);
+    face(tileOf('side'), [28 * k, 14 * k, 0, 28 * k, o[0], o[1]], x0, 16 - y1, x1 - x0, y1 - y0, 0.25);
+    // right (+x, x = x1): tile u = 16 - z, v = 16 - y
+    o = S(x1 * k, 1, 1);
+    face(tileOf('side'), [28 * k, -14 * k, 0, 28 * k, o[0], o[1]], 16 - z1, 16 - y1, z1 - z0, y1 - y0, 0.45);
+  }
+}
+
 // Returns { id: dataURL } for every block and item.
 export function createIcons(atlas) {
   const icons = {};
   for (const def of BLOCKS) {
-    if (!def || !isBlock(def.id) || def.shape === 'torch' || def.shape === 'model' || def.shape === 'kinetic' || def.shape === 'pipe') continue; // (those have painted icons)
+    if (!def || !isBlock(def.id) || def.shape === 'torch' || def.shape === 'kinetic' || def.shape === 'pipe') continue; // (those have painted icons)
+    if (def.model && ITEM_PAINTERS[def.id]) continue;
     const c = document.createElement('canvas');
     c.width = c.height = 64;
     const ctx = c.getContext('2d');
     ctx.imageSmoothingEnabled = false;
-    if (def.shape === 'cross') {
+    if (def.model) {
+      drawIsoModel(ctx, atlas, def.model);
+    } else if (def.shape === 'cross') {
       // plants show their flat sprite, like an item
       ctx.drawImage(atlas, (def.side % ATLAS_COLS) * TILE, Math.floor(def.side / ATLAS_COLS) * TILE, TILE, TILE, 0, 0, 64, 64);
     } else {

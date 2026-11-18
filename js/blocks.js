@@ -111,6 +111,14 @@ export const T = {
   DRILL_SIDE: 84, DRILL_FRONT: 85, BELT0: 86, // 86..89: belt tops, carrying toward each facing
   IRON: 90, FILAMENT_OFF: 91, FILAMENT_ON: 92,
   SNOW: 93, SNOW_GRASS_SIDE: 94, ICE: 95, SANDSTONE_SIDE: 96, SANDSTONE_TOP: 97, CACTUS_SIDE: 98, CACTUS_TOP: 99, GOLD: 100,
+  DYED_WOOL: 100, // 101..109: wool in COLORS 1..9 (white wool is WOOL)
+  STAINED: 110, // 110..119: stained glass in each colour
+  PAINTED: 120, // 120..129: painted planks in each colour
+  FLOWER0: 130, // 130..134: poppy, dandelion, cornflower, lavender, daisy
+  TRAPDOOR: 135,
+  GEARBOX: 136, FRAME_BACK: 137,
+  MOSSY_BRICKS: 138, SHRINE_SIDE: 139, SHRINE_TOP: 140, SHRINE_SPENT: 141, CAULDRON: 142, CAULDRON_WATER: 143,
+  BUSH: 144, BUSH_RIPE: 145,
 };
 
 // Ores, deepest-reaching last. tier: the pickaxe tier needed to mine it (see TOOL_TIERS);
@@ -171,7 +179,7 @@ function block(id, o) {
     sound: o.sound ?? 'stone', // material for dig / step / place sounds
     liquid: !!o.liquid, // not solid, not targetable, never in the inventory
     light: o.light ?? 0, // light level this block emits (0-15)
-    shape: o.model ? 'model' : o.shape ?? 'cube', // 'cube' | 'torch' | 'cross' (plants) | 'model' (furniture)
+    shape: o.shape ?? (o.model ? 'model' : 'cube'), // 'cube' | 'torch' | 'cross' (plants) | 'model' (furniture) | 'fence' | 'pane'
     model: o.model ?? null, // boxes: [x0, y0, z0, x1, y1, z1 (in 1/16 block), tiles, glow]
     solid: o.solid ?? !o.liquid, // blocks player movement
     wall: o.wall ?? null, // [dx, dz] of the wall a wall torch hangs on
@@ -192,6 +200,14 @@ function block(id, o) {
     prickly: !!o.prickly, // hurts to touch (cactus)
     machine: o.machine ?? null, // { load }: driven by a shaft or gear turning against it (see kinetics.js)
     down: !!o.down, // a drill or hopper pointing down rather than to one side
+    boxes: o.boxes ?? null, // collision boxes (in 1/16 block) for solid blocks that don't fill their cell
+    slab: o.slab ?? null, // { mat, top } for slabs; stairs: { mat } in `stair`
+    stair: o.stair ?? null,
+    gate: !!o.gate, trapdoor: !!o.trapdoor,
+    color: o.color ?? -1, // index into COLORS for dyed blocks
+    switch: o.switch ?? null, on: !!o.on, floor: !!o.floor, // levers, buttons and pressure plates
+    frame: !!o.frame,
+    water: o.water ?? 0, // a cauldron's water level (0..3)
   };
 }
 
@@ -885,3 +901,303 @@ TOOL_MATERIALS.forEach((m, i) => {
 });
 // (Bread, cookies, cake and baked fish are baked in the oven, and glass, stone and charcoal come from the smelter:
 // see stations.js.)
+
+// ---------- building: colour, flowers, stairs, slabs, fences, panes and trapdoors ----------
+
+// Dye colours. Index 0 is white (plain wool and carpet are white already).
+export const COLORS = [
+  { key: 'white', name: 'White', rgb: [236, 236, 232] },
+  { key: 'black', name: 'Black', rgb: [44, 44, 50] },
+  { key: 'red', name: 'Red', rgb: [178, 48, 40] },
+  { key: 'orange', name: 'Orange', rgb: [228, 126, 40] },
+  { key: 'yellow', name: 'Yellow', rgb: [236, 204, 56] },
+  { key: 'green', name: 'Green', rgb: [86, 142, 52] },
+  { key: 'cyan', name: 'Cyan', rgb: [42, 150, 160] },
+  { key: 'blue', name: 'Blue', rgb: [54, 82, 180] },
+  { key: 'purple', name: 'Purple', rgb: [128, 62, 172] },
+  { key: 'pink', name: 'Pink', rgb: [234, 142, 172] },
+];
+export const DYED_WOOL = 479, // 480..488: + colour 1..9
+  DYED_CARPET = 488, // 489..497: + colour 1..9
+  STAINED_GLASS = 498, // 498..507: + colour 0..9
+  PAINTED_PLANKS = 508, // 508..517: + colour 0..9
+  POPPY = 520, DANDELION = 521, CORNFLOWER = 522, LAVENDER = 523, DAISY = 524,
+  SHAPED = 530, // 530..565: + material * 6 + (0 slab, 1 top slab, 2..5 stairs facing 0..3)
+  FENCE = 566, FENCE_GATE = 567, // gate: 567..570, + axis (0: across x, 1: across z) + 2 if open
+  GLASS_PANE = 571,
+  TRAPDOOR = 572; // 572..579: + facing (the side its hinge is on) + 4 if open
+export const DYE = 381; // 381..390: + colour
+export const dyedWool = (c) => (c ? DYED_WOOL + c : WOOL);
+export const dyedCarpet = (c) => (c ? DYED_CARPET + c : CARPET);
+export const FLOWERS = [
+  { id: POPPY, name: 'Poppy', color: 2 }, { id: DANDELION, name: 'Dandelion', color: 4 },
+  { id: CORNFLOWER, name: 'Cornflower', color: 7 }, { id: LAVENDER, name: 'Lavender', color: 8 }, { id: DAISY, name: 'Daisy', color: 0 },
+];
+export const isFlower = (id) => id >= POPPY && id <= DAISY;
+
+COLORS.forEach((c, i) => {
+  if (i) {
+    block(DYED_WOOL + i, { name: `${c.name} Wool`, sound: 'wool', tex: T.DYED_WOOL + i, hardness: 0.8, color: i });
+    block(DYED_CARPET + i, { name: `${c.name} Carpet`, sound: 'wool', transparent: true, solid: false, hardness: 0.2, model: [[0, 0, 0, 16, 1, 16, T.DYED_WOOL + i]], color: i });
+  }
+  block(STAINED_GLASS + i, { name: `${c.name} Stained Glass`, sound: 'glass', tex: T.STAINED + i, transparent: true, hardness: 0.4, color: i });
+  block(PAINTED_PLANKS + i, { name: `${c.name} Painted Planks`, sound: 'wood', tex: T.PAINTED + i, hardness: 2, tool: 'axe', color: i });
+  ITEMS[DYE + i] = { name: `${c.name} Dye`, dye: i };
+});
+FLOWERS.forEach((f, i) => block(f.id, { ...plant, name: f.name, tex: T.FLOWER0 + i }));
+
+// Stairs and slabs in several materials. A slab fills the bottom (or top) half of its cell; two slabs
+// together make the full block. Stairs (facing 0: the low step toward +z) climb away from where you stand.
+export const SHAPE_MATS = [
+  { key: 'planks', name: 'Wooden', full: PLANKS, tex: T.PLANKS, sound: 'wood', tool: 'axe', hardness: 2 },
+  { key: 'cobble', name: 'Cobblestone', full: COBBLE, tex: T.COBBLE, tool: 'pick', hardness: 2.5, needsTool: true },
+  { key: 'stone', name: 'Stone', full: STONE, tex: T.STONE, tool: 'pick', hardness: 2.25, needsTool: true },
+  { key: 'bricks', name: 'Stone Brick', full: BRICKS, tex: T.BRICKS, tool: 'pick', hardness: 2.5, needsTool: true },
+  { key: 'clay', name: 'Brick', full: CLAY_BRICKS, tex: T.CLAY_BRICKS, tool: 'pick', hardness: 2.5, needsTool: true },
+  { key: 'sandstone', name: 'Sandstone', full: SANDSTONE, tex: { top: T.SANDSTONE_TOP, side: T.SANDSTONE_SIDE, bottom: T.SANDSTONE_TOP }, tool: 'pick', hardness: 2, needsTool: true },
+];
+export const slabId = (mat, top = false) => SHAPED + mat * 6 + (top ? 1 : 0);
+export const stairId = (mat, facing = 0) => SHAPED + mat * 6 + 2 + facing;
+const STAIR_BOXES = [[0, 0, 0, 16, 8, 16], [0, 8, 0, 16, 16, 8]];
+SHAPE_MATS.forEach((m, mi) => {
+  const base = { sound: m.sound ?? 'stone', tool: m.tool, hardness: m.hardness, needsTool: !!m.needsTool, transparent: true };
+  const slab = slabId(mi);
+  for (const top of [false, true]) {
+    const box = top ? [0, 8, 0, 16, 16, 16] : [0, 0, 0, 16, 8, 16];
+    block(slabId(mi, top), {
+      ...base, name: `${m.name} Slab`, model: [[...box, m.tex]], boxes: [box], slab: { mat: mi, top },
+      variantOf: top ? slab : 0, drop: slab,
+    });
+  }
+  for (let f = 0; f < 4; f++) {
+    const boxes = rotateModel(STAIR_BOXES.map((b) => [...b, m.tex]), f);
+    block(stairId(mi, f), {
+      ...base, name: `${m.name} Stairs`, model: boxes, boxes: boxes.map((b) => b.slice(0, 6)), stair: { mat: mi }, facing: f,
+      variantOf: f ? stairId(mi) : 0, drop: stairId(mi),
+    });
+  }
+});
+export const isSlab = (id) => !!BLOCKS[id]?.slab;
+
+// Fences and glass panes join up to their own kind and to solid blocks beside them (see world.js).
+// A fence stands a block and a half tall for anything trying to get over it.
+block(FENCE, {
+  name: 'Fence', shape: 'fence', sound: 'wood', tool: 'axe', hardness: 2, transparent: true,
+  model: [[6, 0, 6, 10, 16, 10, wood], [0, 6, 7, 6, 8, 9, wood], [0, 12, 7, 6, 14, 9, wood], [10, 6, 7, 16, 8, 9, wood], [10, 12, 7, 16, 14, 9, wood]],
+});
+block(GLASS_PANE, {
+  name: 'Glass Pane', shape: 'pane', sound: 'glass', hardness: 0.4, transparent: true,
+  model: [[0, 0, 7, 16, 16, 9, T.GLASS]],
+});
+// fence gates: closed they're a fence between their posts; open, the gate swings back out of the way
+const GATE_CLOSED = [[0, 5, 7, 2, 16, 9, wood], [14, 5, 7, 16, 16, 9, wood], [2, 6, 7.5, 14, 8, 8.5, wood], [2, 12, 7.5, 14, 14, 8.5, wood], [7, 8, 7.5, 9, 12, 8.5, wood]];
+const GATE_OPEN = [[0, 5, 7, 2, 16, 9, wood], [14, 5, 7, 16, 16, 9, wood], [0, 6, 9, 1, 8, 15, wood], [0, 12, 9, 1, 14, 15, wood], [15, 6, 9, 16, 8, 15, wood], [15, 12, 9, 16, 14, 15, wood]];
+for (let k = 0; k < 4; k++) {
+  const axis = k & 1, open = k >= 2;
+  block(FENCE_GATE + k, {
+    name: 'Fence Gate', sound: 'wood', tool: 'axe', hardness: 2, transparent: true, gate: true, axis, open,
+    model: rotateModel(open ? GATE_OPEN : GATE_CLOSED, axis), solid: !open,
+    boxes: open ? null : [axis ? [7, 0, 0, 9, 24, 16] : [0, 0, 7, 16, 24, 9]],
+    variantOf: k ? FENCE_GATE : 0, drop: FENCE_GATE,
+  });
+}
+// trapdoors: shut, a hatch lying across the top of their cell (a floor you can walk on); open, it stands
+// up against the side it's hinged on. Model for facing 0: hinged on the +z side.
+for (let k = 0; k < 8; k++) {
+  const f = k & 3, open = k >= 4;
+  const box = open ? [0, 0, 13, 16, 16, 16] : [0, 13, 0, 16, 16, 16];
+  const [m] = rotateModel([[...box, { top: T.TRAPDOOR, side: T.PLANKS, bottom: T.TRAPDOOR }]], f);
+  block(TRAPDOOR + k, {
+    name: 'Trapdoor', sound: 'wood', tool: 'axe', hardness: 1.5, transparent: true, trapdoor: true, facing: f, open,
+    model: [open ? [m[0], m[1], m[2], m[3], m[4], m[5], T.TRAPDOOR] : m], boxes: [m.slice(0, 6)],
+    variantOf: k ? TRAPDOOR : 0, drop: TRAPDOOR,
+  });
+}
+export const isGate = (id) => !!BLOCKS[id]?.gate;
+export const isTrapdoor = (id) => !!BLOCKS[id]?.trapdoor;
+
+RECIPES.push(
+  // flowers into dyes, and mixing them
+  ...FLOWERS.map((f) => ({ out: [DYE + f.color, 2], in: [[f.id, 1]], tools: [MORTAR], metal: f.id })),
+  { out: [DYE + 1, 2], in: [[COAL_OR_CHARCOAL, 1]], tools: [MORTAR], metal: DYE },
+  { out: [DYE + 5, 2], in: [[CACTUS, 1]], tools: [MORTAR], metal: CACTUS },
+  { out: [DYE + 5, 1], in: [[LEAVES, 4]], tools: [MORTAR], metal: DYE },
+  { out: [DYE + 3, 2], in: [[DYE + 2, 1], [DYE + 4, 1]], metal: DYE + 2 },
+  { out: [DYE + 9, 2], in: [[DYE + 2, 1], [DYE + 0, 1]], metal: DYE + 2 },
+  { out: [DYE + 6, 2], in: [[DYE + 7, 1], [DYE + 5, 1]], metal: DYE + 7 },
+  // building shapes
+  ...SHAPE_MATS.flatMap((m, i) => [
+    { out: [slabId(i), 6], in: [[m.full, 3]], table: true },
+    { out: [stairId(i), 4], in: [[m.full, 6]], table: true },
+  ]),
+  { out: [FENCE, 3], in: [[PLANKS, 4], [STICK, 2]], table: true },
+  { out: [FENCE_GATE, 1], in: [[PLANKS, 2], [STICK, 4]], table: true },
+  { out: [GLASS_PANE, 16], in: [[GLASS, 6]], table: true },
+  { out: [TRAPDOOR, 2], in: [[PLANKS, 6]], table: true },
+);
+// colour: 4 of a block and a dye make 4 of the coloured block (only listed once you have that dye)
+COLORS.forEach((c, i) => {
+  if (i) RECIPES.push(
+    { out: [dyedWool(i), 4], in: [[WOOL, 4], [DYE + i, 1]], metal: DYE + i },
+    { out: [dyedCarpet(i), 3], in: [[dyedWool(i), 2]], table: true, metal: DYE + i },
+  );
+  RECIPES.push(
+    { out: [STAINED_GLASS + i, 4], in: [[GLASS, 4], [DYE + i, 1]], metal: DYE + i },
+    { out: [PAINTED_PLANKS + i, 4], in: [[PLANKS, 4], [DYE + i, 1]], metal: DYE + i },
+  );
+});
+
+// ---------- automation: gearboxes, clutches, switches, item frames and loader rails ----------
+export const GEARBOX = 580, // passes a turning shaft round a corner: every face is an axle end
+  CLUTCH = 581, // 581..583: + axis; a shaft that only joins its two ends while it's switched on
+  LEVER = 584, // 584..593: + mount (0..3 on a wall, facing out of it; 4 on the floor) + 5 if on
+  BUTTON = 594, // 594..601: + facing + 4 while pressed
+  PRESSURE_PLATE = 602, // 603 = pressed
+  ITEM_FRAME = 604, // 604..607: + facing (out of the wall it hangs on)
+  LOADER_RAIL = 608; // 608 = along z, 609 = along x
+export const STORAGE_CART = 391;
+
+block(GEARBOX, {
+  name: 'Gearbox', tex: T.GEARBOX, hardness: 2, tool: 'pick', sound: 'stone', kinetic: { part: 'gearbox', mat: 1, axis: -1 },
+});
+for (let a = 0; a < 3; a++) {
+  block(CLUTCH + a, {
+    ...kineticShape, name: 'Clutch', sound: 'stone', tool: 'pick', hardness: 1.5, variantOf: a ? CLUTCH : 0, drop: CLUTCH,
+    kinetic: { part: 'clutch', mat: 1, axis: a },
+  });
+}
+// switches: models drawn for a wall toward -z (facing 0)
+const leverModel = (floor, on) => (floor
+  ? [[5, 0, 4, 11, 2, 12, T.COBBLE], on ? [7, 2, 8.5, 9, 10, 10.5, T.LOG_SIDE] : [7, 2, 5.5, 9, 10, 7.5, T.LOG_SIDE]]
+  : [[5, 4, 0, 11, 12, 2, T.COBBLE], on ? [7, 8.5, 2, 9, 14, 4, T.LOG_SIDE] : [7, 2, 2, 9, 7.5, 4, T.LOG_SIDE]]);
+for (let k = 0; k < 10; k++) {
+  const mount = k % 5, on = k >= 5, floor = mount === 4;
+  block(LEVER + k, {
+    name: 'Lever', sound: 'wood', hardness: 0.5, transparent: true, solid: false, switch: 'lever', on, floor,
+    model: floor ? leverModel(true, on) : rotateModel(leverModel(false, on), mount), facing: floor ? 0 : mount,
+    variantOf: k ? LEVER : 0, drop: LEVER,
+  });
+}
+for (let k = 0; k < 8; k++) {
+  const f = k & 3, on = k >= 4;
+  block(BUTTON + k, {
+    name: 'Button', sound: 'stone', hardness: 0.5, transparent: true, solid: false, switch: 'button', on, facing: f,
+    model: rotateModel([[5, 6, 0, 11, 10, on ? 1 : 2, T.STONE]], f), variantOf: k ? BUTTON : 0, drop: BUTTON,
+  });
+}
+for (let k = 0; k < 2; k++) {
+  block(PRESSURE_PLATE + k, {
+    name: 'Pressure Plate', sound: 'stone', hardness: 0.5, transparent: true, solid: false, switch: 'plate', on: !!k, floor: true,
+    model: [[1, 0, 1, 15, k ? 0.5 : 1, 15, T.STONE]], variantOf: k ? PRESSURE_PLATE : 0, drop: PRESSURE_PLATE,
+  });
+}
+export const isSwitch = (id) => !!BLOCKS[id]?.switch;
+const FRAME_MODEL = [[2, 2, 0, 14, 14, 0.6, T.FRAME_BACK], [1, 1, 0, 15, 2, 1.2, wood], [1, 14, 0, 15, 15, 1.2, wood], [1, 2, 0, 2, 14, 1.2, wood], [14, 2, 0, 15, 14, 1.2, wood]];
+for (let f = 0; f < 4; f++) {
+  block(ITEM_FRAME + f, {
+    name: 'Item Frame', sound: 'wood', hardness: 0.5, tool: 'axe', transparent: true, solid: false, frame: true,
+    model: rotateModel(FRAME_MODEL, f), facing: f, variantOf: f ? ITEM_FRAME : 0, drop: ITEM_FRAME,
+  });
+}
+export const isFrame = (id) => !!BLOCKS[id]?.frame;
+// a loader rail: a straight rail with an iron hopper plate between the rails. A storage cart stops on it
+// while hoppers fill or empty it, then rolls on.
+for (let a = 0; a < 2; a++) {
+  const ends = a ? [1, 3] : [0, 2];
+  block(LOADER_RAIL + a, {
+    name: 'Loader Rail', sound: 'stone', transparent: true, solid: false, hardness: 0.7, tool: 'pick',
+    model: [...railModel({ ends }), ...rotateModel([[5, 0, 4, 11, 1.6, 12, T.IRON]], a)], rail: { ends, slope: -1, powered: false, loader: true },
+    variantOf: a ? LOADER_RAIL : 0, drop: LOADER_RAIL,
+  });
+}
+ITEMS[STORAGE_CART] = { name: 'Storage Cart', stack: 1 };
+
+RECIPES.push(
+  { out: [GEARBOX, 1], in: [[kineticId('gear', 1), 2], [COBBLE, 4]], table: true },
+  { out: [CLUTCH, 1], in: [[kineticId('shaft', 1), 2], [IRON_INGOT, 1]], table: true, metal: IRON_INGOT },
+  { out: [LEVER, 1], in: [[STICK, 1], [COBBLE, 1]], table: true },
+  { out: [BUTTON, 2], in: [[STONE, 1]], table: true },
+  { out: [PRESSURE_PLATE, 1], in: [[STONE, 2]], table: true },
+  { out: [ITEM_FRAME, 2], in: [[STICK, 6], [LEATHER, 1]], table: true, metal: LEATHER },
+  { out: [LOADER_RAIL, 2], in: [[RAIL, 2], [HOPPER, 1]], table: true, metal: IRON_INGOT },
+  { out: [STORAGE_CART, 1], in: [[MINECART, 1], [CHEST, 1]], table: true, metal: IRON_INGOT },
+);
+
+// ---------- survival: wear and repair, dungeons, cauldrons and teas, shields ----------
+export const ANVIL = 610, MOSSY_BRICKS = 611, BOSS_SHRINE = 612, SPENT_SHRINE = 613, LOOT_CHEST = 614,
+  CAULDRON = 615; // 615..618: + water level
+export const GLASS_BOTTLE = 1000, NIGHT_TEA = 1001, HASTE_TEA = 1002, FIRE_TEA = 1003, HEAL_TEA = 1004,
+  WOOD_SHIELD = 1006, IRON_SHIELD = 1007, KING_CROWN = 1008;
+
+block(ANVIL, {
+  name: 'Anvil', sound: 'stone', hardness: 4, tool: 'pick', needsTool: true, transparent: true,
+  model: [[2, 0, 2, 14, 3, 14, T.IRON], [5, 3, 4, 11, 9, 12, T.IRON], [1, 9, 3, 15, 15, 13, T.IRON]],
+  boxes: [[1, 0, 2, 15, 15, 14]],
+});
+block(MOSSY_BRICKS, { name: 'Mossy Stone Bricks', tex: T.MOSSY_BRICKS, hardness: 2.5, tool: 'pick', needsTool: true });
+// the shrine in the middle of a dungeon calls up its guardian, the Mossback King, when you come near
+block(BOSS_SHRINE, { name: 'Mossy Shrine', top: T.SHRINE_TOP, bottom: T.MOSSY_BRICKS, side: T.SHRINE_SIDE, hardness: Infinity, light: 7, blastproof: true, drop: 0 });
+block(SPENT_SHRINE, { name: 'Quiet Shrine', top: T.SHRINE_SPENT, bottom: T.MOSSY_BRICKS, side: T.SHRINE_SIDE, hardness: 6, tool: 'pick', needsTool: true, tier: 3, drop: MOSSY_BRICKS });
+// a dungeon chest: an ordinary chest, filled with loot the first time it's opened
+block(LOOT_CHEST, {
+  name: 'Chest', station: 'chest', side: T.CHEST_SIDE, top: T.CHEST_TOP, bottom: T.CHEST_TOP, front: T.CHEST_FRONT, facing: 0,
+  sound: 'wood', hardness: 2, tool: 'axe', variantOf: CHEST, drop: CHEST, stationBase: CHEST,
+});
+const cauldronModel = (level) => [
+  [1, 0, 1, 15, 2, 15, T.CAULDRON], [1, 2, 1, 15, 14, 3, T.CAULDRON], [1, 2, 13, 15, 14, 15, T.CAULDRON],
+  [1, 2, 3, 3, 14, 13, T.CAULDRON], [13, 2, 3, 15, 14, 13, T.CAULDRON],
+  ...[[0, 0], [14, 0], [0, 14], [14, 14]].map(([x, z]) => [x, 0, z, x + 2, 3, z + 2, T.CAULDRON]),
+  ...(level ? [[3, 2, 3, 13, 2 + level * 3.6, 13, T.CAULDRON_WATER]] : []),
+];
+for (let k = 0; k < 4; k++) {
+  block(CAULDRON + k, {
+    name: 'Cauldron', sound: 'stone', hardness: 2.5, tool: 'pick', transparent: true, model: cauldronModel(k), water: k,
+    station: 'cauldron', stationBase: CAULDRON, variantOf: k ? CAULDRON : 0, drop: CAULDRON, grows: k < 3 ? 'fill' : null,
+  });
+}
+
+// Teas: brewed in a cauldron from a herb in a glass bottle of its water. effect: [kind, seconds]
+ITEMS[GLASS_BOTTLE] = { name: 'Glass Bottle' };
+ITEMS[NIGHT_TEA] = { name: 'Night-Eye Tea', stack: 8, tea: ['night', 240], about: 'see in the dark' };
+ITEMS[HASTE_TEA] = { name: 'Miner\'s Tea', stack: 8, tea: ['haste', 180], about: 'dig half as fast again' };
+ITEMS[FIRE_TEA] = { name: 'Fireproof Tea', stack: 8, tea: ['fire', 120], about: 'lava doesn\'t burn you' };
+ITEMS[HEAL_TEA] = { name: 'Healing Tea', stack: 8, tea: ['heal', 10], about: 'heals you quickly' };
+// Shields: worn in their own slot; they stop hits and thorns from in front of you, and wear as they do.
+ITEMS[WOOD_SHIELD] = { name: 'Wooden Shield', stack: 1, armour: { piece: 4, points: 0 }, wearMax: 60, repair: PLANKS };
+ITEMS[IRON_SHIELD] = { name: 'Iron Shield', stack: 1, armour: { piece: 4, points: 0 }, wearMax: 240, repair: IRON_INGOT };
+ITEMS[KING_CROWN] = { name: 'Crown of the Mossback King', stack: 1, armour: { piece: 0, points: 5 }, wearMax: 600, repair: GOLD_INGOT };
+
+// How many uses tools, weapons and armour take before they break (see main.js), and what repairs them at an anvil.
+const WEAR_BY_MAT = { copper: 200, tin: 200, zinc: 200, aluminium: 220, bronze: 300, albronze: 340, iron: 400, steel: 600, stainless: 900, tungsten: 1500 };
+for (const id of [WOOD_PICK, WOOD_AXE, WOOD_SHOVEL, WOOD_SWORD]) Object.assign(ITEMS[id], { wearMax: 60, repair: PLANKS });
+for (const id of [STONE_PICK, STONE_AXE, STONE_SHOVEL, STONE_SWORD]) Object.assign(ITEMS[id], { wearMax: 130, repair: COBBLE });
+TOOL_MATERIALS.forEach((m, i) => {
+  for (const id of [metalSword(i), ...TOOL_KINDS.map((k) => metalTool(i, k))]) Object.assign(ITEMS[id], { wearMax: WEAR_BY_MAT[m.key], repair: m.ingot });
+});
+const ARMOUR_WEAR = [80, 160, 220, 320, 450];
+ARMOUR_MATS.forEach((m, mi) => ARMOUR_PIECES.forEach((p, pi) => Object.assign(ITEMS[armourId(mi, pi)], { wearMax: ARMOUR_WEAR[mi], repair: m.plate ?? LEATHER })));
+export const maxWear = (id) => ITEMS[id]?.wearMax ?? 0;
+
+RECIPES.push(
+  { out: [ANVIL, 1], in: [[IRON_INGOT, 5], [plateOf(IRON_INGOT), 2]], table: true, metal: IRON_INGOT },
+  { out: [CAULDRON, 1], in: [[[IRON_INGOT, COPPER_INGOT], 5]], table: true, metal: [IRON_INGOT, COPPER_INGOT] },
+  { out: [GLASS_BOTTLE, 3], in: [[GLASS, 3]], table: true },
+  { out: [WOOD_SHIELD, 1], in: [[PLANKS, 6], [IRON_INGOT, 1]], table: true, metal: IRON_INGOT },
+  { out: [WOOD_SHIELD, 1], in: [[PLANKS, 6], [LEATHER, 2]], table: true, metal: LEATHER },
+  { out: [IRON_SHIELD, 1], in: [[plateOf(IRON_INGOT), 4], [LEATHER, 1]], table: true, metal: IRON_INGOT },
+  { out: [MOSSY_BRICKS, 4], in: [[BRICKS, 4], [LEAVES, 2]], table: true },
+);
+
+// ---------- berry bushes ----------
+// A low leafy bush that grows berries; tap a ripe one to pick them (and it grows more).
+export const BERRY_BUSH = 619, // 620 = with ripe berries
+  BERRIES = 1005;
+for (let k = 0; k < 2; k++) {
+  const tile = k ? T.BUSH_RIPE : T.BUSH;
+  block(BERRY_BUSH + k, {
+    name: 'Berry Bush', sound: 'leaves', hardness: 0.3, transparent: true, solid: false,
+    model: [[2, 0, 2, 14, 11, 14, tile], [4, 11, 4, 12, 13, 12, tile]],
+    grows: k ? null : BERRY_BUSH + 1, variantOf: k ? BERRY_BUSH : 0, drop: BERRY_BUSH,
+  });
+}
+ITEMS[BERRIES] = { name: 'Berries', food: 2 };

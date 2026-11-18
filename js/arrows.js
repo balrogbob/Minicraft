@@ -134,7 +134,7 @@ export class ArrowManager {
             const p = player.pos;
             const t = rayBox(a.pos, dir, step, { x: p.x - 0.35, y: p.y, z: p.z - 0.35 }, { x: p.x + 0.35, y: p.y + 1.8, z: p.z + 0.35 });
             if (t !== null && (!block || t < block.t)) {
-              onHitPlayer?.(a.damage);
+              onHitPlayer?.(a.damage, a.pos.clone().addScaledVector(dir, -2));
               this.remove(a); this.arrows.splice(i, 1);
               continue;
             }
