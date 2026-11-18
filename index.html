@@ -28,6 +28,7 @@
       <button class="btn small" id="btn-menu" title="Menu">☰</button>
     </div>
     <div id="coords"></div>
+    <div id="perf" class="hidden"></div>
     <div id="toast"></div>
     <div id="item-name"></div>
 
@@ -69,6 +70,7 @@
           <label class="slider"><span id="view-label">View distance</span> <input type="range" id="view" min="3" max="10" step="1" value="6" /></label>
           <label class="slider">Look speed <input type="range" id="sens" min="2" max="14" step="1" value="6" /></label>
           <label class="slider">Sound <input type="range" id="volume" min="0" max="100" step="5" value="70" /></label>
+          <button class="btn wide" id="btn-perf">Performance info: off</button>
           <button class="btn wide" id="btn-save">Save now</button>
           <button class="btn wide danger" id="btn-new">New world</button>
           <p class="hint">
@@ -77,6 +79,7 @@
             In water, hold ⤒ to swim up.<br />
             <b>Keyboard:</b> WASD, Space, mouse, E = inventory.
           </p>
+          <p class="hint" id="version"></p>
         </div>
       </div>
     </div>
