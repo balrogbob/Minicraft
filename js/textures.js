@@ -2,6 +2,7 @@
 import {
   T, BLOCKS, isBlock, TORCH, STICK, COAL, WOOD_PICK, STONE_PICK, WOOD_AXE, STONE_AXE, WOOD_SHOVEL, STONE_SHOVEL,
   SEEDS, WHEAT, FLOUR, SUGAR, BUTTER, BREAD, COOKIE, CAKE, BUCKET, MILK_BUCKET, SLIME_BUCKET, FEATHER, MORTAR,
+  STRING, ARROW, BOW,
 } from './blocks.js';
 
 export const TILE = 16;
@@ -469,6 +470,53 @@ Object.assign(ITEM_PAINTERS, {
     }
   },
 });
+
+Object.assign(ITEM_PAINTERS, {
+  [STRING](ctx) {
+    // a coiled skein of golden wheat string
+    for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) {
+      const d = Math.hypot(x - 7.5, (y - 8) * 1.25);
+      if (d > 2.2 && d < 6.2) px(ctx, x, y, Math.floor(d * 2 + (x + y) * 0.35) % 2 ? [226, 196, 110] : [186, 152, 74]);
+    }
+    for (let i = 0; i < 4; i++) px(ctx, 12 + (i >> 1), 12 + i, [206, 172, 90]); // loose end
+  },
+  [ARROW](ctx) {
+    for (let i = 3; i <= 11; i++) px(ctx, i, 15 - i, [120, 86, 48]); // shaft
+    for (const [x, y] of [[12, 3], [13, 2], [12, 2], [13, 3], [11, 2], [13, 4], [14, 1]]) px(ctx, x, y, [150, 150, 154]); // stone head
+    for (const [x, y] of [[1, 12], [2, 13], [1, 13], [2, 14], [3, 14], [0, 11], [1, 14]]) px(ctx, x, y, [244, 244, 240]); // feather fletching
+  },
+  [BOW](ctx) {
+    // a curved wooden limb with a taut string
+    const limb = [[4, 1], [5, 1], [6, 2], [7, 3], [8, 4], [8, 5], [9, 6], [9, 7], [9, 8], [9, 9], [8, 10], [8, 11], [7, 12], [6, 13], [5, 14], [4, 14]];
+    for (const [x, y] of limb) { px(ctx, x, y, [140, 96, 50]); px(ctx, x + 1, y, [104, 70, 36]); }
+    for (let y = 2; y <= 13; y++) px(ctx, 4, y, [232, 214, 160]); // string
+    px(ctx, 9, 7, [70, 46, 24]); px(ctx, 9, 8, [70, 46, 24]); // grip
+  },
+});
+
+// Small HUD icons (9x9 pixel art): heart, poisoned heart, air bubble.
+const HUD_ART = {
+  heart: ['.XX...XX.', 'XHHX.XHHX', 'XHRRXRRRX', 'XRRRRRRRX', '.XRRRRRX.', '..XRRRX..', '...XRX...', '....X....', '.........'],
+  bubble: ['..XXXXX..', '.XHH...X.', 'XH.....BX', 'XH.....BX', 'X......BX', 'X.....BBX', '.X..BBBX.', '..XXXXX..', '.........'],
+};
+export function createHudIcons() {
+  const make = (art, colors) => {
+    const c = document.createElement('canvas');
+    c.width = c.height = 36;
+    const ctx = c.getContext('2d');
+    art.forEach((row, y) => [...row].forEach((ch, x) => {
+      if (!colors[ch]) return;
+      ctx.fillStyle = colors[ch];
+      ctx.fillRect(x * 4, y * 4, 4, 4);
+    }));
+    return c.toDataURL();
+  };
+  return {
+    heart: make(HUD_ART.heart, { X: '#3a0d0d', R: '#e0302b', H: '#ff9a92' }),
+    poison: make(HUD_ART.heart, { X: '#14300c', R: '#6cbf2e', H: '#c6f29a' }),
+    bubble: make(HUD_ART.bubble, { X: '#2a5aa8', H: '#ffffff', B: '#8fc4ff' }),
+  };
+}
 
 ITEM_PAINTERS[WOOD_PICK] = toolPainter('pick', 'wood');
 ITEM_PAINTERS[STONE_PICK] = toolPainter('pick', 'stone');

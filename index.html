@@ -19,7 +19,10 @@
     <div id="touch-layer"></div>
 
     <div id="underwater"></div>
+    <div id="sick"></div>
+    <div id="hurt"></div>
     <div id="crosshair"></div>
+    <div id="charge"><div></div></div>
 
     <div id="joy-base"><div id="joy-knob"></div></div>
 
@@ -32,7 +35,13 @@
     <div id="toast"></div>
     <div id="item-name"></div>
 
-    <div id="hunger" title="Hunger"></div>
+    <div id="status">
+      <div id="health" title="Health"></div>
+      <div id="right-status">
+        <div id="air" class="hidden" title="Breath"></div>
+        <div id="hunger" title="Hunger"></div>
+      </div>
+    </div>
     <div id="hotbar-wrap">
       <div id="hotbar"></div>
       <button class="btn" id="btn-inventory" title="Inventory & crafting">🎒</button>
@@ -82,6 +91,16 @@
           </p>
           <p class="hint" id="version"></p>
         </div>
+      </div>
+    </div>
+
+    <div id="death" class="overlay hidden">
+      <div class="death-box">
+        <h1>You died</h1>
+        <p id="death-cause"></p>
+        <p id="death-day"></p>
+        <button class="btn wide" id="btn-respawn">Respawn</button>
+        <p class="hint">You keep everything you were carrying.</p>
       </div>
     </div>
 

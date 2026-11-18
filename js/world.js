@@ -746,8 +746,8 @@ export class World {
   }
 
   // Voxel DDA raycast. Returns { x, y, z, id, nx, ny, nz, t } for the first solid block hit (water is ignored);
-  // t is the distance along the ray.
-  raycast(origin, dir, maxDist) {
+  // t is the distance along the ray. With solidOnly, walk-through blocks (plants, torches) are skipped too.
+  raycast(origin, dir, maxDist, solidOnly = false) {
     let x = Math.floor(origin.x), y = Math.floor(origin.y), z = Math.floor(origin.z);
     const sx = Math.sign(dir.x), sy = Math.sign(dir.y), sz = Math.sign(dir.z);
     const tdx = sx ? Math.abs(1 / dir.x) : Infinity;
@@ -759,7 +759,7 @@ export class World {
     let nx = 0, ny = 0, nz = 0, t = 0;
     while (t <= maxDist) {
       const id = this.get(x, y, z);
-      if (id !== AIR && id !== WATER) return { x, y, z, id, nx, ny, nz, t };
+      if (id !== AIR && id !== WATER && (!solidOnly || BLOCKS[id].solid)) return { x, y, z, id, nx, ny, nz, t };
       if (tmx < tmy && tmx < tmz) { x += sx; t = tmx; tmx += tdx; nx = -sx; ny = 0; nz = 0; }
       else if (tmy < tmz) { y += sy; t = tmy; tmy += tdy; nx = 0; ny = -sy; nz = 0; }
       else { z += sz; t = tmz; tmz += tdz; nx = 0; ny = 0; nz = -sz; }

@@ -106,6 +106,35 @@ export class Sound {
 
   click() { if (this.ready) this.tone(800, 0.04, 0.08, 'square'); }
 
+  // Bow release: a twang that's higher and louder the further the bow was drawn.
+  bow(power = 1) {
+    if (!this.ready) return;
+    this.voice({ type: 'triangle', from: 260 + power * 160, to: 120, dur: 0.18, vol: 0.25 + power * 0.25, freq: 2400, q: 1 });
+    this.noiseBurst({ type: 'highpass', freq: 2500, q: 0.7, dur: 0.08, vol: 0.25 }, 1, 1);
+  }
+
+  // An arrow thunking into a block.
+  arrowHit() {
+    if (!this.ready) return;
+    this.noiseBurst({ type: 'bandpass', freq: 500, q: 1.5, dur: 0.08, vol: 0.6 }, 1, 1);
+    this.voice({ type: 'triangle', from: 180, to: 90, dur: 0.1, vol: 0.25, freq: 800 });
+  }
+
+  // The player gets hurt: a low thump and a short grunt.
+  hurt() {
+    if (!this.ready) return;
+    this.noiseBurst({ type: 'lowpass', freq: 300, q: 0.8, dur: 0.15, vol: 0.8 }, 1, 1);
+    this.voice({ type: 'sawtooth', from: 210, to: 140, dur: 0.16, vol: 0.22, freq: 900, q: 1.5 });
+  }
+
+  // Gulping something nasty.
+  gulp() {
+    if (!this.ready) return;
+    for (let i = 0; i < 3; i++) {
+      this.voice({ type: 'sine', from: 320 - i * 40, to: 160, dur: 0.12, vol: 0.3, freq: 1200, delay: i * 0.16 });
+    }
+  }
+
   // Three quick crunches.
   eat() {
     if (!this.ready) return;
