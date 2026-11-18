@@ -23,7 +23,8 @@ export const AIR = 0, GRASS = 1, DIRT = 2, STONE = 3, COBBLE = 4, LOG = 5, PLANK
   SMELTER = 74, // 74..81: + facing, + 4 while burning
   // metal ores (see ORES below)
   IRON_ORE = 82, COPPER_ORE = 83, TIN_ORE = 84, LEAD_ORE = 85, ZINC_ORE = 86, SULPHUR_ORE = 87,
-  BAUXITE = 88, SILVER_ORE = 89, GOLD_ORE = 90, TUNGSTEN_ORE = 91;
+  BAUXITE = 88, SILVER_ORE = 89, GOLD_ORE = 90, TUNGSTEN_ORE = 91,
+  SAPLING = 92; // grows into a tree
 
 // Wall direction [dx, dz] for each wall-torch variant, in id order.
 export const WALL_TORCH_DIRS = [[-1, 0], [1, 0], [0, -1], [0, 1]];
@@ -60,6 +61,7 @@ export const T = {
   OVEN_SIDE: 32, OVEN_TOP: 33, OVEN_FRONT: 34, OVEN_FRONT_LIT: 35,
   SMELTER_SIDE: 36, SMELTER_TOP: 37, SMELTER_FRONT: 38, SMELTER_FRONT_LIT: 39,
   ORE0: 40, // 40..49: the ores, in ORES order
+  SAPLING: 50,
 };
 
 // Ores, deepest-reaching last. tier: the pickaxe tier needed to mine it (see TOOL_TIERS);
@@ -138,7 +140,11 @@ block(STONE, { name: 'Stone', tex: T.STONE, hardness: 2.25, tool: 'pick', needsT
 block(COBBLE, { name: 'Cobblestone', tex: T.COBBLE, hardness: 2.5, tool: 'pick', needsTool: true });
 block(LOG, { name: 'Log', sound: 'wood', top: T.LOG_TOP, bottom: T.LOG_TOP, side: T.LOG_SIDE, hardness: 2.5, tool: 'axe' });
 block(PLANKS, { name: 'Planks', sound: 'wood', tex: T.PLANKS, hardness: 2, tool: 'axe' });
-block(LEAVES, { name: 'Leaves', sound: 'leaves', tex: T.LEAVES, transparent: true, hardness: 0.3, drop: () => (Math.random() < 0.12 ? STICK : 0) });
+// leaves sometimes drop a sapling or a stick, whether broken or left to decay after the tree is cut
+block(LEAVES, {
+  name: 'Leaves', sound: 'leaves', tex: T.LEAVES, transparent: true, hardness: 0.3,
+  drop: () => [[SAPLING, Math.random() < 0.08 ? 1 : 0], [STICK, Math.random() < 0.12 ? 1 : 0]],
+});
 block(SAND, { name: 'Sand', sound: 'sand', tex: T.SAND, hardness: 0.75, tool: 'shovel' });
 block(GLASS, { name: 'Glass', sound: 'glass', tex: T.GLASS, transparent: true, hardness: 0.4 });
 block(TABLE, { name: 'Crafting Table', sound: 'wood', top: T.TABLE_TOP, bottom: T.PLANKS, side: T.TABLE_SIDE, hardness: 2.5, tool: 'axe' });
@@ -168,6 +174,7 @@ block(WHEAT_1, { ...youngWheat, tex: T.WHEAT_1, grows: WHEAT_2 });
 block(WHEAT_2, { ...youngWheat, tex: T.WHEAT_2, grows: WHEAT_3 });
 block(WHEAT_3, { ...youngWheat, tex: T.WHEAT_3, drop: () => [[WHEAT, 1], [SEEDS, Math.random() < 0.5 ? 2 : 1]] });
 block(SUGAR_CANE, { ...plant, name: 'Sugar Cane', tex: T.SUGAR_CANE, grows: 'up' });
+block(SAPLING, { ...plant, name: 'Sapling', tex: T.SAPLING, grows: 'tree' });
 export const isWheat = (id) => id >= WHEAT_0 && id <= WHEAT_3;
 export const MAX_CANE_HEIGHT = 3;
 

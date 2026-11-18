@@ -5,6 +5,9 @@ It is designed for Android tablets (touch controls) but also plays with keyboard
 
 - A 16,384 × 16,384 block world (64 high) that streams in around you as you explore: hills, lakes and seas,
   beaches, trees, winding caves, coal and ten metal and mineral ores. You start in the middle; the edges are walls
+- Trees: chop the bottom of a trunk with an axe and the whole tree comes down (by hand you only get one log).
+  Leaves with no trunk nearby wither away over a few seconds, sometimes dropping **saplings** and sticks.
+  Plant a sapling on grass or dirt and it grows into a new tree in a few minutes
 - Adjustable view distance (48–160 blocks) and an on-screen coordinates readout
 - Water you can swim in. It flows into holes you dig next to it, as long as they're at or below sea level
 - Day/night cycle (12 minutes) with sunrise and sunset skies, sun, moon and stars
@@ -91,7 +94,7 @@ You aim with the crosshair in the middle of the screen. Volume, look speed and a
 
 ## How to progress
 
-1. Hold on a tree trunk to collect **logs**.
+1. Hold on a tree trunk to collect **logs**. Once you have an axe, cutting the bottom log fells the whole tree.
 2. Open 🎒 and craft **planks**, then **sticks** and a **crafting table**.
 3. Place the table. With a table nearby (or after tapping one), you can craft wooden tools.
 4. Stone needs a **pickaxe** to drop cobblestone. Use cobblestone to craft stone tools and stone bricks.
@@ -148,6 +151,18 @@ where you tap and the head (with the pillow) extends away from you. Tap a bed in
 night to sleep until morning (not while a creature is lurking nearby); any tap sets it as your respawn point.
 
 Tap a crafting table or butter churn to open crafting there.
+
+### Trees
+
+- With any axe in hand, breaking a log brings down every log joined to it above (up to 64), and they all go
+  into your inventory. It only works on trees, meaning logs that touch leaves, so log walls and pillars you
+  build are safe. By hand, or with any other tool, you only get the one log.
+- Leaves need a log within 4 blocks, counting through other leaves. When a tree is cut, its leaves wither
+  one by one over a few seconds. Each withered or broken leaf block has about an 8% chance to drop a
+  **sapling** and a 12% chance to drop a stick. You collect these if you're within 16 blocks.
+- Plant a sapling on top of grass or dirt. It grows into a tree after about 2½ minutes on average, but only
+  while its chunk is loaded and only if there's room above it for the trunk. If the block under a sapling is
+  broken, the sapling goes back to your inventory.
 
 ### Fishing
 
