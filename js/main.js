@@ -6,6 +6,7 @@ import {
   BED, BED_FOOT, CHAIR, LAMP, CARPET, CURTAIN, DOOR, SLIME_FUEL, FACING_DIRS, MAX_LAMP_FUEL,
   isBed, isChair, isLamp, isCurtain, isDoor, doorId,
   OVEN, SMELTER, stationKind, maxStack, FISHING_ROD, RAW_FISH, TOOL_TIERS, LOG, LEAVES, SAPLING,
+  BLAST_SMELTER, CRUSHER, WATER_BUCKET, WATER_WHEEL, isWaterId, isFlowing,
   isBlock, isTorch, isWheat, itemName, breakTime, dropsFor, foodValue,
 } from './blocks.js';
 import { createAtlas, createIcons, createCrackCanvases, createWaterCanvas, createHudIcons } from './textures.js';
@@ -22,10 +23,11 @@ import { MobManager, DIFFICULTY, DIFFICULTY_ORDER } from './mobs.js';
 import { ArrowManager } from './arrows.js';
 import { Stations, STATION_KINDS, isFuel } from './stations.js';
 import { Fishing } from './fishing.js';
+import { Kinetics } from './kinetics.js';
 
 // v2 = the 16k x 16k streaming world (player state here, edited chunks in IndexedDB).
 // v1 = the old 128 x 128 world, migrated into the middle of the big world on first launch.
-const GAME_VERSION = '15'; // shown in the menu; bump with each release
+const GAME_VERSION = '16'; // shown in the menu; bump with each release
 const SAVE_KEY = 'minicraft-save-v2';
 const LEGACY_SAVE_KEY = 'minicraft-save-v1';
 const SETTINGS_KEY = 'minicraft-settings-v1';
@@ -181,6 +183,8 @@ let bedSpawn = null; // { x, y, z } of the bed you last used: where you respawn
 // Lit lamps: "x,y,z" -> seconds left in the fuel unit now burning (each unit lasts one in-game day).
 const lamps = new Map();
 const stations = new Stations(); // what's inside each oven and smelter
+const kinetics = new Kinetics(scene, atlas); // water wheels, shafts and gears, and what they drive
+const powerAt = (x, y, z) => kinetics.powerAt(x, y, z);
 let caneToday = 0; // raw sugar cane eaten since sunrise: the 5th gives you food poisoning
 const store = new ChunkStore();
 let worldReady = false; // false while a world is loading: nothing gets saved until the player is placed
@@ -258,6 +262,7 @@ async function startWorld(save) {
     if (drops.length) giveDrops(drops);
   };
   mobs.reset(world);
+  kinetics.clear();
   arrows.reset();
   lastSwing = 0;
   applyViewDistance();
@@ -731,8 +736,7 @@ let stPicked = null; // { area, i }: the slot you tapped first
 
 function setStationLit(x, y, z, lit) {
   const d = BLOCKS[world.get(x, y, z)];
-  const base = d.station === 'oven' ? OVEN : SMELTER;
-  world.setBlock(x, y, z, base + d.facing + (lit ? 4 : 0));
+  world.setBlock(x, y, z, d.stationBase + d.facing + (lit ? 4 : 0));
 }
 
 const currentStation = () => openStationAt && stations.get(openStationAt.x, openStationAt.y, openStationAt.z, openStationAt.kind);
@@ -768,7 +772,8 @@ function openStation(x, y, z) {
   ins.innerHTML = '';
   ins.style.gridTemplateColumns = `repeat(${K.inputs > 1 ? 2 : 1}, var(--slot))`;
   for (let i = 0; i < K.inputs; i++) make(ins, 'in', i);
-  for (const [id, area] of [['st-fuel', 'fuel'], ['st-out', 'out']]) { $(id).innerHTML = ''; make($(id), area, 0); }
+  for (const [id, area] of [['st-fuel', 'fuel'], ['st-out', 'out']]) { $(id).innerHTML = ''; if (area === 'out' || !K.powered) make($(id), area, 0); }
+  $('station').querySelector('.st-fuel-row').style.display = K.powered ? 'none' : '';
   $('st-inv').innerHTML = ''; $('st-hotbar').innerHTML = '';
   for (let i = 9; i < SLOTS; i++) make($('st-inv'), 'inv', i);
   for (let i = 0; i < 9; i++) make($('st-hotbar'), 'inv', i);
@@ -778,8 +783,11 @@ function openStation(x, y, z) {
     const tools = (r.tools ?? []).map((id) => `<span class="ing tool" title="${itemName(id)} (not used up)"><img src="${icons[id]}" alt="">kept</span>`).join('');
     return `<div class="recipe">${ing}${tools}<span class="arrow">→</span><img class="outimg" src="${icons[r.out[0]]}" alt="">` +
       `<span class="name">${r.out[1] > 1 ? r.out[1] + ' × ' : ''}${itemName(r.out[0])}</span></div>`;
-  }).join('') + '<p class="hint">Fuel, in items cooked per piece: log or planks 1, stick ½, coal or charcoal 10, ' +
-    'slime fuel 40 (its bucket is left in the fuel slot). Fuel is only used while something is cooking.</p>';
+  }).join('') + (K.powered ? '<p class="hint">Times are at 1x speed. Drive it with a water wheel by turning a shaft or gear ' +
+    'against any face; gear it up for more speed. Ore dust smelts into ingots, so crushing ore doubles what you get.</p>'
+    : '<p class="hint">Fuel, in items cooked per piece: log or planks 1, stick ½, coal or charcoal 10, ' +
+    'slime fuel 40 (its bucket is left in the fuel slot). Fuel is only used while something is cooking.' +
+    (K.speed ? ' A blast smelter works twice as fast on the same fuel.' : '') + '</p>');
   $('station').classList.remove('hidden');
   renderStation();
 }
@@ -801,6 +809,12 @@ function renderStation() {
   }
   const r = stations.recipeFor(st);
   $('st-progress').style.width = `${r ? Math.min(100, (st.progress / r.time) * 100) : 0}%`;
+  if (STATION_KINDS[st.kind].powered) {
+    const { x, y, z } = openStationAt;
+    const power = kinetics.statusAt(x, y, z);
+    $('st-status').textContent = r && st.speed > 0 ? `Crushing ${itemName(r.in[0][0]).toLowerCase()}… ${power}` : `${r ? '' : 'Put something in to crush. '}${power}`;
+    return;
+  }
   $('st-flame').style.opacity = st.burn > 0 ? String(0.35 + 0.65 * (st.burn / (st.burnMax || 1))) : '0.12';
   const fuelLeft = st.burn > 1e-9 ? ` (fuel for ${+st.burn.toFixed(1)} more)` : '';
   $('st-status').textContent = r ? (st.burn > 1e-9 || (st.fuel && isFuel(st.fuel.id)) ? `Making ${itemName(r.out[0]).toLowerCase()}…${fuelLeft}` : 'Needs fuel') :
@@ -996,7 +1010,7 @@ async function sleepUntilMorning() {
   sky.time = 0.001;
   day++;
   caneToday = 0;
-  stations.tick(skipped, world, setStationLit);
+  stations.tick(skipped, world, setStationLit, powerAt);
   tickLamps(skipped);
   for (let i = 0; i < 6; i++) world.tickPlants(skipped / 6);
   hunger = Math.max(0, hunger - 3); // a night's sleep makes you a bit peckish
@@ -1032,6 +1046,7 @@ function place() {
       (target.id === SUGAR_CANE || (ground && waterBeside(target.x, target.y, target.z)));
     if (!plantable) { eatCane(); return; }
   }
+  if (held?.id === BUCKET || held?.id === WATER_BUCKET) { useBucket(held.id); return; }
   if (held && (foodValue(held.id) || ITEMS[held.id]?.drink)) { eat(held.id); return; }
   if (!target || !held) return;
   // what goes into the world: the block itself, or what an item plants (seeds -> young wheat)
@@ -1039,7 +1054,7 @@ function place() {
   if (!id) return;
   const x = target.x + target.nx, y = target.y + target.ny, z = target.z + target.nz;
   const there = world.get(x, y, z);
-  if (!world.inBounds(x, y, z) || (there !== AIR && there !== WATER)) return;
+  if (!world.inBounds(x, y, z) || (there !== AIR && !isWaterId(there))) return;
   if (id === TORCH) {
     // torches need a solid block to stand on or hang from, and can't go underwater or on ceilings
     if (there !== AIR || target.ny < 0 || !BLOCKS[target.id].solid || isTorch(target.id)) return;
@@ -1081,13 +1096,51 @@ function place() {
     if (there !== AIR || !world.isSolid(x, y - 1, z)) { toast(`${BLOCKS[id].name}s need something solid underneath`); return; }
   } else {
     // chairs face you; curtains hang across your line of sight
-    if (id === CHAIR || id === OVEN || id === SMELTER) id += facingTowardPlayer(x, z); // the front faces you
+    if (id === CHAIR || id === OVEN || id === SMELTER || id === BLAST_SMELTER || id === CRUSHER) id += facingTowardPlayer(x, z); // the front faces you
+    else if (BLOCKS[id].kinetic) id = kineticVariant(id);
     else if (id === CURTAIN) id += facingTowardPlayer(x, z) % 2; // facing 0/2 -> hangs across x, 1/3 -> across z
     if (BLOCKS[id].solid && player.overlapsBlock(x, y, z)) return;
   }
   world.setBlock(x, y, z, id);
   sound.place(BLOCKS[id].sound);
   inventory.consumeHeld();
+}
+
+// Which way a shaft, gear or water wheel goes when placed: its axle points out of the face you tap,
+// except against the side of another part, where it lines up with that part (so gears sit side by side).
+// A water wheel's axle is always level: on top of a block it points the way you're looking.
+function kineticVariant(id) {
+  const k = BLOCKS[id].kinetic;
+  let axis = target.nx ? 0 : target.ny ? 1 : 2;
+  const other = BLOCKS[target.id].kinetic;
+  if (other && other.axis !== axis) axis = other.axis;
+  if (k.part === 'wheel') {
+    if (axis === 1) { const look = player.lookDir(); axis = Math.abs(look.x) > Math.abs(look.z) ? 0 : 2; }
+    return WATER_WHEEL + (axis === 2 ? 1 : 0);
+  }
+  return id + axis;
+}
+
+// An empty bucket scoops up still water (the sea refills behind it); a full one pours it out where
+// you tap. Water poured above sea level runs downhill: that's what turns water wheels.
+function useBucket(id) {
+  if (id === BUCKET) {
+    const hit = world.raycast(player.eye, player.lookDir(), REACH, false, true);
+    if (!hit || hit.id !== WATER) { toast('Tap still water to fill the bucket'); return; }
+    world.setBlock(hit.x, hit.y, hit.z, AIR);
+    inventory.consumeHeld();
+    if (inventory.add(WATER_BUCKET, 1)) toast('Inventory full');
+    sound.splash(false);
+    return;
+  }
+  if (!target) return;
+  const x = target.x + target.nx, y = target.y + target.ny, z = target.z + target.nz;
+  const there = world.get(x, y, z);
+  if (!world.inBounds(x, y, z) || (there !== AIR && !isFlowing(there))) return;
+  world.setBlock(x, y, z, WATER);
+  inventory.slots[inventory.selected] = { id: BUCKET, count: 1 };
+  inventory.onChange();
+  sound.splash(false);
 }
 
 function updateBreaking(dt) {
@@ -1378,7 +1431,7 @@ function frame(now) {
   // gameplay, streaming and rendering are isolated so an error in one can't stop the others
   try { stepGame(now, dt); } catch (err) { reportError(err); }
   try {
-    if (!dead) stations.tick(dt, world, setStationLit);
+    if (!dead) stations.tick(dt, world, setStationLit, powerAt);
     if (openStationAt && (stationRefresh -= dt) <= 0) { stationRefresh = 0.15; renderStation(); }
   } catch (err) { reportError(err); }
   try { world.update(player.pos.x, player.pos.z, scene, materials, 6, dt); } catch (err) { reportError(err); }
@@ -1433,6 +1486,7 @@ function stepGame(now, dt) {
   // write edited chunks to storage shortly (1.5 s) after the player stops changing them
   if (world.unsaved.size !== unsavedCount) { unsavedCount = world.unsaved.size; lastEditAt = now; }
   if (unsavedCount && now - lastEditAt > 1500 && worldReady) { world.saveChunks(); unsavedCount = 0; }
+  kinetics.update(paused ? 0 : dt, world, { day: lightUniforms.uDay.value, flicker: lightUniforms.uFlicker.value, ambient: AMBIENT });
   coordsTimer -= dt;
   if (coordsTimer <= 0) {
     coordsTimer = 0.25;
@@ -1480,7 +1534,7 @@ window.minicraft = {
   get paused() { return paused; },
   get health() { return health; }, set health(v) { health = v; renderHealth(); },
   get poisoned() { return poisoned; }, get dead() { return dead; }, get air() { return air; }, set air(v) { air = v; },
-  arrows, fishing, damage, lamps, tickLamps, sleepUntilMorning, stations, openStation, closeStation,
+  arrows, fishing, kinetics, damage, lamps, tickLamps, sleepUntilMorning, stations, openStation, closeStation,
   get caneToday() { return caneToday; },
   get bedSpawn() { return bedSpawn; },
 };

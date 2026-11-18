@@ -8,6 +8,7 @@ import {
   FLOUR, SUGAR, BUTTER, MILK_BUCKET, BREAD, COOKIE, CAKE, RAW_FISH, BAKED_FISH, BLOCKS, maxStack, stationKind,
   ORES, COAL_OR_CHARCOAL, IRON_INGOT, COPPER_INGOT, TIN_INGOT, ZINC_INGOT, ALUMINIUM_INGOT, SILVER_INGOT, GOLD_INGOT,
   BRONZE_INGOT, ELECTRUM_INGOT, STAINLESS_INGOT, STEEL_INGOT, AL_BRONZE_INGOT,
+  GRAVEL, FLINT, FLINT_DUST, CLAY_BALL, CLAY_DUST, BRICK, FIRE_CLAY, FIRE_BRICK, oreDust,
 } from './blocks.js';
 
 // A recipe ingredient can be one id or a list of alternatives (coal or charcoal).
@@ -30,6 +31,7 @@ export const STATION_KINDS = {
       { out: [COOKIE, 9], in: [[FLOUR, 3], [SUGAR, 3], [BUTTER, 1]], tools: [MILK_BUCKET], time: 8 },
       { out: [BREAD, 1], in: [[FLOUR, 3]], time: 6 },
       { out: [BAKED_FISH, 1], in: [[RAW_FISH, 1]], time: 5 },
+      { out: [BRICK, 1], in: [[CLAY_BALL, 1]], time: 5 },
     ],
   },
   smelter: {
@@ -45,12 +47,33 @@ export const STATION_KINDS = {
       { out: [ELECTRUM_INGOT, 2], in: [[SILVER_INGOT, 1], [GOLD_INGOT, 1]], time: 6 },
       // ores into ingots
       ...ORES.filter((o) => o.ingot).map((o) => ({ out: [o.ingot, 1], in: [[o.id, 1]], time: o.tier >= 5 ? 8 : 5 })),
+      // crushed ore: each dust is a whole ingot, so crushing first doubles what an ore gives
+      ...ORES.filter((o) => o.ingot).map((o) => ({ out: [o.ingot, 1], in: [[oreDust(o.id), 1]], time: o.tier >= 5 ? 6 : 4 })),
       { out: [STONE, 1], in: [[COBBLE, 1]], time: 4 },
+      { out: [GLASS, 2], in: [[FLINT_DUST, 1], [SAND, 1]], time: 4 }, // flint dust helps sand melt into twice the glass
       { out: [GLASS, 1], in: [[SAND, 1]], time: 4 },
       { out: [CHARCOAL, 1], in: [[LOG, 1]], time: 5 },
+      { out: [BRICK, 1], in: [[CLAY_BALL, 1]], time: 4 },
+      { out: [FIRE_BRICK, 1], in: [[FIRE_CLAY, 1]], time: 6 },
+    ],
+  },
+  // The rock crusher has no fuel: it turns while a water wheel drives it, faster with gearing (see kinetics.js).
+  // Times are at 1x speed.
+  crusher: {
+    name: 'Rock Crusher',
+    inputs: 1,
+    powered: true,
+    recipes: [
+      ...ORES.map((o) => ({ out: o.crush ?? [oreDust(o.id), 2], in: [[o.id, 1]], time: o.tier >= 5 ? 12 : 8 })),
+      { out: [GRAVEL, 1], in: [[COBBLE, 1]], time: 4 },
+      { out: [SAND, 1], in: [[GRAVEL, 1]], time: 4 },
+      { out: [FLINT_DUST, 2], in: [[FLINT, 1]], time: 4 },
+      { out: [CLAY_DUST, 2], in: [[BRICK, 1]], time: 4 },
     ],
   },
 };
+// The blast smelter: lined with fire bricks, it smelts everything the smelter does, twice as fast.
+STATION_KINDS.blast = { ...STATION_KINDS.smelter, name: 'Blast Smelter', speed: 2 };
 
 const key = (x, y, z) => `${x},${y},${z}`;
 
@@ -113,7 +136,8 @@ export class Stations {
   }
 
   // Advance every loaded station by dt seconds. setLit(x, y, z, lit) is called when one lights or goes out.
-  tick(dt, world, setLit) {
+  // powerAt(x, y, z) gives a powered station's speed (0 when it isn't turning).
+  tick(dt, world, setLit, powerAt = () => 0) {
     for (const [k, st] of this.map) {
       const [x, y, z] = k.split(',').map(Number);
       if (!world.chunkAt(x, z)) continue;
@@ -121,6 +145,17 @@ export class Stations {
       if (stationKind(id) !== st.kind) { this.map.delete(k); continue; }
       const r = this.recipeFor(st);
       if (!r) st.progress = 0;
+      const K = STATION_KINDS[st.kind];
+      if (K.powered) {
+        const speed = powerAt(x, y, z);
+        st.speed = speed;
+        if (r && speed > 0) {
+          st.progress += dt * speed;
+          if (st.progress >= r.time - 1e-9) { this.make(st, r); st.progress = 0; }
+        }
+        continue;
+      }
+      const sdt = dt * (K.speed ?? 1); // a blast smelter cooks twice as fast, on the same fuel per item
       // light a new piece of fuel only when there's something to make and the last piece is used up
       if (r && st.burn <= 1e-9 && st.fuel && isFuel(st.fuel.id)) {
         st.burn = st.burnMax = FUEL_ITEMS[st.fuel.id];
@@ -130,7 +165,7 @@ export class Stations {
       // cooking: fuel burns at one "item" per recipe time, so a log cooks exactly one item
       const cooking = !!r && st.burn > 1e-9;
       if (cooking) {
-        const step = Math.min(dt, st.burn * r.time);
+        const step = Math.min(sdt, st.burn * r.time);
         st.burn = Math.max(0, st.burn - step / r.time);
         st.progress += step;
         if (st.progress >= r.time - 1e-9) { this.make(st, r); st.progress = 0; }

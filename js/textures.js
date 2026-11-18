@@ -6,6 +6,8 @@ import {
   FISHING_ROD, RAW_FISH, BAKED_FISH, ORES, TOOL_MATERIALS, TOOL_KINDS, metalTool, SULPHUR,
   IRON_INGOT, COPPER_INGOT, TIN_INGOT, LEAD_INGOT, ZINC_INGOT, ALUMINIUM_INGOT, SILVER_INGOT, GOLD_INGOT,
   TUNGSTEN_INGOT, BRONZE_INGOT, ELECTRUM_INGOT, STAINLESS_INGOT, STEEL_INGOT, AL_BRONZE_INGOT,
+  FLINT, CLAY_BALL, BRICK, FIRE_CLAY, FIRE_BRICK, FLINT_DUST, CLAY_DUST, WATER_BUCKET, oreDust,
+  WATER_WHEEL, KINETIC_MATS, kineticId,
 } from './blocks.js';
 
 export const TILE = 16;
@@ -318,6 +320,61 @@ ORES.forEach((o, i) => {
       }
     }
   };
+});
+
+// Bricks in rows with offset joints: mortar colour and two brick tones.
+function brickWall(t, mortar, a, b) {
+  for (let y = 0; y < TILE; y++) {
+    const row = y >> 2;
+    const seam = row % 2 ? 3 : 11;
+    for (let x = 0; x < TILE; x++) {
+      if (y % 4 === 3 || x === seam) t.set(x, y, t.vary(mortar, 0.06));
+      else t.set(x, y, t.vary((x + row * 5) % 16 < 8 ? a : b, 0.1));
+    }
+  }
+}
+Object.assign(P, {
+  [T.GRAVEL](t) {
+    t.fill([128, 122, 118], 0.15);
+    for (let n = 0; n < 26; n++) {
+      const x = Math.floor(t.r() * 16), y = Math.floor(t.r() * 16);
+      const c = [[150, 144, 140], [96, 92, 90], [170, 160, 150], [110, 100, 94]][n % 4];
+      t.set(x, y, t.vary(c, 0.08)); t.set(x + 1, y, t.vary(c, 0.08)); t.set(x, y + 1, t.vary(shade(c, 0.7), 0.08));
+    }
+  },
+  [T.CLAY](t) {
+    t.fill([160, 166, 180], 0.06);
+    t.speckle([142, 148, 164], 0.12, 0.05);
+    t.speckle([178, 184, 196], 0.06, 0.04);
+  },
+  [T.CLAY_BRICKS](t) { brickWall(t, [196, 186, 170], [164, 76, 56], [146, 66, 48]); },
+  [T.FIRE_BRICKS](t) { brickWall(t, [120, 110, 100], [222, 204, 160], [206, 184, 138]); },
+  [T.STAINLESS](t) {
+    for (let y = 0; y < TILE; y++) {
+      const band = 0.94 + 0.06 * Math.sin(y * 1.7);
+      for (let x = 0; x < TILE; x++) t.set(x, y, t.vary(shade([206, 214, 220], band), 0.04));
+    }
+  },
+  // the rock crusher: a stone frame bound with bronze, two toothed rollers on top, a chute at the front
+  [T.CRUSHER_SIDE](t) {
+    P[T.COBBLE](t);
+    for (let x = 0; x < TILE; x++) for (const y of [1, 2, 13, 14]) t.set(x, y, t.vary(y % 13 === 1 ? [212, 160, 84] : [168, 120, 56], 0.05));
+    for (const y of [1, 13]) for (const x of [2, 7, 12]) t.set(x, y, [110, 80, 40]); // rivets
+  },
+  [T.CRUSHER_TOP](t) {
+    for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+      const edge = x < 2 || x > 13 || y < 2 || y > 13;
+      if (edge) { t.set(x, y, t.vary([168, 120, 56], 0.06)); continue; }
+      const roller = x < 8 ? x - 2 : x - 8; // two rollers, 6 px wide
+      const tooth = (y + (x < 8 ? 0 : 1)) % 2 === 0;
+      t.set(x, y, roller === 0 || roller === 5 ? [40, 40, 44] : t.vary(tooth ? [120, 122, 128] : [84, 86, 92], 0.05));
+    }
+  },
+  [T.CRUSHER_FRONT](t) {
+    P[T.CRUSHER_SIDE](t);
+    for (let y = 6; y < 12; y++) for (let x = 4; x < 12; x++) t.set(x, y, y === 6 || x === 4 || x === 11 ? [70, 70, 74] : [24, 22, 22]);
+    for (let x = 5; x < 11; x++) t.set(x, 10, t.vary([200, 190, 170], 0.1)); // a little dust in the chute
+  },
 });
 
 // A plank door: a frame with a centre board; the upper half has a four-pane window you can see through,
@@ -774,11 +831,87 @@ ITEM_PAINTERS[SULPHUR] = (ctx) => {
 };
 TOOL_MATERIALS.forEach((m, i) => { for (const kind of TOOL_KINDS) ITEM_PAINTERS[metalTool(i, kind)] = toolPainter(kind, m.key); });
 
+// A small heap of powder in the given colour.
+function dustPainter(c) {
+  return (ctx) => {
+    for (let y = 6; y < 15; y++) {
+      const half = Math.round((y - 5) * 0.75 + 1);
+      for (let x = 8 - half; x < 8 + half; x++) {
+        const k = (x * 7 + y * 5) % 6 === 0 ? 1.18 : (x * 3 + y) % 5 === 0 ? 0.8 : x < 8 ? 1.05 : 0.92;
+        px(ctx, x, y, shade(c, k));
+      }
+    }
+  };
+}
+// A rounded lump (clay balls).
+function lumpPainter(c) {
+  return (ctx) => {
+    for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) {
+      const d = Math.hypot((x - 7.5) / 5, (y - 8.5) / 4.6);
+      if (d < 1) px(ctx, x, y, shade(c, d > 0.78 ? 0.75 : x + y < 13 ? 1.12 : 1));
+    }
+  };
+}
+// One brick seen from the side and top.
+function brickPainter(c) {
+  return (ctx) => {
+    rect(ctx, 4, 5, 10, 2, shade(c, 1.15)); // top
+    rect(ctx, 2, 7, 10, 5, c); // front
+    for (let y = 5; y < 12; y++) for (let x = 12; x < 14; x++) if (y - 5 >= x - 12 && y < 12 - (x - 12) + 2) px(ctx, x, y, shade(c, 0.72));
+    rect(ctx, 3, 5, 1, 1, shade(c, 1.15));
+  };
+}
+const ORE_DUST_COLORS = {};
+for (const o of ORES) if (o.ingot) ORE_DUST_COLORS[oreDust(o.id)] = METAL_COLORS[o.ingot];
+Object.assign(ITEM_PAINTERS, {
+  [FLINT](ctx) {
+    const shape = [[6, 2, 4], [5, 3, 6], [4, 4, 8], [3, 5, 9], [3, 6, 10], [3, 7, 10], [4, 8, 9], [4, 9, 9], [5, 10, 8], [6, 11, 6], [7, 12, 4]];
+    for (const [x0, y, w] of shape) for (let x = x0; x < x0 + w; x++) px(ctx, x, y, x - x0 < 2 ? [118, 118, 124] : (x + y) % 4 === 0 ? [74, 74, 80] : [52, 52, 58]);
+  },
+  [CLAY_BALL]: lumpPainter([160, 166, 182]),
+  [FIRE_CLAY]: lumpPainter([214, 198, 160]),
+  [BRICK]: brickPainter([168, 78, 56]),
+  [FIRE_BRICK]: brickPainter([220, 200, 154]),
+  [FLINT_DUST]: dustPainter([86, 86, 94]),
+  [CLAY_DUST]: dustPainter([176, 140, 120]),
+  [WATER_BUCKET]: bucketPainter([60, 112, 214]),
+});
+for (const [id, c] of Object.entries(ORE_DUST_COLORS)) ITEM_PAINTERS[id] = dustPainter(shade(c, 0.85));
+
+// Power parts, as icons: a water wheel, and a shaft, small gear and large gear in each material.
+const PART_COLORS = [[[176, 132, 80], [116, 84, 46]], [[150, 150, 152], [96, 96, 100]], [[214, 222, 228], [140, 148, 156]]];
+function gearIcon(ctx, [c, d], r, teeth, hub) {
+  for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) {
+    const dx = x - 7.5, dy = y - 7.5, dist = Math.hypot(dx, dy);
+    const a = Math.atan2(dy, dx);
+    const tooth = Math.cos(a * teeth) > 0.2;
+    if (dist < hub) px(ctx, x, y, [60, 52, 44]);
+    else if (dist < r - 1.6) px(ctx, x, y, dist > r - 2.6 ? d : c);
+    else if (dist < r && tooth) px(ctx, x, y, d);
+  }
+}
+ITEM_PAINTERS[WATER_WHEEL] = (ctx) => {
+  for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) {
+    const dx = x - 7.5, dy = y - 7.5, dist = Math.hypot(dx, dy), a = Math.atan2(dy, dx);
+    if (dist > 6.2 && dist < 7.6) px(ctx, x, y, [96, 66, 36]); // rim
+    else if (dist < 1.6) px(ctx, x, y, [80, 56, 30]); // hub
+    else if (dist < 6.2 && Math.abs(Math.sin(a * 4)) < 0.22) px(ctx, x, y, [176, 132, 80]); // paddles
+  }
+};
+KINETIC_MATS.forEach((m, i) => {
+  const [c, d] = PART_COLORS[i];
+  ITEM_PAINTERS[kineticId('shaft', i)] = (ctx) => {
+    for (let k = 0; k < 13; k++) { px(ctx, 2 + k, 13 - k, c); px(ctx, 2 + k, 14 - k, d); px(ctx, 3 + k, 14 - k, d); }
+  };
+  ITEM_PAINTERS[kineticId('gear', i)] = (ctx) => gearIcon(ctx, PART_COLORS[i], 6, 8, 1.6);
+  ITEM_PAINTERS[kineticId('large', i)] = (ctx) => gearIcon(ctx, PART_COLORS[i], 7.9, 14, 1.8);
+});
+
 // Returns { id: dataURL } for every block and item.
 export function createIcons(atlas) {
   const icons = {};
   for (const def of BLOCKS) {
-    if (!def || !isBlock(def.id) || def.shape === 'torch' || def.shape === 'model') continue; // (those have painted icons)
+    if (!def || !isBlock(def.id) || def.shape === 'torch' || def.shape === 'model' || def.shape === 'kinetic') continue; // (those have painted icons)
     const c = document.createElement('canvas');
     c.width = c.height = 64;
     const ctx = c.getContext('2d');
