@@ -42,7 +42,7 @@ import { Weather } from './weather.js';
 
 // v2 = the 16k x 16k streaming world (player state here, edited chunks in IndexedDB).
 // v1 = the old 128 x 128 world, migrated into the middle of the big world on first launch.
-const GAME_VERSION = '17'; // shown in the menu; bump with each release
+const GAME_VERSION = '18'; // shown in the menu; bump with each release
 const SAVE_KEY = 'minicraft-save-v2';
 const LEGACY_SAVE_KEY = 'minicraft-save-v1';
 const SETTINGS_KEY = 'minicraft-settings-v1';
@@ -58,7 +58,7 @@ function writeSave(obj) {
 }
 // Settings live apart from the world so they survive "New world".
 const settings = (() => {
-  const defaults = { sens: 6, volume: 70, viewDistance: 6, perf: false, difficulty: 'worrying', wear: true };
+  const defaults = { sens: 6, volume: 70, viewDistance: 6, perf: false, difficulty: 'worrying', wear: true, favs: [] };
   try { return { ...defaults, ...JSON.parse(localStorage.getItem(SETTINGS_KEY)) }; } catch { return defaults; }
 })();
 function saveSettings() {
@@ -344,6 +344,7 @@ async function startWorld(save) {
   }
   for (const k of Object.keys(effects)) effects[k] = Math.max(0, +save?.effects?.[k] || 0);
   caneToday = Number.isFinite(save?.caneToday) ? save.caneToday : 0;
+  waypoints = Array.isArray(save?.waypoints) ? save.waypoints.filter((w) => w && [w.x, w.y, w.z].every(Number.isFinite)).map((w) => ({ x: w.x, y: w.y, z: w.z, name: String(w.name ?? 'Mark').slice(0, 16) })).slice(0, 12) : [];
   if (save?.weather) weather.set(!!save.weather.raining, Math.max(10, +save.weather.timer || 60));
   else weather.set(false);
   air = MAX_AIR;
@@ -424,6 +425,7 @@ function saveGame() {
     caneToday,
     weather: { raining: weather.raining, timer: Math.round(weather.timer) },
     pets: mobs.pets(),
+    waypoints,
     time: sky.time,
   });
 }
@@ -789,11 +791,21 @@ function renderInventory() {
   $('table-status').textContent = `— crafting table ${hasTable ? '✓' : '✗'} · butter churn ${hasChurn ? '✓' : '✗'}`;
   const list = $('recipes');
   list.innerHTML = '';
-  RECIPES.forEach((r) => {
+  const query = $('recipe-search').value.trim().toLowerCase();
+  const favs = new Set(settings.favs);
+  // favourites first, then everything else in the usual order
+  const shown = RECIPES.filter((r) => favs.has(recipeKey(r))).concat(RECIPES.filter((r) => !favs.has(recipeKey(r))));
+  let count = 0;
+  shown.forEach((r) => {
     if (r.metal && countOf(r.metal) <= 0) return; // metal tools only show up once you have that metal
+    const fav = favs.has(recipeKey(r));
+    if (favOnly && !fav) return;
+    if (query && ![r.out[0], ...r.in.flatMap(([id]) => idsOf(id))].some((id) => itemName(id).toLowerCase().includes(query))) return;
     const stationOk = (!r.table || hasTable) && (!r.churn || hasChurn);
     const haveAll = r.in.every(([id, n]) => countOf(id) >= n) && (r.tools ?? []).every((id) => inventory.count(id) > 0);
     const canMake = haveAll && stationOk && inventory.room(r.out[0]) >= r.out[1];
+    if (canMakeOnly && !canMake) return;
+    count++;
     const row = document.createElement('div');
     row.className = 'recipe' + (stationOk ? '' : ' locked');
     const ings = r.in.map(([id, n]) => {
@@ -810,6 +822,17 @@ function renderInventory() {
     const where = r.churn ? ' (churn)' : r.table ? ' 🛠' : '';
     row.innerHTML = `${ings}${tools}<span class="arrow">→</span><img class="outimg" src="${icons[r.out[0]]}" alt="">` +
       `<span class="name">${r.out[1] > 1 ? r.out[1] + ' × ' : ''}${itemName(r.out[0])}${also}${where}</span>`;
+    const star = document.createElement('button');
+    star.className = 'fav' + (fav ? ' on' : '');
+    star.textContent = fav ? '★' : '☆';
+    star.title = fav ? 'Remove from favourites' : 'Add to favourites';
+    star.addEventListener('click', () => {
+      const k = recipeKey(r);
+      settings.favs = fav ? settings.favs.filter((f) => f !== k) : [...settings.favs, k];
+      saveSettings();
+      renderInventory();
+    });
+    row.appendChild(star);
     const btn = document.createElement('button');
     btn.className = 'btn';
     btn.textContent = 'Craft';
@@ -825,7 +848,34 @@ function renderInventory() {
     row.appendChild(btn);
     list.appendChild(row);
   });
+  if (!count) list.innerHTML = `<p class="hint">${query ? `Nothing matches "${query.replace(/[<>&"]/g, '')}".` : favOnly ? 'No favourites yet: tap the ☆ beside a recipe.' : 'Nothing you can make right now.'}</p>`;
 }
+
+// What a recipe is called in the favourites list: what it makes and from what.
+const recipeKey = (r) => `${r.out[0]}x${r.out[1]}:${r.in.map(([id, n]) => idsOf(id).join('|') + 'x' + n).join(',')}`;
+let favOnly = false, canMakeOnly = false;
+$('recipe-search').addEventListener('input', () => renderInventory());
+$('btn-fav-only').addEventListener('click', (e) => { favOnly = !favOnly; e.currentTarget.classList.toggle('on', favOnly); renderInventory(); });
+$('btn-can-make').addEventListener('click', (e) => { canMakeOnly = !canMakeOnly; e.currentTarget.classList.toggle('on', canMakeOnly); renderInventory(); });
+
+// Tidy a run of slots: stacks of the same thing are combined, and everything is put in order.
+function sortSlots(slots, from = 0, to = slots.length) {
+  const items = [];
+  for (let i = from; i < to; i++) {
+    const s = slots[i];
+    if (!s) continue;
+    const same = !s.wear && items.find((t) => t.id === s.id && !t.wear && t.count < maxStack(t.id));
+    if (same) {
+      const k = Math.min(s.count, maxStack(s.id) - same.count);
+      same.count += k;
+      if (s.count - k) items.push({ ...s, count: s.count - k });
+    } else items.push({ ...s });
+  }
+  items.sort((a, b) => a.id - b.id || b.count - a.count);
+  for (let i = from; i < to; i++) slots[i] = items[i - from] ?? null;
+}
+$('btn-sort').addEventListener('click', () => { sortSlots(inventory.slots, 9); picked = -1; sound.pop(); inventory.onChange(); });
+$('btn-chest-sort').addEventListener('click', () => { const st = currentStation(); if (!st) return; sortSlots(st.inputs); stPicked = null; sound.pop(); renderStation(); });
 
 // A recipe ingredient can be one id or a list of alternatives (coal or charcoal).
 const idsOf = (spec) => (Array.isArray(spec) ? spec : [spec]);
@@ -1118,6 +1168,7 @@ function bedPartner(x, y, z) {
   return d.foot ? [x - dx, y, z - dz] : [x + dx, y, z + dz];
 }
 
+const bedPartnerOr = (x, y, z, id) => (isBed(id) ? bedPartner(x, y, z) : [x, y, z]);
 function toggleDoor(x, y, z, force = false) {
   const d = BLOCKS[world.get(x, y, z)];
   const by = d.upper ? y - 1 : y; // the bottom half
@@ -1646,6 +1697,7 @@ function place() {
   if (target && (target.id === TABLE || target.id === CHURN)) { sound.click(); openInventory(target.id); return; }
   if (target) {
     const { x: tx, y: ty, z: tz, id: tid } = target;
+    if (held?.id === MAP && (isSign(tid) || isBed(tid))) { toggleWaypoint(tx, ty, tz, tid); return; }
     if (isBed(tid)) { useBed(tx, ty, tz); return; }
     if (isDoor(tid)) { toggleDoor(tx, ty, tz); return; }
     if (isCurtain(tid)) { toggleCurtain(tx, ty, tz); return; }
@@ -2058,6 +2110,7 @@ function breakBlock(x, y, z) {
   }
   if (isLamp(id)) lamps.delete(lampKey(x, y, z));
   if (isSign(id)) signs.remove(x, y, z);
+  if (isSign(id) || isBed(id)) { dropWaypoint(x, y, z); dropWaypoint(...bedPartnerOr(x, y, z, id)); }
   if (isFrame(id)) { const item = frames.remove(x, y, z); if (item) drops.push([item, 1]); }
   if (stationKind(id)) giveDrops(stations.remove(x, y, z)); // whatever was inside comes back too
   if (def.machine) giveDrops(machines.removeAt(x, y, z)); // and whatever was on a belt or in a drill
@@ -2307,6 +2360,22 @@ function playMovementSounds(dt, wasGround, wasWater, fallSpeed) {
   }
 }
 
+// ---------- map waypoints ----------
+// Holding a map, tap a sign (or a bed) to mark it on the map, named by the sign's first line; tap it
+// again to take the mark off. Marks off the edge of the map show as arrows pointing toward them.
+let waypoints = []; // [{ x, y, z, name }]
+function toggleWaypoint(x, y, z, id) {
+  if (isBed(id)) { const d = BLOCKS[id]; if (d.foot) [x, y, z] = bedPartner(x, y, z); }
+  const i = waypoints.findIndex((w) => w.x === x && w.y === y && w.z === z);
+  if (i >= 0) { const [w] = waypoints.splice(i, 1); toast(`Took ${w.name} off the map`, 1500); sound.click(); return; }
+  if (waypoints.length >= 12) { toast('The map has room for 12 marks: take one off first'); return; }
+  const name = isSign(id) ? (signs.get(x, y, z).split('\n')[0].trim() || 'Sign') : 'Bed';
+  waypoints.push({ x, y, z, name: name.slice(0, 16) });
+  toast(`Marked ${name} on the map`, 1500);
+  sound.pop();
+}
+const dropWaypoint = (x, y, z) => { waypoints = waypoints.filter((w) => !(w.x === x && w.y === y && w.z === z)); };
+
 // ---------- clock and compass ----------
 // The gold clock reads the time of day (sunrise is 6:00, sunset 18:00); the compass shows which way you
 // face and which way home is (your bed, or where the world started you).
@@ -2406,7 +2475,7 @@ function stepGame(now, dt) {
   kinetics.update(paused ? 0 : dt, world, { day: lightUniforms.uDay.value, flicker: lightUniforms.uFlicker.value, ambient: lightUniforms.uAmbient.value });
   tickBlasts(dt);
   minimap.show(!paused && inventory.heldId() === MAP);
-  minimap.update(world, player, bedSpawn ?? (world.spawnCache ??= world.generator.findSpawn()));
+  minimap.update(world, player, bedSpawn ?? (world.spawnCache ??= world.generator.findSpawn()), waypoints);
   try {
     machines.tick(paused ? 0 : dt, world, kinetics, stations, { day: lightUniforms.uDay.value, flicker: lightUniforms.uFlicker.value, ambient: lightUniforms.uAmbient.value });
   } catch (err) { reportError(err); }
@@ -2471,6 +2540,6 @@ window.minicraft = {
   get poisoned() { return poisoned; }, get dead() { return dead; }, get air() { return air; }, set air(v) { air = v; },
   arrows, fishing, kinetics, frames, signalAt, setSwitch, machines, carts, minimap, signs, armour, damage, placeRail, getInCart, getOutOfCart,
   get riding() { return riding; }, explode, lightFuse, fuses, clockTime, compassText, place, editSign, closeSign, openInventory, closeInventory, chestMove, lamps, tickLamps, sleepUntilMorning, stations, openStation, closeStation,
-  get caneToday() { return caneToday; }, weather, openTrade, closeTrade, mountMob, dismount, get ridingMob() { return ridingMob; }, effects, armourWear, useAnvil, rollLoot, settings,
+  get caneToday() { return caneToday; }, get waypoints() { return waypoints; }, toggleWaypoint, sortSlots, weather, openTrade, closeTrade, mountMob, dismount, get ridingMob() { return ridingMob; }, effects, armourWear, useAnvil, rollLoot, settings,
   get bedSpawn() { return bedSpawn; },
 };

@@ -7,6 +7,7 @@ import { H, SEA_LEVEL } from './terrain.js';
 
 const R = 64, SIZE = R * 2;
 const ROWS_PER_FRAME = 16;
+const MARK_COLORS = ['#ffd84a', '#5ad1ff', '#ff7ad9', '#7dff6a', '#ff9a3c', '#b28cff'];
 
 export class MiniMap {
   constructor(canvas, atlas) {
@@ -53,7 +54,7 @@ export class MiniMap {
     if (on) { this.row = 0; this.fresh = true; }
   }
 
-  update(world, player, home) {
+  update(world, player, home, marks = []) {
     if (!this.visible) return;
     this.world = world; this.player = player;
     // the whole map at once when it's first shown, then a few rows each frame
@@ -67,6 +68,33 @@ export class MiniMap {
       this.ctx.fillStyle = '#d82020';
       this.ctx.fillRect(home.x - ox - 1, home.z - oz - 1, 3, 3);
     }
+    // marks from signs and beds: a coloured pin and its name, or an arrow at the edge toward one off the map
+    const ctx0 = this.ctx;
+    ctx0.font = 'bold 8px sans-serif';
+    ctx0.textAlign = 'center';
+    marks.forEach((w, i) => {
+      const color = MARK_COLORS[i % MARK_COLORS.length];
+      let mx = w.x - ox, mz = w.z - oz;
+      const inside = mx >= 2 && mx < SIZE - 2 && mz >= 2 && mz < SIZE - 2;
+      if (!inside) {
+        // squash onto the edge, along the line from you
+        const dx = mx - R, dz = mz - R, k = (R - 4) / Math.max(Math.abs(dx), Math.abs(dz));
+        mx = R + dx * k; mz = R + dz * k;
+        ctx0.save();
+        ctx0.translate(mx, mz);
+        ctx0.rotate(Math.atan2(dz, dx));
+        ctx0.beginPath(); ctx0.moveTo(4, 0); ctx0.lineTo(-3, -3); ctx0.lineTo(-3, 3); ctx0.closePath();
+        ctx0.fillStyle = color; ctx0.fill(); ctx0.strokeStyle = '#000'; ctx0.lineWidth = 1; ctx0.stroke();
+        ctx0.restore();
+        return;
+      }
+      ctx0.fillStyle = '#000'; ctx0.fillRect(mx - 2, mz - 2, 5, 5);
+      ctx0.fillStyle = color; ctx0.fillRect(mx - 1, mz - 1, 3, 3);
+      ctx0.lineWidth = 2; ctx0.strokeStyle = 'rgba(0,0,0,0.7)';
+      const ty = mz > 10 ? mz - 4 : mz + 11;
+      ctx0.strokeText(w.name, Math.min(SIZE - 20, Math.max(20, mx)), ty);
+      ctx0.fillStyle = '#fff'; ctx0.fillText(w.name, Math.min(SIZE - 20, Math.max(20, mx)), ty);
+    });
     // you: an arrow pointing the way you face (north, -z, is up)
     const ctx = this.ctx;
     ctx.save();

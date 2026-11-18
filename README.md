@@ -58,6 +58,18 @@ It is designed for Android tablets (touch controls) but also plays with keyboard
 - **Rails** and **minecarts** (with slopes, curves and powered rails), and a **map** of the land around you
 - **Deserts** (sand, sandstone, cactus) and snowy **tundra** (frozen water, snowy grass, yaks and alpacas),
   snow-capped peaks, and lava pools at the bottom of the deepest caves (water turns lava into obsidian)
+- Building: **stairs** and **slabs** in six materials (you walk up them without jumping), **fences** and
+  **fence gates**, **glass panes**, **trapdoors**, and colour: **flowers** ground into ten **dyes** for dyed wool,
+  carpet, stained glass, painted planks and sign writing
+- Automation: **gearboxes** and **clutches**, **levers**, **buttons** and **pressure plates** that open doors,
+  gates and trapdoors, engage clutches and drive powered rails, **item frames** that turn hoppers into
+  **sorting hoppers**, and **storage carts** that fill and empty on **loader rails**
+- Survival: tools, weapons and armour **wear out** and are mended at an **anvil** (this can be turned off),
+  **shields**, **teas** brewed in a **cauldron** (night vision, faster digging, fire resistance, healing), and
+  rare **dungeons** deep underground with loot chests and a boss, the **Mossback King**
+- World: **weather** (rain, tundra snow, desert sandstorms), **berry bushes**, tame **wolves** that fight for
+  you, rideable **camels**, and a **wandering trader** with rare goods
+- Recipe search and favourites, a sort button for your backpack and chests, and marks on the map
 - Torches that light up the area around them with a warm, flickering glow. They stand on floors or hang on walls
 - Synthesised sound effects for digging, breaking, placing, footsteps and splashing, with no audio files
 - Break and place blocks, with break times that depend on the tool you hold
@@ -108,6 +120,15 @@ The version number is shown at the bottom of the ☰ menu; bump `GAME_VERSION` i
 | Light a blasting charge | Tap it, then stand well back | Right click |
 | Ride a minecart | Tap it to get in, tap again to get out; forward pushes, back brakes; hold on it to pick it up | Right click / W / S |
 | See how a machine is running | Tap it with nothing (or a tool) in hand | Right click |
+| Open or shut a gate or trapdoor / flip a lever / press a button | Tap it | Right click |
+| Put something in an item frame / take it out | Tap it with the thing in hand / tap it | Right click |
+| Colour wool, carpet, glass, planks or sign writing | Tap it holding a dye | Right click |
+| Repair a tool, weapon or armour | Tap an anvil holding it (with its material in your backpack) | Right click |
+| Drink a tea | Tap with it in hand | Right click |
+| Tame a wolf / camel | Tap it holding fish / wheat (it may take a few) | Right click |
+| Ride a camel / tell a wolf to stay | Tap your tame camel (tap again to get off) / tap your wolf | Right click |
+| Trade | Tap the wandering trader | Right click |
+| Mark a sign or bed on the map | Tap it holding the map | Right click |
 | Shoot the bow | Hold to draw, release to shoot (tap: quick shot) | Hold and release left button (right click: quick shot) |
 | Jump / swim up | ⤒ button (auto-jump also steps up 1-block ledges) | Space |
 | Select item | Tap a hotbar slot | 1–9 / mouse wheel |
@@ -448,7 +469,151 @@ Water poured onto lava, or lava onto water, cools into **obsidian**: very hard, 
 mined with a stainless steel pickaxe or better.
 
 Worlds saved before version 17 load as they were. Parts of the world you haven't changed are generated
-afresh, so new biomes, saltpetre and lava pools can appear there.
+afresh, so new biomes, saltpetre and lava pools can appear there. Likewise, worlds from before version 18
+grow flowers, berry bushes and dungeons in the parts you haven't changed.
+
+### Building
+
+| Make | Recipe (crafting table) |
+| --- | --- |
+| 6 Slabs | 3 planks, cobblestone, stone, stone bricks, bricks or sandstone |
+| 4 Stairs | 6 of the same |
+| 3 Fences | 4 planks + 2 sticks |
+| Fence gate | 2 planks + 4 sticks |
+| 16 Glass panes | 6 glass |
+| 2 Trapdoors | 6 planks |
+| 4 Mossy stone bricks | 4 stone bricks + 2 leaves |
+
+A slab goes in the top or bottom half of a space, depending on where you tap; put a second slab of the
+same kind on it to make the full block. Stairs climb away from you, and you walk up stairs and slabs
+without jumping. Fences and glass panes join up to each other and to blocks beside them. Fences stand
+too tall to jump over, and animals won't cross them, so they make good pens. Gates and trapdoors open
+and shut when you tap them. A trapdoor shut over a hole is a floor you can walk on.
+
+### Flowers and colour
+
+Meadows of **poppies**, **dandelions**, **cornflowers**, **lavender** and **daisies** grow in temperate land. Grind
+them with the mortar for red, yellow, blue, purple and white **dye**. Coal or charcoal makes black, and
+cactus (or 4 leaves) makes green. Mix red + yellow for orange, red + white for pink, and blue + green for cyan.
+
+| Make | From |
+| --- | --- |
+| 4 Dyed wool | 4 wool + 1 dye |
+| 3 Dyed carpets | 2 dyed wool (crafting table) |
+| 4 Stained glass | 4 glass + 1 dye |
+| 4 Painted planks | 4 planks + 1 dye |
+
+Or tap a placed block of wool, carpet, glass or planks holding a dye to colour it where it stands. Tap
+a sign with a dye to colour its writing.
+
+### Switches, gearboxes and clutches
+
+| Make | Recipe (crafting table) |
+| --- | --- |
+| Lever | 1 stick + 1 cobblestone |
+| 2 Buttons | 1 stone |
+| Pressure plate | 2 stone |
+| Gearbox | 2 stone small gears + 4 cobblestone |
+| Clutch | 2 stone shafts + 1 iron ingot |
+
+A **lever** (on a wall or a floor) flips on and off, a **button** stays on for a moment, and a **pressure
+plate** is on while you, an animal or a creature stands on it. A switch turns on whatever is beside it,
+and whatever is beside the block it's fixed to:
+- doors, fence gates and trapdoors open (and shut again when it goes off);
+- a **clutch** (a shaft with an iron collar) only passes power on while it's switched on, so you can turn
+  machines on and off without breaking anything;
+- a **powered rail** pushes carts along. One that's not switched (or turned by a shaft) brakes and holds a
+  cart, so a powered rail with a button beside it makes a station stop.
+
+A **gearbox** takes power in or out of any face, so a shaft can turn a corner (or go up and down).
+
+### Item frames, sorting hoppers and storage carts
+
+| Make | Recipe (crafting table) |
+| --- | --- |
+| 2 Item frames | 6 sticks + 1 leather |
+| 2 Loader rails | 2 rails + 1 hopper |
+| Storage cart | 1 minecart + 1 chest |
+
+Hang an **item frame** on the side of a block and tap it with something to show it there (tap again to
+take it out). Frames hung on a **hopper** make it a **sorting hopper**: it only takes and passes on things
+that match one of its frames. A hopper under a running belt takes things off the belt as they pass over
+it (if it can), so a belt over a row of sorting hoppers sends each kind of thing to its own machine or chest.
+
+A **storage cart** carries 18 slots of things: tap it to open it, hold on it to pick it up (contents and
+all). On a **loader rail** a storage cart stops while hoppers fill it (a hopper pointing at the rail) or
+empty it (a hopper under the rail). It waits until nothing has moved for a moment, then rolls on.
+
+### Wear and repair
+
+Tools, swords, armour and shields wear a little with each use (each block dug with the right tool, each
+hit, each blow taken), shown by a bar on their slot. A worn-out one breaks. Wooden things last about
+60 uses, stone 130, and metals more and more up to tungsten (1,500). Tap an **anvil** (5 iron ingots +
+2 iron plates) holding a worn thing to mend half its wear with one piece of what it's made of: planks,
+cobblestone, the metal's ingot, or leather. Wear can be turned off in the ☰ menu.
+
+### Shields
+
+| Make | Recipe (crafting table) |
+| --- | --- |
+| Wooden shield | 6 planks + 1 iron ingot (or 2 leather) |
+| Iron shield | 4 iron plates + 1 leather |
+
+Wear a shield in the fifth armour slot. It stops any hit or thorn that comes from in front of you, and
+wears by how hard the hit was.
+
+### Cauldron and teas
+
+A **cauldron** (5 iron or copper ingots) is filled by tapping it with a water bucket, or by leaving it out
+in the rain. Tap it to open it like an oven: put in **glass bottles** (3 glass make 3) and herbs, and fuel
+underneath. Every two teas use a level of water.
+
+| Tea | Brewed from | Effect |
+| --- | --- | --- |
+| Night-Eye Tea | bottle + cornflower | see in the dark for 4 minutes |
+| Miner's Tea | bottle + dandelion | dig half as fast again for 3 minutes |
+| Fireproof Tea | bottle + poppy + cactus | lava doesn't burn you for 2 minutes |
+| Healing Tea | bottle + lavender + daisy, or bottle + 3 berries | heals you quickly |
+
+Active teas show with their time left next to your coordinates. You keep the bottle.
+
+### Dungeons and the Mossback King
+
+Rare rooms of mossy stone bricks lie deep underground (about one in forty chunks, between heights 8 and
+34), with a glowing **shrine** in the middle and a chest or two of loot: ingots, gunpowder, silver arrows,
+teas, sometimes a shield. Come near the shrine and its guardian, the **Mossback King**, rises to meet you.
+He's huge, slow and hits very hard, with a health bar at the top of the screen. Beat him for his
+**crown** (a helmet worth 5 armour points) and gold, and the shrine falls quiet. Leave and come back
+and he's waiting again.
+
+### Weather
+
+Every so often it rains for a few minutes. In the tundra it snows, and in the desert a sandstorm blows
+in and closes the view right down. The sky clouds over and the day dims. Rain makes crops grow twice
+as fast and fills cauldrons left under the open sky.
+
+### Berries, wolves, camels and the trader
+
+**Berry bushes** grow wild on grass. Tap a ripe one to pick 2–3 berries (2 food each); it grows more.
+Break a bush to take it and plant it on grass or dirt.
+
+**Wolves** roam the tundra. Feed one raw or baked fish and it may decide it likes you. A tame wolf
+wears a red collar, follows you and chases any night creature that comes near. Tap it to make it stay,
+and again to call it. **Camels** wander the desert. Feed one wheat to tame it, then tap it to ride (steer
+as you'd walk, tap to get off). Pets are saved with your world and catch up if you leave them behind.
+
+Now and then on a fine day, a **wandering trader** turns up nearby with four offers. Tap the trader to
+trade: rare things like tungsten, electrum, gold and stainless steel for things you have plenty of. The
+trader moves on after a few minutes.
+
+### Recipes, sorting and the map
+
+Search recipes by name (of what they make, or what goes in) at the top of the crafting list, tap ☆ to
+favourite a recipe (favourites come first), and use ★ and ✓ to show only favourites or only what you can
+make right now. **Sort backpack** (and **Sort** in a chest) stacks things up and puts them in order.
+
+Holding the map, tap a sign to mark it on the map (named by its first line), or a bed. Tap it again
+to take the mark off. Marks off the edge of the map show as arrows pointing toward them.
 
 ## Code layout
 
@@ -460,15 +625,17 @@ afresh, so new biomes, saltpetre and lava pools can appear there.
 | `js/world.js` | Chunk streaming, sunlight and torch light propagation across chunks, chunk meshing (face culling + AO + smooth light, separate water mesh), water flow, raycasting |
 | `js/store.js` | Saving edited chunks to IndexedDB (16 bits per block; older one-byte chunks are widened as they load) |
 | `js/legacy.js` | The old 128 × 128 generator, used once to migrate old saves |
-| `js/player.js` | Player physics, collision and swimming |
-| `js/mobs.js` | Animals and night creatures: box models, behaviour and hunting, physics, spawning, difficulty |
+| `js/player.js` | Player physics, collision (with half-height blocks and stepping up stairs) and swimming |
+| `js/mobs.js` | Animals, pets, the trader, night creatures and the Mossback King: box models, behaviour and hunting, physics, spawning, difficulty |
 | `js/arrows.js` | Arrows and thorns: flight, hits, sticking in blocks, pick-up |
 | `js/fishing.js` | Fishing: the bobber's cast, bites and the line |
 | `js/stations.js` | Ovens, smelters, blast smelters, chests and the shaft-driven machines that make things: their contents, fuel, recipes and cooking |
-| `js/kinetics.js` | Water wheels, windmills, shafts and gears: power networks, gear ratios, load, and the turning models |
+| `js/kinetics.js` | Water wheels, windmills, shafts, gears, gearboxes and clutches: power networks, gear ratios, load, and the turning models |
 | `js/machines.js` | Pumps and pipes, drills, filament lamps, hoppers and conveyor belts |
-| `js/carts.js` | Minecarts: rolling along rails, slopes and powered rails, riding |
-| `js/signs.js` | Sign text and the panels that show it |
+| `js/carts.js` | Minecarts and storage carts: rolling along rails, slopes, powered and loader rails, riding |
+| `js/signs.js` | Sign text (and its colour) and the panels that show it |
+| `js/frames.js` | Item frames: what each holds, the pictures in them, and hopper filters |
+| `js/weather.js` | Rain, snow and sandstorms: when they come, and the falling particles |
 | `js/minimap.js` | The map you hold: the land drawn from above |
 | `js/sky.js` | Day/night cycle: sky colour, fog, sun, moon, stars, world brightness |
 | `js/sound.js` | Web Audio sound effects |
