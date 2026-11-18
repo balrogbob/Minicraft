@@ -102,6 +102,17 @@ export class Sound {
   }
 
   // Soft rising "pop" for crafting / picking things up.
+  // a lit fuse: a short hissing fizz
+  fuse() { if (this.ready) this.noiseBurst({ type: 'highpass', freq: 4200, q: 0.6, dur: 0.5, vol: 0.25 }, 1, 1); }
+
+  // an explosion: a deep thump under a long rumble of noise
+  boom(gain = 1) {
+    if (!this.ready) return;
+    this.tone(70, 0.6, 0.9 * gain, 'sine', 30);
+    this.noiseBurst({ type: 'lowpass', freq: 600, q: 0.5, dur: 1.2, vol: 1.1 }, gain, 1);
+    this.noiseBurst({ type: 'bandpass', freq: 1800, q: 0.7, dur: 0.35, vol: 0.6 }, gain, 1);
+  }
+
   pop() { if (this.ready) this.tone(520 + Math.random() * 80, 0.09, 0.2, 'square', 900); }
 
   click() { if (this.ready) this.tone(800, 0.04, 0.08, 'square'); }

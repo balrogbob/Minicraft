@@ -2,7 +2,7 @@
 // where the player can pick them back up by walking over them. Thornspitters' thorns use the
 // same flight, but hit the player instead (and can't be picked up).
 import * as THREE from 'three';
-import { ARROW } from './blocks.js';
+import { ARROW, SILVER_ARROW } from './blocks.js';
 import { H } from './terrain.js';
 import { skyBrightness, lightBrightness } from './world.js';
 
@@ -51,6 +51,8 @@ export class ArrowManager {
       shadedBox([0.12, 0.02, 0.14], 0xf2f2ee, [0, 0, -0.26]),
       shadedBox([0.02, 0.12, 0.14], 0xf2f2ee, [0, 0, -0.26]),
     ];
+    // silver arrows: the same, with a bright silver head
+    this.silverParts = [this.parts[0], shadedBox([0.09, 0.09, 0.12], 0xf0f2fa, [0, 0, 0.36]), this.parts[2], this.parts[3]];
     this.thornParts = [
       shadedBox([0.05, 0.05, 0.34], 0x6b8f2e, [0, 0, 0]),
       shadedBox([0.03, 0.03, 0.14], 0xd9d2a8, [0, 0, 0.23]),
@@ -68,10 +70,10 @@ export class ArrowManager {
   }
 
   // Fire from `origin` along unit vector `dir`; power 0..1 is how far the bow was drawn.
-  shoot(origin, dir, power) {
+  shoot(origin, dir, power, silver = false) {
     const speed = MIN_SPEED + (MAX_SPEED - MIN_SPEED) * Math.max(0, Math.min(1, power));
     this.sound?.bow(power);
-    return this.launch(origin, dir, speed, { power, thorn: false });
+    return this.launch(origin, dir, speed, { power, thorn: false, silver });
   }
 
   // A thornspitter's thorn: slower, and it hurts the player for `damage` if it hits.
@@ -82,7 +84,7 @@ export class ArrowManager {
   launch(origin, dir, speed, extra) {
     const material = new THREE.MeshBasicMaterial({ vertexColors: true });
     const group = new THREE.Group();
-    for (const g of extra.thorn ? this.thornParts : this.parts) group.add(new THREE.Mesh(g, material));
+    for (const g of extra.thorn ? this.thornParts : extra.silver ? this.silverParts : this.parts) group.add(new THREE.Mesh(g, material));
     const a = {
       pos: origin.clone().addScaledVector(dir, extra.thorn ? 0.5 : 0.6),
       vel: dir.clone().multiplyScalar(speed),
@@ -103,10 +105,10 @@ export class ArrowManager {
     if (!a.stuck) a.group.lookAt(a.pos.x + a.vel.x, a.pos.y + a.vel.y, a.pos.z + a.vel.z);
   }
 
-  // Returns how many stuck arrows the player picked up this frame.
+  // Returns the stuck arrows the player picked up this frame, as a list of item ids.
   // onHitMob(mob, arrow, fromPos): an arrow hit an animal or creature. onHitPlayer(damage): a thorn hit.
   update(dt, { world, mobs, player, light, onHitMob, onHitPlayer }) {
-    let picked = 0;
+    const picked = [];
     const tmp = new THREE.Vector3();
     for (let i = this.arrows.length - 1; i >= 0; i--) {
       const a = this.arrows[i];
@@ -116,7 +118,7 @@ export class ArrowManager {
       } else if (a.stuck) {
         // walk over a stuck arrow to pick it up
         const d = tmp.copy(a.pos).sub(player.pos).setY(a.pos.y - (player.pos.y + 0.9)).length();
-        if (d < PICKUP_RANGE) { picked++; this.remove(a); this.arrows.splice(i, 1); continue; }
+        if (d < PICKUP_RANGE) { picked.push(a.silver ? SILVER_ARROW : ARROW); this.remove(a); this.arrows.splice(i, 1); continue; }
         if (a.age > STUCK_SECONDS || !world.chunkAt(Math.floor(a.pos.x), Math.floor(a.pos.z))) { this.remove(a); this.arrows.splice(i, 1); continue; }
       } else {
         if (a.age > FLY_SECONDS) { this.remove(a); this.arrows.splice(i, 1); continue; }

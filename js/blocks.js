@@ -40,7 +40,10 @@ export const AIR = 0, GRASS = 1, DIRT = 2, STONE = 3, COBBLE = 4, LOG = 5, PLANK
   LADDER = 408, // 408..411: + facing (it faces away from the wall it's fixed to)
   SCAFFOLD = 412,
   SIGN = 413, // 413..416: on a wall, + facing
-  SIGN_POST = 417; // 417..420: standing on a block, + facing
+  SIGN_POST = 417, // 417..420: standing on a block, + facing
+  SALTPETRE_ORE = 421, BLAST_CHARGE = 422,
+  MIRROR_LAMP = 427, // 427..430: a lamp with an electrum reflector; + fuel like LAMP
+  LAVA = 460, OBSIDIAN = 461;
 
 // Wall direction [dx, dz] for each wall-torch variant, in id order.
 export const WALL_TORCH_DIRS = [[-1, 0], [1, 0], [0, -1], [0, 1]];
@@ -71,7 +74,9 @@ export const FLINT = 300, CLAY_BALL = 301, BRICK = 302, FIRE_CLAY = 303, FIRE_BR
   METAL_SWORDS = 322, // 322..331: one per TOOL_MATERIALS entry
   HIDE = 332, LEATHER = 333,
   ARMOUR = 340, // 340..359: + material * 4 + piece (see ARMOUR_MATS, ARMOUR_PIECES)
-  PLATES = 360; // 360..364: hammered metal plates (see PLATE_METALS)
+  PLATES = 360, // 360..364: hammered metal plates (see PLATE_METALS)
+  SALTPETRE = 366, GUNPOWDER = 367, LEAD_SINKER = 368, WEIGHTED_ROD = 369, LEAD_BUCKET = 370, LAVA_BUCKET = 372,
+  GOLD_CLOCK = 373, COMPASS = 374, SILVER_ARROW = 375;
 
 // Charcoal (smelted from logs) can stand in for coal anywhere coal is used.
 export const COAL_OR_CHARCOAL = [COAL, CHARCOAL];
@@ -89,6 +94,7 @@ export const T = {
   SAPLING: 50, GRAVEL: 51, CLAY: 52, CLAY_BRICKS: 53, FIRE_BRICKS: 54,
   CRUSHER_SIDE: 55, CRUSHER_TOP: 56, CRUSHER_FRONT: 57, STAINLESS: 58,
   CHEST_SIDE: 59, CHEST_TOP: 60, CHEST_FRONT: 61, IRON_CHEST_SIDE: 62, IRON_CHEST_TOP: 63, IRON_CHEST_FRONT: 64,
+  SALTPETRE_ORE: 65, ELECTRUM: 66, CHARGE_SIDE: 67, CHARGE_TOP: 68, LAVA: 69, OBSIDIAN: 70,
 };
 
 // Ores, deepest-reaching last. tier: the pickaxe tier needed to mine it (see TOOL_TIERS);
@@ -163,6 +169,8 @@ function block(id, o) {
     kinetic: o.kinetic ?? null, // { part: 'wheel' | 'shaft' | 'gear' | 'large', mat, axis: 0 x | 1 y | 2 z }
     climb: !!o.climb, // ladders and scaffolding: you can climb up and down inside them
     sign: !!o.sign, post: !!o.post, // holds a few lines of text (see signs.js); post: stands on a post
+    lampBase: o.lampBase ?? 0, // a lamp's first (empty) variant
+    blastproof: !!o.blastproof, // blasting charges can't break it
   };
 }
 
@@ -192,7 +200,17 @@ ORES.forEach((o, i) => block(o.id, {
   drop: o.drop ? () => [[o.drop, 1 + (Math.random() < 0.4 ? 1 : 0)]] : o.id,
 }));
 export const isOre = (id) => id >= IRON_ORE && id <= TUNGSTEN_ORE;
-block(BEDROCK, { name: 'Bedrock', tex: T.BEDROCK, hardness: Infinity });
+block(BEDROCK, { name: 'Bedrock', tex: T.BEDROCK, hardness: Infinity, blastproof: true });
+// saltpetre: a white crust on cave walls; it breaks into saltpetre for gunpowder
+block(SALTPETRE_ORE, {
+  name: 'Saltpetre', tex: T.SALTPETRE_ORE, hardness: 2.5, tool: 'pick', needsTool: true, tier: 2,
+  drop: () => [[SALTPETRE, 1 + (Math.random() < 0.5 ? 1 : 0)]],
+});
+// blasting charge: tap it to light the fuse (see main.js)
+block(BLAST_CHARGE, { name: 'Blasting Charge', sound: 'wool', top: T.CHARGE_TOP, bottom: T.CHARGE_TOP, side: T.CHARGE_SIDE, hardness: 0.3 });
+// lava pools at the bottom of deep caves. Water poured onto lava (or lava onto water) turns it to obsidian.
+block(LAVA, { name: 'Lava', tex: T.LAVA, liquid: true, hardness: Infinity, drop: 0, light: 15, sound: 'water', blastproof: true });
+block(OBSIDIAN, { name: 'Obsidian', tex: T.OBSIDIAN, hardness: 25, tool: 'pick', needsTool: true, tier: 5, blastproof: true });
 block(WATER, { name: 'Water', transparent: true, liquid: true, hardness: Infinity, drop: 0, sound: 'water' });
 // Flowing water: spreads out from a source (placed with a water bucket) and falls over edges.
 for (let level = 1; level <= 7; level++) {
@@ -298,10 +316,16 @@ for (let f = 0; f < 4; f++) {
 }
 block(FURN_TABLE, { ...furniture, name: 'Wooden Table', model: TABLE_MODEL });
 block(SHELF, { name: 'Shelf', sound: 'wood', top: T.PLANKS, bottom: T.PLANKS, side: T.SHELF, hardness: 2, tool: 'axe' });
+// The mirror lamp has an electrum reflector behind the flame and lights a much wider area.
+const mirrorLampModel = (lit) => [...lampModel(lit), [5.5, 2, 10.6, 10.5, 8.5, 11.2, T.ELECTRUM]];
 for (let fuel = 0; fuel <= 3; fuel++) {
   block(LAMP + fuel, {
     name: 'Lamp', sound: 'glass', transparent: true, solid: false, hardness: 0.5, model: lampModel(fuel > 0),
-    light: fuel > 0 ? 15 : 0, variantOf: fuel ? LAMP : 0, drop: LAMP, fuel,
+    light: fuel > 0 ? 15 : 0, variantOf: fuel ? LAMP : 0, drop: LAMP, fuel, lampBase: LAMP,
+  });
+  block(MIRROR_LAMP + fuel, {
+    name: 'Mirror Lamp', sound: 'glass', transparent: true, solid: false, hardness: 0.5, model: mirrorLampModel(fuel > 0),
+    light: fuel > 0 ? 22 : 0, variantOf: fuel ? MIRROR_LAMP : 0, drop: MIRROR_LAMP, fuel, lampBase: MIRROR_LAMP,
   });
 }
 block(CARPET, { name: 'Carpet', sound: 'wool', transparent: true, solid: false, hardness: 0.2, model: CARPET_MODEL });
@@ -322,7 +346,7 @@ for (let k = 0; k < 16; k++) {
 
 export const isBed = (id) => (id >= BED && id < BED + 4) || (id >= BED_FOOT && id < BED_FOOT + 4);
 export const isChair = (id) => id >= CHAIR && id < CHAIR + 4;
-export const isLamp = (id) => id >= LAMP && id <= LAMP + 3;
+export const isLamp = (id) => !!BLOCKS[id]?.lampBase;
 export const isCurtain = (id) => id >= CURTAIN && id < CURTAIN + 4;
 export const isDoor = (id) => id >= DOOR && id < DOOR + 16;
 
@@ -466,6 +490,15 @@ export const ITEMS = {
   [FLINT_DUST]: { name: 'Flint Dust' },
   [CLAY_DUST]: { name: 'Clay Dust' },
   [WATER_BUCKET]: { name: 'Water Bucket', stack: 1 },
+  [SALTPETRE]: { name: 'Saltpetre' },
+  [GUNPOWDER]: { name: 'Gunpowder' },
+  [LEAD_SINKER]: { name: 'Lead Sinker' },
+  [WEIGHTED_ROD]: { name: 'Weighted Fishing Rod', stack: 1 }, // fish bite twice as often
+  [LEAD_BUCKET]: { name: 'Lead Bucket', stack: 16 }, // lined with lead: it can carry lava
+  [LAVA_BUCKET]: { name: 'Lava Bucket', stack: 1 },
+  [GOLD_CLOCK]: { name: 'Gold Clock', stack: 1 }, // carried anywhere, it shows the time of day
+  [COMPASS]: { name: 'Compass', stack: 1 }, // carried anywhere, it shows which way is home
+  [SILVER_ARROW]: { name: 'Silver Arrow' }, // twice the damage to night creatures
   [RAW_FISH]: { name: 'Raw Fish', food: 2 },
   [BAKED_FISH]: { name: 'Baked Fish', food: 6 },
 };
@@ -535,6 +568,7 @@ TOOL_MATERIALS.forEach((m, i) => {
 });
 
 export const foodValue = (id) => ITEMS[id]?.food ?? 0;
+export const isRod = (id) => id === FISHING_ROD || id === WEIGHTED_ROD;
 
 // Placeable block that can live in the inventory.
 export function isBlock(id) {
@@ -633,6 +667,17 @@ export const RECIPES = [
   );
 });
 RECIPES.push(
+  // gunpowder and blasting
+  { out: [GUNPOWDER, 4], in: [[SALTPETRE, 2], [SULPHUR, 1], [COAL_OR_CHARCOAL, 1]], tools: [MORTAR], metal: SALTPETRE },
+  { out: [BLAST_CHARGE, 2], in: [[GUNPOWDER, 4], [CLAY_BALL, 1], [STRING, 1]], table: true, metal: GUNPOWDER },
+  // lead, gold, silver and electrum
+  { out: [LEAD_SINKER, 4], in: [[LEAD_INGOT, 1]], table: true, metal: LEAD_INGOT },
+  { out: [WEIGHTED_ROD, 1], in: [[FISHING_ROD, 1], [LEAD_SINKER, 1]], metal: LEAD_SINKER },
+  { out: [LEAD_BUCKET, 1], in: [[LEAD_INGOT, 3]], table: true, metal: LEAD_INGOT },
+  { out: [GOLD_CLOCK, 1], in: [[GOLD_INGOT, 4], [GLASS, 1]], table: true, metal: GOLD_INGOT },
+  { out: [COMPASS, 1], in: [[IRON_INGOT, 2], [COPPER_INGOT, 2], [GLASS, 1]], table: true, metal: IRON_INGOT },
+  { out: [SILVER_ARROW, 4], in: [[ARROW, 4], [SILVER_INGOT, 1]], table: true, metal: SILVER_INGOT },
+  { out: [MIRROR_LAMP, 1], in: [[LAMP, 1], [ELECTRUM_INGOT, 2]], table: true, metal: ELECTRUM_INGOT },
   // storage and getting about
   { out: [CHEST, 1], in: [[PLANKS, 8]], table: true },
   { out: [IRON_CHEST, 1], in: [[CHEST, 2], [plateOf(IRON_INGOT), 2]], table: true, metal: IRON_INGOT },

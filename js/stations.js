@@ -9,6 +9,7 @@ import {
   ORES, COAL_OR_CHARCOAL, IRON_INGOT, COPPER_INGOT, TIN_INGOT, ZINC_INGOT, ALUMINIUM_INGOT, SILVER_INGOT, GOLD_INGOT,
   BRONZE_INGOT, ELECTRUM_INGOT, STAINLESS_INGOT, STEEL_INGOT, AL_BRONZE_INGOT,
   GRAVEL, FLINT, FLINT_DUST, CLAY_BALL, CLAY_DUST, BRICK, FIRE_CLAY, FIRE_BRICK, oreDust, HIDE, LEATHER,
+  LAVA_BUCKET, LEAD_BUCKET, SALTPETRE,
 } from './blocks.js';
 
 // A recipe ingredient can be one id or a list of alternatives (coal or charcoal).
@@ -17,7 +18,9 @@ const idsOf = (spec) => (Array.isArray(spec) ? spec : [spec]);
 // How many items (or oven batches) each piece of fuel cooks. Fuel is only used up while something is
 // actually cooking, so what's left of a piece waits in the station for the next job.
 // Slime fuel burns out of its bucket and leaves the empty bucket in the fuel slot.
-export const FUEL_ITEMS = { [LOG]: 1, [PLANKS]: 1, [STICK]: 0.5, [COAL]: 10, [CHARCOAL]: 10, [SLIME_FUEL]: 40 };
+// A lava bucket burns for 100 and leaves its lead bucket behind.
+export const FUEL_ITEMS = { [LOG]: 1, [PLANKS]: 1, [STICK]: 0.5, [COAL]: 10, [CHARCOAL]: 10, [SLIME_FUEL]: 40, [LAVA_BUCKET]: 100 };
+const FUEL_LEAVES = { [SLIME_FUEL]: BUCKET, [LAVA_BUCKET]: LEAD_BUCKET };
 export const isFuel = (id) => id in FUEL_ITEMS;
 
 // Recipes are tried in order, so put the most specific first (cake before cookies before bread).
@@ -164,7 +167,7 @@ export class Stations {
       // light a new piece of fuel only when there's something to make and the last piece is used up
       if (r && st.burn <= 1e-9 && st.fuel && isFuel(st.fuel.id)) {
         st.burn = st.burnMax = FUEL_ITEMS[st.fuel.id];
-        if (st.fuel.id === SLIME_FUEL) st.fuel = { id: BUCKET, count: 1 }; // the bucket stays behind
+        if (FUEL_LEAVES[st.fuel.id]) st.fuel = { id: FUEL_LEAVES[st.fuel.id], count: 1 }; // the bucket stays behind
         else if (--st.fuel.count <= 0) st.fuel = null;
       }
       // cooking: fuel burns at one "item" per recipe time, so a log cooks exactly one item

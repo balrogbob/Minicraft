@@ -3,7 +3,7 @@
 import * as THREE from 'three';
 import {
   BLOCKS, AIR, LEAVES, LOG, DIRT, GRASS, WATER, MAX_LIGHT, SUGAR_CANE, MAX_CANE_HEIGHT,
-  WATER_FLOW, WATER_FALL, WATER_WHEEL, isWaterId, isFlowing, waterLevel,
+  WATER_FLOW, WATER_FALL, WATER_WHEEL, isWaterId, isFlowing, waterLevel, LAVA, OBSIDIAN,
 } from './blocks.js';
 
 // Water wheels let water run through their cell (and over them); see waterAt().
@@ -51,12 +51,12 @@ const AO_LEVELS = [0.45, 0.62, 0.8, 1.0];
 // vertex colours are linear in three.js; convert perceptual brightness to linear
 const toLinear = (v) => Math.pow(v, 2.2);
 
-// Torch light level (0-15) -> linear brightness, falling off ~17% per block.
-const LIGHT_CURVE = Array.from({ length: 16 * 4 + 1 }, (_, i) => {
+// Torch light level (0-15, up to 22 for a mirror lamp) -> linear brightness, falling off ~17% per block.
+const LIGHT_CURVE = Array.from({ length: 24 * 4 + 1 }, (_, i) => {
   const level = i / 4;
   return level <= 0 ? 0 : toLinear(Math.pow(0.83, 14 - Math.min(14, level)));
 });
-export const lightBrightness = (level) => LIGHT_CURVE[Math.round(level * 4)];
+export const lightBrightness = (level) => LIGHT_CURVE[Math.min(96, Math.round(level * 4))];
 
 // Sunlight level (0-15) -> linear brightness. Gentler falloff so cave mouths fade gradually.
 const SKY_CURVE = Array.from({ length: 16 * 4 + 1 }, (_, i) => {
@@ -184,6 +184,14 @@ export class World {
     if (y < 0 || y >= H) return;
     const c = this.chunkAt(x, z);
     if (!c) return;
+    // lava and water that touch cool into obsidian
+    if (id === LAVA || isWaterId(id)) {
+      for (const [dx, dy, dz] of NEIGHBOURS) {
+        const n = this.get(x + dx, y + dy, z + dz);
+        if (id === LAVA && isWaterId(n)) { id = OBSIDIAN; break; }
+        if (id !== LAVA && n === LAVA) this.setBlock(x + dx, y + dy, z + dz, OBSIDIAN);
+      }
+    }
     const li = localIndex(x, y, z), old = c.data[li];
     c.data[li] = id;
     if (isWheel(old) && !isWheel(id)) this.wheelWater.delete(pack(x, y, z));
@@ -1010,7 +1018,7 @@ export class World {
     let nx = 0, ny = 0, nz = 0, t = 0;
     while (t <= maxDist) {
       const id = this.get(x, y, z);
-      if (id !== AIR && (!BLOCKS[id].liquid || (liquids && id === WATER)) && (!solidOnly || BLOCKS[id].solid)) return { x, y, z, id, nx, ny, nz, t };
+      if (id !== AIR && (!BLOCKS[id].liquid || (liquids && (id === WATER || id === LAVA))) && (!solidOnly || BLOCKS[id].solid)) return { x, y, z, id, nx, ny, nz, t };
       if (tmx < tmy && tmx < tmz) { x += sx; t = tmx; tmx += tdx; nx = -sx; ny = 0; nz = 0; }
       else if (tmy < tmz) { y += sy; t = tmy; tmy += tdy; nx = 0; ny = -sy; nz = 0; }
       else { z += sz; t = tmz; tmz += tdz; nx = 0; ny = 0; nz = -sz; }

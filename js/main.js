@@ -8,6 +8,7 @@ import {
   OVEN, SMELTER, stationKind, maxStack, FISHING_ROD, RAW_FISH, TOOL_TIERS, LOG, LEAVES, SAPLING,
   BLAST_SMELTER, CRUSHER, WATER_BUCKET, WATER_WHEEL, isWaterId, isFlowing,
   CHEST, IRON_CHEST, LADDER, SCAFFOLD, SIGN, SIGN_POST, isSign, isSword, ARMOUR_PIECES,
+  LAVA, BLAST_CHARGE, LEAD_BUCKET, LAVA_BUCKET, GOLD_CLOCK, COMPASS, SILVER_ARROW, MIRROR_LAMP, WEIGHTED_ROD, isRod, metalTool, TOOL_MATERIALS,
   isBlock, isTorch, isWheat, itemName, breakTime, dropsFor, foodValue,
 } from './blocks.js';
 import { createAtlas, createIcons, createCrackCanvases, createWaterCanvas, createHudIcons } from './textures.js';
@@ -179,7 +180,7 @@ let air = MAX_AIR; // seconds of breath left underwater
 let poisoned = 0; // seconds of food poisoning left
 let dead = false;
 let fallTop = null; // highest point of the current fall, for fall damage
-const timers = { regen: 0, starve: 0, poison: 0, drown: 0 };
+const timers = { regen: 0, starve: 0, poison: 0, drown: 0, lava: 0 };
 let bowCharge = 0; // seconds the bow has been drawn (holding)
 let bedSpawn = null; // { x, y, z } of the bed you last used: where you respawn
 // Lit lamps: "x,y,z" -> seconds left in the fuel unit now burning (each unit lasts one in-game day).
@@ -272,6 +273,7 @@ async function startWorld(save) {
   };
   mobs.reset(world);
   kinetics.clear();
+  for (const [k, f] of fuses) removeFuse(k, f);
   signs.load(save?.signs);
   arrows.reset();
   lastSwing = 0;
@@ -556,7 +558,7 @@ function respawnPlayer() {
 //   a well-fed player (hunger 16+) heals a point every 3 s, using up a little hunger.
 function updateHealth(dt, wasGround, prevY) {
   // falling: track the highest point since leaving the ground (including where this step started)
-  if (player.inWater || player.climbing || player.onGround && wasGround) fallTop = null;
+  if (player.inWater || player.inLava || player.climbing || player.onGround && wasGround) fallTop = null;
   if (!player.onGround && !player.inWater) fallTop = Math.max(fallTop ?? prevY, prevY, player.pos.y);
   else if (player.onGround && !wasGround && fallTop === null && !player.inWater) fallTop = prevY;
   if (player.onGround && !wasGround && fallTop !== null) {
@@ -573,6 +575,10 @@ function updateHealth(dt, wasGround, prevY) {
     timers.drown = 0;
   }
   renderAir();
+  // lava burns: 3 points every half second
+  if (player.inLava) {
+    if ((timers.lava -= dt) <= 0) { timers.lava = 0.5; damage(3, 'You tried to swim in lava.'); }
+  } else timers.lava = 0;
   // starving
   if (hunger <= 0) {
     if ((timers.starve += dt) >= 4) { timers.starve = 0; if (health > 1) damage(1, 'You starved.'); }
@@ -597,16 +603,18 @@ function updateHealth(dt, wasGround, prevY) {
 
 // ---------- bow ----------
 const FULL_DRAW = 1; // seconds to draw the bow all the way
+// Silver arrows are used first when you have them.
 function shootArrow(power) {
-  if (inventory.count(ARROW) <= 0) { toast('You need arrows'); return; }
-  inventory.remove(ARROW, 1);
-  arrows.shoot(player.eye, player.lookDir(), power);
+  const silver = inventory.count(SILVER_ARROW) > 0;
+  if (!silver && inventory.count(ARROW) <= 0) { toast('You need arrows'); return; }
+  inventory.remove(silver ? SILVER_ARROW : ARROW, 1);
+  arrows.shoot(player.eye, player.lookDir(), power, silver);
 }
 
 // ---------- fishing ----------
 // Tap with the rod to cast; tap again to reel in. Reel in while the bobber is bobbing under (a bite) to catch a fish.
-function useRod() {
-  if (!fishing.active) { fishing.cast(player.eye, player.lookDir()); return; }
+function useRod(id) {
+  if (!fishing.active) { fishing.cast(player.eye, player.lookDir(), id === WEIGHTED_ROD); return; }
   if (!fishing.reel()) return;
   if (inventory.add(RAW_FISH, 1) > 0) { toast('Inventory full: the fish got away'); return; }
   toast('You caught a fish!', 1500);
@@ -617,7 +625,7 @@ function useRod() {
 const rodTip = new THREE.Vector3();
 function updateFishing(dt) {
   if (!fishing.active) return;
-  if (inventory.heldId() !== FISHING_ROD || dead) { fishing.stop(); return; }
+  if (!isRod(inventory.heldId()) || dead) { fishing.stop(); return; }
   const look = player.lookDir();
   rodTip.copy(player.eye).addScaledVector(look, 0.7);
   rodTip.x += Math.cos(player.yaw) * 0.3; rodTip.z -= Math.sin(player.yaw) * 0.3; rodTip.y -= 0.12;
@@ -843,7 +851,7 @@ function openStation(x, y, z) {
   }).join('') + (K.powered ? '<p class="hint">Times are at 1x speed. Drive it with a water wheel by turning a shaft or gear ' +
     'against any face; gear it up for more speed. Ore dust smelts into ingots, so crushing ore doubles what you get.</p>'
     : '<p class="hint">Fuel, in items cooked per piece: log or planks 1, stick ½, coal or charcoal 10, ' +
-    'slime fuel 40 (its bucket is left in the fuel slot). Fuel is only used while something is cooking.' +
+    'slime fuel 40, lava bucket 100 (their buckets are left in the fuel slot). Fuel is only used while something is cooking.' +
     (K.speed ? ' A blast smelter works twice as fast on the same fuel.' : '') + '</p>');
   $('station').classList.remove('hidden');
   renderStation();
@@ -1057,7 +1065,7 @@ function useLamp(x, y, z, held) {
   const fuel = BLOCKS[world.get(x, y, z)].fuel;
   if (held?.id === SLIME_FUEL) {
     if (fuel >= MAX_LAMP_FUEL) { toast('This lamp is already full'); return; }
-    world.setBlock(x, y, z, LAMP + fuel + 1);
+    world.setBlock(x, y, z, BLOCKS[world.get(x, y, z)].lampBase + fuel + 1);
     if (!fuel) lamps.set(lampKey(x, y, z), DAY_LENGTH);
     inventory.consumeHeld();
     inventory.add(BUCKET, 1);
@@ -1078,7 +1086,7 @@ function tickLamps(dt) {
     if (!isLamp(id) || !BLOCKS[id].fuel) { lamps.delete(key); continue; }
     let left = secs - dt, fuel = BLOCKS[id].fuel;
     while (left <= 0 && fuel > 0) { fuel--; left += DAY_LENGTH; }
-    if (fuel !== BLOCKS[id].fuel) world.setBlock(x, y, z, LAMP + fuel);
+    if (fuel !== BLOCKS[id].fuel) world.setBlock(x, y, z, BLOCKS[id].lampBase + fuel);
     if (fuel > 0) lamps.set(key, left); else lamps.delete(key);
   }
 }
@@ -1150,7 +1158,7 @@ $('sign-text').addEventListener('input', (e) => {
 function place() {
   if (paused) return;
   const held = inventory.held();
-  if (held?.id === FISHING_ROD) { useRod(); return; }
+  if (isRod(held?.id)) { useRod(held.id); return; }
   // with the bow in hand a tap always shoots (a quick, short shot), whatever you're looking at
   if (held?.id === BOW) { shootArrow(Math.max(0.25, Math.min(1, bowCharge / FULL_DRAW))); bowCharge = 0; return; }
   if (targetMob) { hitMob(); return; }
@@ -1162,6 +1170,7 @@ function place() {
     if (isCurtain(tid)) { toggleCurtain(tx, ty, tz); return; }
     if (isLamp(tid)) { useLamp(tx, ty, tz, held); return; }
     if (isSign(tid)) { editSign(tx, ty, tz); return; }
+    if (tid === BLAST_CHARGE) { lightFuse(tx, ty, tz); toast('The fuse is lit! Stand back…', 1500); return; }
     if (stationKind(tid)) { sound.click(); openStation(tx, ty, tz); return; }
   }
   // sugar cane in hand: plant it if you're aiming at a good spot beside water, otherwise eat it
@@ -1172,6 +1181,7 @@ function place() {
     if (!plantable) { eatCane(); return; }
   }
   if (held?.id === BUCKET || held?.id === WATER_BUCKET) { useBucket(held.id); return; }
+  if (held?.id === LEAD_BUCKET || held?.id === LAVA_BUCKET) { useLeadBucket(held.id); return; }
   if (held && (foodValue(held.id) || ITEMS[held.id]?.drink)) { eat(held.id); return; }
   if (held && ITEMS[held.id]?.armour) { wearHeld(); return; }
   if (!target || !held) return;
@@ -1239,7 +1249,7 @@ function place() {
     inventory.consumeHeld();
     if (isSign(id)) editSign(x, y, z);
     return;
-  } else if (id === LAMP || id === CARPET) {
+  } else if (id === LAMP || id === MIRROR_LAMP || id === CARPET) {
     if (there !== AIR || !world.isSolid(x, y - 1, z)) { toast(`${BLOCKS[id].name}s need something solid underneath`); return; }
   } else {
     // chairs face you; curtains hang across your line of sight
@@ -1290,6 +1300,121 @@ function useBucket(id) {
   sound.splash(false);
 }
 
+// A lead bucket scoops up lava (a wooden one would burn); a lava bucket pours it out again.
+// Lava poured next to water cools into obsidian at once.
+function useLeadBucket(id) {
+  if (id === LEAD_BUCKET) {
+    const hit = world.raycast(player.eye, player.lookDir(), REACH, false, true);
+    if (!hit || hit.id !== LAVA) { toast(hit?.id === WATER ? 'Use a wooden bucket for water' : 'Tap lava to fill the lead bucket'); return; }
+    world.setBlock(hit.x, hit.y, hit.z, AIR);
+    inventory.consumeHeld();
+    if (inventory.add(LAVA_BUCKET, 1)) toast('Inventory full');
+    sound.pour();
+    return;
+  }
+  if (!target) return;
+  const x = target.x + target.nx, y = target.y + target.ny, z = target.z + target.nz;
+  const there = world.get(x, y, z);
+  if (!world.inBounds(x, y, z) || (there !== AIR && !isFlowing(there))) return;
+  if (player.overlapsBlock(x, y, z)) return;
+  world.setBlock(x, y, z, LAVA);
+  inventory.slots[inventory.selected] = { id: LEAD_BUCKET, count: 1 };
+  inventory.onChange();
+  sound.pour();
+}
+
+// ---------- blasting charges ----------
+// Tap a charge to light its fuse; 3 seconds later it blows a round hole about 5 blocks across. Most of
+// what it breaks is thrown to you (as if dug with an iron pickaxe) if you're within 24 blocks. Charges
+// caught in the blast go off too. Chests, machines, furniture, obsidian and bedrock are blast-proof.
+const fuses = new Map(); // "x,y,z" -> { t, mesh }
+const fuseMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0, depthWrite: false });
+const BLAST_RADIUS = 2.6;
+const IRON_PICK = metalTool(TOOL_MATERIALS.findIndex((m) => m.key === 'iron'), 'pick');
+function lightFuse(x, y, z, t = 3) {
+  const k = `${x},${y},${z}`;
+  if (fuses.has(k)) return;
+  const mesh = new THREE.Mesh(new THREE.BoxGeometry(1.02, 1.02, 1.02), fuseMat.clone());
+  mesh.position.set(x + 0.5, y + 0.5, z + 0.5);
+  scene.add(mesh);
+  fuses.set(k, { t, mesh });
+  sound.fuse();
+}
+function tickFuses(dt) {
+  for (const [k, f] of fuses) {
+    const [x, y, z] = k.split(',').map(Number);
+    if (world.get(x, y, z) !== BLAST_CHARGE) { removeFuse(k, f); continue; }
+    f.t -= dt;
+    f.mesh.material.opacity = (Math.sin(f.t * (f.t < 1 ? 30 : 12)) * 0.5 + 0.5) * 0.55; // flashing faster as it burns down
+    if (f.t <= 0) { removeFuse(k, f); explode(x, y, z); }
+  }
+}
+function removeFuse(k, f) {
+  scene.remove(f.mesh);
+  f.mesh.geometry.dispose();
+  f.mesh.material.dispose();
+  fuses.delete(k);
+}
+const blastable = (def) => def && !def.blastproof && !def.liquid && !def.station && !def.kinetic && def.hardness !== Infinity &&
+  (def.shape === 'cube' || def.shape === 'cross' || def.shape === 'torch' || def.climb || def.sign);
+function explode(x, y, z) {
+  world.setBlock(x, y, z, AIR);
+  const R = BLAST_RADIUS, gathered = new Map();
+  const near = (x + 0.5 - player.pos.x) ** 2 + (y + 0.5 - player.pos.y) ** 2 + (z + 0.5 - player.pos.z) ** 2 < 24 * 24;
+  const cleared = [];
+  for (let dy = -3; dy <= 3; dy++) for (let dz = -3; dz <= 3; dz++) for (let dx = -3; dx <= 3; dx++) {
+    if (dx * dx + dy * dy + dz * dz > R * R) continue;
+    const bx = x + dx, by = y + dy, bz = z + dz;
+    const id = world.get(bx, by, bz);
+    if (id === AIR) continue;
+    if (id === BLAST_CHARGE) { lightFuse(bx, by, bz, 0.25 + Math.random() * 0.2); continue; }
+    const def = BLOCKS[id];
+    if (!blastable(def)) continue;
+    if (isSign(id)) signs.remove(bx, by, bz);
+    world.setBlock(bx, by, bz, AIR);
+    cleared.push([bx, by, bz]);
+    if (near && Math.random() < 0.75) for (const [d, n] of dropsFor(id, IRON_PICK)) gathered.set(d, (gathered.get(d) ?? 0) + n);
+  }
+  for (const [bx, by, bz] of cleared) dropUnsupported(bx, by, bz);
+  if (gathered.size) {
+    let lost = 0;
+    for (const [d, n] of gathered) lost += inventory.add(d, n);
+    toast(`Boom! ${[...gathered].map(([d, n]) => `+${n} ${itemName(d)}`).slice(0, 4).join(', ')}${lost ? ' (inventory full)' : ''}`, 2200);
+  }
+  // the blast: a flash, a bang and a shove
+  const dist = Math.hypot(x + 0.5 - player.pos.x, y + 0.5 - (player.pos.y + 0.9), z + 0.5 - player.pos.z);
+  sound.boom(Math.max(0.15, 1 - dist / 40));
+  flashBlast(x + 0.5, y + 0.5, z + 0.5);
+  if (dist < 5.5 && !dead) {
+    const len = dist || 1;
+    player.kx = ((player.pos.x - x - 0.5) / len) * 10; player.kz = ((player.pos.z - z - 0.5) / len) * 10;
+    player.vel.y = 6;
+    damage(armoured(Math.round((5.5 - dist) * 3)), 'You stood too close to a blasting charge.');
+  }
+  for (const m of mobs.mobs) {
+    const d = Math.hypot(m.pos.x - x - 0.5, m.pos.y - y, m.pos.z - z - 0.5);
+    if (d > 5.5) continue;
+    if (m.spec.hostile) giveDrops(mobs.hurt(m, Math.round((5.5 - d) * 6), { x: x + 0.5, y, z: z + 0.5 }));
+    else mobs.bump(m, { x: x + 0.5, y, z: z + 0.5 });
+  }
+}
+const blasts = [];
+function flashBlast(x, y, z) {
+  const mesh = new THREE.Mesh(new THREE.SphereGeometry(1, 16, 12), new THREE.MeshBasicMaterial({ color: 0xffd27a, transparent: true, opacity: 0.85, depthWrite: false }));
+  mesh.position.set(x, y, z);
+  scene.add(mesh);
+  blasts.push({ mesh, t: 0 });
+}
+function tickBlasts(dt) {
+  for (let i = blasts.length - 1; i >= 0; i--) {
+    const b = blasts[i];
+    b.t += dt;
+    b.mesh.scale.setScalar(1 + b.t * 9);
+    b.mesh.material.opacity = Math.max(0, 0.85 - b.t * 2.4);
+    if (b.t > 0.36) { scene.remove(b.mesh); b.mesh.geometry.dispose(); b.mesh.material.dispose(); blasts.splice(i, 1); }
+  }
+}
+
 function updateBreaking(dt) {
   // holding with the bow draws it; letting go shoots (a quick tap is handled by place())
   if (inventory.heldId() === BOW) {
@@ -1302,7 +1427,7 @@ function updateBreaking(dt) {
   }
   if (bowCharge) { bowCharge = 0; $('charge').classList.remove('show'); }
   // the rod is for fishing, not digging: holding it does nothing
-  if (inventory.heldId() === FISHING_ROD) { crack.visible = false; breakState.key = ''; breakState.progress = 0; return; }
+  if (isRod(inventory.heldId())) { crack.visible = false; breakState.key = ''; breakState.progress = 0; return; }
   // holding on an animal taps it again every half second instead of breaking blocks. The first
   // repeat waits half a second too, so a tap (which acts once, on release) never acts twice.
   if (!controls.breaking) breakState.mobCooldown = 0.5;
@@ -1447,7 +1572,7 @@ function dropUnsupported(x, y, z) {
   if (isLamp(above) || above === CARPET) {
     lamps.delete(lampKey(x, y + 1, z));
     world.setBlock(x, y + 1, z, AIR);
-    inventory.add(above === CARPET ? CARPET : LAMP, 1);
+    inventory.add(BLOCKS[above].drop, 1);
   } else if (isDoor(above) && !BLOCKS[above].upper) {
     world.setBlock(x, y + 1, z, AIR);
     if (isDoor(world.get(x, y + 2, z))) world.setBlock(x, y + 2, z, AIR);
@@ -1585,6 +1710,23 @@ function playMovementSounds(dt, wasGround, wasWater, fallSpeed) {
   }
 }
 
+// ---------- clock and compass ----------
+// The gold clock reads the time of day (sunrise is 6:00, sunset 18:00); the compass shows which way you
+// face and which way home is (your bed, or where the world started you).
+function clockTime() {
+  const mins = Math.floor(((sky.time * 24 + 6) % 24) * 60);
+  return `${Math.floor(mins / 60)}:${String(mins % 60).padStart(2, '0')}`;
+}
+const POINTS = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+const pointOf = (dx, dz) => POINTS[(Math.round(Math.atan2(dx, -dz) / (Math.PI / 4)) + 8) % 8]; // -z is north
+function compassText() {
+  const look = player.lookDir();
+  let home = bedSpawn;
+  if (!home) home = (world.spawnCache ??= world.generator.findSpawn());
+  const dx = home.x + 0.5 - player.pos.x, dz = home.z + 0.5 - player.pos.z, d = Math.hypot(dx, dz);
+  return `facing ${pointOf(look.x, look.z)} · ${bedSpawn ? 'bed' : 'start'} ${d < 2 ? 'here' : `${Math.round(d)} ${pointOf(dx, dz)}`}`;
+}
+
 // ---------- main loop ----------
 let last = performance.now();
 let coordsTimer = 0;
@@ -1635,18 +1777,19 @@ function stepGame(now, dt) {
     world.tickPlants(dt);
     world.tickLeaves(dt);
     tickLamps(dt);
+    tickFuses(dt);
     updateHunger(dt);
     updateHealth(dt, wasGround, prevY);
     const picked = arrows.update(dt, {
       world, mobs, player, light: { day: lightUniforms.uDay.value, flicker: lightUniforms.uFlicker.value, ambient: AMBIENT },
       // arrows bump animals, and hurt creatures more the further the bow was drawn
       onHitMob: (m, arrow, from) => {
-        if (m.spec.hostile) giveDrops(mobs.hurt(m, Math.round(2 + 6 * arrow.power), from));
+        if (m.spec.hostile) giveDrops(mobs.hurt(m, Math.round(2 + 6 * arrow.power) * (arrow.silver ? 2 : 1), from));
         else mobs.bump(m, from);
       },
       onHitPlayer: (dmg) => { if (!dead) damage(armoured(dmg), 'A thornspitter shot you full of thorns.'); },
     });
-    if (picked) { inventory.add(ARROW, picked); sound.pop(); }
+    for (const id of picked) { inventory.add(id, 1); sound.pop(); }
     updateFishing(dt);
     mobs.update(dt, player, { day: lightUniforms.uDay.value, flicker: lightUniforms.uFlicker.value, ambient: AMBIENT },
       { difficulty: difficulty(), daylight: sky.light, playerDead: dead });
@@ -1655,11 +1798,13 @@ function stepGame(now, dt) {
   if (world.unsaved.size !== unsavedCount) { unsavedCount = world.unsaved.size; lastEditAt = now; }
   if (unsavedCount && now - lastEditAt > 1500 && worldReady) { world.saveChunks(); unsavedCount = 0; }
   kinetics.update(paused ? 0 : dt, world, { day: lightUniforms.uDay.value, flicker: lightUniforms.uFlicker.value, ambient: AMBIENT });
+  tickBlasts(dt);
   signs.update(dt, world, { day: lightUniforms.uDay.value, flicker: lightUniforms.uFlicker.value, ambient: AMBIENT });
   coordsTimer -= dt;
   if (coordsTimer <= 0) {
     coordsTimer = 0.25;
-    $('coords').textContent = `Day ${day}   X ${Math.floor(player.pos.x)}  Y ${Math.floor(player.pos.y)}  Z ${Math.floor(player.pos.z)}`;
+    $('coords').textContent = `Day ${day}   X ${Math.floor(player.pos.x)}  Y ${Math.floor(player.pos.y)}  Z ${Math.floor(player.pos.z)}` +
+      (inventory.count(GOLD_CLOCK) ? `   🕰 ${clockTime()}` : '') + (inventory.count(COMPASS) ? `   🧭 ${compassText()}` : '');
   }
 
   const eye = player.eye;
@@ -1703,7 +1848,7 @@ window.minicraft = {
   get paused() { return paused; },
   get health() { return health; }, set health(v) { health = v; renderHealth(); },
   get poisoned() { return poisoned; }, get dead() { return dead; }, get air() { return air; }, set air(v) { air = v; },
-  arrows, fishing, kinetics, signs, armour, damage, place, editSign, closeSign, openInventory, closeInventory, chestMove, lamps, tickLamps, sleepUntilMorning, stations, openStation, closeStation,
+  arrows, fishing, kinetics, signs, armour, damage, explode, lightFuse, fuses, clockTime, compassText, place, editSign, closeSign, openInventory, closeInventory, chestMove, lamps, tickLamps, sleepUntilMorning, stations, openStation, closeStation,
   get caneToday() { return caneToday; },
   get bedSpawn() { return bedSpawn; },
 };

@@ -10,6 +10,7 @@ import {
   WATER_WHEEL, KINETIC_MATS, kineticId,
   LADDER, SCAFFOLD, SIGN, WOOD_SWORD, STONE_SWORD, metalSword, HIDE, LEATHER, ARMOUR_MATS, ARMOUR_PIECES, armourId,
   PLATE_METALS, PLATES,
+  SALTPETRE, GUNPOWDER, LEAD_SINKER, WEIGHTED_ROD, LEAD_BUCKET, LAVA_BUCKET, GOLD_CLOCK, COMPASS, SILVER_ARROW, MIRROR_LAMP,
 } from './blocks.js';
 
 export const TILE = 16;
@@ -398,6 +399,48 @@ Object.assign(P, {
   [T.IRON_CHEST_SIDE](t) { chestFace(t, [150, 154, 162], 'side'); for (let y = 0; y < TILE; y++) for (const x of [4, 11]) t.set(x, y, t.vary([130, 134, 142], 0.05)); },
   [T.IRON_CHEST_TOP](t) { chestFace(t, [150, 154, 162], 'top'); for (let y = 0; y < TILE; y++) for (const x of [4, 11]) t.set(x, y, t.vary([130, 134, 142], 0.05)); },
   [T.IRON_CHEST_FRONT](t) { chestFace(t, [150, 154, 162], 'front'); for (let y = 0; y < TILE; y++) for (const x of [3, 12]) t.set(x, y, t.vary([130, 134, 142], 0.05)); },
+});
+
+Object.assign(P, {
+  // white, fluffy crystals crusting the stone
+  [T.SALTPETRE_ORE](t) {
+    P[T.STONE](t);
+    for (let n = 0; n < 9; n++) {
+      const cx = 1 + t.r() * 13, cy = 1 + t.r() * 13;
+      for (let k = 0; k < 5; k++) {
+        const x = Math.round(cx + (t.r() - 0.5) * 3), y = Math.round(cy + (t.r() - 0.5) * 3);
+        t.set(x, y, t.vary([238, 236, 228], 0.05)); if (t.r() < 0.5) t.set(x + 1, y, t.vary([214, 212, 204], 0.05));
+      }
+    }
+  },
+  [T.ELECTRUM](t) {
+    for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) t.set(x, y, t.vary(shade([236, 218, 140], 0.9 + 0.15 * Math.sin((x + y) * 0.6)), 0.04));
+  },
+  // a bundle of paper-wrapped sticks of gunpowder, tied with string; the fuse sticks out of the top
+  [T.CHARGE_SIDE](t) {
+    for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+      const stick = x % 4 === 0 ? [150, 40, 30] : [196, 62, 44];
+      t.set(x, y, t.vary(y === 4 || y === 11 ? [214, 196, 140] : stick, 0.06));
+    }
+  },
+  [T.CHARGE_TOP](t) {
+    for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+      const d = Math.hypot((x % 4) - 1.5, (y % 4) - 1.5);
+      t.set(x, y, t.vary(d < 1.3 ? [70, 66, 62] : [176, 52, 38], 0.08));
+    }
+    for (let y = 6; y < 10; y++) for (let x = 7; x < 9; x++) t.set(x, y, [226, 214, 170]); // fuse
+  },
+  [T.LAVA](t) {
+    for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+      const w = Math.sin(x * 0.9 + Math.sin(y * 0.7) * 2) + Math.cos(y * 0.8 - x * 0.3);
+      t.set(x, y, t.vary(w > 1.1 ? [255, 236, 120] : w > 0.2 ? [252, 150, 30] : [210, 70, 14], 0.07));
+    }
+  },
+  [T.OBSIDIAN](t) {
+    t.fill([30, 22, 44], 0.2);
+    t.speckle([62, 44, 92], 0.12, 0.1);
+    t.speckle([12, 8, 18], 0.1, 0.1);
+  },
 });
 
 // A plank door: a frame with a centre board; the upper half has a four-pane window you can see through,
@@ -1006,6 +1049,52 @@ ITEM_PAINTERS[LEATHER] = (ctx) => {
   }
   for (let x = 4; x < 12; x += 2) px(ctx, x, 12, [100, 64, 34]); // stitching
 };
+
+// ----- stage B -----
+Object.assign(ITEM_PAINTERS, {
+  [SALTPETRE]: dustPainter([236, 234, 226]),
+  [GUNPOWDER]: dustPainter([70, 70, 74]),
+  [LEAD_SINKER](ctx) {
+    for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) {
+      const d = Math.hypot((x - 7.5) / 3.6, (y - 9) / 4.5);
+      if (d < 1) px(ctx, x, y, d > 0.75 ? [70, 76, 98] : x < 7 ? [130, 138, 160] : [104, 110, 134]);
+    }
+    rect(ctx, 7, 2, 2, 3, [104, 110, 134]); px(ctx, 7, 1, [70, 76, 98]); px(ctx, 8, 1, [70, 76, 98]); // eye for the line
+  },
+  [WEIGHTED_ROD](ctx) {
+    ITEM_PAINTERS[FISHING_ROD](ctx);
+    rect(ctx, 13, 12, 3, 3, [104, 110, 134]); px(ctx, 13, 12, [140, 146, 170]);
+  },
+  [LEAD_BUCKET]: (ctx) => { bucketPainter(null)(ctx); for (let y = 4; y <= 14; y++) for (let x = 3; x <= 12; x++) { const d = ctx.getImageData(x, y, 1, 1).data; if (d[3]) px(ctx, x, y, d[0] > 140 ? [130, 136, 158] : [96, 102, 124]); } },
+  [LAVA_BUCKET]: (ctx) => { ITEM_PAINTERS[LEAD_BUCKET](ctx); rect(ctx, 4, 4, 8, 2, [252, 140, 30]); px(ctx, 6, 4, [255, 230, 120]); },
+  [GOLD_CLOCK](ctx) {
+    for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) {
+      const d = Math.hypot(x - 7.5, y - 8.5);
+      if (d < 7) px(ctx, x, y, d > 5.6 ? [200, 150, 30] : d > 4.8 ? [250, 210, 70] : [248, 242, 222]);
+    }
+    rect(ctx, 7, 0, 2, 2, [200, 150, 30]); // crown
+    for (let i = 0; i < 4; i++) px(ctx, 7, 8 - i, [40, 36, 30]); // hands at ten to twelve
+    for (let i = 0; i < 3; i++) px(ctx, 8 + i, 8, [40, 36, 30]);
+  },
+  [COMPASS](ctx) {
+    for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) {
+      const d = Math.hypot(x - 7.5, y - 7.5);
+      if (d < 7) px(ctx, x, y, d > 5.6 ? [150, 146, 140] : [236, 232, 220]);
+    }
+    for (let i = 0; i < 5; i++) { px(ctx, 7 + (i > 2 ? 0 : 0), 3 + i, [200, 40, 34]); px(ctx, 8, 7 + i, [60, 60, 70]); }
+    px(ctx, 8, 3, [200, 40, 34]); px(ctx, 7, 12, [60, 60, 70]);
+  },
+  [SILVER_ARROW](ctx) {
+    ITEM_PAINTERS[ARROW](ctx);
+    for (const [x, y] of [[12, 3], [13, 2], [12, 2], [13, 3], [11, 2], [13, 4], [14, 1]]) px(ctx, x, y, [236, 240, 250]);
+    px(ctx, 14, 1, [255, 255, 255]);
+  },
+  [MIRROR_LAMP](ctx) {
+    ITEM_PAINTERS[LAMP](ctx);
+    rect(ctx, 5, 4, 1, 8, [236, 218, 140]); rect(ctx, 10, 4, 1, 8, [236, 218, 140]);
+    rect(ctx, 6, 4, 4, 1, [250, 236, 170]);
+  },
+});
 
 // Returns { id: dataURL } for every block and item.
 export function createIcons(atlas) {
