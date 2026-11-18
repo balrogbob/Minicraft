@@ -2,7 +2,7 @@
 
 // Block ids (< 100). Stored in the world Uint8Array.
 export const AIR = 0, GRASS = 1, DIRT = 2, STONE = 3, COBBLE = 4, LOG = 5, PLANKS = 6,
-  LEAVES = 7, SAND = 8, GLASS = 9, TABLE = 10, BRICKS = 11, COAL_ORE = 12, BEDROCK = 13;
+  LEAVES = 7, SAND = 8, GLASS = 9, TABLE = 10, BRICKS = 11, COAL_ORE = 12, BEDROCK = 13, WATER = 14;
 
 // Item-only ids (>= 100). Only ever live in the inventory.
 export const STICK = 100, COAL = 101,
@@ -32,22 +32,25 @@ function block(id, o) {
     tool: o.tool ?? null, // 'pick' | 'axe' | 'shovel'
     needsTool: !!o.needsTool, // drops nothing (and is slow) without the right tool
     drop: o.drop ?? id, // id, or function returning id (0 = nothing)
+    sound: o.sound ?? 'stone', // material for dig / step / place sounds
+    liquid: !!o.liquid, // not solid, not targetable, never in the inventory
   };
 }
 
-block(GRASS, { name: 'Grass', top: T.GRASS_TOP, bottom: T.DIRT, side: T.GRASS_SIDE, hardness: 0.9, tool: 'shovel', drop: DIRT });
-block(DIRT, { name: 'Dirt', tex: T.DIRT, hardness: 0.75, tool: 'shovel' });
+block(GRASS, { name: 'Grass', sound: 'grass', top: T.GRASS_TOP, bottom: T.DIRT, side: T.GRASS_SIDE, hardness: 0.9, tool: 'shovel', drop: DIRT });
+block(DIRT, { name: 'Dirt', sound: 'grass', tex: T.DIRT, hardness: 0.75, tool: 'shovel' });
 block(STONE, { name: 'Stone', tex: T.STONE, hardness: 2.25, tool: 'pick', needsTool: true, drop: COBBLE });
 block(COBBLE, { name: 'Cobblestone', tex: T.COBBLE, hardness: 2.5, tool: 'pick', needsTool: true });
-block(LOG, { name: 'Log', top: T.LOG_TOP, bottom: T.LOG_TOP, side: T.LOG_SIDE, hardness: 2.5, tool: 'axe' });
-block(PLANKS, { name: 'Planks', tex: T.PLANKS, hardness: 2, tool: 'axe' });
-block(LEAVES, { name: 'Leaves', tex: T.LEAVES, transparent: true, hardness: 0.3, drop: () => (Math.random() < 0.12 ? STICK : 0) });
-block(SAND, { name: 'Sand', tex: T.SAND, hardness: 0.75, tool: 'shovel' });
-block(GLASS, { name: 'Glass', tex: T.GLASS, transparent: true, hardness: 0.4 });
-block(TABLE, { name: 'Crafting Table', top: T.TABLE_TOP, bottom: T.PLANKS, side: T.TABLE_SIDE, hardness: 2.5, tool: 'axe' });
+block(LOG, { name: 'Log', sound: 'wood', top: T.LOG_TOP, bottom: T.LOG_TOP, side: T.LOG_SIDE, hardness: 2.5, tool: 'axe' });
+block(PLANKS, { name: 'Planks', sound: 'wood', tex: T.PLANKS, hardness: 2, tool: 'axe' });
+block(LEAVES, { name: 'Leaves', sound: 'leaves', tex: T.LEAVES, transparent: true, hardness: 0.3, drop: () => (Math.random() < 0.12 ? STICK : 0) });
+block(SAND, { name: 'Sand', sound: 'sand', tex: T.SAND, hardness: 0.75, tool: 'shovel' });
+block(GLASS, { name: 'Glass', sound: 'glass', tex: T.GLASS, transparent: true, hardness: 0.4 });
+block(TABLE, { name: 'Crafting Table', sound: 'wood', top: T.TABLE_TOP, bottom: T.PLANKS, side: T.TABLE_SIDE, hardness: 2.5, tool: 'axe' });
 block(BRICKS, { name: 'Stone Bricks', tex: T.BRICKS, hardness: 2.5, tool: 'pick', needsTool: true });
 block(COAL_ORE, { name: 'Coal Ore', tex: T.COAL_ORE, hardness: 3, tool: 'pick', needsTool: true, drop: COAL });
 block(BEDROCK, { name: 'Bedrock', tex: T.BEDROCK, hardness: Infinity });
+block(WATER, { name: 'Water', transparent: true, liquid: true, hardness: Infinity, drop: 0, sound: 'water' });
 
 // Non-block items.
 export const ITEMS = {
@@ -61,8 +64,9 @@ export const ITEMS = {
   [STONE_SHOVEL]: { name: 'Stone Shovel', tool: { type: 'shovel', speed: 5 } },
 };
 
+// Placeable block that can live in the inventory.
 export function isBlock(id) {
-  return id > 0 && id < 100 && !!BLOCKS[id];
+  return id > 0 && id < 100 && !!BLOCKS[id] && !BLOCKS[id].liquid;
 }
 
 export function itemName(id) {

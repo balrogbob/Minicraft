@@ -181,6 +181,20 @@ export function createAtlas() {
   return c;
 }
 
+// Seamless water tile; used with RepeatWrapping and a scrolling offset.
+export function createWaterCanvas() {
+  const t = new Tile(mulberry32(777));
+  for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+    const wave = Math.sin((x + y * 0.5) * (Math.PI / 4)) * 0.5 + Math.sin((y - x * 0.25) * (Math.PI / 8)) * 0.5;
+    const c = wave > 0.6 ? [92, 150, 230] : [48, 98, 200];
+    t.set(x, y, t.vary(c, 0.1));
+  }
+  const c = document.createElement('canvas');
+  c.width = c.height = TILE;
+  c.getContext('2d').putImageData(new ImageData(t.d, TILE, TILE), 0, 0);
+  return c;
+}
+
 // Break-progress crack overlays (cumulative stages).
 export function createCrackCanvases(stages = 8) {
   const rand = mulberry32(42);

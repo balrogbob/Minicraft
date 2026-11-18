@@ -17,6 +17,15 @@ export class Player {
     this.pitch = 0;
     this.onGround = false;
     this.autoJump = true;
+    this.inWater = false; // any part of the body in water
+    this.eyeInWater = false;
+  }
+
+  updateWaterState() {
+    const w = this.world, p = this.pos;
+    const x = Math.floor(p.x), z = Math.floor(p.z);
+    this.inWater = w.isWater(x, Math.floor(p.y + 0.1), z) || w.isWater(x, Math.floor(p.y + 0.9), z);
+    this.eyeInWater = w.isWater(x, Math.floor(p.y + EYE), z);
   }
 
   get eye() { return new THREE.Vector3(this.pos.x, this.pos.y + EYE, this.pos.z); }
@@ -66,11 +75,19 @@ export class Player {
     let wz = fz * input.moveZ + rz * input.moveX;
     const len = Math.hypot(wx, wz);
     if (len > 1) { wx /= len; wz /= len; }
-    const control = this.onGround ? 1 : 0.85;
+    this.updateWaterState();
+    const control = this.inWater ? 0.55 : this.onGround ? 1 : 0.85;
     this.vel.x = wx * WALK * control;
     this.vel.z = wz * WALK * control;
-    if (input.jump && this.onGround) this.vel.y = JUMP_V;
-    this.vel.y = Math.max(this.vel.y - GRAVITY * dt, -40);
+    if (this.inWater) {
+      // swimming: slow sinking, jump swims upward
+      this.vel.y -= 9 * dt;
+      if (input.jump) this.vel.y = Math.min(this.vel.y + 30 * dt, 3.6);
+      this.vel.y = Math.max(this.vel.y, -3);
+    } else {
+      if (input.jump && this.onGround) this.vel.y = JUMP_V;
+      this.vel.y = Math.max(this.vel.y - GRAVITY * dt, -40);
+    }
 
     // sub-step so fast falls never tunnel through blocks
     const steps = Math.max(1, Math.ceil((Math.abs(this.vel.y) + WALK) * dt / 0.4));
@@ -82,9 +99,11 @@ export class Player {
       this.onGround = false;
       if (this.moveAxis('y', this.vel.y * h)) this.vel.y = 0;
       // auto-jump: walked into a 1-high step with headroom above it
-      if (this.autoJump && wasGround && (bx || bz) && len > 0.3 && this.canStepUp(wx, wz)) {
+      if (this.autoJump && wasGround && !this.inWater && (bx || bz) && len > 0.3 && this.canStepUp(wx, wz)) {
         this.vel.y = JUMP_V;
       }
+      // climb out of water onto a ledge you swim against
+      if (this.inWater && (bx || bz) && len > 0.3 && this.canStepUp(wx, wz)) this.vel.y = Math.max(this.vel.y, 6.5);
     }
   }
 

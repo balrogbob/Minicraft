@@ -1,12 +1,15 @@
 import * as THREE from 'three';
-import { BLOCKS, RECIPES, TABLE, AIR, GRASS, SAND, isBlock, itemName, breakTime, dropFor } from './blocks.js';
-import { createAtlas, createIcons, createCrackCanvases } from './textures.js';
+import { BLOCKS, RECIPES, TABLE, AIR, GRASS, SAND, WATER, isBlock, itemName, breakTime, dropFor } from './blocks.js';
+import { createAtlas, createIcons, createCrackCanvases, createWaterCanvas } from './textures.js';
 import { World, W } from './world.js';
+import { Sky } from './sky.js';
+import { Sound } from './sound.js';
 import { Player } from './player.js';
 import { Inventory, SLOTS } from './inventory.js';
 import { Controls } from './controls.js';
 
 const SAVE_KEY = 'minicraft-save-v1';
+const SETTINGS_KEY = 'minicraft-settings-v1';
 const REACH = 5.5;
 const $ = (id) => document.getElementById(id);
 
@@ -16,6 +19,13 @@ function loadSave() {
 }
 function writeSave(obj) {
   try { localStorage.setItem(SAVE_KEY, JSON.stringify(obj)); return true; } catch { return false; }
+}
+// Settings live apart from the world so they survive "New world".
+const settings = (() => {
+  try { return { sens: 6, volume: 70, ...JSON.parse(localStorage.getItem(SETTINGS_KEY)) }; } catch { return { sens: 6, volume: 70 }; }
+})();
+function saveSettings() {
+  try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch { /* storage unavailable */ }
 }
 
 // ---------- renderer / scene ----------
@@ -39,6 +49,25 @@ atlas.minFilter = THREE.NearestFilter;
 atlas.generateMipmaps = false;
 atlas.colorSpace = THREE.SRGBColorSpace;
 const material = new THREE.MeshBasicMaterial({ map: atlas, vertexColors: true, alphaTest: 0.5 });
+
+const waterTex = new THREE.CanvasTexture(createWaterCanvas());
+waterTex.wrapS = waterTex.wrapT = THREE.RepeatWrapping;
+waterTex.magFilter = THREE.NearestFilter;
+waterTex.minFilter = THREE.NearestFilter;
+waterTex.generateMipmaps = false;
+waterTex.colorSpace = THREE.SRGBColorSpace;
+const waterMat = new THREE.MeshBasicMaterial({
+  map: waterTex, vertexColors: true, transparent: true, opacity: 0.72, side: THREE.DoubleSide, depthWrite: false,
+});
+const materials = { solid: material, water: waterMat };
+
+const sky = new Sky(scene);
+const sound = new Sound();
+sound.volume = settings.volume / 100;
+// audio may only start after a user gesture
+for (const ev of ['touchstart', 'pointerdown', 'keydown']) {
+  window.addEventListener(ev, () => sound.unlock(), { capture: true, passive: true });
+}
 
 const icons = createIcons(atlasCanvas);
 
@@ -100,13 +129,14 @@ async function startWorld(save) {
     respawn();
   }
   if (save && typeof save.autoJump === 'boolean') player.autoJump = save.autoJump;
+  sky.time = Number.isFinite(save?.time) ? save.time : 0.02;
   updateAutoJumpLabel();
 
   // mesh every chunk with a progress bar, nearest first
   $('load-text').textContent = 'Building chunks…';
   const total = world.dirty.size;
   while (world.dirty.size) {
-    world.remeshDirty(scene, material, player.pos.x, player.pos.z, 4);
+    world.remeshDirty(scene, materials, player.pos.x, player.pos.z, 4);
     setProgress(0.1 + 0.9 * (1 - world.dirty.size / total));
     await nextFrame();
   }
@@ -125,9 +155,14 @@ function respawn() {
     }
     return true;
   };
-  let sx = Math.floor(W / 2), sz = sx;
-  for (let r = 0; r < 40; r++) {
-    if (clear(sx + r, sz + r)) { sx += r; sz += r; break; }
+  // search outward from the centre in growing square rings
+  const c = Math.floor(W / 2);
+  let sx = c, sz = c;
+  search: for (let r = 0; r < c - 3; r += 2) {
+    for (let dz = -r; dz <= r; dz += 2) for (let dx = -r; dx <= r; dx += 2) {
+      if (Math.max(Math.abs(dx), Math.abs(dz)) !== r) continue;
+      if (clear(c + dx, c + dz)) { sx = c + dx; sz = c + dz; break search; }
+    }
   }
   player.spawn(sx + 0.5, world.heightAt(sx, sz) + 1, sz + 0.5);
   player.yaw = Math.PI * 0.25;
@@ -145,6 +180,7 @@ function saveGame() {
     inv: inventory.serialize(),
     player: { x: player.pos.x, y: player.pos.y, z: player.pos.z, yaw: player.yaw, pitch: player.pitch },
     autoJump: player.autoJump,
+    time: sky.time,
   });
 }
 
@@ -263,6 +299,7 @@ function renderInventory() {
       if (!(r.in.every(([id, n]) => inventory.count(id) >= n))) return;
       for (const [id, n] of r.in) inventory.remove(id, n);
       inventory.add(r.out[0], r.out[1]);
+      sound.pop();
     });
     row.appendChild(btn);
     list.appendChild(row);
@@ -294,19 +331,21 @@ function toggleInventory() {
 // ---------- actions ----------
 function place() {
   if (paused || !target) return;
-  if (target.id === TABLE) { openInventory(true); return; }
+  if (target.id === TABLE) { sound.click(); openInventory(true); return; }
   const held = inventory.held();
   if (!held || !isBlock(held.id)) return;
   const x = target.x + target.nx, y = target.y + target.ny, z = target.z + target.nz;
-  if (!world.inBounds(x, y, z) || world.get(x, y, z) !== AIR) return;
+  const there = world.get(x, y, z);
+  if (!world.inBounds(x, y, z) || (there !== AIR && there !== WATER)) return;
   if (player.overlapsBlock(x, y, z)) return;
   world.setBlock(x, y, z, held.id);
+  sound.place(BLOCKS[held.id].sound);
   inventory.consumeHeld();
 }
 
 function updateBreaking(dt) {
   if (!controls.breaking || !target) {
-    breakState.key = ''; breakState.progress = 0;
+    breakState.key = ''; breakState.progress = 0; breakState.tick = 0;
     crack.visible = false;
     return;
   }
@@ -316,7 +355,10 @@ function updateBreaking(dt) {
   const t = breakTime(target.id, held);
   if (!isFinite(t)) { crack.visible = false; return; }
   breakState.progress += dt / Math.max(t, 0.05);
+  breakState.tick = (breakState.tick || 0) - dt;
+  if (breakState.tick <= 0) { sound.dig(BLOCKS[target.id].sound); breakState.tick = 0.24; }
   if (breakState.progress >= 1) {
+    sound.breakBlock(BLOCKS[target.id].sound);
     const drop = dropFor(target.id, held);
     world.setBlock(target.x, target.y, target.z, AIR);
     if (drop) {
@@ -349,7 +391,16 @@ $('btn-new').addEventListener('click', () => {
   $('menu').classList.add('hidden');
   startWorld(null);
 });
-$('sens').addEventListener('input', (e) => { controls.lookSens = e.target.value / 1000; });
+$('sens').value = settings.sens;
+$('sens').addEventListener('input', (e) => { settings.sens = +e.target.value; controls.lookSens = settings.sens / 1000; saveSettings(); });
+$('volume').value = settings.volume;
+$('volume').addEventListener('input', (e) => {
+  settings.volume = +e.target.value;
+  sound.volume = settings.volume / 100;
+  sound.applyVolume();
+  saveSettings();
+});
+$('volume').addEventListener('change', () => sound.pop());
 $('btn-inventory').addEventListener('click', () => toggleInventory());
 $('btn-close-inv').addEventListener('click', closeInventory);
 $('inventory').addEventListener('click', (e) => { if (e.target.id === 'inventory') closeInventory(); });
@@ -384,6 +435,7 @@ controls = null;
     toggleInventory,
     isPaused: () => paused,
   });
+  controls.lookSens = settings.sens / 1000;
 }
 renderHotbar();
 
@@ -396,6 +448,28 @@ document.addEventListener('visibilitychange', () => { if (document.hidden) saveG
 window.addEventListener('pagehide', saveGame);
 setInterval(saveGame, 15000);
 
+// ---------- movement sounds ----------
+const moveSnd = { dist: 0, swim: 0 };
+function groundSound() {
+  const p = player.pos;
+  const id = world.get(Math.floor(p.x), Math.floor(p.y - 0.05), Math.floor(p.z));
+  return BLOCKS[id]?.sound ?? 'grass';
+}
+function playMovementSounds(dt, wasGround, wasWater, fallSpeed) {
+  const speed = Math.hypot(player.vel.x, player.vel.z);
+  if (!wasWater && player.inWater) sound.splash(fallSpeed > 5);
+  if (player.inWater) {
+    moveSnd.swim -= dt;
+    if ((speed > 0.5 || controls.jump) && moveSnd.swim <= 0) { sound.splash(false); moveSnd.swim = 0.7; }
+    return;
+  }
+  if (!wasGround && player.onGround && fallSpeed > 4) sound.step(groundSound());
+  if (player.onGround && speed > 0.5) {
+    moveSnd.dist += speed * dt;
+    if (moveSnd.dist > 1.9) { moveSnd.dist = 0; sound.step(groundSound()); }
+  }
+}
+
 // ---------- main loop ----------
 let last = performance.now();
 function frame(now) {
@@ -406,13 +480,21 @@ function frame(now) {
 
   if (!paused) {
     controls.update();
+    const wasGround = player.onGround, wasWater = player.inWater, fallSpeed = -player.vel.y;
     player.update(dt, { moveX: controls.moveX, moveZ: controls.moveZ, jump: controls.jump });
     if (player.pos.y < -20) respawn();
+    playMovementSounds(dt, wasGround, wasWater, fallSpeed);
+    world.tickWater(dt);
   }
 
   const eye = player.eye;
   camera.position.copy(eye);
   camera.rotation.set(player.pitch, player.yaw, 0);
+
+  sky.update(paused ? 0 : dt, eye, [material, waterMat], player.eyeInWater);
+  $('underwater').classList.toggle('show', player.eyeInWater);
+  waterTex.offset.x = (waterTex.offset.x + dt * 0.06) % 1;
+  waterTex.offset.y = (waterTex.offset.y + dt * 0.025) % 1;
 
   target = paused ? null : world.raycast(eye, player.lookDir(), REACH);
   if (target) {
@@ -423,7 +505,7 @@ function frame(now) {
   if (!paused) updateBreaking(dt);
   else crack.visible = false;
 
-  world.remeshDirty(scene, material, player.pos.x, player.pos.z, 3);
+  world.remeshDirty(scene, materials, player.pos.x, player.pos.z, 3);
   renderer.render(scene, camera);
 }
 requestAnimationFrame(frame);
@@ -431,4 +513,4 @@ requestAnimationFrame(frame);
 startWorld(loadSave());
 
 // expose for debugging in the console
-window.minicraft = { get world() { return world; }, player, inventory, saveGame };
+window.minicraft = { get world() { return world; }, player, inventory, saveGame, sky, sound };

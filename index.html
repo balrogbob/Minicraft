@@ -18,6 +18,7 @@
     <!-- 3D canvas is inserted here -->
     <div id="touch-layer"></div>
 
+    <div id="underwater"></div>
     <div id="crosshair"></div>
 
     <div id="joy-base"><div id="joy-knob"></div></div>
@@ -65,11 +66,13 @@
         <div class="menu-items">
           <button class="btn wide" id="btn-autojump">Auto-jump: on</button>
           <label class="slider">Look speed <input type="range" id="sens" min="2" max="14" step="1" value="6" /></label>
+          <label class="slider">Sound <input type="range" id="volume" min="0" max="100" step="5" value="70" /></label>
           <button class="btn wide" id="btn-save">Save now</button>
           <button class="btn wide danger" id="btn-new">New world</button>
           <p class="hint">
             <b>Touch:</b> left side = move, right side = look.<br />
             Tap = place block / open crafting table. Hold still = break.<br />
+            In water, hold ⤒ to swim up.<br />
             <b>Keyboard:</b> WASD, Space, mouse, E = inventory.
           </p>
         </div>
