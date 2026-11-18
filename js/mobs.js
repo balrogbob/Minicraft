@@ -6,7 +6,7 @@
 // physics as the player (gravity, block collisions, stepping up one block) and float in water.
 // They aren't saved: they're spawned fresh around wherever you are.
 import * as THREE from 'three';
-import { AIR, WATER, LEAVES, LOG, GRASS, SAND, DIRT, WOOL, BUCKET, MILK_BUCKET, SLIME_BUCKET, FEATHER, COAL, COBBLE, ARROW, HIDE, SNOW_GRASS, SNOW, KING_CROWN, GOLD_INGOT, MOSSY_BRICKS } from './blocks.js';
+import { AIR, WATER, LEAVES, LOG, GRASS, SAND, DIRT, WOOL, BUCKET, MILK_BUCKET, SLIME_BUCKET, FEATHER, COAL, COBBLE, ARROW, HIDE, SNOW_GRASS, SNOW, KING_CROWN, GOLD_INGOT, MOSSY_BRICKS, RAW_FISH, BAKED_FISH, WHEAT } from './blocks.js';
 import { SEA_LEVEL, H } from './terrain.js';
 import { skyBrightness, lightBrightness } from './world.js';
 import { THORN_SPEED, THORN_GRAVITY } from './arrows.js';
@@ -306,6 +306,97 @@ const SPECIES = {
     },
   },
 
+  // tundra wolves: tame one with fish and it follows you and fights night creatures
+  wolf: {
+    w: 0.6, h: 0.85, speed: 1.4, chaseSpeed: 5.2, followSpeed: 5, fleeSpeed: 4.5, sink: 0.6, stride: 11, legSwing: 0.6,
+    group: [1, 3], cap: 4, avoidWater: true, grazes: false, fights: true, tames: [RAW_FISH, BAKED_FISH],
+    build(b, root) {
+      const fur = pick([0x8a8a8e, 0x9c9a96, 0x6e6c6a, 0xd8d6d2]), pale = 0xd2d0cc, dark = 0x3a3a3c;
+      const parts = { legs: [] };
+      b.box(root, [0.42, 0.38, 0.86], fur, [0, 0.55, -0.02]);
+      b.box(root, [0.5, 0.42, 0.32], fur, [0, 0.6, 0.26]); // shaggy ruff
+      const head = parts.head = b.pivot(root, [0, 0.72, 0.44]);
+      b.box(head, [0.34, 0.3, 0.3], fur, [0, 0.02, 0.08]);
+      b.box(head, [0.18, 0.14, 0.18], pale, [0, -0.06, 0.29]); // muzzle
+      b.box(head, [0.06, 0.05, 0.04], 0x111111, [0, -0.01, 0.39]);
+      for (const sx of [-1, 1]) {
+        b.box(head, [0.08, 0.14, 0.06], dark, [sx * 0.11, 0.22, 0.02]); // ears
+        b.box(head, [0.04, 0.04, 0.03], 0x1a1a1a, [sx * 0.09, 0.07, 0.235]);
+      }
+      parts.collar = b.box(root, [0.44, 0.08, 0.1], 0xc82828, [0, 0.66, 0.38]);
+      parts.collar.visible = false;
+      for (const [x, z] of [[-0.13, 0.28], [0.13, 0.28], [-0.13, -0.3], [0.13, -0.3]]) {
+        const leg = b.pivot(root, [x, 0.38, z]);
+        b.box(leg, [0.11, 0.38, 0.11], fur, [0, -0.19, 0]);
+        parts.legs.push(leg);
+      }
+      const tail = parts.tail = b.pivot(root, [0, 0.66, -0.44]);
+      b.box(tail, [0.11, 0.11, 0.36], fur, [0, -0.06, -0.16]);
+      parts.tame = (on) => { parts.collar.visible = on; };
+      return parts;
+    },
+  },
+
+  // desert camels: tame one with wheat, then ride it
+  camel: {
+    w: 1.1, h: 2.2, speed: 1.0, followSpeed: 4.5, fleeSpeed: 4.2, sink: 1.3, stride: 4.5, legSwing: 0.45,
+    group: [1, 2], cap: 3, avoidWater: true, grazes: true, rideable: true, tames: [WHEAT],
+    build(b, root) {
+      const coat = 0xc89a5e, dark = 0x9a7040, pale = 0xdcb880;
+      const parts = { legs: [] };
+      b.box(root, [0.8, 0.6, 1.4], coat, [0, 1.35, 0]);
+      b.box(root, [0.62, 0.42, 0.6], dark, [0, 1.82, -0.05]); // hump
+      parts.saddle = b.box(root, [0.86, 0.12, 0.62], 0xb02a2a, [0, 1.68, 0.38]);
+      parts.saddle.visible = false;
+      b.box(root, [0.3, 0.8, 0.32], coat, [0, 1.7, 0.78]); // neck
+      const head = parts.head = b.pivot(root, [0, 2.05, 0.9]);
+      b.box(head, [0.3, 0.3, 0.55], coat, [0, 0.02, 0.18]);
+      b.box(head, [0.26, 0.2, 0.2], pale, [0, -0.06, 0.48]);
+      for (const sx of [-1, 1]) { b.box(head, [0.06, 0.1, 0.06], dark, [sx * 0.12, 0.2, -0.02]); b.box(head, [0.04, 0.05, 0.04], 0x111111, [sx * 0.155, 0.08, 0.22]); }
+      for (const [x, z] of [[-0.25, 0.5], [0.25, 0.5], [-0.25, -0.5], [0.25, -0.5]]) {
+        const leg = b.pivot(root, [x, 1.1, z]);
+        b.box(leg, [0.18, 1.1, 0.18], coat, [0, -0.55, 0]);
+        b.box(leg, [0.22, 0.08, 0.26], dark, [0, -1.08, 0.02]);
+        parts.legs.push(leg);
+      }
+      const tail = parts.tail = b.pivot(root, [0, 1.5, -0.7]);
+      b.box(tail, [0.08, 0.5, 0.08], dark, [0, -0.25, 0]);
+      parts.tame = (on) => { parts.saddle.visible = on; };
+      return parts;
+    },
+  },
+
+  // a wandering trader with a big pack, who swaps rare things for what you have plenty of
+  trader: {
+    w: 0.6, h: 1.85, speed: 0.8, fleeSpeed: 2, sink: 1, stride: 7, legSwing: 0.5,
+    avoidWater: true, grazes: false, trader: true,
+    build(b, root) {
+      const robe = pick([0x2f4f8a, 0x6a2f7a, 0x2f6a4a]), skin = 0xd8a878, trim = 0xe0c050;
+      const parts = { legs: [], arms: [] };
+      const torso = parts.torso = b.pivot(root, [0, 0.8, 0]);
+      b.box(torso, [0.5, 0.7, 0.32], robe, [0, 0.35, 0]);
+      b.box(torso, [0.52, 0.08, 0.34], trim, [0, 0.05, 0]); // belt
+      b.box(torso, [0.46, 0.6, 0.3], 0x7a5230, [0, 0.4, -0.3]); // pack
+      b.box(torso, [0.5, 0.1, 0.34], 0x5c3c22, [0, 0.75, -0.3]);
+      const head = parts.head = b.pivot(torso, [0, 0.72, 0]);
+      b.box(head, [0.36, 0.36, 0.36], skin, [0, 0.18, 0]);
+      b.box(head, [0.38, 0.12, 0.2], 0xe8e2d8, [0, 0.03, 0.1]); // beard
+      b.box(head, [0.5, 0.06, 0.5], robe, [0, 0.38, 0]); // hat brim
+      b.box(head, [0.3, 0.22, 0.3], robe, [0, 0.5, 0]);
+      for (const sx of [-1, 1]) b.box(head, [0.05, 0.05, 0.03], 0x222222, [sx * 0.08, 0.22, 0.18]);
+      for (const sx of [-1, 1]) {
+        const arm = b.pivot(torso, [sx * 0.32, 0.65, 0]);
+        b.box(arm, [0.14, 0.6, 0.14], robe, [0, -0.3, 0]);
+        b.box(arm, [0.12, 0.1, 0.12], skin, [0, -0.64, 0]);
+        parts.arms.push(arm);
+        const leg = b.pivot(root, [sx * 0.12, 0.8, 0]);
+        b.box(leg, [0.18, 0.8, 0.2], robe, [0, -0.4, 0]);
+        parts.legs.push(leg);
+      }
+      return parts;
+    },
+  },
+
   newt: {
     w: 0.3, h: 0.15, speed: 0.9, fleeSpeed: 2.6, sink: 0.08, stride: 16, legSwing: 0.6,
     group: [1, 2], cap: 5, avoidWater: false, grazes: false,
@@ -459,8 +550,9 @@ export class MobManager {
     if (!s) return null;
     if (s.id === WATER) return { kinds: ['duck'], y: s.y + 0.875 - SPECIES.duck.sink, water: true };
     const y = s.y + 1;
-    if (s.id === SNOW_GRASS || s.id === SNOW) return { kinds: ['alpaca', 'yak'], y }; // the shaggy ones like the cold
+    if (s.id === SNOW_GRASS || s.id === SNOW) return { kinds: ['alpaca', 'yak', 'wolf'], y }; // the shaggy ones like the cold
     if (s.id !== GRASS && s.id !== SAND && s.id !== DIRT) return null;
+    if (s.id === SAND && s.y > SEA_LEVEL + 1 && !this.nearWater(x, s.y, z) && this.world.generator.biomeAt(x, z) === 'desert') return { kinds: ['camel'], y };
     if (this.nearWater(x, s.y, z)) return { kinds: ['duck', 'newt'], y };
     if (s.id !== GRASS) return null;
     if (s.y >= SEA_LEVEL + 12) return { kinds: ['alpaca', 'yak'], y };
@@ -501,6 +593,22 @@ export class MobManager {
       this.mobs.push(m);
       this.scene.add(m.root);
     }
+  }
+
+  spawnTrader(player) {
+    const w = this.world;
+    for (let k = 0; k < 12; k++) {
+      const a = rand(0, Math.PI * 2), d = rand(10, 18);
+      const x = Math.floor(player.pos.x + Math.cos(a) * d), z = Math.floor(player.pos.z + Math.sin(a) * d);
+      if (!w.chunkAt(x, z)) continue;
+      const s = this.surface(x, z);
+      if (!s || s.id === WATER || w.isWater(x, s.y, z) || !this.hasRoom('trader', x + 0.5, s.y + 1, z + 0.5)) continue;
+      const m = this.spawn('trader', x + 0.5, s.y + 1, z + 0.5);
+      m.leaveIn = 360;
+      this.onTraderSpawn?.(m);
+      return m;
+    }
+    return null;
   }
 
   // Put a specific animal at (x, y, z), feet at y. Handy for testing from the console.
@@ -551,6 +659,12 @@ export class MobManager {
       this.spawnTimer = 0.4;
       this.trySpawn(player);
     }
+    // now and then, on a fine day, a wandering trader turns up nearby (one at a time)
+    this.traderTimer = (this.traderTimer ?? 30) - dt;
+    if (this.traderTimer <= 0) {
+      this.traderTimer = 30;
+      if ((ctx.daylight ?? 0) > 0.8 && !this.mobs.some((m) => m.spec.trader) && Math.random() < (ctx.traderChance ?? 0.12)) this.spawnTrader(player);
+    }
     this.hostileTimer -= dt;
     if (this.hostileTimer <= 0) {
       this.hostileTimer = 0.5;
@@ -561,7 +675,14 @@ export class MobManager {
       const m = this.mobs[i];
       const dx = m.pos.x - player.pos.x, dz = m.pos.z - player.pos.z;
       const dist = Math.hypot(dx, dz);
-      if (dist > despawn || !w.chunkAt(Math.floor(m.pos.x), Math.floor(m.pos.z))) {
+      if (m.tame) {
+        // a pet: waits where it is while its part of the world is unloaded; one following you that's
+        // been left far behind catches up
+        if (!m.sitting && dist > 40) { m.pos.set(player.pos.x + Math.sin(player.yaw) * 2, player.pos.y + 0.2, player.pos.z + Math.cos(player.yaw) * 2); m.vel.set(0, 0, 0); }
+        if (!w.chunkAt(Math.floor(m.pos.x), Math.floor(m.pos.z))) { m.root.visible = false; continue; }
+        m.root.visible = true;
+      } else if (dist > despawn || !w.chunkAt(Math.floor(m.pos.x), Math.floor(m.pos.z)) || (m.spec.trader && (m.leaveIn -= dt) <= 0)) {
+        if (m.spec.trader && dist < 30) this.sound?.poof();
         m.dispose(this.scene);
         this.mobs.splice(i, 1);
         continue;
@@ -582,6 +703,17 @@ export class MobManager {
         else m.burn = Math.max(0, m.burn - dt);
         if (m.burn > 1.5) { this.sound?.poof(); m.dispose(this.scene); this.mobs.splice(i, 1); continue; }
         this.thinkHostile(m, dt, player, ctx);
+      } else if (m.ridden) {
+        // ridden: goes where the rider steers
+        m.state = ctx.ride && Math.abs(ctx.ride.moveZ) + Math.abs(ctx.ride.moveX) > 0.2 ? 'ride' : 'idle';
+        if (ctx.ride) {
+          const fx = -Math.sin(ctx.ride.yaw), fz = -Math.cos(ctx.ride.yaw), rx = Math.cos(ctx.ride.yaw), rz = -Math.sin(ctx.ride.yaw);
+          const vx = fx * ctx.ride.moveZ + rx * ctx.ride.moveX, vz = fz * ctx.ride.moveZ + rz * ctx.ride.moveX;
+          m.heading = Math.atan2(vx, vz);
+          m.rideSpeed = Math.min(1, Math.hypot(vx, vz)) * 7;
+        }
+      } else if (m.tame) {
+        this.thinkPet(m, dt, player);
       } else {
         this.think(m, dt, player);
       }
@@ -622,6 +754,36 @@ export class MobManager {
         m.timer = rand(1, 4);
       }
     }
+  }
+
+  // A tame wolf or camel: follows you (unless told to stay), and a wolf chases night creatures near you.
+  thinkPet(m, dt, player) {
+    m.attackCD = Math.max(0, (m.attackCD ?? 0) - dt);
+    if (m.sitting) { m.state = 'idle'; return; }
+    const dp = Math.hypot(player.pos.x - m.pos.x, player.pos.z - m.pos.z);
+    if (m.spec.fights) {
+      let target = null, best = 12;
+      for (const o of this.mobs) {
+        if (!o.spec.hostile || o.dying) continue;
+        const d = Math.hypot(o.pos.x - m.pos.x, o.pos.z - m.pos.z);
+        if (d < best && Math.hypot(o.pos.x - player.pos.x, o.pos.z - player.pos.z) < 16) { best = d; target = o; }
+      }
+      if (target) {
+        m.state = 'chase';
+        m.heading = Math.atan2(target.pos.x - m.pos.x, target.pos.z - m.pos.z);
+        m.closeEnough = best < 1 + target.spec.w / 2;
+        if (best < 1.4 + target.spec.w / 2 && m.attackCD <= 0) {
+          m.attackCD = 0.9;
+          this.sound?.mob(m.kind, 0.8);
+          const drops = this.hurt(target, 5, m.pos);
+          if (drops.length) this.onPetKill?.(drops);
+        }
+        return;
+      }
+    }
+    if (dp > 4) { m.state = 'follow'; m.heading = Math.atan2(player.pos.x - m.pos.x, player.pos.z - m.pos.z); }
+    else if (m.state === 'follow' && dp < 2.5) { m.state = 'idle'; m.timer = rand(1, 3); }
+    else if (m.state !== 'follow') this.think(m, dt, player);
   }
 
   // Can the creature see the player (nothing solid between its eyes and theirs)?
@@ -684,6 +846,8 @@ export class MobManager {
   }
 
   speedOf(m) {
+    if (m.state === 'ride') return m.rideSpeed ?? 0;
+    if (m.state === 'follow') return m.spec.followSpeed ?? m.spec.speed * 3;
     if (m.state === 'flee') return m.spec.fleeSpeed;
     if (m.state === 'walk') return m.spec.speed * (m.inWater ? 0.6 : 1);
     if (m.state === 'chase') return m.closeEnough ? 0 : m.spec.chaseSpeed * (m.speedMul ?? 1);
@@ -748,8 +912,8 @@ export class MobManager {
     const w = this.world, spec = m.spec;
     let speed = this.speedOf(m);
     let dx = Math.sin(m.heading), dz = Math.cos(m.heading);
-    const hunting = m.state === 'chase' || m.state === 'retreat' || m.state === 'aim';
-    if (speed && hunting && (m.onGround || m.inWater) && this.badAhead(m, dx, dz)) {
+    const hunting = m.state === 'chase' || m.state === 'retreat' || m.state === 'aim' || m.state === 'follow';
+    if (m.state === 'ride') { /* the rider decides */ } else if (speed && hunting && (m.onGround || m.inWater) && this.badAhead(m, dx, dz)) {
       speed = 0; // a hunter waits at the edge rather than wandering off
     } else if (speed && (m.onGround || m.inWater) && this.badAhead(m, dx, dz)) {
       m.heading += m.state === 'flee' ? Math.PI / 2 : rand(Math.PI * 0.6, Math.PI * 1.4);
@@ -893,6 +1057,24 @@ export class MobManager {
       this.sound?.mob(m.kind, 1, true);
       return { give, take, said: '' };
     }
+    if (m.spec.trader) return { give, take, said: '', trade: true };
+    if (m.spec.tames) {
+      if (m.tame) {
+        if (m.spec.rideable) return { give, take, said: '', ride: true };
+        m.sitting = !m.sitting;
+        m.state = 'idle';
+        return { give, take, said: m.sitting ? 'Your wolf sits and waits here' : 'Your wolf follows you again' };
+      }
+      if (m.spec.tames.includes(held)) {
+        take.push([held, 1]);
+        this.sound?.mob(m.kind, 0.9);
+        if (Math.random() < 0.4) {
+          this.setTame(m);
+          return { give, take, said: m.spec.rideable ? 'The camel trusts you now: tap it to ride' : 'The wolf is your friend now: it follows you and fights night creatures. Tap it to make it stay.' };
+        }
+        return { give, take, said: m.spec.rideable ? 'The camel munches the wheat… and wants more' : 'The wolf gulps the fish… and eyes you warily' };
+      }
+    }
     this.bump(m, from);
     if (m.spec.wool && m.shornFor <= 0) {
       m.shornFor = SHORN_SECONDS;
@@ -909,6 +1091,15 @@ export class MobManager {
     }
     return { give, take, said: '' };
   }
+
+  setTame(m) {
+    m.tame = true;
+    m.state = 'idle';
+    m.parts.tame?.(true);
+  }
+
+  // Pets to save: [kind, x, y, z, sitting].
+  pets() { return this.mobs.filter((m) => m.tame && !m.dying).map((m) => [m.kind, +m.pos.x.toFixed(2), +m.pos.y.toFixed(2), +m.pos.z.toFixed(2), !!m.sitting]); }
 
   // The player hits a night creature for `amount`. It gets knocked back, flashes, and hunts the
   // player for a while (even on Peaceful). Returns its drops if that hit defeated it.

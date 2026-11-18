@@ -15,7 +15,8 @@ import {
   COLORS, DYE, WOOL, dyedWool, dyedCarpet, DYED_WOOL, DYED_CARPET, STAINED_GLASS, PAINTED_PLANKS, GLASS, PLANKS,
   isFlower, isSlab, slabId, SHAPE_MATS, FENCE_GATE, TRAPDOOR, isGate, isTrapdoor,
   LEVER, BUTTON, PRESSURE_PLATE, ITEM_FRAME, LOADER_RAIL, STORAGE_CART, isFrame,
-  ANVIL, LOOT_CHEST, BOSS_SHRINE, SPENT_SHRINE, CAULDRON, GLASS_BOTTLE, maxWear,   IRON_INGOT, GOLD_INGOT, SILVER_INGOT, ELECTRUM_INGOT, TUNGSTEN_INGOT, GUNPOWDER, NIGHT_TEA, HASTE_TEA, FIRE_TEA, HEAL_TEA, IRON_SHIELD, BAKED_FISH,
+  ANVIL, LOOT_CHEST, BOSS_SHRINE, SPENT_SHRINE, CAULDRON, GLASS_BOTTLE, maxWear,   BERRY_BUSH, BERRIES, STAINLESS_INGOT, STEEL_INGOT, COPPER_INGOT, WHEAT, COBBLE, FEATHER, COAL, CORNFLOWER,
+  IRON_INGOT, GOLD_INGOT, SILVER_INGOT, ELECTRUM_INGOT, TUNGSTEN_INGOT, GUNPOWDER, NIGHT_TEA, HASTE_TEA, FIRE_TEA, HEAL_TEA, IRON_SHIELD, BAKED_FISH,
 } from './blocks.js';
 import { createAtlas, createIcons, createCrackCanvases, createWaterCanvas, createHudIcons } from './textures.js';
 import { World, CHUNK, WORLD_SIZE, chunkKey } from './world.js';
@@ -37,6 +38,7 @@ import { Machines } from './machines.js';
 import { Carts, railBeyond } from './carts.js';
 import { MiniMap } from './minimap.js';
 import { Frames } from './frames.js';
+import { Weather } from './weather.js';
 
 // v2 = the 16k x 16k streaming world (player state here, edited chunks in IndexedDB).
 // v1 = the old 128 x 128 world, migrated into the middle of the big world on first launch.
@@ -206,6 +208,8 @@ const carts = new Carts(scene); // minecarts on rails
 let riding = null; // the minecart you're sitting in
 const minimap = new MiniMap($('map'), atlasCanvas);
 const frames = new Frames(scene, icons); // what's shown in each item frame
+const weather = new Weather(scene);
+let ridingMob = null; // the camel you're riding
 machines.frames = frames; machines.carts = carts;
 // Bellows blowing into an oven or smelter (while they're turned) make it work half as fast again.
 const boostAt = (x, y, z) => ([[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]]
@@ -302,6 +306,7 @@ async function startWorld(save) {
   machines.load(save?.machines);
   carts.load(save?.carts);
   riding = null;
+  ridingMob = null;
   arrows.reset();
   lastSwing = 0;
   applyViewDistance();
@@ -339,6 +344,8 @@ async function startWorld(save) {
   }
   for (const k of Object.keys(effects)) effects[k] = Math.max(0, +save?.effects?.[k] || 0);
   caneToday = Number.isFinite(save?.caneToday) ? save.caneToday : 0;
+  if (save?.weather) weather.set(!!save.weather.raining, Math.max(10, +save.weather.timer || 60));
+  else weather.set(false);
   air = MAX_AIR;
   dead = false;
   fallTop = null;
@@ -354,6 +361,14 @@ async function startWorld(save) {
     setProgress(ready);
     if (ready >= 1) break;
     await nextFrame();
+  }
+  // pets come back where you left them (or beside you, if that's far away)
+  for (const [kind, x, y, z, sitting] of save?.pets ?? []) {
+    if (!['wolf', 'camel'].includes(kind) || ![x, y, z].every(Number.isFinite)) continue;
+    const far = Math.hypot(x - player.pos.x, z - player.pos.z) > 40;
+    const m = far ? mobs.spawn(kind, player.pos.x + 1.5, player.pos.y + 0.2, player.pos.z + 1.5) : mobs.spawn(kind, x, y, z);
+    mobs.setTame(m);
+    m.sitting = !!sitting && !far;
   }
   $('loading').classList.add('hidden');
   worldReady = true;
@@ -407,6 +422,8 @@ function saveGame() {
     armourWear: [...armourWear],
     effects: { ...effects },
     caneToday,
+    weather: { raining: weather.raining, timer: Math.round(weather.timer) },
+    pets: mobs.pets(),
     time: sky.time,
   });
 }
@@ -606,7 +623,7 @@ function respawnPlayer() {
 //   a well-fed player (hunger 16+) heals a point every 3 s, using up a little hunger.
 function updateHealth(dt, wasGround, prevY) {
   // falling: track the highest point since leaving the ground (including where this step started)
-  if (riding || player.inWater || player.inLava || player.climbing || player.onGround && wasGround) fallTop = null;
+  if (riding || ridingMob || player.inWater || player.inLava || player.climbing || player.onGround && wasGround) fallTop = null;
   if (!player.onGround && !player.inWater) fallTop = Math.max(fallTop ?? prevY, prevY, player.pos.y);
   else if (player.onGround && !wasGround && fallTop === null && !player.inWater) fallTop = prevY;
   if (player.onGround && !wasGround && fallTop !== null) {
@@ -1033,6 +1050,8 @@ function hitMob() {
     return;
   }
   const r = mobs.interact(targetMob.mob, player.pos, inventory.heldId());
+  if (r.trade) { openTrade(targetMob.mob); return; }
+  if (r.ride) { mountMob(targetMob.mob); return; }
   for (const [id, n] of r.take) inventory.remove(id, n);
   for (const [id, n] of r.give) {
     if (inventory.add(id, n) > 0) toast('Inventory full');
@@ -1335,6 +1354,83 @@ function renderBossBar() {
   $('boss-fill').style.width = `${Math.max(0, (boss.hp / boss.spec.hp) * 100)}%`;
 }
 
+// ---------- riding camels ----------
+function mountMob(m) {
+  ridingMob = m;
+  m.ridden = true;
+  player.vel.set(0, 0, 0);
+  sound.mob(m.kind, 0.8);
+  toast('Steer with the joystick (or WASD). Tap to get off.', 2500);
+}
+function dismount() {
+  if (!ridingMob) return;
+  ridingMob.ridden = false;
+  player.spawn(ridingMob.pos.x + 1.1, ridingMob.pos.y + 0.3, ridingMob.pos.z);
+  ridingMob = null;
+}
+function followMount() {
+  if (!mobs.mobs.includes(ridingMob)) { ridingMob = null; return; }
+  player.pos.set(ridingMob.pos.x, ridingMob.pos.y + 1.55, ridingMob.pos.z);
+  player.vel.set(0, 0, 0);
+  player.onGround = true;
+  player.updateWaterState();
+}
+mobs.onPetKill = (drops) => giveDrops(drops);
+
+// ---------- the wandering trader ----------
+// Turns up now and then on a fine day with four offers, rolled from these: what you give -> what you get.
+const TRADES = [
+  [[WHEAT, 24], [TUNGSTEN_INGOT, 1]], [[LOG, 16], [ELECTRUM_INGOT, 2]], [[COBBLE, 48], [GOLD_INGOT, 2]],
+  [[WOOL, 8], [SILVER_INGOT, 2]], [[BREAD, 6], [GUNPOWDER, 4]], [[RAW_FISH, 8], [NIGHT_TEA, 1]],
+  [[SAND, 32], [STAINLESS_INGOT, 1]], [[FEATHER, 6], [SILVER_ARROW, 6]], [[IRON_INGOT, 4], [TUNGSTEN_INGOT, 1]],
+  [[COAL, 16], [STEEL_INGOT, 2]], [[BERRIES, 12], [HEAL_TEA, 1]], [[SUGAR_CANE, 16], [COPPER_INGOT, 4]],
+  [[CORNFLOWER, 4], [HASTE_TEA, 1]], [[COPPER_INGOT, 8], [IRON_SHIELD, 1]],
+];
+mobs.onTraderSpawn = (m) => {
+  const pool = [...TRADES];
+  m.trades = [];
+  for (let i = 0; i < 4 && pool.length; i++) m.trades.push(pool.splice(Math.floor(Math.random() * pool.length), 1)[0]);
+  toast('A wandering trader has turned up nearby', 3000);
+};
+let tradingWith = null;
+function openTrade(m) {
+  if (!m.trades) mobs.onTraderSpawn(m);
+  tradingWith = m;
+  paused = true;
+  controls.reset();
+  document.exitPointerLock?.();
+  sound.mob('trader', 1);
+  $('trade').classList.remove('hidden');
+  renderTrades();
+}
+function closeTrade() { $('trade').classList.add('hidden'); tradingWith = null; paused = false; }
+function renderTrades() {
+  const list = $('trades');
+  list.innerHTML = '';
+  for (const [[gid, gn], [oid, on]] of tradingWith.trades) {
+    const row = document.createElement('div');
+    row.className = 'recipe';
+    const have = inventory.count(gid) >= gn;
+    row.innerHTML = `<span class="ing${have ? '' : ' missing'}" title="${itemName(gid)}"><img src="${icons[gid]}" alt="">${gn}</span>` +
+      `<span class="arrow">→</span><img class="outimg" src="${icons[oid]}" alt=""><span class="name">${on > 1 ? on + ' × ' : ''}${itemName(oid)}</span>`;
+    const btn = document.createElement('button');
+    btn.className = 'btn';
+    btn.textContent = 'Trade';
+    btn.disabled = !have || inventory.room(oid) < on;
+    btn.addEventListener('click', () => {
+      if (inventory.count(gid) < gn) return;
+      inventory.remove(gid, gn);
+      inventory.add(oid, on);
+      sound.pop();
+      renderTrades();
+    });
+    row.appendChild(btn);
+    list.appendChild(row);
+  }
+}
+$('btn-close-trade').addEventListener('click', closeTrade);
+$('trade').addEventListener('click', (e) => { if (e.target.id === 'trade') closeTrade(); });
+
 // ---------- switches and signals ----------
 // Levers (flip on and off), buttons (on for a moment) and pressure plates (on while something stands on
 // them) switch on the things beside them: doors, gates and trapdoors open, clutches engage and powered
@@ -1536,6 +1632,7 @@ function place() {
   // with the bow in hand a tap always shoots (a quick, short shot), whatever you're looking at
   if (held?.id === BOW) { shootArrow(Math.max(0.25, Math.min(1, bowCharge / FULL_DRAW))); bowCharge = 0; return; }
   if (riding) { getOutOfCart(); return; }
+  if (ridingMob) { dismount(); return; }
   if (targetCart) {
     const c = targetCart.cart;
     if (c.store) { sound.click(); openStation(c.x, c.y, c.z, c); } else getInCart(c);
@@ -1556,6 +1653,12 @@ function place() {
     if (BLOCKS[tid].switch === 'lever') { setSwitch(tx, ty, tz, !BLOCKS[tid].on); return; }
     if (BLOCKS[tid].switch === 'button') { setSwitch(tx, ty, tz, true); pressedButtons.set(lampKey(tx, ty, tz), 1.5); return; }
     if (isFrame(tid)) { useFrame(tx, ty, tz, held); return; }
+    if (tid === BERRY_BUSH + 1) {
+      world.setBlock(tx, ty, tz, BERRY_BUSH);
+      sound.breakBlock('leaves');
+      giveDrops([[BERRIES, 2 + (Math.random() < 0.5 ? 1 : 0)]]);
+      return;
+    }
     if (held && ITEMS[held.id]?.dye !== undefined && dyeBlock(tx, ty, tz, ITEMS[held.id].dye)) return;
     if (isLamp(tid)) { useLamp(tx, ty, tz, held); return; }
     if (isSign(tid)) { editSign(tx, ty, tz); return; }
@@ -1619,6 +1722,8 @@ function place() {
   } else if (isWheat(id)) {
     // seeds go on top of grass or dirt
     if (there !== AIR || target.ny !== 1 || (target.id !== GRASS && target.id !== DIRT)) { toast('Plant seeds on top of grass or dirt'); return; }
+  } else if (id === BERRY_BUSH) {
+    if (there !== AIR || target.ny !== 1 || (target.id !== GRASS && target.id !== DIRT)) { toast('Plant berry bushes on top of grass or dirt'); return; }
   } else if (isFlower(id)) {
     if (there !== AIR || target.ny !== 1 || (target.id !== GRASS && target.id !== DIRT)) { toast('Plant flowers on top of grass or dirt'); return; }
   } else if (isSlab(id)) {
@@ -2069,7 +2174,7 @@ function dropUnsupported(x, y, z) {
   }
   for (let ty = y + 1; ty < H; ty++) {
     const id = world.get(x, ty, z);
-    if (!isWheat(id) && id !== SUGAR_CANE && id !== SAPLING && !isFlower(id)) break;
+    if (!isWheat(id) && id !== SUGAR_CANE && id !== SAPLING && !isFlower(id) && id !== BERRY_BUSH && id !== BERRY_BUSH + 1) break;
     for (const [d, n] of dropsFor(id, 0)) inventory.add(d, n);
     world.setBlock(x, ty, z, AIR);
     if (id !== SUGAR_CANE) break;
@@ -2265,6 +2370,7 @@ function stepGame(now, dt) {
     carts.update(dt, world, (x, y, z) => powerAt(x, y, z) || (signalAt(x, y, z) ? 1 : 0), riding && { cart: riding, push: controls.moveZ, look: player.lookDir() },
       { day: lightUniforms.uDay.value, flicker: lightUniforms.uFlicker.value, ambient: lightUniforms.uAmbient.value });
     if (riding) followCart();
+    else if (ridingMob) followMount();
     else player.update(dt, { moveX: controls.moveX, moveZ: controls.moveZ, jump: controls.jump });
     if (player.pos.y < -20) respawn();
     playMovementSounds(dt, wasGround, wasWater, fallSpeed);
@@ -2291,7 +2397,8 @@ function stepGame(now, dt) {
     for (const id of picked) { inventory.add(id, 1); sound.pop(); }
     updateFishing(dt);
     mobs.update(dt, player, { day: lightUniforms.uDay.value, flicker: lightUniforms.uFlicker.value, ambient: lightUniforms.uAmbient.value },
-      { difficulty: difficulty(), daylight: sky.light, playerDead: dead });
+      { difficulty: difficulty(), daylight: sky.light, playerDead: dead, ride: ridingMob && { moveX: controls.moveX, moveZ: controls.moveZ, yaw: player.yaw } });
+    if (ridingMob) followMount();
   }
   // write edited chunks to storage shortly (1.5 s) after the player stops changing them
   if (world.unsaved.size !== unsavedCount) { unsavedCount = world.unsaved.size; lastEditAt = now; }
@@ -2317,6 +2424,11 @@ function stepGame(now, dt) {
   camera.position.copy(eye);
   camera.rotation.set(player.pitch, player.yaw, 0);
 
+  const biome = world.generator.biomeAt(Math.floor(player.pos.x), Math.floor(player.pos.z));
+  weather.update(paused ? 0 : dt, eye, biome, world.skyAt(Math.floor(eye.x), Math.min(H - 1, Math.floor(eye.y) + 1), Math.floor(eye.z)));
+  sky.weather = { overcast: weather.overcast, level: weather.level, kind: weather.kind };
+  world.raining = weather.raining && biome !== 'desert';
+  sound.weather(paused ? 0 : weather.level, weather.kind);
   const before = sky.time;
   sky.update(paused ? 0 : dt, eye, lightUniforms.uDay, player.eyeInWater);
   if (sky.time < before) { day++; caneToday = 0; toast(`Day ${day}`, 2500); } // the clock wrapped round to sunrise
@@ -2359,6 +2471,6 @@ window.minicraft = {
   get poisoned() { return poisoned; }, get dead() { return dead; }, get air() { return air; }, set air(v) { air = v; },
   arrows, fishing, kinetics, frames, signalAt, setSwitch, machines, carts, minimap, signs, armour, damage, placeRail, getInCart, getOutOfCart,
   get riding() { return riding; }, explode, lightFuse, fuses, clockTime, compassText, place, editSign, closeSign, openInventory, closeInventory, chestMove, lamps, tickLamps, sleepUntilMorning, stations, openStation, closeStation,
-  get caneToday() { return caneToday; }, effects, armourWear, useAnvil, rollLoot, settings,
+  get caneToday() { return caneToday; }, weather, openTrade, closeTrade, mountMob, dismount, get ridingMob() { return ridingMob; }, effects, armourWear, useAnvil, rollLoot, settings,
   get bedSpawn() { return bedSpawn; },
 };

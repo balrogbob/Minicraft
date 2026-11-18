@@ -118,6 +118,7 @@ export const T = {
   TRAPDOOR: 135,
   GEARBOX: 136, FRAME_BACK: 137,
   MOSSY_BRICKS: 138, SHRINE_SIDE: 139, SHRINE_TOP: 140, SHRINE_SPENT: 141, CAULDRON: 142, CAULDRON_WATER: 143,
+  BUSH: 144, BUSH_RIPE: 145,
 };
 
 // Ores, deepest-reaching last. tier: the pickaxe tier needed to mine it (see TOOL_TIERS);
@@ -1186,3 +1187,17 @@ RECIPES.push(
   { out: [IRON_SHIELD, 1], in: [[plateOf(IRON_INGOT), 4], [LEATHER, 1]], table: true, metal: IRON_INGOT },
   { out: [MOSSY_BRICKS, 4], in: [[BRICKS, 4], [LEAVES, 2]], table: true },
 );
+
+// ---------- berry bushes ----------
+// A low leafy bush that grows berries; tap a ripe one to pick them (and it grows more).
+export const BERRY_BUSH = 619, // 620 = with ripe berries
+  BERRIES = 1005;
+for (let k = 0; k < 2; k++) {
+  const tile = k ? T.BUSH_RIPE : T.BUSH;
+  block(BERRY_BUSH + k, {
+    name: 'Berry Bush', sound: 'leaves', hardness: 0.3, transparent: true, solid: false,
+    model: [[2, 0, 2, 14, 11, 14, tile], [4, 11, 4, 12, 13, 12, tile]],
+    grows: k ? null : BERRY_BUSH + 1, variantOf: k ? BERRY_BUSH : 0, drop: BERRY_BUSH,
+  });
+}
+ITEMS[BERRIES] = { name: 'Berries', food: 2 };

@@ -7,7 +7,7 @@
 import {
   AIR, GRASS, DIRT, STONE, LOG, LEAVES, SAND, COAL_ORE, BEDROCK, WATER, WHEAT_3, SUGAR_CANE, MAX_CANE_HEIGHT, ORES, GRAVEL, CLAY,
   LAVA, SALTPETRE_ORE, SNOW_GRASS, SNOW, ICE, SANDSTONE, CACTUS, FLOWERS,
-  BRICKS, MOSSY_BRICKS, COBBLE, BOSS_SHRINE, LOOT_CHEST,
+  BRICKS, MOSSY_BRICKS, COBBLE, BOSS_SHRINE, LOOT_CHEST, BERRY_BUSH,
 } from './blocks.js';
 
 export const CHUNK = 16;
@@ -295,6 +295,8 @@ export class Generator {
         // meadows of wild flowers, mostly one kind to a patch
         const kind = Math.floor((this.plants(x / 40 + 100, z / 40, 1) + 1) * 2.5 + hash3(this.seed, x, 3007, z) * 0.9) % FLOWERS.length;
         data[localIndex(lx, h + 1, lz)] = FLOWERS[kind].id;
+      } else if ((top === GRASS || top === SNOW_GRASS) && h >= SEA_LEVEL + 2 && hash3(this.seed, x, 3008, z) < 0.004) {
+        data[localIndex(lx, h + 1, lz)] = BERRY_BUSH + 1; // wild berry bushes, ripe for picking
       } else if ((top === SAND || top === GRASS || top === DIRT) && h === SEA_LEVEL &&
         (hAt(x + 1, z) < h || hAt(x - 1, z) < h || hAt(x, z + 1) < h || hAt(x, z - 1) < h) &&
         hash3(this.seed, x, 3002, z) < 0.16) {

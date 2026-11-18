@@ -88,7 +88,16 @@ export class Sky {
   // dayUniform: shader uniform holding the linear daylight brightness for world materials
   update(dt, camPos, dayUniform, underwater) {
     this.time = (this.time + dt / DAY_LENGTH) % 1;
-    const { sky, light } = sample(this.time);
+    let { sky, light } = sample(this.time);
+    // weather: clouds grey the sky and dim the day; a sandstorm turns everything tan and close
+    const w = this.weather ?? { overcast: 0, level: 0, kind: 'rain' };
+    if (w.overcast > 0) {
+      const sand = w.kind === 'sand' && w.level > 0.05;
+      const grey = sand ? [0.8, 0.68, 0.48] : [0.56, 0.6, 0.66];
+      const k = w.overcast * (sand ? 0.85 * w.level : 0.7);
+      sky = sky.map((v, i) => v + (grey[i] * Math.max(light, 0.25) - v) * k);
+      light *= 1 - 0.3 * w.overcast;
+    }
     this.light = light;
     this.skyColor.setRGB(sky[0], sky[1], sky[2], THREE.SRGBColorSpace);
 
@@ -100,7 +109,8 @@ export class Sky {
     } else {
       this.scene.background = this.skyColor;
       this.scene.fog.color.copy(this.skyColor);
-      this.scene.fog.near = this.fogNear; this.scene.fog.far = this.fogFar;
+      const close = w.kind === 'sand' ? w.level * 0.75 : w.level * 0.3; // rain and snow shorten the view a little
+      this.scene.fog.near = this.fogNear * (1 - close); this.scene.fog.far = this.fogFar * (1 - close * 0.8);
     }
 
     const lin = Math.pow(light, 2.2) * 0.85 + 0.15 * light; // keep nights dark but readable
@@ -117,6 +127,7 @@ export class Sky {
     this.stars.position.copy(camPos);
     this.stars.rotation.z = a;
     const night = Math.max(0, Math.min(1, (0.3 - light) / 0.08 + 0.1));
-    this.stars.material.opacity = underwater ? 0 : night;
+    this.stars.material.opacity = underwater ? 0 : night * (1 - (w.overcast ?? 0));
+    this.sun.visible = this.moon.visible = (w.overcast ?? 0) < 0.6;
   }
 }

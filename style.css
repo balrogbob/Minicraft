@@ -267,3 +267,8 @@ html, body {
 /* how worn a tool or piece of armour is */
 .slot .wear { position: absolute; left: 12%; right: 12%; bottom: 8%; height: 3px; background: #222; pointer-events: none; }
 .slot .wear > i { display: block; height: 100%; background: var(--wc, #4c4); width: var(--w, 100%); }
+/* the trader's offers */
+#trade .panel { max-width: 560px; }
+#trade .hint { padding: 0 14px; }
+#trades { padding: 0 12px 14px; display: flex; flex-direction: column; gap: 6px; overflow-y: auto; }
+#boss-bar.hidden { display: none; }

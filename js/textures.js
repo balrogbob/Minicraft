@@ -13,7 +13,7 @@ import {
   PIPE, SPOUT, BELT, HOPPER, WINDMILL, FILAMENT, DRILL_BIT,
   RAIL, POWERED_RAIL, CACTUS, MINECART, MAP, PAPER,
   COLORS, DYE, CLUTCH, STORAGE_CART, LOADER_RAIL,
-  GLASS_BOTTLE, NIGHT_TEA, HASTE_TEA, FIRE_TEA, HEAL_TEA, WOOD_SHIELD, IRON_SHIELD, KING_CROWN,
+  BERRIES, GLASS_BOTTLE, NIGHT_TEA, HASTE_TEA, FIRE_TEA, HEAL_TEA, WOOD_SHIELD, IRON_SHIELD, KING_CROWN,
   SALTPETRE, GUNPOWDER, LEAD_SINKER, WEIGHTED_ROD, LEAD_BUCKET, LAVA_BUCKET, GOLD_CLOCK, COMPASS, SILVER_ARROW, MIRROR_LAMP,
 } from './blocks.js';
 
@@ -649,6 +649,15 @@ P[T.SHRINE_TOP] = shrineTop(true);
 P[T.SHRINE_SPENT] = shrineTop(false);
 P[T.CAULDRON] = (t) => { t.fill([52, 52, 58], 0.08); for (let x = 0; x < TILE; x++) { t.set(x, 0, [86, 86, 94]); t.set(x, 15, [36, 36, 40]); } };
 P[T.CAULDRON_WATER] = (t) => { for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) t.set(x, y, t.vary(Math.sin(x * 0.8 + y * 0.5) > 0.6 ? [96, 150, 226] : [52, 100, 200], 0.06)); };
+const bush = (ripe) => (t) => {
+  for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+    if (t.r() < 0.12) { t.set(x, y, [0, 0, 0], 0); continue; }
+    t.set(x, y, t.vary(t.r() < 0.35 ? [40, 92, 34] : [58, 120, 44], 0.25));
+  }
+  if (ripe) for (const [x, y] of [[3, 3], [10, 2], [6, 7], [13, 9], [2, 11], [9, 12], [12, 5], [5, 14]]) { t.set(x, y, [196, 30, 52]); t.set(x + 1, y, [150, 20, 40]); t.set(x, y + 1, [150, 20, 40]); t.set(x + 1, y + 1, [120, 14, 30]); t.set(x, y - 1, [240, 120, 130]); }
+};
+P[T.BUSH] = bush(false);
+P[T.BUSH_RIPE] = bush(true);
 P[T.FRAME_BACK] = (t) => { t.fill([128, 88, 52], 0.06); t.speckle([110, 74, 42], 0.15, 0.05); };
 P[T.TRAPDOOR] = (t) => {
   P[T.PLANKS](t);
@@ -1388,6 +1397,12 @@ function bottlePainter(fill) {
   };
 }
 ITEM_PAINTERS[GLASS_BOTTLE] = bottlePainter(null);
+ITEM_PAINTERS[BERRIES] = (ctx) => {
+  for (const [x, y] of [[4, 6], [8, 4], [9, 9], [5, 10], [11, 6]]) {
+    rect(ctx, x, y, 3, 3, [190, 28, 50]); px(ctx, x, y, [246, 130, 140]); px(ctx, x + 2, y + 2, [120, 14, 30]);
+  }
+  rect(ctx, 8, 1, 1, 3, [70, 120, 40]); rect(ctx, 9, 2, 3, 1, [86, 150, 56]);
+};
 ITEM_PAINTERS[NIGHT_TEA] = bottlePainter([60, 80, 190]);
 ITEM_PAINTERS[HASTE_TEA] = bottlePainter([226, 176, 40]);
 ITEM_PAINTERS[FIRE_TEA] = bottlePainter([206, 64, 40]);
