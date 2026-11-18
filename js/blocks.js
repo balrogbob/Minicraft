@@ -8,7 +8,17 @@ export const AIR = 0, GRASS = 1, DIRT = 2, STONE = 3, COBBLE = 4, LOG = 5, PLANK
   WOOL = 20,
   WHEAT_0 = 21, WHEAT_1 = 22, WHEAT_2 = 23, WHEAT_3 = 24, // growth stages; 3 is ripe
   SUGAR_CANE = 25,
-  CHURN = 26;
+  CHURN = 26,
+  // furniture; facing variants follow their base id (facing 0..3 = toward +z, -x, -z, +x)
+  BED = 27, // 27..30: the head half of a bed (with the pillow); its foot half is BED_FOOT
+  FURN_TABLE = 31,
+  CHAIR = 32, // 32..35
+  SHELF = 36,
+  LAMP = 37, // 37 = empty, 38..40 = holding 1..3 units of fuel
+  CARPET = 41,
+  CURTAIN = 42, // 42..45: + axis (0 = hangs across x, 1 = across z) + 2 if open
+  DOOR = 46, // 46..61: + facing*4 + 2 if open + 1 for the upper half
+  BED_FOOT = 62; // 62..65: the foot half of a bed, one block toward where it faces
 
 // Wall direction [dx, dz] for each wall-torch variant, in id order.
 export const WALL_TORCH_DIRS = [[-1, 0], [1, 0], [0, -1], [0, 1]];
@@ -23,7 +33,8 @@ export const STICK = 100, COAL = 101,
   BREAD = 125, COOKIE = 126, CAKE = 127,
   BUCKET = 128, MILK_BUCKET = 129, SLIME_BUCKET = 130,
   FEATHER = 131, MORTAR = 132,
-  STRING = 133, ARROW = 134, BOW = 135;
+  STRING = 133, ARROW = 134, BOW = 135,
+  COAL_DUST = 136, SLIME_FUEL = 137;
 
 // Texture atlas tile indices.
 export const T = {
@@ -31,6 +42,7 @@ export const T = {
   PLANKS: 7, LEAVES: 8, SAND: 9, GLASS: 10, TABLE_TOP: 11, TABLE_SIDE: 12, BRICKS: 13,
   COAL_ORE: 14, BEDROCK: 15, TORCH: 16, WOOL: 17,
   WHEAT_0: 18, WHEAT_1: 19, WHEAT_2: 20, WHEAT_3: 21, SUGAR_CANE: 22, CHURN_SIDE: 23, CHURN_TOP: 24,
+  BLANKET: 25, SHELF: 26, FLAME: 27, LAMP_EMPTY: 28, DOOR_LOWER: 29, DOOR_UPPER: 30, CURTAIN: 31,
 };
 
 export const BLOCKS = [];
@@ -51,11 +63,14 @@ function block(id, o) {
     sound: o.sound ?? 'stone', // material for dig / step / place sounds
     liquid: !!o.liquid, // not solid, not targetable, never in the inventory
     light: o.light ?? 0, // light level this block emits (0-15)
-    shape: o.shape ?? 'cube', // 'cube' | 'torch' | 'cross' (plants: two crossed sprites)
+    shape: o.model ? 'model' : o.shape ?? 'cube', // 'cube' | 'torch' | 'cross' (plants) | 'model' (furniture)
+    model: o.model ?? null, // boxes: [x0, y0, z0, x1, y1, z1 (in 1/16 block), tiles, glow]
     solid: o.solid ?? !o.liquid, // blocks player movement
     wall: o.wall ?? null, // [dx, dz] of the wall a wall torch hangs on
     variantOf: o.variantOf ?? 0, // placed form of another item; never held in the inventory
     grows: o.grows ?? null, // id this plant grows into (or 'up' for sugar cane)
+    // furniture state, encoded in which variant id is placed
+    facing: o.facing ?? 0, open: !!o.open, upper: !!o.upper, axis: o.axis ?? 0, fuel: o.fuel ?? 0, foot: !!o.foot,
   };
 }
 
@@ -95,6 +110,108 @@ export const MAX_CANE_HEIGHT = 3;
 
 block(CHURN, { name: 'Butter Churn', sound: 'wood', top: T.CHURN_TOP, bottom: T.PLANKS, side: T.CHURN_SIDE, hardness: 2, tool: 'axe' });
 
+// ---------- furniture ----------
+// Models are lists of boxes in 1/16-block units, drawn for facing 0 (front toward +z). `tiles` is
+// one atlas tile, or { top, side, bottom }. Glowing boxes are always drawn fully lit (a lamp flame).
+
+export const FACING_DIRS = [[0, 1], [-1, 0], [0, -1], [1, 0]];
+
+// Rotate a model by quarter turns about the block's vertical centre line.
+function rotateModel(model, turns) {
+  return model.map(([x0, y0, z0, x1, y1, z1, tiles, glow]) => {
+    let ax = x0, az = z0, bx = x1, bz = z1;
+    for (let k = 0; k < turns; k++) {
+      [ax, az] = [16 - az, ax];
+      [bx, bz] = [16 - bz, bx];
+    }
+    return [Math.min(ax, bx), y0, Math.min(az, bz), Math.max(ax, bx), y1, Math.max(az, bz), tiles, glow];
+  });
+}
+
+const wood = T.PLANKS;
+// A bed is two blocks long. Facing 0: the foot half is toward +z (toward the player who placed it)
+// and the head half, with the headboard and pillow, is one block further away (toward -z).
+const blanket = { top: T.BLANKET, side: T.BLANKET, bottom: T.WOOL };
+const BED_HEAD_MODEL = [
+  [0, 0, 0, 16, 3, 16, wood], // frame
+  [0, 3, 0, 16, 8, 16, T.WOOL], // mattress
+  [0, 3, 0, 16, 14, 2, wood], // headboard
+  [3, 8, 3, 13, 10.5, 8, T.WOOL], // pillow
+  [0, 8, 10, 16, 9, 16, blanket], // blanket, pulled up to here...
+  [0, 8.5, 9.5, 16, 9.5, 11, T.WOOL], // ...with the sheet folded back over its edge
+];
+const BED_FOOT_MODEL = [
+  [0, 0, 0, 16, 3, 16, wood],
+  [0, 3, 0, 16, 8, 16, T.WOOL],
+  [0, 8, 0, 16, 9, 14, blanket],
+  [0, 4, 14, 16, 9, 15, blanket], // the blanket hangs over the end
+  [0, 3, 15, 16, 8, 16, wood], // footboard
+];
+const TABLE_MODEL = [
+  [0, 14, 0, 16, 16, 16, wood],
+  [1, 0, 1, 3, 14, 3, wood], [13, 0, 1, 15, 14, 3, wood], [1, 0, 13, 3, 14, 15, wood], [13, 0, 13, 15, 14, 15, wood],
+];
+const CHAIR_MODEL = [
+  [2, 7, 2, 14, 9, 14, wood], // seat
+  [2, 0, 2, 4, 7, 4, wood], [12, 0, 2, 14, 7, 4, wood], [2, 0, 12, 4, 7, 14, wood], [12, 0, 12, 14, 7, 14, wood],
+  [2, 9, 2, 4, 16, 4, wood], [12, 9, 2, 14, 16, 4, wood], // back posts
+  [4, 11, 2, 12, 15, 3, wood], // back rest
+];
+const lampModel = (lit) => [
+  [4, 0, 4, 12, 2, 12, T.COBBLE], // base
+  [6.5, 2, 6.5, 9.5, 7, 9.5, lit ? T.FLAME : T.LAMP_EMPTY, lit], // the flame (or a cold wick)
+  [5.2, 2, 5.2, 10.8, 9, 10.8, T.GLASS], // glass panes
+  [5, 2, 5, 6, 9, 6, T.COBBLE], [10, 2, 5, 11, 9, 6, T.COBBLE], // corner posts holding up the cap
+  [5, 2, 10, 6, 9, 11, T.COBBLE], [10, 2, 10, 11, 9, 11, T.COBBLE],
+  [4.5, 9, 4.5, 11.5, 10, 11.5, T.COBBLE], // cap
+  [7, 10, 7, 9, 12, 9, T.COBBLE], // handle
+];
+const CARPET_MODEL = [[0, 0, 0, 16, 1, 16, T.WOOL]];
+const CURTAIN_CLOSED = [[0, 15, 7, 16, 16, 9, wood], [0, 0, 7.5, 16, 15, 8.5, T.CURTAIN]];
+const CURTAIN_OPEN = [[0, 15, 7, 16, 16, 9, wood], [0, 0, 7, 3, 15, 9, T.CURTAIN], [13, 0, 7, 16, 15, 9, T.CURTAIN]];
+const doorModel = (open, upper) => {
+  const tile = upper ? T.DOOR_UPPER : T.DOOR_LOWER;
+  return open ? [[0, 0, 0, 3, 16, 16, tile]] : [[0, 0, 13, 16, 16, 16, tile]];
+};
+
+const furniture = { sound: 'wood', hardness: 1.5, tool: 'axe', transparent: true };
+for (let f = 0; f < 4; f++) {
+  block(BED + f, { ...furniture, name: 'Bed', model: rotateModel(BED_HEAD_MODEL, f), variantOf: f ? BED : 0, drop: BED, facing: f, sound: 'wool' });
+  block(BED_FOOT + f, { ...furniture, name: 'Bed', model: rotateModel(BED_FOOT_MODEL, f), variantOf: BED, drop: BED, facing: f, sound: 'wool', foot: true });
+  block(CHAIR + f, { ...furniture, name: 'Chair', model: rotateModel(CHAIR_MODEL, f), variantOf: f ? CHAIR : 0, drop: CHAIR, facing: f });
+}
+block(FURN_TABLE, { ...furniture, name: 'Wooden Table', model: TABLE_MODEL });
+block(SHELF, { name: 'Shelf', sound: 'wood', top: T.PLANKS, bottom: T.PLANKS, side: T.SHELF, hardness: 2, tool: 'axe' });
+for (let fuel = 0; fuel <= 3; fuel++) {
+  block(LAMP + fuel, {
+    name: 'Lamp', sound: 'glass', transparent: true, solid: false, hardness: 0.5, model: lampModel(fuel > 0),
+    light: fuel > 0 ? 15 : 0, variantOf: fuel ? LAMP : 0, drop: LAMP, fuel,
+  });
+}
+block(CARPET, { name: 'Carpet', sound: 'wool', transparent: true, solid: false, hardness: 0.2, model: CARPET_MODEL });
+for (let k = 0; k < 4; k++) {
+  const axis = k & 1, open = k >> 1;
+  block(CURTAIN + k, {
+    name: 'Curtain', sound: 'wool', transparent: true, solid: false, hardness: 0.3,
+    model: rotateModel(open ? CURTAIN_OPEN : CURTAIN_CLOSED, axis), variantOf: k ? CURTAIN : 0, drop: CURTAIN, axis, open: !!open,
+  });
+}
+for (let k = 0; k < 16; k++) {
+  const f = k >> 2, open = (k >> 1) & 1, upper = k & 1;
+  block(DOOR + k, {
+    ...furniture, name: 'Door', model: rotateModel(doorModel(open, upper), f), solid: !open,
+    variantOf: k ? DOOR : 0, drop: upper ? 0 : DOOR, facing: f, open: !!open, upper: !!upper,
+  });
+}
+
+export const isBed = (id) => (id >= BED && id < BED + 4) || (id >= BED_FOOT && id < BED_FOOT + 4);
+export const isChair = (id) => id >= CHAIR && id < CHAIR + 4;
+export const isLamp = (id) => id >= LAMP && id <= LAMP + 3;
+export const isCurtain = (id) => id >= CURTAIN && id < CURTAIN + 4;
+export const isDoor = (id) => id >= DOOR && id < DOOR + 16;
+export const doorId = (facing, open, upper) => DOOR + facing * 4 + (open ? 2 : 0) + (upper ? 1 : 0);
+export const MAX_LAMP_FUEL = 3;
+
 // Non-block items.
 export const ITEMS = {
   [STICK]: { name: 'Stick' },
@@ -122,6 +239,8 @@ export const ITEMS = {
   [STRING]: { name: 'Wheat String' },
   [ARROW]: { name: 'Arrow' },
   [BOW]: { name: 'Bow', stack: 1 },
+  [COAL_DUST]: { name: 'Coal Dust' },
+  [SLIME_FUEL]: { name: 'Slime Fuel', stack: 1 }, // a bucket of lamp fuel; the bucket stays with you
 };
 
 export const foodValue = (id) => ITEMS[id]?.food ?? 0;
@@ -189,4 +308,14 @@ export const RECIPES = [
   { out: [STRING, 1], in: [[SLIME_BUCKET, 1], [WHEAT, 3]], also: [[BUCKET, 1]] },
   { out: [ARROW, 1], in: [[FEATHER, 1], [COBBLE, 1], [STICK, 1]], table: true },
   { out: [BOW, 1], in: [[STICK, 3], [STRING, 3]], table: true },
+  { out: [COAL_DUST, 1], in: [[COAL, 1]], tools: [MORTAR] },
+  { out: [SLIME_FUEL, 1], in: [[COAL_DUST, 3], [SLIME_BUCKET, 1]] },
+  { out: [LAMP, 1], in: [[GLASS, 1], [COBBLE, 2]], table: true },
+  { out: [BED, 1], in: [[WOOL, 3], [PLANKS, 3]], table: true },
+  { out: [FURN_TABLE, 1], in: [[PLANKS, 3], [STICK, 4]], table: true },
+  { out: [CHAIR, 1], in: [[PLANKS, 2], [STICK, 3]], table: true },
+  { out: [SHELF, 1], in: [[PLANKS, 5]], table: true },
+  { out: [CARPET, 3], in: [[WOOL, 2]], table: true },
+  { out: [CURTAIN, 1], in: [[WOOL, 2], [STICK, 1]], table: true },
+  { out: [DOOR, 1], in: [[PLANKS, 4]], table: true },
 ];

@@ -623,6 +623,11 @@ export class World {
         vcount = this.addTorch(lx, y, lz, def, pos, uv, col, tl, sl, index, vcount);
         continue;
       }
+      if (def.shape === 'model') {
+        vcount = this.addModel(lx, y, lz, def, lightBrightness(this.lightAt(x, y, z)), skyBrightness(this.skyAt(x, y, z)),
+          pos, uv, col, tl, sl, index, vcount);
+        continue;
+      }
       if (def.shape === 'cross') {
         vcount = this.addCross(lx, y, lz, def, lightBrightness(this.lightAt(x, y, z)), skyBrightness(this.skyAt(x, y, z)),
           pos, uv, col, tl, sl, index, vcount);
@@ -687,6 +692,35 @@ export class World {
       solid: vcount ? geo(pos, uv, col, tl, sl, index) : null,
       water: wcount ? geo(wpos, wuv, wcol, wtl, wsl, windex) : null,
     };
+  }
+
+  // Furniture: a list of boxes (in 1/16 block), each face textured with the matching part of its tile,
+  // so a thin table leg shows a thin strip of planks. (x, y, z) are chunk-local.
+  addModel(x, y, z, def, torch, sky, pos, uv, col, tl, sl, index, vcount) {
+    const tileUV = 1 / ATLAS_COLS;
+    const inset = 0.5 / TILE; // keep samples inside the tile
+    const clampUV = (t) => Math.min(1 - inset, Math.max(inset, t));
+    for (const [x0, y0, z0, x1, y1, z1, tiles, glow] of def.model) {
+      const lo = [x0 / 16, y0 / 16, z0 / 16], size = [(x1 - x0) / 16, (y1 - y0) / 16, (z1 - z0) / 16];
+      for (const f of FACES) {
+        const tile = typeof tiles === 'number' ? tiles : f.d === 1 ? (f.s > 0 ? tiles.top : tiles.bottom) : tiles.side;
+        const tu = (tile % ATLAS_COLS) * tileUV;
+        const tv0 = 1 - Math.floor(tile / ATLAS_COLS) * tileUV - tileUV;
+        const b = toLinear(f.shade);
+        for (const c of f.corners) {
+          const px = lo[0] + c.o[0] * size[0], py = lo[1] + c.o[1] * size[1], pz = lo[2] + c.o[2] * size[2];
+          pos.push(x + px, y + py, z + pz);
+          const [u, v] = f.d === 1 ? [px, pz] : f.d === 0 ? [pz, py] : [px, py];
+          uv.push(tu + clampUV(u) * tileUV, tv0 + clampUV(v) * tileUV);
+          col.push(b, b, b);
+          tl.push(glow ? 1 : torch);
+          sl.push(glow ? 1 : sky);
+        }
+        index.push(vcount, vcount + 1, vcount + 2, vcount, vcount + 2, vcount + 3);
+        vcount += 4;
+      }
+    }
+    return vcount;
   }
 
   // Plants: two sprites crossed diagonally through the block, visible from both sides.

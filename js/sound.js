@@ -135,6 +135,31 @@ export class Sound {
     }
   }
 
+  // A wooden door swinging open or shut.
+  door(open) {
+    if (!this.ready) return;
+    this.voice({ type: 'triangle', from: open ? 180 : 140, to: open ? 120 : 90, dur: 0.18, vol: 0.35, freq: 900, q: 2 });
+    this.noiseBurst({ type: 'bandpass', freq: 450, q: 1.5, dur: 0.1, vol: 0.5 }, 1, 1);
+  }
+
+  // A curtain being drawn.
+  swish() {
+    if (this.ready) this.noiseBurst({ type: 'bandpass', freq: 2200, q: 0.6, dur: 0.35, vol: 0.3 }, 1, 1);
+  }
+
+  // Waking up after sleeping: a soft rising chime.
+  wake() {
+    if (!this.ready) return;
+    [523, 659, 784].forEach((f, i) => this.voice({ type: 'sine', from: f, to: f, dur: 0.6, vol: 0.18, freq: 4000, delay: i * 0.18, attack: 0.05 }));
+  }
+
+  // Pouring fuel into a lamp.
+  pour() {
+    if (!this.ready) return;
+    this.noiseBurst({ type: 'lowpass', freq: 900, q: 0.8, dur: 0.5, vol: 0.4 }, 1, 0.7);
+    this.voice({ type: 'sine', from: 260, to: 180, dur: 0.4, vol: 0.12, freq: 900 });
+  }
+
   // A thornspitter spitting a thorn.
   spit() {
     if (!this.ready) return;

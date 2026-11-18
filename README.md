@@ -23,6 +23,10 @@ It is designed for Android tablets (touch controls) but also plays with keyboard
   hits hardest) or with the bow; they drop coal, cobblestone or arrows. Caught in daylight, they dissolve.
   Four difficulty levels in the ☰ menu: **Peaceful** (they roam but only fight back if you attack them),
   **Worrying** (easy), **Scary** (hard) and **Terrifying** (nightmare)
+- Furniture for your home: beds (sleep through the night, and respawn there), tables, chairs,
+  shelves, alpaca-wool carpets and curtains (tap to open or close), doors (tap to open or close), and
+  lamps that burn slime fuel: each holds up to 3 units and each unit lasts a full in-game day.
+  Lamps shine brighter than torches, so a lit home keeps the night creatures out
 - A bow and arrows: hold to draw, let go to shoot (tap for a quick shot). Arrows stick in blocks and
   you can walk over them to pick them back up; animals they hit get bumped away
 - A day counter and a hunger bar. Hunger drains as you play (faster when walking and digging);
@@ -71,6 +75,7 @@ The version number is shown at the bottom of the ☰ menu; bump `GAME_VERSION` i
 | Tap an animal (bump, shear, pluck, milk…) | Tap it | Left or right click |
 | Hit a night creature | Tap it (hold to keep swinging) | Left or right click |
 | Eat (or drink a slime bucket) | Tap with food in hand | Right click |
+| Sleep / open a door or curtain / fuel a lamp | Tap it | Right click |
 | Shoot the bow | Hold to draw, release to shoot (tap: quick shot) | Hold and release left button (right click: quick shot) |
 | Jump / swim up | ⤒ button (auto-jump also steps up 1-block ledges) | Space |
 | Select item | Tap a hotbar slot | 1–9 / mouse wheel |
@@ -105,6 +110,28 @@ You aim with the crosshair in the middle of the screen. Volume, look speed and a
 | Wheat String | 1 slime bucket + 3 wheat (you get the bucket back) | anywhere |
 | Arrow | 1 feather + 1 cobblestone + 1 stick | crafting table |
 | Bow | 3 sticks + 3 wheat string | crafting table |
+| Coal Dust | 1 coal, with the mortar (not used up) | anywhere |
+| Slime Fuel | 3 coal dust + 1 slime bucket (the fuel stays in the bucket) | anywhere |
+
+Tap a lamp holding slime fuel to pour in one unit (you keep the empty bucket). A lamp holds 3 units,
+each burning for one in-game day while that part of the world is loaded.
+
+### Furniture (all at a crafting table)
+
+| Make | From |
+| --- | --- |
+| Bed | 3 wool + 3 planks |
+| Wooden Table | 3 planks + 4 sticks |
+| Chair | 2 planks + 3 sticks |
+| Shelf | 5 planks |
+| Lamp | 1 glass + 2 cobblestone |
+| 3 Carpets | 2 wool |
+| Curtain | 2 wool + 1 stick |
+| Door | 4 planks |
+
+Chairs face you when you place them; doors take two blocks. Beds are two blocks long: the foot goes
+where you tap and the head (with the pillow) extends away from you. Tap a bed in the evening or at
+night to sleep until morning (not while a creature is lurking nearby); any tap sets it as your respawn point.
 
 Tap a crafting table or butter churn to open crafting there. The hunger bar holds 20 points (ten loaves).
 
