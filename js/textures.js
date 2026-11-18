@@ -1,5 +1,8 @@
 // Procedurally painted pixel-art textures: the block atlas, UI icons and break cracks.
-import { T, BLOCKS, isBlock, TORCH, STICK, COAL, WOOD_PICK, STONE_PICK, WOOD_AXE, STONE_AXE, WOOD_SHOVEL, STONE_SHOVEL } from './blocks.js';
+import {
+  T, BLOCKS, isBlock, TORCH, STICK, COAL, WOOD_PICK, STONE_PICK, WOOD_AXE, STONE_AXE, WOOD_SHOVEL, STONE_SHOVEL,
+  SEEDS, WHEAT, FLOUR, SUGAR, BUTTER, BREAD, COOKIE, CAKE, BUCKET, MILK_BUCKET, SLIME_BUCKET, FEATHER, MORTAR,
+} from './blocks.js';
 
 export const TILE = 16;
 export const ATLAS_COLS = 8;
@@ -176,6 +179,43 @@ const P = {
       else if (k === 4) t.set(x, y, t.vary([248, 244, 234], 0.03));
     }
   },
+  // Wheat growth stages: stalks get taller and turn from green to gold, with grain heads when ripe.
+  [T.WHEAT_0](t) { wheatStage(t, 0); },
+  [T.WHEAT_1](t) { wheatStage(t, 1); },
+  [T.WHEAT_2](t) { wheatStage(t, 2); },
+  [T.WHEAT_3](t) { wheatStage(t, 3); },
+  [T.SUGAR_CANE](t) {
+    for (const x0 of [2, 7, 12]) {
+      for (let y = 0; y < TILE; y++) {
+        const joint = (y + x0) % 5 === 0;
+        t.set(x0, y, joint ? [196, 224, 150] : t.vary([128, 196, 96], 0.08));
+        t.set(x0 + 1, y, joint ? [170, 205, 125] : t.vary([92, 150, 66], 0.08));
+      }
+      // a few leaves sticking out
+      const ly = 3 + ((x0 * 3) % 7);
+      t.set(x0 - 1, ly, [110, 175, 80]); t.set(x0 + 2, ly + 4, [110, 175, 80]);
+    }
+  },
+  [T.CHURN_SIDE](t) {
+    // upright wooden staves held by two dark hoops
+    for (let x = 0; x < TILE; x++) {
+      const seam = x % 4 === 3;
+      const tone = (x >> 2) % 2 ? [160, 112, 64] : [146, 100, 56];
+      for (let y = 0; y < TILE; y++) {
+        if (y === 3 || y === 12) t.set(x, y, x % 5 === 2 ? [150, 140, 120] : [78, 58, 38]);
+        else t.set(x, y, seam ? [108, 74, 40] : t.vary(tone, 0.07));
+      }
+    }
+  },
+  [T.CHURN_TOP](t) {
+    for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+      const d = Math.max(Math.abs(x - 7.5), Math.abs(y - 7.5));
+      if (d > 6.5) t.set(x, y, [96, 66, 38]); // rim
+      else if (d < 1.5) t.set(x, y, [70, 48, 28]); // the plunger handle poking through the lid
+      else if (d < 2.5) t.set(x, y, [120, 84, 48]);
+      else t.set(x, y, t.vary(y % 4 === 3 ? [130, 92, 54] : [172, 128, 78], 0.06));
+    }
+  },
   [T.BEDROCK](t) {
     for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
       const g = 30 + t.r() * 100;
@@ -183,6 +223,24 @@ const P = {
     }
   },
 };
+
+function wheatStage(t, stage) {
+  const heights = [[3, 5], [6, 8], [10, 12], [12, 15]][stage];
+  const stalk = [[96, 176, 64], [96, 176, 64], [150, 182, 72], [206, 176, 78]][stage];
+  for (const x of [1, 4, 6, 9, 11, 14]) {
+    const h = heights[0] + Math.floor(t.r() * (heights[1] - heights[0] + 1));
+    for (let k = 0; k < h; k++) t.set(x, 15 - k, t.vary(stalk, 0.1));
+    if (stage === 3) {
+      // grain head: a fatter, darker-gold top
+      for (let k = h - 4; k < h; k++) {
+        t.set(x, 15 - k, t.vary([222, 184, 72], 0.1));
+        if (k % 2 === 0) t.set(x + 1, 15 - k, t.vary([186, 146, 52], 0.1));
+      }
+    } else if (stage >= 1) {
+      t.set(x + 1, 15 - Math.floor(h * 0.6), t.vary([80, 150, 56], 0.1)); // a leaf
+    }
+  }
+}
 
 export function createAtlas() {
   const c = document.createElement('canvas');
@@ -318,6 +376,100 @@ function toolPainter(kind, mat) {
     }
   };
 }
+const rect = (ctx, x, y, w, h, c) => { ctx.fillStyle = `rgb(${c[0]},${c[1]},${c[2]})`; ctx.fillRect(x, y, w, h); };
+
+function bucketPainter(fill) {
+  return (ctx) => {
+    // handle
+    for (const [x, y] of [[3, 3], [4, 2], [5, 1], [6, 1], [7, 1], [8, 1], [9, 1], [10, 1], [11, 2], [12, 3]]) px(ctx, x, y, [120, 120, 125]);
+    // tapered wooden body with staves and two hoops
+    for (let y = 4; y <= 14; y++) {
+      const inset = Math.floor((y - 4) / 5);
+      for (let x = 3 + inset; x <= 12 - inset; x++) {
+        const c = y === 6 || y === 12 ? [86, 60, 36] : x % 3 === 0 ? [118, 80, 44] : [158, 110, 62];
+        px(ctx, x, y, c);
+      }
+    }
+    if (fill) rect(ctx, 4, 4, 8, 2, fill);
+  };
+}
+
+Object.assign(ITEM_PAINTERS, {
+  [SEEDS](ctx) {
+    for (const [x, y] of [[4, 6], [9, 4], [11, 9], [6, 11], [3, 13], [9, 13], [12, 3], [6, 3]]) {
+      px(ctx, x, y, [200, 166, 96]); px(ctx, x + 1, y, [160, 124, 66]); px(ctx, x, y + 1, [150, 116, 60]);
+    }
+  },
+  [WHEAT](ctx) {
+    for (let x = 5; x <= 10; x++) {
+      for (let y = 7; y <= 15; y++) px(ctx, x, y, x % 2 ? [204, 170, 80] : [184, 150, 64]);
+      for (let y = 1; y <= 6; y++) px(ctx, x, y, (x + y) % 2 ? [226, 188, 76] : [178, 138, 48]);
+    }
+    rect(ctx, 4, 10, 8, 2, [122, 82, 42]); // tied band
+  },
+  [FLOUR](ctx) {
+    rect(ctx, 6, 2, 4, 2, [214, 200, 170]); // tied neck
+    rect(ctx, 5, 4, 6, 1, [150, 110, 60]); // string
+    for (let y = 5; y <= 14; y++) {
+      const w = y < 7 ? 8 : 10;
+      for (let x = 8 - w / 2; x < 8 + w / 2; x++) px(ctx, x, y, x < 6 ? [214, 204, 182] : [238, 230, 212]);
+    }
+    rect(ctx, 6, 8, 4, 3, [190, 160, 110]); // label
+  },
+  [SUGAR](ctx) {
+    for (let y = 8; y <= 14; y++) {
+      const half = y - 7;
+      for (let x = 8 - half; x <= 7 + half; x++) px(ctx, x, y, (x * 5 + y * 3) % 7 === 0 ? [205, 215, 230] : [248, 250, 252]);
+    }
+    px(ctx, 7, 7, [248, 250, 252]); px(ctx, 8, 7, [230, 236, 245]);
+  },
+  [BUTTER](ctx) {
+    rect(ctx, 4, 6, 10, 2, [255, 238, 150]); // top
+    rect(ctx, 3, 8, 10, 6, [246, 214, 92]); // front
+    rect(ctx, 13, 7, 1, 6, [214, 180, 64]); // side
+    rect(ctx, 3, 13, 10, 1, [214, 180, 64]);
+  },
+  [BREAD](ctx) {
+    for (let y = 5; y <= 12; y++) {
+      const inset = y === 5 || y === 12 ? 2 : y === 6 ? 1 : 0;
+      for (let x = 2 + inset; x <= 13 - inset; x++) px(ctx, x, y, y < 8 ? [222, 166, 82] : y > 10 ? [160, 100, 40] : [200, 140, 60]);
+    }
+    for (const x of [5, 8, 11]) { px(ctx, x, 6, [150, 96, 40]); px(ctx, x + 1, 7, [150, 96, 40]); } // scored crust
+  },
+  [COOKIE](ctx) {
+    for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) {
+      const d = Math.hypot(x - 7.5, y - 7.5);
+      if (d < 6) px(ctx, x, y, d > 5 ? [176, 122, 62] : [214, 162, 92]);
+    }
+    for (const [x, y] of [[5, 5], [9, 6], [6, 9], [10, 10], [8, 3], [3, 8]]) { px(ctx, x, y, [84, 50, 28]); px(ctx, x + 1, y, [104, 64, 36]); }
+  },
+  [CAKE](ctx) {
+    rect(ctx, 2, 8, 12, 6, [232, 200, 146]); // sponge
+    rect(ctx, 2, 10, 12, 1, [200, 80, 90]); // jam layer
+    rect(ctx, 2, 6, 12, 2, [252, 250, 246]); // icing
+    for (const x of [3, 6, 10, 13]) px(ctx, x, 8, [252, 250, 246]); // drips
+    for (const x of [4, 8, 12]) { px(ctx, x, 5, [210, 30, 40]); px(ctx, x, 4, [90, 140, 50]); } // cherries
+    rect(ctx, 2, 14, 12, 1, [190, 160, 110]);
+  },
+  [BUCKET]: bucketPainter(null),
+  [MILK_BUCKET]: bucketPainter([248, 248, 244]),
+  [SLIME_BUCKET]: bucketPainter([116, 204, 84]),
+  [FEATHER](ctx) {
+    for (let i = 0; i <= 10; i++) {
+      const x = 3 + i, y = 13 - i;
+      px(ctx, x, y, [150, 150, 150]); // quill
+      if (i > 2) { px(ctx, x - 1, y - 1, [244, 244, 240]); px(ctx, x + 1, y + 1, [226, 226, 222]); px(ctx, x - 1, y, [236, 236, 232]); }
+    }
+  },
+  [MORTAR](ctx) {
+    for (let i = 0; i < 7; i++) { px(ctx, 8 + Math.floor(i * 0.7), 8 - i, [196, 188, 176]); px(ctx, 9 + Math.floor(i * 0.7), 8 - i, [168, 160, 150]); } // pestle
+    for (let y = 9; y <= 14; y++) {
+      const inset = Math.max(0, y - 12);
+      for (let x = 2 + inset; x <= 13 - inset; x++) px(ctx, x, y, y === 9 ? [110, 110, 112] : x < 5 ? [128, 128, 130] : [156, 156, 158]);
+    }
+  },
+});
+
 ITEM_PAINTERS[WOOD_PICK] = toolPainter('pick', 'wood');
 ITEM_PAINTERS[STONE_PICK] = toolPainter('pick', 'stone');
 ITEM_PAINTERS[WOOD_AXE] = toolPainter('axe', 'wood');
@@ -329,12 +481,17 @@ ITEM_PAINTERS[STONE_SHOVEL] = toolPainter('shovel', 'stone');
 export function createIcons(atlas) {
   const icons = {};
   for (const def of BLOCKS) {
-    if (!def || !isBlock(def.id) || def.shape !== 'cube') continue;
+    if (!def || !isBlock(def.id) || def.shape === 'torch') continue;
     const c = document.createElement('canvas');
     c.width = c.height = 64;
     const ctx = c.getContext('2d');
     ctx.imageSmoothingEnabled = false;
-    drawIsoBlock(ctx, atlas, def);
+    if (def.shape === 'cross') {
+      // plants show their flat sprite, like an item
+      ctx.drawImage(atlas, (def.side % ATLAS_COLS) * TILE, Math.floor(def.side / ATLAS_COLS) * TILE, TILE, TILE, 0, 0, 64, 64);
+    } else {
+      drawIsoBlock(ctx, atlas, def);
+    }
     icons[def.id] = c.toDataURL();
   }
   for (const [id, paint] of Object.entries(ITEM_PAINTERS)) {

@@ -1,7 +1,7 @@
 // Streaming voxel world: chunks are generated (or loaded) around the player and unloaded behind,
 // with block light and sunlight flowing across chunk borders, chunk meshing and raycasting.
 import * as THREE from 'three';
-import { BLOCKS, AIR, LEAVES, WATER, MAX_LIGHT } from './blocks.js';
+import { BLOCKS, AIR, LEAVES, WATER, MAX_LIGHT, SUGAR_CANE, MAX_CANE_HEIGHT } from './blocks.js';
 import { TILE, ATLAS_COLS } from './textures.js';
 import { Generator, CHUNK, H, SEA_LEVEL, WORLD_SIZE, WORLD_CHUNKS, CHUNK_VOLUME, localIndex } from './terrain.js';
 
@@ -76,8 +76,12 @@ class Chunk {
     this.sky = new Uint8Array(CHUNK_VOLUME); // sunlight
     this.solid = null; // meshes
     this.water = null;
+    this.growing = new Set(); // local indices of plants that can still grow
   }
 }
+
+// Average seconds between growth steps for each kind of plant (only while its chunk is loaded).
+const GROW_SECONDS = { wheat: 45, cane: 60 };
 
 export class World {
   constructor(seed, store) {
@@ -164,6 +168,48 @@ export class World {
     this.markCellDirty(x, z);
     this.updateLight(x, y, z);
     if (id === AIR) this.flow.push([x, y, z]);
+    // this cell, and the one below (a sugar cane that's no longer, or now is, the top), may start or stop growing
+    this.refreshGrowth(c, x, y, z);
+    if (y > 0) this.refreshGrowth(c, x, y - 1, z);
+  }
+
+  // ---------- plant growth ----------
+
+  canGrow(c, x, y, z) {
+    const id = c.data[localIndex(x, y, z)];
+    const grows = BLOCKS[id]?.grows;
+    if (!grows) return false;
+    if (grows !== 'up') return true;
+    // sugar cane: only the top of a column shorter than the maximum, with air above
+    if (y + 1 >= H || c.data[localIndex(x, y + 1, z)] !== AIR) return false;
+    let height = 1;
+    while (y - height >= 0 && c.data[localIndex(x, y - height, z)] === SUGAR_CANE) height++;
+    return height < MAX_CANE_HEIGHT;
+  }
+
+  refreshGrowth(c, x, y, z) {
+    const li = localIndex(x, y, z);
+    if (this.canGrow(c, x, y, z)) c.growing.add(li); else c.growing.delete(li);
+  }
+
+  // Called about once a second: each growing plant has a small chance to grow a step.
+  tickPlants(dt) {
+    this.growTimer = (this.growTimer ?? 0) + dt;
+    if (this.growTimer < 1) return;
+    const elapsed = this.growTimer;
+    this.growTimer = 0;
+    for (const c of this.chunks.values()) {
+      if (!c.growing.size) continue;
+      for (const li of [...c.growing]) {
+        const id = c.data[li];
+        const def = BLOCKS[id];
+        const chance = elapsed / (def.grows === 'up' ? GROW_SECONDS.cane : GROW_SECONDS.wheat);
+        if (Math.random() >= chance) continue;
+        const x = c.cx * CHUNK + (li & 15), z = c.cz * CHUNK + ((li >> 4) & 15), y = li >> 8;
+        if (def.grows === 'up') this.setBlock(x, y + 1, z, SUGAR_CANE);
+        else this.setBlock(x, y, z, def.grows);
+      }
+    }
   }
 
   // A cell's mesh (and AO/light sampling) can affect the chunks next door when it's on a border.
@@ -351,6 +397,9 @@ export class World {
     const c = new Chunk(cx, cz, data);
     this.chunks.set(c.key, c);
     this.lightChunk(c);
+    for (let li = 0; li < CHUNK_VOLUME; li++) {
+      if (BLOCKS[data[li]]?.grows && this.canGrow(c, li & 15, li >> 8, (li >> 4) & 15)) c.growing.add(li);
+    }
     this.dirty.add(c.key);
     return c;
   }
@@ -574,6 +623,11 @@ export class World {
         vcount = this.addTorch(lx, y, lz, def, pos, uv, col, tl, sl, index, vcount);
         continue;
       }
+      if (def.shape === 'cross') {
+        vcount = this.addCross(lx, y, lz, def, lightBrightness(this.lightAt(x, y, z)), skyBrightness(this.skyAt(x, y, z)),
+          pos, uv, col, tl, sl, index, vcount);
+        continue;
+      }
       for (const f of FACES) {
         const nx = x + f.n[0], ny = y + f.n[1], nz = z + f.n[2];
         if (ny < 0) continue;
@@ -633,6 +687,31 @@ export class World {
       solid: vcount ? geo(pos, uv, col, tl, sl, index) : null,
       water: wcount ? geo(wpos, wuv, wcol, wtl, wsl, windex) : null,
     };
+  }
+
+  // Plants: two sprites crossed diagonally through the block, visible from both sides.
+  // (x, y, z) are chunk-local; torch and sky are the light levels in the plant's own cell.
+  addCross(x, y, z, def, torch, sky, pos, uv, col, tl, sl, index, vcount) {
+    const tileUV = 1 / ATLAS_COLS;
+    const tu = (def.side % ATLAS_COLS) * tileUV;
+    const tv0 = 1 - Math.floor(def.side / ATLAS_COLS) * tileUV - tileUV;
+    const a = 0.12, b = 0.88; // inset from the block corners
+    const b2 = toLinear(0.88);
+    for (const [x1, z1, x2, z2] of [[a, a, b, b], [b, a, a, b]]) {
+      const corners = [[x1, 0, z1, 0, 0], [x2, 0, z2, 1, 0], [x2, 1, z2, 1, 1], [x1, 1, z1, 0, 1]];
+      for (const [cx, cy, cz, u, v] of corners) {
+        pos.push(x + cx, y + cy, z + cz);
+        uv.push(tu + u * tileUV, tv0 + v * tileUV);
+        col.push(b2, b2, b2);
+        tl.push(torch);
+        sl.push(sky);
+      }
+      // both windings, so the sprite shows from either side
+      index.push(vcount, vcount + 1, vcount + 2, vcount, vcount + 2, vcount + 3);
+      index.push(vcount, vcount + 2, vcount + 1, vcount, vcount + 3, vcount + 2);
+      vcount += 4;
+    }
+    return vcount;
   }
 
   // A torch is a 2x10-pixel stick. Wall torches sit low against the wall and lean out of it.
