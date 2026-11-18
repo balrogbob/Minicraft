@@ -3,7 +3,7 @@ import {
   BLOCKS, RECIPES, TABLE, AIR, WATER, TORCH, TORCH_WALL_W, WALL_TORCH_DIRS,
   GRASS, DIRT, SAND, CHURN, SUGAR_CANE, BREAD, ITEMS, BOW, ARROW, BUCKET,
   WOOD_PICK, STONE_PICK, WOOD_AXE, STONE_AXE, WOOD_SHOVEL, STONE_SHOVEL,
-  BED, CHAIR, LAMP, CARPET, CURTAIN, DOOR, SLIME_FUEL, FACING_DIRS, MAX_LAMP_FUEL,
+  BED, BED_FOOT, CHAIR, LAMP, CARPET, CURTAIN, DOOR, SLIME_FUEL, FACING_DIRS, MAX_LAMP_FUEL,
   isBed, isChair, isLamp, isCurtain, isDoor, doorId,
   isBlock, isTorch, isWheat, itemName, breakTime, dropsFor, foodValue,
 } from './blocks.js';
@@ -722,6 +722,13 @@ function facingTowardPlayer(bx, bz) {
   return vx < 0 ? 1 : 3;
 }
 
+// The other half of a two-block bed: the foot is one block from the head in the bed's facing direction.
+function bedPartner(x, y, z) {
+  const d = BLOCKS[world.get(x, y, z)];
+  const [dx, dz] = FACING_DIRS[d.facing];
+  return d.foot ? [x - dx, y, z - dz] : [x + dx, y, z + dz];
+}
+
 function toggleDoor(x, y, z) {
   const d = BLOCKS[world.get(x, y, z)];
   const by = d.upper ? y - 1 : y; // the bottom half
@@ -850,11 +857,23 @@ function place() {
     sound.place('wood');
     inventory.consumeHeld();
     return;
+  } else if (id === BED) {
+    // the foot goes where you tap and the head extends away from you; both spaces must be free
+    const f = facingTowardPlayer(x, z);
+    const [dx, dz] = FACING_DIRS[f];
+    const hx = x - dx, hz = z - dz;
+    if (there !== AIR || world.get(hx, y, hz) !== AIR) { toast('A bed needs two free spaces'); return; }
+    if (player.overlapsBlock(x, y, z) || player.overlapsBlock(hx, y, hz)) return;
+    world.setBlock(x, y, z, BED_FOOT + f);
+    world.setBlock(hx, y, hz, BED + f);
+    sound.place('wool');
+    inventory.consumeHeld();
+    return;
   } else if (id === LAMP || id === CARPET) {
     if (there !== AIR || !world.isSolid(x, y - 1, z)) { toast(`${BLOCKS[id].name}s need something solid underneath`); return; }
   } else {
-    // beds and chairs face you; curtains hang across your line of sight
-    if (id === BED || id === CHAIR) id += facingTowardPlayer(x, z);
+    // chairs face you; curtains hang across your line of sight
+    if (id === CHAIR) id += facingTowardPlayer(x, z);
     else if (id === CURTAIN) id += facingTowardPlayer(x, z) % 2; // facing 0/2 -> hangs across x, 1/3 -> across z
     if (BLOCKS[id].solid && player.overlapsBlock(x, y, z)) return;
   }
@@ -924,7 +943,14 @@ function breakBlock(x, y, z) {
     drops = [[DOOR, 1]];
   }
   if (isLamp(id)) lamps.delete(lampKey(x, y, z));
-  if (isBed(id) && bedSpawn && bedSpawn.x === x && bedSpawn.y === y && bedSpawn.z === z) bedSpawn = null;
+  if (isBed(id)) {
+    // either half takes the whole bed with it
+    const [ox, oy, oz] = bedPartner(x, y, z);
+    if (isBed(world.get(ox, oy, oz))) world.setBlock(ox, oy, oz, AIR);
+    const used = (bx, by, bz) => bedSpawn && bedSpawn.x === bx && bedSpawn.y === by && bedSpawn.z === bz;
+    if (used(x, y, z) || used(ox, oy, oz)) bedSpawn = null;
+    drops = [[BED, 1]];
+  }
   world.setBlock(x, y, z, AIR);
   dropUnsupported(x, y, z);
   if (drops.length) {

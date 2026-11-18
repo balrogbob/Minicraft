@@ -10,14 +10,15 @@ export const AIR = 0, GRASS = 1, DIRT = 2, STONE = 3, COBBLE = 4, LOG = 5, PLANK
   SUGAR_CANE = 25,
   CHURN = 26,
   // furniture; facing variants follow their base id (facing 0..3 = toward +z, -x, -z, +x)
-  BED = 27, // 27..30
+  BED = 27, // 27..30: the head half of a bed (with the pillow); its foot half is BED_FOOT
   FURN_TABLE = 31,
   CHAIR = 32, // 32..35
   SHELF = 36,
   LAMP = 37, // 37 = empty, 38..40 = holding 1..3 units of fuel
   CARPET = 41,
   CURTAIN = 42, // 42..45: + axis (0 = hangs across x, 1 = across z) + 2 if open
-  DOOR = 46; // 46..61: + facing*4 + 2 if open + 1 for the upper half
+  DOOR = 46, // 46..61: + facing*4 + 2 if open + 1 for the upper half
+  BED_FOOT = 62; // 62..65: the foot half of a bed, one block toward where it faces
 
 // Wall direction [dx, dz] for each wall-torch variant, in id order.
 export const WALL_TORCH_DIRS = [[-1, 0], [1, 0], [0, -1], [0, 1]];
@@ -69,7 +70,7 @@ function block(id, o) {
     variantOf: o.variantOf ?? 0, // placed form of another item; never held in the inventory
     grows: o.grows ?? null, // id this plant grows into (or 'up' for sugar cane)
     // furniture state, encoded in which variant id is placed
-    facing: o.facing ?? 0, open: !!o.open, upper: !!o.upper, axis: o.axis ?? 0, fuel: o.fuel ?? 0,
+    facing: o.facing ?? 0, open: !!o.open, upper: !!o.upper, axis: o.axis ?? 0, fuel: o.fuel ?? 0, foot: !!o.foot,
   };
 }
 
@@ -128,12 +129,23 @@ function rotateModel(model, turns) {
 }
 
 const wood = T.PLANKS;
-const BED_MODEL = [
+// A bed is two blocks long. Facing 0: the foot half is toward +z (toward the player who placed it)
+// and the head half, with the headboard and pillow, is one block further away (toward -z).
+const blanket = { top: T.BLANKET, side: T.BLANKET, bottom: T.WOOL };
+const BED_HEAD_MODEL = [
   [0, 0, 0, 16, 3, 16, wood], // frame
   [0, 3, 0, 16, 8, 16, T.WOOL], // mattress
-  [0, 8, 6, 16, 9, 16, { top: T.BLANKET, side: T.BLANKET, bottom: T.WOOL }], // blanket over the foot end
-  [3, 8, 1, 13, 10, 5, T.WOOL], // pillow at the head end
-  [0, 3, 0, 16, 13, 2, wood], // headboard
+  [0, 3, 0, 16, 14, 2, wood], // headboard
+  [3, 8, 3, 13, 10.5, 8, T.WOOL], // pillow
+  [0, 8, 10, 16, 9, 16, blanket], // blanket, pulled up to here...
+  [0, 8.5, 9.5, 16, 9.5, 11, T.WOOL], // ...with the sheet folded back over its edge
+];
+const BED_FOOT_MODEL = [
+  [0, 0, 0, 16, 3, 16, wood],
+  [0, 3, 0, 16, 8, 16, T.WOOL],
+  [0, 8, 0, 16, 9, 14, blanket],
+  [0, 4, 14, 16, 9, 15, blanket], // the blanket hangs over the end
+  [0, 3, 15, 16, 8, 16, wood], // footboard
 ];
 const TABLE_MODEL = [
   [0, 14, 0, 16, 16, 16, wood],
@@ -164,7 +176,8 @@ const doorModel = (open, upper) => {
 
 const furniture = { sound: 'wood', hardness: 1.5, tool: 'axe', transparent: true };
 for (let f = 0; f < 4; f++) {
-  block(BED + f, { ...furniture, name: 'Bed', model: rotateModel(BED_MODEL, f), variantOf: f ? BED : 0, drop: BED, facing: f, sound: 'wool' });
+  block(BED + f, { ...furniture, name: 'Bed', model: rotateModel(BED_HEAD_MODEL, f), variantOf: f ? BED : 0, drop: BED, facing: f, sound: 'wool' });
+  block(BED_FOOT + f, { ...furniture, name: 'Bed', model: rotateModel(BED_FOOT_MODEL, f), variantOf: BED, drop: BED, facing: f, sound: 'wool', foot: true });
   block(CHAIR + f, { ...furniture, name: 'Chair', model: rotateModel(CHAIR_MODEL, f), variantOf: f ? CHAIR : 0, drop: CHAIR, facing: f });
 }
 block(FURN_TABLE, { ...furniture, name: 'Wooden Table', model: TABLE_MODEL });
@@ -191,7 +204,7 @@ for (let k = 0; k < 16; k++) {
   });
 }
 
-export const isBed = (id) => id >= BED && id < BED + 4;
+export const isBed = (id) => (id >= BED && id < BED + 4) || (id >= BED_FOOT && id < BED_FOOT + 4);
 export const isChair = (id) => id >= CHAIR && id < CHAIR + 4;
 export const isLamp = (id) => id >= LAMP && id <= LAMP + 3;
 export const isCurtain = (id) => id >= CURTAIN && id < CURTAIN + 4;

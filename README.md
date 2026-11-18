@@ -129,7 +129,8 @@ each burning for one in-game day while that part of the world is loaded.
 | Curtain | 2 wool + 1 stick |
 | Door | 4 planks |
 
-Beds and chairs face you when you place them; doors take two blocks. Tap a bed in the evening or at
+Chairs face you when you place them; doors take two blocks. Beds are two blocks long: the foot goes
+where you tap and the head (with the pillow) extends away from you. Tap a bed in the evening or at
 night to sleep until morning (not while a creature is lurking nearby); any tap sets it as your respawn point.
 
 Tap a crafting table or butter churn to open crafting there. The hunger bar holds 20 points (ten loaves).
