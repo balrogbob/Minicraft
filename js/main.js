@@ -9,6 +9,7 @@ import {
   BLAST_SMELTER, CRUSHER, WATER_BUCKET, WATER_WHEEL, isWaterId, isFlowing,
   CHEST, IRON_CHEST, LADDER, SCAFFOLD, SIGN, SIGN_POST, isSign, isSword, ARMOUR_PIECES,
   SAW, TRIP_HAMMER, DRILL, HOPPER, BELT, WINDMILL, BELLOWS, PUMP, FILAMENT_LAMP, MILLSTONE,
+  RAIL, POWERED_RAIL, MINECART, MAP, ICE, isRail, railId,
   LAVA, BLAST_CHARGE, LEAD_BUCKET, LAVA_BUCKET, GOLD_CLOCK, COMPASS, SILVER_ARROW, MIRROR_LAMP, WEIGHTED_ROD, isRod, metalTool, TOOL_MATERIALS,
   isBlock, isTorch, isWheat, itemName, breakTime, dropsFor, foodValue,
 } from './blocks.js';
@@ -29,6 +30,8 @@ import { Fishing } from './fishing.js';
 import { Kinetics } from './kinetics.js';
 import { Signs } from './signs.js';
 import { Machines } from './machines.js';
+import { Carts, railBeyond } from './carts.js';
+import { MiniMap } from './minimap.js';
 
 // v2 = the 16k x 16k streaming world (player state here, edited chunks in IndexedDB).
 // v1 = the old 128 x 128 world, migrated into the middle of the big world on first launch.
@@ -171,6 +174,7 @@ const inventory = new Inventory();
 let paused = true;
 let target = null; // raycast hit
 let targetMob = null; // { mob, t } when the crosshair is on an animal (closer than any block)
+let targetCart = null; // { cart, t } when the crosshair is on a minecart
 const breakState = { key: '', progress: 0 };
 let openedAt = null; // the station block (crafting table or churn) tapped to open crafting
 const MAX_HUNGER = 20;
@@ -192,6 +196,9 @@ const kinetics = new Kinetics(scene, atlas); // water wheels, shafts and gears, 
 const powerAt = (x, y, z) => kinetics.powerAt(x, y, z);
 const signs = new Signs(scene); // what's written on each sign
 const machines = new Machines(scene, icons); // pumps, drills, hoppers and belts
+const carts = new Carts(scene); // minecarts on rails
+let riding = null; // the minecart you're sitting in
+const minimap = new MiniMap($('map'), atlasCanvas);
 // Bellows blowing into an oven or smelter (while they're turned) make it work half as fast again.
 const boostAt = (x, y, z) => ([[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]]
   .some(([dx, dy, dz]) => world.get(x + dx, y + dy, z + dz) === BELLOWS && powerAt(x + dx, y + dy, z + dz) > 0) ? 1.5 : 1);
@@ -282,6 +289,8 @@ async function startWorld(save) {
   for (const [k, f] of fuses) removeFuse(k, f);
   signs.load(save?.signs);
   machines.load(save?.machines);
+  carts.load(save?.carts);
+  riding = null;
   arrows.reset();
   lastSwing = 0;
   applyViewDistance();
@@ -379,6 +388,7 @@ function saveGame() {
     stations: stations.serialize(),
     signs: signs.serialize(),
     machines: machines.serialize(),
+    carts: carts.serialize(),
     armour: [...armour],
     caneToday,
     time: sky.time,
@@ -525,6 +535,14 @@ function renderAir() {
   if (show) bubbleEls.forEach((b, i) => { b.style.visibility = i < Math.ceil(air) ? 'visible' : 'hidden'; });
 }
 
+function touchingPrickly() {
+  const p = player.pos, r = 0.36;
+  for (let y = Math.floor(p.y); y <= Math.floor(p.y + 1.7); y++)
+    for (let z = Math.floor(p.z - r); z <= Math.floor(p.z + r); z++)
+      for (let x = Math.floor(p.x - r); x <= Math.floor(p.x + r); x++) if (BLOCKS[world.get(x, y, z)]?.prickly) return true;
+  return false;
+}
+
 function damage(amount, cause) {
   if (dead || amount <= 0) return;
   health = Math.max(0, health - amount);
@@ -546,6 +564,7 @@ function die(cause) {
 }
 
 function respawnPlayer() {
+  riding = null;
   respawn();
   health = MAX_HEALTH; hunger = MAX_HUNGER; air = MAX_AIR; poisoned = 0;
   fallTop = null; dead = false;
@@ -566,7 +585,7 @@ function respawnPlayer() {
 //   a well-fed player (hunger 16+) heals a point every 3 s, using up a little hunger.
 function updateHealth(dt, wasGround, prevY) {
   // falling: track the highest point since leaving the ground (including where this step started)
-  if (player.inWater || player.inLava || player.climbing || player.onGround && wasGround) fallTop = null;
+  if (riding || player.inWater || player.inLava || player.climbing || player.onGround && wasGround) fallTop = null;
   if (!player.onGround && !player.inWater) fallTop = Math.max(fallTop ?? prevY, prevY, player.pos.y);
   else if (player.onGround && !wasGround && fallTop === null && !player.inWater) fallTop = prevY;
   if (player.onGround && !wasGround && fallTop !== null) {
@@ -583,6 +602,10 @@ function updateHealth(dt, wasGround, prevY) {
     timers.drown = 0;
   }
   renderAir();
+  // cactus spines: a point every half second while you're up against one
+  if (touchingPrickly()) {
+    if ((timers.cactus = (timers.cactus ?? 0) - dt) <= 0) { timers.cactus = 0.5; damage(1, 'You hugged a cactus.'); }
+  } else timers.cactus = 0;
   // lava burns: 3 points every half second
   if (player.inLava) {
     if ((timers.lava -= dt) <= 0) { timers.lava = 0.5; damage(3, 'You tried to swim in lava.'); }
@@ -1132,6 +1155,69 @@ async function sleepUntilMorning() {
   paused = false;
 }
 
+// ---------- rails and minecarts ----------
+// A rail you place joins up to two rails beside it (or a block higher or lower, as a slope), preferring
+// ones already pointing at it, and they bend round to meet it.
+function railNeighbour(x, y, z, d) {
+  const [dx, dz] = FACING_DIRS[d];
+  for (const dy of [0, 1, -1]) if (isRail(world.get(x + dx, y + dy, z + dz))) return [x + dx, y + dy, z + dz, dy];
+  return null;
+}
+const joinedEnds = (x, y, z) => BLOCKS[world.get(x, y, z)].rail.ends.filter((d) => railBeyond(world, x, y, z, d));
+function placeRail(x, y, z, powered) {
+  const cands = [];
+  for (let d = 0; d < 4; d++) {
+    const n = railNeighbour(x, y, z, d);
+    if (!n) continue;
+    const nr = BLOCKS[world.get(n[0], n[1], n[2])].rail;
+    const pointsHere = nr.ends.includes((d + 2) % 4);
+    if (pointsHere || joinedEnds(n[0], n[1], n[2]).length < 2) cands.push({ d, n, dy: n[3], pri: pointsHere ? 0 : 1 });
+  }
+  cands.sort((a, b) => a.pri - b.pri);
+  let pick = cands.slice(0, 2);
+  const straight = (a, b) => (a + 2) % 4 === b;
+  if (pick.length === 2 && powered && !straight(pick[0].d, pick[1].d)) pick = pick.slice(0, 1); // powered rails don't bend
+  const up = pick.find((c) => c.dy === 1);
+  if (up) pick = [up, ...pick.filter((c) => c !== up && straight(c.d, up.d))]; // a slope runs straight
+  let ends;
+  if (pick.length === 2) ends = [pick[0].d, pick[1].d];
+  else if (pick.length === 1) ends = [pick[0].d, (pick[0].d + 2) % 4];
+  else { const f = (facingTowardPlayer(x, z) + 2) % 4; ends = [f, (f + 2) % 4]; }
+  world.setBlock(x, y, z, railId(ends, up && !powered ? up.d : -1, powered));
+  for (const c of pick) {
+    const [nx, ny, nz, dy] = c.n;
+    const nr = BLOCKS[world.get(nx, ny, nz)].rail, back = (c.d + 2) % 4;
+    if (nr.ends.includes(back) && (dy !== -1 || nr.slope === back)) continue; // already joined
+    const keep = joinedEnds(nx, ny, nz).find((e) => e !== back);
+    const nends = keep === undefined ? [back, (back + 2) % 4] : [keep, back];
+    if (straight(nends[0], nends[1]) || !nr.powered) {
+      const slope = dy === -1 && straight(nends[0], nends[1]) && !nr.powered ? back : -1; // a lower rail slopes up to meet this one
+      if (dy === -1 && slope < 0) continue;
+      world.setBlock(nx, ny, nz, railId(nends, slope, nr.powered));
+    }
+  }
+}
+
+function getInCart(cart) {
+  riding = cart;
+  player.vel.set(0, 0, 0);
+  sound.place('stone');
+  toast('Hold forward to push off, back to brake. Tap to get out.', 2500);
+}
+function getOutOfCart() {
+  if (!riding) return;
+  player.spawn(riding.pos.x, riding.pos.y + 0.7, riding.pos.z);
+  riding = null;
+}
+// Sit in the cart: you go where it goes.
+function followCart() {
+  if (!carts.carts.includes(riding)) { riding = null; return; }
+  player.pos.set(riding.pos.x, riding.pos.y - 0.32, riding.pos.z);
+  player.vel.set(0, 0, 0);
+  player.onGround = true;
+  player.updateWaterState();
+}
+
 // ---------- signs ----------
 let signAt = null; // the sign being written on
 function editSign(x, y, z) {
@@ -1170,7 +1256,13 @@ function place() {
   if (isRod(held?.id)) { useRod(held.id); return; }
   // with the bow in hand a tap always shoots (a quick, short shot), whatever you're looking at
   if (held?.id === BOW) { shootArrow(Math.max(0.25, Math.min(1, bowCharge / FULL_DRAW))); bowCharge = 0; return; }
+  if (riding) { getOutOfCart(); return; }
+  if (targetCart) { getInCart(targetCart.cart); return; }
   if (targetMob) { hitMob(); return; }
+  if (held?.id === MINECART && target && isRail(target.id)) {
+    if (carts.add(world, target.x, target.y, target.z, player.lookDir())) { inventory.consumeHeld(); sound.place('stone'); }
+    return;
+  }
   if (target && (target.id === TABLE || target.id === CHURN)) { sound.click(); openInventory(target.id); return; }
   if (target) {
     const { x: tx, y: ty, z: tz, id: tid } = target;
@@ -1252,6 +1344,13 @@ function place() {
     world.setBlock(x, y, z, BED_FOOT + f);
     world.setBlock(hx, y, hz, BED + f);
     sound.place('wool');
+    inventory.consumeHeld();
+    return;
+  } else if (id === RAIL || id === POWERED_RAIL) {
+    // rails lie on top of a block, and bend to join the rails next to them
+    if (there !== AIR || target.ny !== 1 || !BLOCKS[target.id].solid) { toast('Rails go on top of a block'); return; }
+    placeRail(x, y, z, id === POWERED_RAIL);
+    sound.place('stone');
     inventory.consumeHeld();
     return;
   } else if (id === LADDER || id === SIGN) {
@@ -1449,6 +1548,19 @@ function updateBreaking(dt) {
   if (isRod(inventory.heldId())) { crack.visible = false; breakState.key = ''; breakState.progress = 0; return; }
   // holding on an animal taps it again every half second instead of breaking blocks. The first
   // repeat waits half a second too, so a tap (which acts once, on release) never acts twice.
+  // hold on a minecart to pick it up
+  if (controls.breaking && targetCart) {
+    breakState.cart = (breakState.cart ?? 0) + dt;
+    if (breakState.cart >= 0.5) {
+      carts.remove(targetCart.cart);
+      targetCart = null;
+      breakState.cart = 0;
+      giveDrops([[MINECART, 1]]);
+    }
+    crack.visible = false;
+    return;
+  }
+  breakState.cart = 0;
   if (!controls.breaking) breakState.mobCooldown = 0.5;
   breakState.mobCooldown = Math.max(0, breakState.mobCooldown - dt);
   if (controls.breaking && targetMob) {
@@ -1516,7 +1628,7 @@ function breakBlock(x, y, z) {
   }
   // cutting a tree's trunk with an axe brings down the whole tree above it
   const felled = id === LOG && ITEMS[inventory.heldId()]?.tool?.type === 'axe' ? treeAbove(x, y, z) : [];
-  world.setBlock(x, y, z, AIR);
+  world.setBlock(x, y, z, id === ICE ? WATER : AIR); // ice melts into water
   dropUnsupported(x, y, z);
   for (const [lx, ly, lz] of felled) {
     world.setBlock(lx, ly, lz, AIR);
@@ -1589,7 +1701,10 @@ function dropUnsupported(x, y, z) {
   }
   // lamps and carpets resting on it, and a door standing on it
   const above = world.get(x, y + 1, z);
-  if (isLamp(above) || above === CARPET) {
+  if (isRail(above)) {
+    world.setBlock(x, y + 1, z, AIR);
+    inventory.add(BLOCKS[above].drop, 1);
+  } else if (isLamp(above) || above === CARPET) {
     lamps.delete(lampKey(x, y + 1, z));
     world.setBlock(x, y + 1, z, AIR);
     inventory.add(BLOCKS[above].drop, 1);
@@ -1790,7 +1905,10 @@ function stepGame(now, dt) {
   if (!paused && here) {
     controls.update();
     const wasGround = player.onGround, wasWater = player.inWater, fallSpeed = -player.vel.y, prevY = player.pos.y;
-    player.update(dt, { moveX: controls.moveX, moveZ: controls.moveZ, jump: controls.jump });
+    carts.update(dt, world, powerAt, riding && { cart: riding, push: controls.moveZ, look: player.lookDir() },
+      { day: lightUniforms.uDay.value, flicker: lightUniforms.uFlicker.value, ambient: AMBIENT });
+    if (riding) followCart();
+    else player.update(dt, { moveX: controls.moveX, moveZ: controls.moveZ, jump: controls.jump });
     if (player.pos.y < -20) respawn();
     playMovementSounds(dt, wasGround, wasWater, fallSpeed);
     world.tickWater(dt);
@@ -1819,6 +1937,8 @@ function stepGame(now, dt) {
   if (unsavedCount && now - lastEditAt > 1500 && worldReady) { world.saveChunks(); unsavedCount = 0; }
   kinetics.update(paused ? 0 : dt, world, { day: lightUniforms.uDay.value, flicker: lightUniforms.uFlicker.value, ambient: AMBIENT });
   tickBlasts(dt);
+  minimap.show(!paused && inventory.heldId() === MAP);
+  minimap.update(world, player, bedSpawn ?? (world.spawnCache ??= world.generator.findSpawn()));
   try {
     machines.tick(paused ? 0 : dt, world, kinetics, stations, { day: lightUniforms.uDay.value, flicker: lightUniforms.uFlicker.value, ambient: AMBIENT });
   } catch (err) { reportError(err); }
@@ -1845,6 +1965,9 @@ function stepGame(now, dt) {
   const look = player.lookDir();
   target = paused ? null : world.raycast(eye, look, REACH);
   targetMob = paused ? null : mobs.raycast(eye, look, REACH);
+  targetCart = paused || riding ? null : carts.raycast(eye, look, REACH);
+  if (targetCart && ((target && target.t < targetCart.t) || (targetMob && targetMob.t < targetCart.t))) targetCart = null;
+  if (targetCart) { target = null; targetMob = null; }
   // whichever is closer wins: an animal in front of a block, or a block in front of an animal
   if (targetMob && target && target.t < targetMob.t) targetMob = null;
   if (targetMob) target = null;
@@ -1871,7 +1994,8 @@ window.minicraft = {
   get paused() { return paused; },
   get health() { return health; }, set health(v) { health = v; renderHealth(); },
   get poisoned() { return poisoned; }, get dead() { return dead; }, get air() { return air; }, set air(v) { air = v; },
-  arrows, fishing, kinetics, machines, signs, armour, damage, explode, lightFuse, fuses, clockTime, compassText, place, editSign, closeSign, openInventory, closeInventory, chestMove, lamps, tickLamps, sleepUntilMorning, stations, openStation, closeStation,
+  arrows, fishing, kinetics, machines, carts, minimap, signs, armour, damage, placeRail, getInCart, getOutOfCart,
+  get riding() { return riding; }, explode, lightFuse, fuses, clockTime, compassText, place, editSign, closeSign, openInventory, closeInventory, chestMove, lamps, tickLamps, sleepUntilMorning, stations, openStation, closeStation,
   get caneToday() { return caneToday; },
   get bedSpawn() { return bedSpawn; },
 };

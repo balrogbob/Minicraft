@@ -51,7 +51,9 @@ export const AIR = 0, GRASS = 1, DIRT = 2, STONE = 3, COBBLE = 4, LOG = 5, PLANK
   WINDMILL = 448, // 448 = axle along x, 449 = along z
   BELT = 450, // 450..453 + facing (the way it carries things)
   HOPPER = 454, // 454..457 + facing, 458 = facing down
-  LAVA = 460, OBSIDIAN = 461;
+  LAVA = 460, OBSIDIAN = 461,
+  RAIL = 462, // 462..473: see RAIL_SHAPES
+  SNOW_GRASS = 474, SNOW = 475, ICE = 476, SANDSTONE = 477, CACTUS = 478;
 
 // Wall direction [dx, dz] for each wall-torch variant, in id order.
 export const WALL_TORCH_DIRS = [[-1, 0], [1, 0], [0, -1], [0, 1]];
@@ -84,7 +86,8 @@ export const FLINT = 300, CLAY_BALL = 301, BRICK = 302, FIRE_CLAY = 303, FIRE_BR
   ARMOUR = 340, // 340..359: + material * 4 + piece (see ARMOUR_MATS, ARMOUR_PIECES)
   PLATES = 360, // 360..364: hammered metal plates (see PLATE_METALS)
   SALTPETRE = 366, GUNPOWDER = 367, LEAD_SINKER = 368, WEIGHTED_ROD = 369, LEAD_BUCKET = 370, LAVA_BUCKET = 372,
-  GOLD_CLOCK = 373, COMPASS = 374, SILVER_ARROW = 375, FILAMENT = 376, DRILL_BIT = 377;
+  GOLD_CLOCK = 373, COMPASS = 374, SILVER_ARROW = 375, FILAMENT = 376, DRILL_BIT = 377,
+  MINECART = 378, MAP = 379, PAPER = 380;
 
 // Charcoal (smelted from logs) can stand in for coal anywhere coal is used.
 export const COAL_OR_CHARCOAL = [COAL, CHARCOAL];
@@ -107,6 +110,7 @@ export const T = {
   HAMMER_SIDE: 78, HAMMER_FRONT: 79, HAMMER_TOP: 80, PUMP_SIDE: 81, PUMP_TOP: 82, LEAD: 83,
   DRILL_SIDE: 84, DRILL_FRONT: 85, BELT0: 86, // 86..89: belt tops, carrying toward each facing
   IRON: 90, FILAMENT_OFF: 91, FILAMENT_ON: 92,
+  SNOW: 93, SNOW_GRASS_SIDE: 94, ICE: 95, SANDSTONE_SIDE: 96, SANDSTONE_TOP: 97, CACTUS_SIDE: 98, CACTUS_TOP: 99, GOLD: 100,
 };
 
 // Ores, deepest-reaching last. tier: the pickaxe tier needed to mine it (see TOOL_TIERS);
@@ -184,6 +188,8 @@ function block(id, o) {
     lampBase: o.lampBase ?? 0, // a lamp's first (empty) variant
     blastproof: !!o.blastproof, // blasting charges can't break it
     belt: !!o.belt, hopper: !!o.hopper,
+    rail: o.rail ?? null, // { ends: [facing, facing], slope: facing it rises toward (or -1), powered }
+    prickly: !!o.prickly, // hurts to touch (cactus)
     machine: o.machine ?? null, // { load }: driven by a shaft or gear turning against it (see kinetics.js)
     down: !!o.down, // a drill or hopper pointing down rather than to one side
   };
@@ -215,6 +221,15 @@ ORES.forEach((o, i) => block(o.id, {
   drop: o.drop ? () => [[o.drop, 1 + (Math.random() < 0.4 ? 1 : 0)]] : o.id,
 }));
 export const isOre = (id) => id >= IRON_ORE && id <= TUNGSTEN_ORE;
+// cold and dry places
+block(SNOW_GRASS, { name: 'Snowy Grass', sound: 'grass', top: T.SNOW, bottom: T.DIRT, side: T.SNOW_GRASS_SIDE, hardness: 0.9, tool: 'shovel', drop: DIRT });
+block(SNOW, { name: 'Snow', sound: 'sand', tex: T.SNOW, hardness: 0.5, tool: 'shovel' });
+block(ICE, { name: 'Ice', sound: 'glass', tex: T.ICE, transparent: true, hardness: 0.6, drop: 0 }); // melts into water when broken
+block(SANDSTONE, { name: 'Sandstone', top: T.SANDSTONE_TOP, bottom: T.SANDSTONE_TOP, side: T.SANDSTONE_SIDE, hardness: 2, tool: 'pick', needsTool: true });
+block(CACTUS, {
+  name: 'Cactus', sound: 'leaves', hardness: 0.5, transparent: true, prickly: true,
+  model: [[1, 0, 1, 15, 16, 15, { top: T.CACTUS_TOP, side: T.CACTUS_SIDE, bottom: T.CACTUS_TOP }]],
+});
 block(BEDROCK, { name: 'Bedrock', tex: T.BEDROCK, hardness: Infinity, blastproof: true });
 // saltpetre: a white crust on cave walls; it breaks into saltpetre for gunpowder
 block(SALTPETRE_ORE, {
@@ -456,6 +471,73 @@ for (let k = 0; k < 5; k++) {
   });
 }
 
+// Rails: flat track on the ground. Each shape joins two of the four sides (facings 0..3 = +z, -x, -z,
+// +x); a slope rises one block toward one side. Powered rails speed a minecart up while a shaft turns them.
+export const RAIL_SHAPES = [
+  { ends: [0, 2] }, { ends: [1, 3] }, // straight along z, along x
+  { ends: [0, 1] }, { ends: [1, 2] }, { ends: [2, 3] }, { ends: [3, 0] }, // curves
+  { ends: [0, 2], slope: 0 }, { ends: [1, 3], slope: 1 }, { ends: [0, 2], slope: 2 }, { ends: [1, 3], slope: 3 }, // slopes
+  { ends: [0, 2], powered: true }, { ends: [1, 3], powered: true },
+];
+export const POWERED_RAIL = RAIL + 10;
+const RAIL_IRON = T.IRON, TIE = T.PLANKS;
+function railModel({ ends, slope = -1, powered }) {
+  const boxes = [];
+  const rail = powered ? T.GOLD : RAIL_IRON;
+  if (slope >= 0) {
+    // a staircase of ties and rail pieces climbing toward +z, turned to face the slope
+    const steps = [];
+    for (let k = 0; k < 4; k++) {
+      const z = k * 4, y = k * 4;
+      steps.push([1, y, z, 15, y + 1, z + 3, TIE], [3, y + 1, z, 5, y + 2.5, z + 4, rail], [11, y + 1, z, 13, y + 2.5, z + 4, rail]);
+    }
+    return rotateModel(steps, slope);
+  }
+  const [a, b] = ends;
+  if ((a + 2) % 4 === b) {
+    // straight: drawn along z, turned for x
+    const m = [];
+    for (const z of [1.5, 6, 10.5, 15 - 2.5]) m.push([1, 0, z, 15, 1, z + 2.5, TIE]);
+    m.push([3, 1, 0, 5, 2.5, 16, rail], [11, 1, 0, 13, 2.5, 16, rail]);
+    return a % 2 ? rotateModel(m, 1) : m;
+  }
+  // curves: drawn joining +z (front) and +x (right), in short straight pieces, then turned
+  const m = [];
+  const N = 8;
+  for (let i = 0; i < N; i++) {
+    const t0 = (i / N) * (Math.PI / 2), t1 = ((i + 1) / N) * (Math.PI / 2);
+    for (const r of [4, 12]) {
+      const xa = 16 - Math.cos(t0) * r, za = 16 - Math.sin(t0) * r, xb = 16 - Math.cos(t1) * r, zb = 16 - Math.sin(t1) * r;
+      m.push([Math.min(xa, xb) - 0.8, 1, Math.min(za, zb) - 0.8, Math.max(xa, xb) + 0.8, 2.5, Math.max(za, zb) + 0.8, rail]);
+    }
+    if (i % 2) continue;
+    const tm = (t0 + t1) / 2;
+    for (const r of [2.5, 8, 13.5]) {
+      const cx = 16 - Math.cos(tm) * r, cz = 16 - Math.sin(tm) * r;
+      m.push([cx - 2, 0, cz - 2, cx + 2, 1, cz + 2, TIE]);
+    }
+  }
+  // which turn takes the +z/+x corner to the corner between ends a and b
+  const turnFor = { '0,3': 0, '3,0': 0, '0,1': 1, '1,0': 1, '1,2': 2, '2,1': 2, '2,3': 3, '3,2': 3 };
+  return rotateModel(m, turnFor[`${a},${b}`]);
+}
+RAIL_SHAPES.forEach((shape, k) => {
+  const powered = !!shape.powered;
+  block(RAIL + k, {
+    name: powered ? 'Powered Rail' : 'Rail', sound: 'stone', transparent: true, solid: false, hardness: 0.7, tool: 'pick',
+    model: railModel(shape), rail: { ends: shape.ends, slope: shape.slope ?? -1, powered },
+    variantOf: powered ? (k === 10 ? 0 : POWERED_RAIL) : k ? RAIL : 0, drop: powered ? POWERED_RAIL : RAIL,
+    ...(powered ? { machine: { load: 1 } } : {}),
+  });
+});
+export const isRail = (id) => !!BLOCKS[id]?.rail;
+export const railId = (ends, slope = -1, powered = false) => {
+  if (powered) return POWERED_RAIL + (ends[0] % 2);
+  const k = RAIL_SHAPES.findIndex((s) => !s.powered && (s.slope ?? -1) === slope &&
+    ((s.ends[0] === ends[0] && s.ends[1] === ends[1]) || (s.ends[0] === ends[1] && s.ends[1] === ends[0])));
+  return RAIL + Math.max(0, k);
+};
+
 // Ladders hang on a wall (facing 0: the wall is toward -z); scaffolding stands on its own. You climb
 // both: walk into them (or jump) to go up, back off to go down, and stand still to slide down slowly.
 const LADDER_MODEL = [
@@ -573,6 +655,9 @@ export const ITEMS = {
   [SILVER_ARROW]: { name: 'Silver Arrow' }, // twice the damage to night creatures
   [FILAMENT]: { name: 'Tungsten Filament' },
   [DRILL_BIT]: { name: 'Tungsten Drill Bit', stack: 1 },
+  [MINECART]: { name: 'Minecart', stack: 1 },
+  [MAP]: { name: 'Map', stack: 1 }, // hold it to see the land around you from above
+  [PAPER]: { name: 'Paper' },
   [RAW_FISH]: { name: 'Raw Fish', food: 2 },
   [BAKED_FISH]: { name: 'Baked Fish', food: 6 },
 };
@@ -766,6 +851,13 @@ RECIPES.push(
   { out: [DRILL_BIT, 1], in: [[TUNGSTEN_INGOT, 2], [STEEL_INGOT, 1]], table: true, metal: TUNGSTEN_INGOT },
   { out: [DRILL, 1], in: [[DRILL_BIT, 1], [STEEL_INGOT, 3], [kineticId('gear', 1), 1]], table: true, metal: DRILL_BIT },
   { out: [FILAMENT_LAMP, 1], in: [[GLASS, 1], [FILAMENT, 1], [COPPER_INGOT, 2]], table: true, metal: FILAMENT },
+  // rails, maps and the desert
+  { out: [RAIL, 16], in: [[IRON_INGOT, 6], [STICK, 1]], table: true, metal: IRON_INGOT },
+  { out: [POWERED_RAIL, 6], in: [[GOLD_INGOT, 4], [IRON_INGOT, 2], [STICK, 1]], table: true, metal: GOLD_INGOT },
+  { out: [MINECART, 1], in: [[IRON_INGOT, 5]], table: true, metal: IRON_INGOT },
+  { out: [PAPER, 3], in: [[SUGAR_CANE, 3]], table: true },
+  { out: [MAP, 1], in: [[PAPER, 4], [COMPASS, 1]], table: true, metal: COMPASS },
+  { out: [SANDSTONE, 1], in: [[SAND, 4]], table: true },
   // storage and getting about
   { out: [CHEST, 1], in: [[PLANKS, 8]], table: true },
   { out: [IRON_CHEST, 1], in: [[CHEST, 2], [plateOf(IRON_INGOT), 2]], table: true, metal: IRON_INGOT },

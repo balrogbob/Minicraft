@@ -11,6 +11,7 @@ import {
   LADDER, SCAFFOLD, SIGN, WOOD_SWORD, STONE_SWORD, metalSword, HIDE, LEATHER, ARMOUR_MATS, ARMOUR_PIECES, armourId,
   PLATE_METALS, PLATES,
   PIPE, SPOUT, BELT, HOPPER, WINDMILL, FILAMENT, DRILL_BIT,
+  RAIL, POWERED_RAIL, CACTUS, MINECART, MAP, PAPER,
   SALTPETRE, GUNPOWDER, LEAD_SINKER, WEIGHTED_ROD, LEAD_BUCKET, LAVA_BUCKET, GOLD_CLOCK, COMPASS, SILVER_ARROW, MIRROR_LAMP,
 } from './blocks.js';
 
@@ -527,6 +528,37 @@ Object.assign(P, {
   },
 });
 for (let f = 0; f < 4; f++) P[T.BELT0 + f] = (t) => arrowTile(t, f);
+
+// ----- tundra and desert -----
+Object.assign(P, {
+  [T.SNOW](t) { t.fill([240, 244, 250], 0.04); t.speckle([214, 224, 240], 0.1, 0.04); },
+  [T.SNOW_GRASS_SIDE](t) {
+    P[T.DIRT](t);
+    for (let x = 0; x < TILE; x++) {
+      const depth = 3 + (t.r() < 0.5 ? 1 : 0) + (t.r() < 0.25 ? 1 : 0);
+      for (let y = 0; y < depth; y++) t.set(x, y, t.vary([238, 242, 248], 0.04));
+    }
+  },
+  [T.ICE](t) {
+    for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) t.set(x, y, t.vary([150, 196, 240], 0.05), 200);
+    for (let i = 0; i < 3; i++) { let x = t.r() * 16, y = t.r() * 16; for (let k = 0; k < 6; k++) { t.set(x | 0, y | 0, [220, 238, 255], 220); x += 1; y += t.r() < 0.5 ? 1 : 0; } } // cracks
+  },
+  [T.SANDSTONE_TOP](t) { P[T.SAND](t); for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) if (x === 0 || y === 0) t.set(x, y, t.vary([196, 176, 120], 0.05)); },
+  [T.SANDSTONE_SIDE](t) {
+    for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+      const band = y < 3 ? [226, 210, 158] : y % 5 === 4 ? [190, 168, 112] : [214, 196, 140];
+      t.set(x, y, t.vary(band, 0.05));
+    }
+  },
+  [T.CACTUS_SIDE](t) {
+    for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) t.set(x, y, t.vary(x % 4 === 1 ? [64, 120, 50] : [86, 150, 64], 0.08));
+    for (let y = 1; y < TILE; y += 3) for (const x of [3, 11]) t.set(x, y, [236, 230, 190]); // spines
+  },
+  [T.CACTUS_TOP](t) {
+    for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) t.set(x, y, t.vary(Math.hypot(x - 7.5, y - 7.5) < 4 ? [120, 176, 90] : [86, 150, 64], 0.06));
+  },
+  [T.GOLD](t) { for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) t.set(x, y, t.vary(shade([250, 210, 70], 0.88 + 0.12 * Math.sin((x - y) * 0.7)), 0.04)); },
+});
 
 // A plank door: a frame with a centre board; the upper half has a four-pane window you can see through,
 // the lower half has the handle.
@@ -1206,6 +1238,37 @@ Object.assign(ITEM_PAINTERS, {
   [DRILL_BIT](ctx) {
     for (let y = 1; y < 15; y++) { const w = Math.max(1, Math.round((15 - y) * 0.3)); for (let x = 8 - w; x < 8 + w; x++) px(ctx, x, y, (x + y) % 3 ? [124, 120, 152] : [84, 80, 110]); }
     rect(ctx, 6, 13, 4, 3, [146, 154, 166]);
+  },
+});
+
+// ----- rails, minecarts and maps -----
+function railIcon(c) {
+  return (ctx) => {
+    for (const y of [2, 6, 10, 14]) rect(ctx, 1, y, 14, 2, [128, 92, 52]);
+    rect(ctx, 3, 0, 2, 16, c); rect(ctx, 11, 0, 2, 16, c);
+  };
+}
+Object.assign(ITEM_PAINTERS, {
+  [RAIL]: railIcon([150, 154, 162]),
+  [POWERED_RAIL]: railIcon([240, 196, 60]),
+  [CACTUS](ctx) {
+    rect(ctx, 5, 2, 6, 14, [86, 150, 64]); rect(ctx, 5, 2, 2, 14, [64, 120, 50]);
+    rect(ctx, 1, 6, 4, 3, [86, 150, 64]); rect(ctx, 1, 3, 2, 4, [86, 150, 64]); // arm
+    rect(ctx, 11, 8, 3, 3, [86, 150, 64]); rect(ctx, 13, 5, 2, 4, [86, 150, 64]);
+    for (const [x, y] of [[8, 4], [9, 8], [8, 12], [2, 4], [14, 6]]) px(ctx, x, y, [236, 230, 190]);
+  },
+  [MINECART](ctx) {
+    rect(ctx, 1, 4, 14, 8, [110, 114, 122]); rect(ctx, 2, 5, 12, 6, [70, 72, 80]); rect(ctx, 1, 4, 14, 1, [150, 154, 162]);
+    for (const x of [3, 10]) { rect(ctx, x, 12, 3, 3, [40, 40, 44]); px(ctx, x + 1, 13, [120, 120, 126]); }
+  },
+  [PAPER](ctx) { rect(ctx, 3, 1, 10, 14, [246, 242, 228]); rect(ctx, 12, 1, 1, 14, [214, 208, 190]); for (const y of [4, 7, 10]) rect(ctx, 5, y, 6, 1, [200, 196, 184]); },
+  [MAP](ctx) {
+    rect(ctx, 1, 2, 14, 12, [226, 214, 172]);
+    for (let y = 3; y < 13; y++) for (let x = 2; x < 14; x++) {
+      const land = Math.sin(x * 0.7) + Math.cos(y * 0.6) > 0.2;
+      px(ctx, x, y, land ? ((x + y) % 5 ? [120, 168, 84] : [90, 130, 60]) : [90, 140, 210]);
+    }
+    px(ctx, 8, 7, [200, 40, 34]); px(ctx, 7, 8, [200, 40, 34]); px(ctx, 9, 8, [200, 40, 34]);
   },
 });
 

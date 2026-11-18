@@ -9,7 +9,7 @@ import {
   ORES, COAL_OR_CHARCOAL, IRON_INGOT, COPPER_INGOT, TIN_INGOT, ZINC_INGOT, ALUMINIUM_INGOT, SILVER_INGOT, GOLD_INGOT,
   BRONZE_INGOT, ELECTRUM_INGOT, STAINLESS_INGOT, STEEL_INGOT, AL_BRONZE_INGOT,
   GRAVEL, FLINT, FLINT_DUST, CLAY_BALL, CLAY_DUST, BRICK, FIRE_CLAY, FIRE_BRICK, oreDust, HIDE, LEATHER,
-  LAVA_BUCKET, LEAD_BUCKET, SALTPETRE, WHEAT, SUGAR_CANE, COAL_DUST, PLATE_METALS, PLATES, TUNGSTEN_INGOT, FILAMENT,
+  LAVA_BUCKET, LEAD_BUCKET, SALTPETRE, SANDSTONE, WHEAT, SUGAR_CANE, COAL_DUST, PLATE_METALS, PLATES, TUNGSTEN_INGOT, FILAMENT,
 } from './blocks.js';
 
 // A recipe ingredient can be one id or a list of alternatives (coal or charcoal).
@@ -74,6 +74,7 @@ export const STATION_KINDS = {
       { out: [SAND, 1], in: [[GRAVEL, 1]], time: 4 },
       { out: [FLINT_DUST, 2], in: [[FLINT, 1]], time: 4 },
       { out: [CLAY_DUST, 2], in: [[BRICK, 1]], time: 4 },
+      { out: [SALTPETRE, 1], in: [[SANDSTONE, 2]], time: 6 }, // desert sandstone holds a little saltpetre
     ],
   },
 };
