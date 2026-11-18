@@ -18,6 +18,7 @@ export class Player {
     this.onGround = false;
     this.autoJump = true;
     this.speedMul = 1; // below 1 while starving
+    this.kx = 0; this.kz = 0; // knockback from being hit, fades quickly
     this.inWater = false; // any part of the body in water
     this.eyeInWater = false;
   }
@@ -78,8 +79,10 @@ export class Player {
     if (len > 1) { wx /= len; wz /= len; }
     this.updateWaterState();
     const control = this.inWater ? 0.55 : this.onGround ? 1 : 0.85;
-    this.vel.x = wx * WALK * control * this.speedMul;
-    this.vel.z = wz * WALK * control * this.speedMul;
+    this.vel.x = wx * WALK * control * this.speedMul + this.kx;
+    this.vel.z = wz * WALK * control * this.speedMul + this.kz;
+    const fade = Math.exp(-6 * dt);
+    this.kx *= fade; this.kz *= fade;
     if (this.inWater) {
       // swimming: slow sinking, jump swims upward
       this.vel.y -= 9 * dt;

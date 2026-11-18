@@ -135,6 +135,20 @@ export class Sound {
     }
   }
 
+  // A thornspitter spitting a thorn.
+  spit() {
+    if (!this.ready) return;
+    this.voice({ type: 'sine', from: 420, to: 120, dur: 0.09, vol: 0.35, freq: 1500 });
+    this.noiseBurst({ type: 'bandpass', freq: 1200, q: 1, dur: 0.06, vol: 0.3 }, 1, 1);
+  }
+
+  // A night creature defeated, or dissolving into shadow.
+  poof() {
+    if (!this.ready) return;
+    this.noiseBurst({ type: 'lowpass', freq: 700, q: 0.7, dur: 0.45, vol: 0.5 }, 1, 0.8);
+    this.voice({ type: 'sine', from: 300, to: 90, dur: 0.35, vol: 0.18, freq: 1000 });
+  }
+
   // Three quick crunches.
   eat() {
     if (!this.ready) return;
@@ -192,6 +206,23 @@ export class Sound {
       // alpacas hum; a bumped one gives a short high squeak
       if (hurt) this.voice({ type: 'triangle', from: p(900, 1000), to: 620, dur: 0.22, vol: 0.3 * gain, freq: 3000 });
       else this.voice({ type: 'sine', from: p(280, 320), to: p(330, 360), dur: 0.65, vol: 0.28 * gain, freq: 1500, attack: 0.12, vibrato: 12 });
+    } else if (kind === 'gloomling') {
+      // a breathy, wavering whisper; a thin shriek when hit
+      if (hurt) this.voice({ type: 'square', from: p(900, 1000), to: 560, dur: 0.16, vol: 0.18 * gain, freq: 2500 });
+      else {
+        this.noiseBurst({ type: 'bandpass', freq: 2800, q: 2, dur: 0.45, vol: 0.3 * gain }, 1, 1);
+        this.voice({ type: 'sine', from: p(560, 640), to: p(380, 420), dur: 0.5, vol: 0.14 * gain, freq: 1500, vibrato: 30, attack: 0.08 });
+      }
+    } else if (kind === 'mossback') {
+      // a deep grinding rumble
+      const f = hurt ? p(70, 80) : p(46, 54);
+      this.voice({ from: f, to: f * 0.8, dur: hurt ? 0.35 : 0.9, vol: 0.7 * gain, freq: 220, q: 3, attack: 0.1 });
+      this.noiseBurst({ type: 'lowpass', freq: 260, q: 1, dur: hurt ? 0.3 : 0.7, vol: 0.5 * gain }, 1, 1);
+    } else if (kind === 'thornspitter') {
+      // a dry rattle of thorns
+      const n = hurt ? 2 : 5;
+      for (let i = 0; i < n; i++) setTimeout(() => this.ready && this.noiseBurst({ type: 'highpass', freq: 3500, q: 1, dur: 0.03, vol: 0.35 * gain }, 1, 1), i * 45);
+      if (hurt) this.voice({ type: 'triangle', from: 1200, to: 700, dur: 0.12, vol: 0.15 * gain, freq: 3000 });
     } else if (kind === 'newt') {
       this.voice({ type: 'sine', from: p(2400, 2700), to: p(3100, 3400), dur: hurt ? 0.1 : 0.06, vol: 0.12 * gain, freq: 6000 });
     }

@@ -17,6 +17,12 @@ It is designed for Android tablets (touch controls) but also plays with keyboard
 - Health (ten hearts): falls of more than 3 blocks hurt, you can drown (watch the bubbles underwater),
   and an empty hunger bar wears you down. A well-fed player slowly heals. If you die you respawn at
   the world spawn and keep what you were carrying. Drinking a slime bucket gives you food poisoning
+- Night creatures come out in the dark — on the surface at night and in caves any time, but never where
+  torches light the ground. **Gloomlings** are quick shadow imps, **mossbacks** are slow, hard-hitting
+  stone golems, and **thornspitters** keep their distance and spit thorns. Fight them by tapping (an axe
+  hits hardest) or with the bow; they drop coal, cobblestone or arrows. Caught in daylight, they dissolve.
+  Four difficulty levels in the ☰ menu: **Peaceful** (they roam but only fight back if you attack them),
+  **Worrying** (easy), **Scary** (hard) and **Terrifying** (nightmare)
 - A bow and arrows: hold to draw, let go to shoot (tap for a quick shot). Arrows stick in blocks and
   you can walk over them to pick them back up; animals they hit get bumped away
 - A day counter and a hunger bar. Hunger drains as you play (faster when walking and digging);
@@ -63,6 +69,7 @@ The version number is shown at the bottom of the ☰ menu; bump `GAME_VERSION` i
 | Break | Hold your finger still on the right side | Hold left button |
 | Place / use crafting table | Tap on the right side | Right click |
 | Tap an animal (bump, shear, pluck, milk…) | Tap it | Left or right click |
+| Hit a night creature | Tap it (hold to keep swinging) | Left or right click |
 | Eat (or drink a slime bucket) | Tap with food in hand | Right click |
 | Shoot the bow | Hold to draw, release to shoot (tap: quick shot) | Hold and release left button (right click: quick shot) |
 | Jump / swim up | ⤒ button (auto-jump also steps up 1-block ledges) | Space |
@@ -112,8 +119,8 @@ Tap a crafting table or butter churn to open crafting there. The hunger bar hold
 | `js/store.js` | Saving edited chunks to IndexedDB |
 | `js/legacy.js` | The old 128 × 128 generator, used once to migrate old saves |
 | `js/player.js` | Player physics, collision and swimming |
-| `js/mobs.js` | Animals: box models, behaviour, physics, spawning by habitat |
-| `js/arrows.js` | Arrows: flight, hitting animals, sticking in blocks, pick-up |
+| `js/mobs.js` | Animals and night creatures: box models, behaviour and hunting, physics, spawning, difficulty |
+| `js/arrows.js` | Arrows and thorns: flight, hits, sticking in blocks, pick-up |
 | `js/sky.js` | Day/night cycle: sky colour, fog, sun, moon, stars, world brightness |
 | `js/sound.js` | Web Audio sound effects |
 | `js/controls.js` | Touch joystick / look / tap / hold, plus desktop input |
