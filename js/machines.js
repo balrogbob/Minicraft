@@ -89,7 +89,18 @@ export class Machines {
       }
       return addToSlots(st.inputs, id, n);
     }
+    if (def.rail?.loader) {
+      // a storage cart waiting on a loader rail
+      const cart = this.carts?.storageAt(x, y, z);
+      if (!cart) return 0;
+      const k = addToSlots(cart.store.inputs, id, n);
+      if (k) this.carts.busy(cart);
+      return k;
+    }
     if (def.hopper) {
+      // a sorting hopper (one with item frames on it) only takes what matches a frame
+      const filter = this.frames?.around(world, x, y, z);
+      if (filter?.length && !filter.includes(id)) return 0;
       const [dx, dy, dz] = pointing(def);
       return this.insert(world, stations, x + dx, y + dy, z + dz, id, n, !def.down, depth + 1);
     }
@@ -106,18 +117,27 @@ export class Machines {
 
   // Take one thing out of the chest or machine at (x, y, z) for a hopper below it: a chest's first
   // stack, or a machine's output. Returns the id taken, or 0 (`peek` only looks).
-  takeOne(world, stations, x, y, z, peek = false) {
+  takeOne(world, stations, x, y, z, peek = false, filter = null) {
+    const ok = (s) => s && (!filter?.length || filter.includes(s.id));
+    if (BLOCKS[world.get(x, y, z)]?.rail?.loader) {
+      const cart = this.carts?.storageAt(x, y, z);
+      const i = cart ? cart.store.inputs.findIndex(ok) : -1;
+      if (i < 0) return 0;
+      const id = cart.store.inputs[i].id;
+      if (!peek) { if (!--cart.store.inputs[i].count) cart.store.inputs[i] = null; this.carts.busy(cart); }
+      return id;
+    }
     const kind = stationKind(world.get(x, y, z));
     if (!kind) return 0;
     const st = stations.get(x, y, z, kind);
     if (STATION_KINDS[kind].storage) {
-      const i = st.inputs.findIndex(Boolean);
+      const i = st.inputs.findIndex(ok);
       if (i < 0) return 0;
       const id = st.inputs[i].id;
       if (!peek && !--st.inputs[i].count) st.inputs[i] = null;
       return id;
     }
-    if (!st.out) return 0;
+    if (!ok(st.out)) return 0;
     const id = st.out.id;
     if (!peek && !--st.out.count) st.out = null;
     return id;
@@ -147,10 +167,11 @@ export class Machines {
     if ((this.hopperTimer -= dt) <= 0) {
       this.hopperTimer = HOPPER_EVERY;
       for (const [x, y, z, def] of hoppers) {
-        if (!this.takeOne(world, stations, x, y + 1, z, true)) continue;
+        const filter = this.frames?.around(world, x, y, z);
+        const id = this.takeOne(world, stations, x, y + 1, z, true, filter);
+        if (!id) continue;
         const [dx, dy, dz] = pointing(def);
-        const id = this.takeOne(world, stations, x, y + 1, z, true);
-        if (this.insert(world, stations, x + dx, y + dy, z + dz, id, 1, !def.down)) this.takeOne(world, stations, x, y + 1, z);
+        if (this.insert(world, stations, x + dx, y + dy, z + dz, id, 1, !def.down)) this.takeOne(world, stations, x, y + 1, z, false, filter);
       }
     }
     this.tickBelts(dt, world, kinetics, stations, light);
@@ -241,6 +262,16 @@ export class Machines {
       for (let i = 0; i < items.length; i++) {
         const limit = i === 0 ? 1 : items[i - 1].t - BELT_GAP;
         items[i].t = Math.max(items[i].t, Math.min(limit, items[i].t + dt * speed * BELT_SPEED));
+      }
+      // passing over a hopper: it drops in, if the hopper (and whatever it feeds) will take it
+      if (speed > 0 && BLOCKS[world.get(x, y - 1, z)]?.hopper) {
+        for (let i = items.length - 1; i >= 0; i--) {
+          const it = items[i];
+          if (it.offered || it.t < 0.5) continue;
+          it.offered = true;
+          if (this.insert(world, stations, x, y - 1, z, it.id, 1, false)) { this.dropSprite(it); items.splice(i, 1); }
+        }
+        if (!items.length) { this.belts.delete(k); continue; }
       }
       // at the end: on to the next belt, or into whatever it points at
       if (items.length && items[0].t >= 1 && speed > 0) {

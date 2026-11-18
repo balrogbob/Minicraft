@@ -12,7 +12,7 @@ import {
   PLATE_METALS, PLATES,
   PIPE, SPOUT, BELT, HOPPER, WINDMILL, FILAMENT, DRILL_BIT,
   RAIL, POWERED_RAIL, CACTUS, MINECART, MAP, PAPER,
-  COLORS, DYE,
+  COLORS, DYE, CLUTCH, STORAGE_CART, LOADER_RAIL,
   SALTPETRE, GUNPOWDER, LEAD_SINKER, WEIGHTED_ROD, LEAD_BUCKET, LAVA_BUCKET, GOLD_CLOCK, COMPASS, SILVER_ARROW, MIRROR_LAMP,
 } from './blocks.js';
 
@@ -615,6 +615,16 @@ BLOOMS.forEach((b, i) => {
     }
   };
 });
+P[T.GEARBOX] = (t) => {
+  P[T.COBBLE](t);
+  frame(t, [96, 98, 104], 2);
+  for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+    const d = Math.hypot(x - 7.5, y - 7.5);
+    if (d < 4.6 && d > 2.2) t.set(x, y, t.vary(((Math.atan2(y - 7.5, x - 7.5) * 8 / Math.PI) | 0) % 2 ? [150, 152, 158] : [118, 120, 128], 0.05));
+    else if (d <= 2.2) t.set(x, y, [70, 70, 76]);
+  }
+};
+P[T.FRAME_BACK] = (t) => { t.fill([128, 88, 52], 0.06); t.speckle([110, 74, 42], 0.15, 0.05); };
 P[T.TRAPDOOR] = (t) => {
   P[T.PLANKS](t);
   for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
@@ -1339,6 +1349,15 @@ Object.assign(ITEM_PAINTERS, {
 });
 
 COLORS.forEach((c, i) => { ITEM_PAINTERS[DYE + i] = dustPainter(c.rgb); });
+ITEM_PAINTERS[CLUTCH] = (ctx) => {
+  rect(ctx, 0, 7, 16, 3, [150, 150, 150]); rect(ctx, 0, 7, 16, 1, [180, 180, 180]);
+  rect(ctx, 5, 3, 6, 11, IRON_C); rect(ctx, 7, 2, 2, 13, [104, 110, 134]); rect(ctx, 5, 3, 6, 1, [160, 164, 172]);
+};
+ITEM_PAINTERS[STORAGE_CART] = (ctx) => {
+  ITEM_PAINTERS[MINECART](ctx);
+  rect(ctx, 3, 1, 10, 6, [122, 82, 48]); rect(ctx, 3, 1, 10, 1, [92, 60, 34]); rect(ctx, 7, 3, 2, 2, [160, 164, 172]);
+};
+ITEM_PAINTERS[LOADER_RAIL] = (ctx) => { railIcon([150, 154, 162])(ctx); rect(ctx, 5, 5, 6, 6, IRON_C); rect(ctx, 6, 6, 4, 4, [70, 72, 80]); };
 
 // An isometric drawing of a model block (furniture, stairs, fences...) for blocks with no painted icon,
 // matching drawIsoBlock: +z faces to the left, +x faces to the right.

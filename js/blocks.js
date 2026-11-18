@@ -116,6 +116,7 @@ export const T = {
   PAINTED: 120, // 120..129: painted planks in each colour
   FLOWER0: 130, // 130..134: poppy, dandelion, cornflower, lavender, daisy
   TRAPDOOR: 135,
+  GEARBOX: 136, FRAME_BACK: 137,
 };
 
 // Ores, deepest-reaching last. tier: the pickaxe tier needed to mine it (see TOOL_TIERS);
@@ -202,6 +203,8 @@ function block(id, o) {
     stair: o.stair ?? null,
     gate: !!o.gate, trapdoor: !!o.trapdoor,
     color: o.color ?? -1, // index into COLORS for dyed blocks
+    switch: o.switch ?? null, on: !!o.on, floor: !!o.floor, // levers, buttons and pressure plates
+    frame: !!o.frame,
   };
 }
 
@@ -1040,3 +1043,79 @@ COLORS.forEach((c, i) => {
     { out: [PAINTED_PLANKS + i, 4], in: [[PLANKS, 4], [DYE + i, 1]], metal: DYE + i },
   );
 });
+
+// ---------- automation: gearboxes, clutches, switches, item frames and loader rails ----------
+export const GEARBOX = 580, // passes a turning shaft round a corner: every face is an axle end
+  CLUTCH = 581, // 581..583: + axis; a shaft that only joins its two ends while it's switched on
+  LEVER = 584, // 584..593: + mount (0..3 on a wall, facing out of it; 4 on the floor) + 5 if on
+  BUTTON = 594, // 594..601: + facing + 4 while pressed
+  PRESSURE_PLATE = 602, // 603 = pressed
+  ITEM_FRAME = 604, // 604..607: + facing (out of the wall it hangs on)
+  LOADER_RAIL = 608; // 608 = along z, 609 = along x
+export const STORAGE_CART = 391;
+
+block(GEARBOX, {
+  name: 'Gearbox', tex: T.GEARBOX, hardness: 2, tool: 'pick', sound: 'stone', kinetic: { part: 'gearbox', mat: 1, axis: -1 },
+});
+for (let a = 0; a < 3; a++) {
+  block(CLUTCH + a, {
+    ...kineticShape, name: 'Clutch', sound: 'stone', tool: 'pick', hardness: 1.5, variantOf: a ? CLUTCH : 0, drop: CLUTCH,
+    kinetic: { part: 'clutch', mat: 1, axis: a },
+  });
+}
+// switches: models drawn for a wall toward -z (facing 0)
+const leverModel = (floor, on) => (floor
+  ? [[5, 0, 4, 11, 2, 12, T.COBBLE], on ? [7, 2, 8.5, 9, 10, 10.5, T.LOG_SIDE] : [7, 2, 5.5, 9, 10, 7.5, T.LOG_SIDE]]
+  : [[5, 4, 0, 11, 12, 2, T.COBBLE], on ? [7, 8.5, 2, 9, 14, 4, T.LOG_SIDE] : [7, 2, 2, 9, 7.5, 4, T.LOG_SIDE]]);
+for (let k = 0; k < 10; k++) {
+  const mount = k % 5, on = k >= 5, floor = mount === 4;
+  block(LEVER + k, {
+    name: 'Lever', sound: 'wood', hardness: 0.5, transparent: true, solid: false, switch: 'lever', on, floor,
+    model: floor ? leverModel(true, on) : rotateModel(leverModel(false, on), mount), facing: floor ? 0 : mount,
+    variantOf: k ? LEVER : 0, drop: LEVER,
+  });
+}
+for (let k = 0; k < 8; k++) {
+  const f = k & 3, on = k >= 4;
+  block(BUTTON + k, {
+    name: 'Button', sound: 'stone', hardness: 0.5, transparent: true, solid: false, switch: 'button', on, facing: f,
+    model: rotateModel([[5, 6, 0, 11, 10, on ? 1 : 2, T.STONE]], f), variantOf: k ? BUTTON : 0, drop: BUTTON,
+  });
+}
+for (let k = 0; k < 2; k++) {
+  block(PRESSURE_PLATE + k, {
+    name: 'Pressure Plate', sound: 'stone', hardness: 0.5, transparent: true, solid: false, switch: 'plate', on: !!k, floor: true,
+    model: [[1, 0, 1, 15, k ? 0.5 : 1, 15, T.STONE]], variantOf: k ? PRESSURE_PLATE : 0, drop: PRESSURE_PLATE,
+  });
+}
+export const isSwitch = (id) => !!BLOCKS[id]?.switch;
+const FRAME_MODEL = [[2, 2, 0, 14, 14, 0.6, T.FRAME_BACK], [1, 1, 0, 15, 2, 1.2, wood], [1, 14, 0, 15, 15, 1.2, wood], [1, 2, 0, 2, 14, 1.2, wood], [14, 2, 0, 15, 14, 1.2, wood]];
+for (let f = 0; f < 4; f++) {
+  block(ITEM_FRAME + f, {
+    name: 'Item Frame', sound: 'wood', hardness: 0.5, tool: 'axe', transparent: true, solid: false, frame: true,
+    model: rotateModel(FRAME_MODEL, f), facing: f, variantOf: f ? ITEM_FRAME : 0, drop: ITEM_FRAME,
+  });
+}
+export const isFrame = (id) => !!BLOCKS[id]?.frame;
+// a loader rail: a straight rail with an iron hopper plate between the rails. A storage cart stops on it
+// while hoppers fill or empty it, then rolls on.
+for (let a = 0; a < 2; a++) {
+  const ends = a ? [1, 3] : [0, 2];
+  block(LOADER_RAIL + a, {
+    name: 'Loader Rail', sound: 'stone', transparent: true, solid: false, hardness: 0.7, tool: 'pick',
+    model: [...railModel({ ends }), ...rotateModel([[5, 0, 4, 11, 1.6, 12, T.IRON]], a)], rail: { ends, slope: -1, powered: false, loader: true },
+    variantOf: a ? LOADER_RAIL : 0, drop: LOADER_RAIL,
+  });
+}
+ITEMS[STORAGE_CART] = { name: 'Storage Cart', stack: 1 };
+
+RECIPES.push(
+  { out: [GEARBOX, 1], in: [[kineticId('gear', 1), 2], [COBBLE, 4]], table: true },
+  { out: [CLUTCH, 1], in: [[kineticId('shaft', 1), 2], [IRON_INGOT, 1]], table: true, metal: IRON_INGOT },
+  { out: [LEVER, 1], in: [[STICK, 1], [COBBLE, 1]], table: true },
+  { out: [BUTTON, 2], in: [[STONE, 1]], table: true },
+  { out: [PRESSURE_PLATE, 1], in: [[STONE, 2]], table: true },
+  { out: [ITEM_FRAME, 2], in: [[STICK, 6], [LEATHER, 1]], table: true, metal: LEATHER },
+  { out: [LOADER_RAIL, 2], in: [[RAIL, 2], [HOPPER, 1]], table: true, metal: IRON_INGOT },
+  { out: [STORAGE_CART, 1], in: [[MINECART, 1], [CHEST, 1]], table: true, metal: IRON_INGOT },
+);

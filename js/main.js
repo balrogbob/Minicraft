@@ -14,6 +14,7 @@ import {
   isBlock, isTorch, isWheat, itemName, breakTime, dropsFor, foodValue,
   COLORS, DYE, WOOL, dyedWool, dyedCarpet, DYED_WOOL, DYED_CARPET, STAINED_GLASS, PAINTED_PLANKS, GLASS, PLANKS,
   isFlower, isSlab, slabId, SHAPE_MATS, FENCE_GATE, TRAPDOOR, isGate, isTrapdoor,
+  LEVER, BUTTON, PRESSURE_PLATE, ITEM_FRAME, LOADER_RAIL, STORAGE_CART, isFrame,
 } from './blocks.js';
 import { createAtlas, createIcons, createCrackCanvases, createWaterCanvas, createHudIcons } from './textures.js';
 import { World, CHUNK, WORLD_SIZE, chunkKey } from './world.js';
@@ -34,6 +35,7 @@ import { Signs } from './signs.js';
 import { Machines } from './machines.js';
 import { Carts, railBeyond } from './carts.js';
 import { MiniMap } from './minimap.js';
+import { Frames } from './frames.js';
 
 // v2 = the 16k x 16k streaming world (player state here, edited chunks in IndexedDB).
 // v1 = the old 128 x 128 world, migrated into the middle of the big world on first launch.
@@ -201,6 +203,8 @@ const machines = new Machines(scene, icons); // pumps, drills, hoppers and belts
 const carts = new Carts(scene); // minecarts on rails
 let riding = null; // the minecart you're sitting in
 const minimap = new MiniMap($('map'), atlasCanvas);
+const frames = new Frames(scene, icons); // what's shown in each item frame
+machines.frames = frames; machines.carts = carts;
 // Bellows blowing into an oven or smelter (while they're turned) make it work half as fast again.
 const boostAt = (x, y, z) => ([[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]]
   .some(([dx, dy, dz]) => world.get(x + dx, y + dy, z + dz) === BELLOWS && powerAt(x + dx, y + dy, z + dz) > 0) ? 1.5 : 1);
@@ -290,6 +294,8 @@ async function startWorld(save) {
   kinetics.clear();
   for (const [k, f] of fuses) removeFuse(k, f);
   signs.load(save?.signs);
+  frames.load(save?.frames);
+  pressedButtons.clear(); pressedPlates.clear();
   machines.load(save?.machines);
   carts.load(save?.carts);
   riding = null;
@@ -389,6 +395,7 @@ function saveGame() {
     lamps: [...lamps],
     stations: stations.serialize(),
     signs: signs.serialize(),
+    frames: frames.serialize(),
     machines: machines.serialize(),
     carts: carts.serialize(),
     armour: [...armour],
@@ -833,7 +840,7 @@ function setStationLit(x, y, z, lit) {
   world.setBlock(x, y, z, d.stationBase + d.facing + (lit ? 4 : 0));
 }
 
-const currentStation = () => openStationAt && stations.get(openStationAt.x, openStationAt.y, openStationAt.z, openStationAt.kind);
+const currentStation = () => openStationAt && (openStationAt.cart ? openStationAt.cart.store : stations.get(openStationAt.x, openStationAt.y, openStationAt.z, openStationAt.kind));
 
 function stationSlot(area, i) {
   const st = currentStation();
@@ -843,16 +850,16 @@ function stationSlot(area, i) {
   return { get: () => inventory.slots[i], set: (v) => { inventory.slots[i] = v; } };
 }
 
-function openStation(x, y, z) {
-  const kind = stationKind(world.get(x, y, z));
-  stations.get(x, y, z, kind);
-  openStationAt = { x, y, z, kind };
+function openStation(x, y, z, cart = null) {
+  const kind = cart ? 'chest' : stationKind(world.get(x, y, z));
+  if (!cart) stations.get(x, y, z, kind);
+  openStationAt = { x, y, z, kind, cart };
   stPicked = null;
   paused = true;
   controls.reset();
   document.exitPointerLock?.();
   const K = STATION_KINDS[kind];
-  $('station-title').textContent = K.name;
+  $('station-title').textContent = cart ? 'Storage Cart' : K.name;
   $('station').classList.toggle('storage', !!K.storage);
   // build the slots for this kind of station
   const make = (parent, area, i) => {
@@ -1072,10 +1079,10 @@ function bedPartner(x, y, z) {
   return d.foot ? [x - dx, y, z - dz] : [x + dx, y, z + dz];
 }
 
-function toggleDoor(x, y, z) {
+function toggleDoor(x, y, z, force = false) {
   const d = BLOCKS[world.get(x, y, z)];
   const by = d.upper ? y - 1 : y; // the bottom half
-  if (!d.open && (player.overlapsBlock(x, by, z) || player.overlapsBlock(x, by + 1, z))) return; // don't shut it on yourself
+  if (!force && !d.open && (player.overlapsBlock(x, by, z) || player.overlapsBlock(x, by + 1, z))) return; // don't shut it on yourself
   world.setBlock(x, by, z, doorId(d.facing, !d.open, false));
   if (isDoor(world.get(x, by + 1, z))) world.setBlock(x, by + 1, z, doorId(d.facing, !d.open, true));
   sound.door(!d.open);
@@ -1191,6 +1198,104 @@ async function sleepUntilMorning() {
   paused = false;
 }
 
+// ---------- switches and signals ----------
+// Levers (flip on and off), buttons (on for a moment) and pressure plates (on while something stands on
+// them) switch on the things beside them: doors, gates and trapdoors open, clutches engage and powered
+// rails push carts along. A switch fixed to a block also reaches whatever touches that block.
+const SIDES6 = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]];
+const pressedButtons = new Map(); // "x,y,z" -> seconds until it pops back out
+const pressedPlates = new Map(); // "x,y,z" -> seconds since anything stood on it
+const attachedTo = (x, y, z, d) => (d.floor ? [x, y - 1, z] : [x - FACING_DIRS[d.facing][0], y, z - FACING_DIRS[d.facing][1]]);
+function signalAt(x, y, z) {
+  for (const [dx, dy, dz] of SIDES6) {
+    const nx = x + dx, ny = y + dy, nz = z + dz;
+    const d = BLOCKS[world.get(nx, ny, nz)];
+    if (d?.switch) { if (d.on) return true; continue; }
+    if (!d?.solid || d.shape !== 'cube') continue;
+    // a switch fixed to this block passes its signal through it
+    for (const [ex, ey, ez] of SIDES6) {
+      const sx = nx + ex, sy = ny + ey, sz = nz + ez, s = BLOCKS[world.get(sx, sy, sz)];
+      if (!s?.switch || !s.on) continue;
+      const [ax, ay, az] = attachedTo(sx, sy, sz, s);
+      if (ax === nx && ay === ny && az === nz) return true;
+    }
+  }
+  return false;
+}
+kinetics.signalAt = signalAt;
+
+function setSwitch(x, y, z, on) {
+  const d = BLOCKS[world.get(x, y, z)];
+  if (!d?.switch || d.on === on) return;
+  const id = d.switch === 'lever' ? LEVER + (d.floor ? 4 : d.facing) + (on ? 5 : 0)
+    : d.switch === 'button' ? BUTTON + d.facing + (on ? 4 : 0) : PRESSURE_PLATE + (on ? 1 : 0);
+  world.setBlock(x, y, z, id);
+  sound.click();
+  signalChanged(x, y, z);
+}
+
+// A switch at (x, y, z) changed: everything it can reach catches up.
+function signalChanged(x, y, z) {
+  const cells = new Map();
+  const add = (cx, cy, cz) => { for (const [dx, dy, dz] of SIDES6) cells.set(`${cx + dx},${cy + dy},${cz + dz}`, [cx + dx, cy + dy, cz + dz]); };
+  add(x, y, z);
+  for (const [dx, dy, dz] of SIDES6) if (BLOCKS[world.get(x + dx, y + dy, z + dz)]?.solid) add(x + dx, y + dy, z + dz);
+  world.machinesChanged = true; // clutches
+  for (const [cx, cy, cz] of cells.values()) {
+    const id = world.get(cx, cy, cz), d = BLOCKS[id];
+    if (isGate(id) || isTrapdoor(id)) toggleHatch(cx, cy, cz, signalAt(cx, cy, cz));
+    else if (isDoor(id)) {
+      const by = d.upper ? cy - 1 : cy;
+      const on = signalAt(cx, by, cz) || signalAt(cx, by + 1, cz);
+      if (on !== d.open) toggleDoor(cx, cy, cz, true);
+    }
+  }
+}
+
+// Buttons pop back out; pressure plates go down under you, animals and creatures, and up again after.
+function tickSwitches(dt) {
+  for (const [k, t] of pressedButtons) {
+    if (t - dt > 0) { pressedButtons.set(k, t - dt); continue; }
+    pressedButtons.delete(k);
+    const [x, y, z] = k.split(',').map(Number);
+    if (world.chunkAt(x, z)) setSwitch(x, y, z, false);
+  }
+  const standing = new Set();
+  const feet = (px, py, pz) => {
+    const x = Math.floor(px), y = Math.floor(py + 0.05), z = Math.floor(pz);
+    if (BLOCKS[world.get(x, y, z)]?.switch === 'plate') standing.add(lampKey(x, y, z));
+  };
+  if (!dead && !riding) feet(player.pos.x, player.pos.y, player.pos.z);
+  for (const m of mobs.mobs) if (!m.dying) feet(m.pos.x, m.pos.y, m.pos.z);
+  for (const k of standing) {
+    pressedPlates.set(k, 0);
+    const [x, y, z] = k.split(',').map(Number);
+    if (!BLOCKS[world.get(x, y, z)].on) setSwitch(x, y, z, true);
+  }
+  for (const [k, t] of pressedPlates) {
+    if (standing.has(k)) continue;
+    if (t + dt < 0.4) { pressedPlates.set(k, t + dt); continue; }
+    pressedPlates.delete(k);
+    const [x, y, z] = k.split(',').map(Number);
+    if (world.chunkAt(x, z)) setSwitch(x, y, z, false);
+  }
+}
+
+// ---------- item frames ----------
+// Tap an empty frame holding something to put one in it; tap a full one to take it out.
+function useFrame(x, y, z, held) {
+  const item = frames.get(x, y, z);
+  if (item) {
+    frames.remove(x, y, z);
+    giveDrops([[item, 1]]);
+    return;
+  }
+  if (!held) { toast('Tap the frame holding something to show it here. On a hopper, it only lets matching things through.', 3500); return; }
+  frames.set(x, y, z, held.id);
+  inventory.consumeHeld();
+  sound.place('wood');
+}
+
 // ---------- rails and minecarts ----------
 // A rail you place joins up to two rails beside it (or a block higher or lower, as a slope), preferring
 // ones already pointing at it, and they bend round to meet it.
@@ -1223,6 +1328,7 @@ function placeRail(x, y, z, powered) {
   for (const c of pick) {
     const [nx, ny, nz, dy] = c.n;
     const nr = BLOCKS[world.get(nx, ny, nz)].rail, back = (c.d + 2) % 4;
+    if (nr.loader) continue; // loader rails stay straight
     if (nr.ends.includes(back) && (dy !== -1 || nr.slope === back)) continue; // already joined
     const keep = joinedEnds(nx, ny, nz).find((e) => e !== back);
     const nends = keep === undefined ? [back, (back + 2) % 4] : [keep, back];
@@ -1293,10 +1399,14 @@ function place() {
   // with the bow in hand a tap always shoots (a quick, short shot), whatever you're looking at
   if (held?.id === BOW) { shootArrow(Math.max(0.25, Math.min(1, bowCharge / FULL_DRAW))); bowCharge = 0; return; }
   if (riding) { getOutOfCart(); return; }
-  if (targetCart) { getInCart(targetCart.cart); return; }
+  if (targetCart) {
+    const c = targetCart.cart;
+    if (c.store) { sound.click(); openStation(c.x, c.y, c.z, c); } else getInCart(c);
+    return;
+  }
   if (targetMob) { hitMob(); return; }
-  if (held?.id === MINECART && target && isRail(target.id)) {
-    if (carts.add(world, target.x, target.y, target.z, player.lookDir())) { inventory.consumeHeld(); sound.place('stone'); }
+  if ((held?.id === MINECART || held?.id === STORAGE_CART) && target && isRail(target.id)) {
+    if (carts.add(world, target.x, target.y, target.z, player.lookDir(), held.id === STORAGE_CART)) { inventory.consumeHeld(); sound.place('stone'); }
     return;
   }
   if (target && (target.id === TABLE || target.id === CHURN)) { sound.click(); openInventory(target.id); return; }
@@ -1306,6 +1416,9 @@ function place() {
     if (isDoor(tid)) { toggleDoor(tx, ty, tz); return; }
     if (isCurtain(tid)) { toggleCurtain(tx, ty, tz); return; }
     if (isGate(tid) || isTrapdoor(tid)) { toggleHatch(tx, ty, tz); return; }
+    if (BLOCKS[tid].switch === 'lever') { setSwitch(tx, ty, tz, !BLOCKS[tid].on); return; }
+    if (BLOCKS[tid].switch === 'button') { setSwitch(tx, ty, tz, true); pressedButtons.set(lampKey(tx, ty, tz), 1.5); return; }
+    if (isFrame(tid)) { useFrame(tx, ty, tz, held); return; }
     if (held && ITEMS[held.id]?.dye !== undefined && dyeBlock(tx, ty, tz, ITEMS[held.id].dye)) return;
     if (isLamp(tid)) { useLamp(tx, ty, tz, held); return; }
     if (isSign(tid)) { editSign(tx, ty, tz); return; }
@@ -1403,11 +1516,25 @@ function place() {
     sound.place('wool');
     inventory.consumeHeld();
     return;
-  } else if (id === RAIL || id === POWERED_RAIL) {
-    // rails lie on top of a block, and bend to join the rails next to them
+  } else if (id === RAIL || id === POWERED_RAIL || id === LOADER_RAIL) {
+    // rails lie on top of a block, and bend to join the rails next to them (loader rails just run straight)
     if (there !== AIR || target.ny !== 1 || !BLOCKS[target.id].solid) { toast('Rails go on top of a block'); return; }
-    placeRail(x, y, z, id === POWERED_RAIL);
+    if (id === LOADER_RAIL) world.setBlock(x, y, z, LOADER_RAIL + (facingTowardPlayer(x, z) % 2));
+    else placeRail(x, y, z, id === POWERED_RAIL);
     sound.place('stone');
+    inventory.consumeHeld();
+    return;
+  } else if (id === LEVER || id === BUTTON || id === ITEM_FRAME || id === PRESSURE_PLATE) {
+    // switches and frames are fixed to the side of a solid block (a lever can also stand on top of one,
+    // and a pressure plate only goes on top)
+    if (there !== AIR || !BLOCKS[target.id].solid) return;
+    const side = FACING_DIRS.findIndex(([dx, dz]) => dx === target.nx && dz === target.nz);
+    if (id === PRESSURE_PLATE) { if (target.ny !== 1) { toast('Pressure plates go on top of a block'); return; } }
+    else if (id === LEVER && target.ny === 1) id = LEVER + 4;
+    else if (target.ny !== 0) { toast(`${BLOCKS[id].name}s go on the side of a block`); return; }
+    else id += side;
+    world.setBlock(x, y, z, id);
+    sound.place(BLOCKS[id].sound);
     inventory.consumeHeld();
     return;
   } else if (id === LADDER || id === SIGN) {
@@ -1612,10 +1739,12 @@ function updateBreaking(dt) {
   if (controls.breaking && targetCart) {
     breakState.cart = (breakState.cart ?? 0) + dt;
     if (breakState.cart >= 0.5) {
-      carts.remove(targetCart.cart);
+      const c = targetCart.cart;
+      if (openStationAt?.cart === c) closeStation();
+      carts.remove(c);
       targetCart = null;
       breakState.cart = 0;
-      giveDrops([[MINECART, 1]]);
+      giveDrops([[c.store ? STORAGE_CART : MINECART, 1], ...(c.store?.inputs ?? []).filter(Boolean).map((it) => [it.id, it.count])]);
     }
     crack.visible = false;
     return;
@@ -1670,6 +1799,7 @@ function breakBlock(x, y, z) {
   }
   if (isLamp(id)) lamps.delete(lampKey(x, y, z));
   if (isSign(id)) signs.remove(x, y, z);
+  if (isFrame(id)) { const item = frames.remove(x, y, z); if (item) drops.push([item, 1]); }
   if (stationKind(id)) giveDrops(stations.remove(x, y, z)); // whatever was inside comes back too
   if (def.machine) giveDrops(machines.removeAt(x, y, z)); // and whatever was on a belt or in a drill
   if (isBed(id)) {
@@ -1689,6 +1819,7 @@ function breakBlock(x, y, z) {
   // cutting a tree's trunk with an axe brings down the whole tree above it
   const felled = id === LOG && ITEMS[inventory.heldId()]?.tool?.type === 'axe' ? treeAbove(x, y, z) : [];
   world.setBlock(x, y, z, id === ICE ? WATER : AIR); // ice melts into water
+  if (def.switch) signalChanged(x, y, z);
   dropUnsupported(x, y, z);
   for (const [lx, ly, lz] of felled) {
     world.setBlock(lx, ly, lz, AIR);
@@ -1747,13 +1878,22 @@ function dropUnsupported(x, y, z) {
   }
   // ladders and signs fixed to it (each faces away from the block it hangs on), and a sign post on top
   FACING_DIRS.forEach(([dx, dz], f) => {
-    const id = world.get(x + dx, y, z + dz);
-    if ((id === LADDER + f || id === SIGN + f)) {
+    const id = world.get(x + dx, y, z + dz), d = BLOCKS[id];
+    const hung = id === LADDER + f || id === SIGN + f || id === ITEM_FRAME + f || (d?.switch && !d.floor && d.facing === f);
+    if (hung) {
       world.setBlock(x + dx, y, z + dz, AIR);
       if (id === SIGN + f) signs.remove(x + dx, y, z + dz);
-      inventory.add(id === SIGN + f ? SIGN : LADDER, 1);
+      if (id === ITEM_FRAME + f) { const item = frames.remove(x + dx, y, z + dz); if (item) inventory.add(item, 1); }
+      inventory.add(d.drop, 1);
+      if (d.switch) signalChanged(x + dx, y, z + dz);
     }
   });
+  const onTop = BLOCKS[world.get(x, y + 1, z)];
+  if (onTop?.switch && onTop.floor) {
+    world.setBlock(x, y + 1, z, AIR);
+    inventory.add(onTop.drop, 1);
+    signalChanged(x, y + 1, z);
+  }
   if (BLOCKS[world.get(x, y + 1, z)]?.post) {
     world.setBlock(x, y + 1, z, AIR);
     signs.remove(x, y + 1, z);
@@ -1965,7 +2105,7 @@ function stepGame(now, dt) {
   if (!paused && here) {
     controls.update();
     const wasGround = player.onGround, wasWater = player.inWater, fallSpeed = -player.vel.y, prevY = player.pos.y;
-    carts.update(dt, world, powerAt, riding && { cart: riding, push: controls.moveZ, look: player.lookDir() },
+    carts.update(dt, world, (x, y, z) => powerAt(x, y, z) || (signalAt(x, y, z) ? 1 : 0), riding && { cart: riding, push: controls.moveZ, look: player.lookDir() },
       { day: lightUniforms.uDay.value, flicker: lightUniforms.uFlicker.value, ambient: AMBIENT });
     if (riding) followCart();
     else player.update(dt, { moveX: controls.moveX, moveZ: controls.moveZ, jump: controls.jump });
@@ -1976,6 +2116,7 @@ function stepGame(now, dt) {
     world.tickLeaves(dt);
     tickLamps(dt);
     tickFuses(dt);
+    tickSwitches(dt);
     updateHunger(dt);
     updateHealth(dt, wasGround, prevY);
     const picked = arrows.update(dt, {
@@ -2002,6 +2143,7 @@ function stepGame(now, dt) {
   try {
     machines.tick(paused ? 0 : dt, world, kinetics, stations, { day: lightUniforms.uDay.value, flicker: lightUniforms.uFlicker.value, ambient: AMBIENT });
   } catch (err) { reportError(err); }
+  frames.update(dt, world, { day: lightUniforms.uDay.value, flicker: lightUniforms.uFlicker.value, ambient: AMBIENT });
   signs.update(dt, world, { day: lightUniforms.uDay.value, flicker: lightUniforms.uFlicker.value, ambient: AMBIENT });
   coordsTimer -= dt;
   if (coordsTimer <= 0) {
@@ -2054,7 +2196,7 @@ window.minicraft = {
   get paused() { return paused; },
   get health() { return health; }, set health(v) { health = v; renderHealth(); },
   get poisoned() { return poisoned; }, get dead() { return dead; }, get air() { return air; }, set air(v) { air = v; },
-  arrows, fishing, kinetics, machines, carts, minimap, signs, armour, damage, placeRail, getInCart, getOutOfCart,
+  arrows, fishing, kinetics, frames, signalAt, setSwitch, machines, carts, minimap, signs, armour, damage, placeRail, getInCart, getOutOfCart,
   get riding() { return riding; }, explode, lightFuse, fuses, clockTime, compassText, place, editSign, closeSign, openInventory, closeInventory, chestMove, lamps, tickLamps, sleepUntilMorning, stations, openStation, closeStation,
   get caneToday() { return caneToday; },
   get bedSpawn() { return bedSpawn; },
