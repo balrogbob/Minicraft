@@ -94,6 +94,15 @@ export class World {
     this.lastChunk = null;
     this.unloadTimer = 0;
     this.ringCache = null;
+    this.failed = new Map(); // chunk key -> time it failed to load; retried after a pause
+    this.onError = null; // called with an Error if a chunk fails to generate, load or mesh
+  }
+
+  // Report an error without letting it stop the streaming of other chunks.
+  fail(key, err) {
+    this.failed.set(key, performance.now());
+    if (this.onError) this.onError(err);
+    else console.error(err);
   }
 
   // ---------- block access ----------
@@ -378,15 +387,29 @@ export class World {
       if (!this.inWorld(cx, cz)) continue;
       const key = chunkKey(cx, cz);
       if (this.chunks.has(key) || this.pending.has(key)) continue;
+      if (this.failed.has(key)) {
+        if (t0 - this.failed.get(key) < 5000) continue; // retry a failed chunk every 5 s
+        this.failed.delete(key);
+      }
       if (this.store.has(key)) {
         this.pending.add(key);
         this.store.load(key).then((data) => {
           this.pending.delete(key);
           if (this.disposed || this.chunks.has(key)) return;
-          this.addChunk(cx, cz, data ?? this.generator.generateChunk(cx, cz));
-        });
+          try {
+            this.addChunk(cx, cz, data ?? this.generator.generateChunk(cx, cz));
+          } catch (err) {
+            this.chunks.delete(key);
+            this.fail(key, err);
+          }
+        }, (err) => { this.pending.delete(key); this.fail(key, err); });
       } else {
-        this.addChunk(cx, cz, this.generator.generateChunk(cx, cz));
+        try {
+          this.addChunk(cx, cz, this.generator.generateChunk(cx, cz));
+        } catch (err) {
+          this.chunks.delete(key);
+          this.fail(key, err);
+        }
       }
     }
     // 2. mesh: nearest dirty chunks that are in view distance and have all their neighbours
@@ -404,7 +427,11 @@ export class World {
         // always mesh at least one chunk so edits show up even when generation is busy
         if (performance.now() - t0 > budgetMs && c !== list[0][1]) break;
         this.dirty.delete(c.key);
-        this.meshChunk(c, scene, materials);
+        try {
+          this.meshChunk(c, scene, materials);
+        } catch (err) {
+          this.fail(c.key, err);
+        }
       }
     }
     // 3. unload (and save) chunks well outside the loaded area, a couple of times a second
@@ -417,6 +444,18 @@ export class World {
         else if (far > R && (c.solid || c.water)) this.dropMeshes(c, scene); // out of view: free GPU memory
       }
     }
+  }
+
+  // Numbers for the performance overlay.
+  stats(px, pz) {
+    const pcx = Math.floor(px / CHUNK), pcz = Math.floor(pz / CHUNK), R = this.renderDistance;
+    let drawn = 0, waiting = 0;
+    for (const c of this.chunks.values()) if (c.solid || c.water) drawn++;
+    for (const key of this.dirty) {
+      const c = this.chunks.get(key);
+      if (c && Math.max(Math.abs(c.cx - pcx), Math.abs(c.cz - pcz)) <= R) waiting++;
+    }
+    return { loaded: this.chunks.size, drawn, waiting, pending: this.pending.size, failed: this.failed.size };
   }
 
   // Fraction of chunks within radius r of (px, pz) that are loaded and meshed (for the loading screen).

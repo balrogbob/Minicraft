@@ -34,6 +34,11 @@ To play anywhere, host it on any static host, for example GitHub Pages
 
 On Android Chrome, use **⋮ → Add to Home screen** to get a fullscreen, landscape app icon.
 
+When hosted over https, a small service worker (`sw.js`) makes the browser fetch the latest game files
+every time you're online (so updates aren't hidden by the browser cache) and lets the game load offline.
+The version number is shown at the bottom of the ☰ menu; bump `GAME_VERSION` in `js/main.js` with each release.
+☰ → **Performance info** shows FPS and how many chunks are loaded, drawn and waiting to be drawn.
+
 ## Controls
 
 | Action | Touch | Keyboard / mouse |

@@ -16,6 +16,7 @@ import { Controls } from './controls.js';
 
 // v2 = the 16k x 16k streaming world (player state here, edited chunks in IndexedDB).
 // v1 = the old 128 x 128 world, migrated into the middle of the big world on first launch.
+const GAME_VERSION = '6'; // shown in the menu; bump with each release
 const SAVE_KEY = 'minicraft-save-v2';
 const LEGACY_SAVE_KEY = 'minicraft-save-v1';
 const SETTINGS_KEY = 'minicraft-settings-v1';
@@ -31,7 +32,7 @@ function writeSave(obj) {
 }
 // Settings live apart from the world so they survive "New world".
 const settings = (() => {
-  const defaults = { sens: 6, volume: 70, viewDistance: 6 };
+  const defaults = { sens: 6, volume: 70, viewDistance: 6, perf: false };
   try { return { ...defaults, ...JSON.parse(localStorage.getItem(SETTINGS_KEY)) }; } catch { return defaults; }
 })();
 function saveSettings() {
@@ -195,6 +196,7 @@ async function startWorld(save) {
   if (!save) await store.clear();
   const seed = save?.seed ?? newSeed();
   world = new World(seed, store);
+  world.onError = reportError;
   applyViewDistance();
   $('load-text').textContent = 'Generating terrain…';
   setProgress(0);
@@ -264,6 +266,21 @@ function toast(html, ms = 2200) {
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => el.classList.remove('show'), ms);
 }
+
+// Errors are shown on screen (at most every few seconds) so problems on a tablet are visible.
+let lastError = '', lastErrorShown = 0;
+function reportError(err) {
+  const msg = String(err?.message ?? err ?? 'unknown error');
+  console.error(err);
+  lastError = msg;
+  if (performance.now() - lastErrorShown > 4000) {
+    lastErrorShown = performance.now();
+    const safe = msg.replace(/[<>&]/g, (ch) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' })[ch]);
+    toast(`Something went wrong: ${safe}`, 5000);
+  }
+}
+window.addEventListener('error', (e) => reportError(e.error ?? e.message));
+window.addEventListener('unhandledrejection', (e) => reportError(e.reason));
 
 let nameTimer;
 function showItemName() {
@@ -488,6 +505,16 @@ $('btn-new').addEventListener('click', () => {
   $('menu').classList.add('hidden');
   startWorld(null);
 });
+$('version').textContent = `Version ${GAME_VERSION}`;
+function updatePerfLabel() { $('btn-perf').textContent = `Performance info: ${settings.perf ? 'on' : 'off'}`; }
+updatePerfLabel();
+$('perf').classList.toggle('hidden', !settings.perf);
+$('btn-perf').addEventListener('click', () => {
+  settings.perf = !settings.perf;
+  $('perf').classList.toggle('hidden', !settings.perf);
+  updatePerfLabel();
+  saveSettings();
+});
 $('view').value = settings.viewDistance;
 $('view').addEventListener('input', (e) => {
   settings.viewDistance = +e.target.value;
@@ -576,12 +603,34 @@ function playMovementSounds(dt, wasGround, wasWater, fallSpeed) {
 let last = performance.now();
 let coordsTimer = 0;
 let unsavedCount = 0, lastEditAt = 0;
+const perf = { frames: 0, since: 0, fps: 0 };
 function frame(now) {
   requestAnimationFrame(frame);
   const dt = Math.min((now - last) / 1000, 0.05);
   last = now;
   if (!world) return;
+  // gameplay, streaming and rendering are isolated so an error in one can't stop the others
+  try { stepGame(now, dt); } catch (err) { reportError(err); }
+  try { world.update(player.pos.x, player.pos.z, scene, materials, 6, dt); } catch (err) { reportError(err); }
+  renderer.render(scene, camera);
+  updatePerf(now);
+}
 
+function updatePerf(now) {
+  perf.frames++;
+  if (now - perf.since < 500) return;
+  perf.fps = Math.round((perf.frames * 1000) / (now - perf.since));
+  perf.frames = 0;
+  perf.since = now;
+  if (!settings.perf) return;
+  const st = world.stats(player.pos.x, player.pos.z);
+  $('perf').textContent = `${perf.fps} fps · view ${settings.viewDistance * CHUNK} blocks\n` +
+    `chunks: ${st.loaded} loaded, ${st.drawn} drawn, ${st.waiting} waiting` +
+    (st.pending ? `, ${st.pending} reading` : '') + (st.failed ? `, ${st.failed} failed` : '') +
+    (lastError ? `\nlast error: ${lastError}` : '');
+}
+
+function stepGame(now, dt) {
   // the player waits (frozen) until the chunk they're standing in has loaded
   const here = world.chunkAt(Math.floor(player.pos.x), Math.floor(player.pos.z));
   if (!paused && here) {
@@ -619,13 +668,13 @@ function frame(now) {
 
   if (!paused) updateBreaking(dt);
   else crack.visible = false;
-
-  world.update(player.pos.x, player.pos.z, scene, materials, 6, dt);
-  renderer.render(scene, camera);
 }
 requestAnimationFrame(frame);
 
-boot();
+boot().catch(reportError);
+
+// Keep the game files fresh (and playable offline). Only works on https or localhost.
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').catch(() => {});
 
 // expose for debugging in the console
 window.minicraft = { get world() { return world; }, player, inventory, saveGame, sky, sound, breakBlock };
