@@ -4,7 +4,7 @@ A small block-building game for the browser, built with [three.js](https://three
 It is designed for Android tablets (touch controls) but also plays with keyboard and mouse.
 
 - A 16,384 × 16,384 block world (64 high) that streams in around you as you explore: hills, lakes and seas,
-  beaches, trees, winding caves and coal ore. You start in the middle; the edges are walls
+  beaches, trees, winding caves, coal and ten metal and mineral ores. You start in the middle; the edges are walls
 - Adjustable view distance (48–160 blocks) and an on-screen coordinates readout
 - Water you can swim in. It flows into holes you dig next to it, as long as they're at or below sea level
 - Day/night cycle (12 minutes) with sunrise and sunset skies, sun, moon and stars
@@ -37,6 +37,9 @@ It is designed for Android tablets (touch controls) but also plays with keyboard
   tap quickly to reel in a fish. Raw fish is a small snack; bake it in the oven for a proper meal
 - Cooking: grind wheat into flour and sugar cane into sugar with a mortar and pestle, churn yak milk into
   butter, then bake bread, cookies and cake
+- Mining and metalwork: iron, copper, tin, lead, zinc, sulphur, bauxite (aluminium), silver, gold and,
+  deep down, tungsten. Smelt ores into ingots and alloys (bronze, aluminium bronze, steel, stainless steel,
+  electrum), and make better tools as you go. Each tier of pickaxe opens up the next ores
 - Torches that light up the area around them with a warm, flickering glow. They stand on floors or hang on walls
 - Synthesised sound effects for digging, breaking, placing, footsteps and splashing, with no audio files
 - Break and place blocks, with break times that depend on the tool you hold
@@ -93,6 +96,7 @@ You aim with the crosshair in the middle of the screen. Volume, look speed and a
 3. Place the table. With a table nearby (or after tapping one), you can craft wooden tools.
 4. Stone needs a **pickaxe** to drop cobblestone. Use cobblestone to craft stone tools and stone bricks.
 5. Mine **coal ore** for coal, or smelt logs into **charcoal**, which works anywhere coal does.
+   Copper, tin, zinc, bauxite, lead and sulphur can be mined with a stone pickaxe; see **Ores and metals** below.
 6. Build a **smelter** (8 cobblestone) to make **glass** from sand and **stone** from cobblestone, and an
    **oven** (6 cobblestone + 2 sand) to bake. Both burn logs, planks, sticks, coal, charcoal or slime fuel.
    Until you have an oven, raw **sugar cane** keeps you going: a heart of health and half a food point
@@ -152,6 +156,48 @@ high to reach further). After a while a fish bites: the bobber dips under and sp
 second to reel it in; too slow and it gets away, and you wait for the next one. Tap at any other time to reel
 in empty. The line reels itself in if you put the rod away or walk too far off.
 
+### Ores and metals
+
+Ores sit in small veins in the stone; the deeper you dig, the rarer and more valuable they get.
+Without a good enough pickaxe an ore breaks slowly and drops nothing.
+
+| Ore | Found at (Y) | Pickaxe needed | Smelts into |
+| --- | --- | --- | --- |
+| Bauxite | 16–56 | stone | aluminium ingot |
+| Copper ore | 8–50 | stone | copper ingot |
+| Tin ore | 6–40 | stone | tin ingot |
+| Zinc ore | 6–40 | stone | zinc ingot |
+| Lead ore | 4–34 | stone | lead ingot |
+| Sulphur ore | 2–26 | stone | (drops 1–2 sulphur directly) |
+| Iron ore | 4–44 | copper-class | iron ingot |
+| Silver ore | 2–22 | iron-class | silver ingot |
+| Gold ore | 1–16 | iron-class | gold ingot |
+| Tungsten ore | 1–9 (deep) | stainless steel | tungsten ingot |
+
+Alloys, made in the smelter (coal or charcoal here is an ingredient, not the fuel):
+
+| Alloy | From |
+| --- | --- |
+| 4 Bronze ingots | 3 copper + 1 tin |
+| 4 Aluminium bronze ingots | 1 aluminium + 3 copper |
+| 2 Electrum ingots | 1 silver + 1 gold |
+| 1 Steel ingot | 1 iron + 1 coal or charcoal |
+| 2 Stainless steel ingots | 1 zinc + 1 iron + 1 coal or charcoal |
+
+Metal tools are made at a crafting table like stone ones: pickaxe or axe = 3 ingots + 2 sticks,
+shovel = 1 ingot + 2 sticks. Their recipes show up once you carry that metal.
+
+| Tier | Materials | Mines |
+| --- | --- | --- |
+| Wood | planks | stone, coal |
+| Stone | cobblestone | + copper, tin, zinc, bauxite, lead, sulphur |
+| Copper-class | copper, tin, zinc, aluminium (a little better than stone); bronze, aluminium bronze (better still) | + iron |
+| Iron-class | iron; steel (better) | + silver, gold |
+| Stainless steel | stainless steel | + tungsten |
+| Tungsten | tungsten (the fastest) | anything |
+
+Better tools also dig faster and hit night creatures harder.
+
 ### Oven and smelter
 
 Tap one to open it, then move ingredients and fuel in from your inventory (tap a slot, then another).
@@ -163,7 +209,7 @@ something is cooking, so whatever's left of a piece waits for the next job.
 | Station | Makes |
 | --- | --- |
 | Oven (6 cobblestone + 2 sand) | bread, cookies, cake, baked fish (see Food above) |
-| Smelter (8 cobblestone) | cobblestone → stone, sand → glass, log → charcoal |
+| Smelter (8 cobblestone) | cobblestone → stone, sand → glass, log → charcoal, ores → ingots, alloys (see above) |
  The hunger bar holds 20 points (ten loaves).
 
 ## Code layout

@@ -6,7 +6,12 @@
 import {
   COAL, CHARCOAL, LOG, PLANKS, STICK, COBBLE, STONE, SAND, GLASS, SLIME_FUEL, BUCKET,
   FLOUR, SUGAR, BUTTER, MILK_BUCKET, BREAD, COOKIE, CAKE, RAW_FISH, BAKED_FISH, BLOCKS, maxStack, stationKind,
+  ORES, COAL_OR_CHARCOAL, IRON_INGOT, COPPER_INGOT, TIN_INGOT, ZINC_INGOT, ALUMINIUM_INGOT, SILVER_INGOT, GOLD_INGOT,
+  BRONZE_INGOT, ELECTRUM_INGOT, STAINLESS_INGOT, STEEL_INGOT, AL_BRONZE_INGOT,
 } from './blocks.js';
+
+// A recipe ingredient can be one id or a list of alternatives (coal or charcoal).
+const idsOf = (spec) => (Array.isArray(spec) ? spec : [spec]);
 
 // How many items (or oven batches) each piece of fuel cooks. Fuel is only used up while something is
 // actually cooking, so what's left of a piece waits in the station for the next job.
@@ -29,8 +34,17 @@ export const STATION_KINDS = {
   },
   smelter: {
     name: 'Smelter',
-    inputs: 1,
+    inputs: 4,
     recipes: [
+      // alloys first (stainless steel before plain steel, as it needs the same plus zinc).
+      // Coal here is an ingredient, separate from whatever is burning in the fuel slot.
+      { out: [STAINLESS_INGOT, 2], in: [[ZINC_INGOT, 1], [IRON_INGOT, 1], [COAL_OR_CHARCOAL, 1]], time: 8 },
+      { out: [STEEL_INGOT, 1], in: [[IRON_INGOT, 1], [COAL_OR_CHARCOAL, 1]], time: 6 },
+      { out: [BRONZE_INGOT, 4], in: [[COPPER_INGOT, 3], [TIN_INGOT, 1]], time: 6 },
+      { out: [AL_BRONZE_INGOT, 4], in: [[ALUMINIUM_INGOT, 1], [COPPER_INGOT, 3]], time: 6 },
+      { out: [ELECTRUM_INGOT, 2], in: [[SILVER_INGOT, 1], [GOLD_INGOT, 1]], time: 6 },
+      // ores into ingots
+      ...ORES.filter((o) => o.ingot).map((o) => ({ out: [o.ingot, 1], in: [[o.id, 1]], time: o.tier >= 5 ? 8 : 5 })),
       { out: [STONE, 1], in: [[COBBLE, 1]], time: 4 },
       { out: [GLASS, 1], in: [[SAND, 1]], time: 4 },
       { out: [CHARCOAL, 1], in: [[LOG, 1]], time: 5 },
@@ -66,7 +80,8 @@ export class Stations {
 
   count(st, id) {
     let n = 0;
-    for (const s of st.inputs) if (s && s.id === id) n += s.count;
+    const ids = idsOf(id);
+    for (const s of st.inputs) if (s && ids.includes(s.id)) n += s.count;
     return n;
   }
 
@@ -87,7 +102,7 @@ export class Stations {
       let left = n;
       for (let i = 0; i < st.inputs.length && left > 0; i++) {
         const s = st.inputs[i];
-        if (!s || s.id !== id) continue;
+        if (!s || !idsOf(id).includes(s.id)) continue;
         const k = Math.min(left, s.count);
         s.count -= k; left -= k;
         if (!s.count) st.inputs[i] = null;

@@ -20,7 +20,10 @@ export const AIR = 0, GRASS = 1, DIRT = 2, STONE = 3, COBBLE = 4, LOG = 5, PLANK
   DOOR = 46, // 46..61: + facing*4 + 2 if open + 1 for the upper half
   BED_FOOT = 62, // 62..65: the foot half of a bed, one block toward where it faces
   OVEN = 66, // 66..73: + facing, + 4 while burning
-  SMELTER = 74; // 74..81: + facing, + 4 while burning
+  SMELTER = 74, // 74..81: + facing, + 4 while burning
+  // metal ores (see ORES below)
+  IRON_ORE = 82, COPPER_ORE = 83, TIN_ORE = 84, LEAD_ORE = 85, ZINC_ORE = 86, SULPHUR_ORE = 87,
+  BAUXITE = 88, SILVER_ORE = 89, GOLD_ORE = 90, TUNGSTEN_ORE = 91;
 
 // Wall direction [dx, dz] for each wall-torch variant, in id order.
 export const WALL_TORCH_DIRS = [[-1, 0], [1, 0], [0, -1], [0, 1]];
@@ -37,7 +40,12 @@ export const STICK = 100, COAL = 101,
   FEATHER = 131, MORTAR = 132,
   STRING = 133, ARROW = 134, BOW = 135,
   COAL_DUST = 136, SLIME_FUEL = 137, CHARCOAL = 138,
-  FISHING_ROD = 139, RAW_FISH = 140, BAKED_FISH = 141;
+  FISHING_ROD = 139, RAW_FISH = 140, BAKED_FISH = 141,
+  IRON_INGOT = 142, COPPER_INGOT = 143, TIN_INGOT = 144, LEAD_INGOT = 145, ZINC_INGOT = 146,
+  ALUMINIUM_INGOT = 147, SILVER_INGOT = 148, GOLD_INGOT = 149, TUNGSTEN_INGOT = 150, SULPHUR = 151,
+  BRONZE_INGOT = 152, ELECTRUM_INGOT = 153, STAINLESS_INGOT = 154, STEEL_INGOT = 155, AL_BRONZE_INGOT = 156;
+// Metal tools are 160 + 3 * (material index in TOOL_MATERIALS) + 0 pick / 1 axe / 2 shovel.
+export const METAL_TOOLS = 160;
 
 // Charcoal (smelted from logs) can stand in for coal anywhere coal is used.
 export const COAL_OR_CHARCOAL = [COAL, CHARCOAL];
@@ -51,7 +59,46 @@ export const T = {
   BLANKET: 25, SHELF: 26, FLAME: 27, LAMP_EMPTY: 28, DOOR_LOWER: 29, DOOR_UPPER: 30, CURTAIN: 31,
   OVEN_SIDE: 32, OVEN_TOP: 33, OVEN_FRONT: 34, OVEN_FRONT_LIT: 35,
   SMELTER_SIDE: 36, SMELTER_TOP: 37, SMELTER_FRONT: 38, SMELTER_FRONT_LIT: 39,
+  ORE0: 40, // 40..49: the ores, in ORES order
 };
+
+// Ores, deepest-reaching last. tier: the pickaxe tier needed to mine it (see TOOL_TIERS);
+// y range and chance (per 4x4x4 cell of stone) control where veins are generated.
+// Most drop the ore block itself, which the smelter turns into `ingot`.
+export const ORES = [
+  { id: IRON_ORE, name: 'Iron Ore', ingot: IRON_INGOT, tier: 3, hardness: 3.5, y: [4, 44], chance: 0.05, color: [226, 182, 156] },
+  { id: COPPER_ORE, name: 'Copper Ore', ingot: COPPER_INGOT, tier: 2, hardness: 3, y: [8, 50], chance: 0.055, color: [216, 116, 60] },
+  { id: TIN_ORE, name: 'Tin Ore', ingot: TIN_INGOT, tier: 2, hardness: 3, y: [6, 40], chance: 0.035, color: [170, 174, 182] },
+  { id: LEAD_ORE, name: 'Lead Ore', ingot: LEAD_INGOT, tier: 2, hardness: 3, y: [4, 34], chance: 0.03, color: [84, 92, 118] },
+  { id: ZINC_ORE, name: 'Zinc Ore', ingot: ZINC_INGOT, tier: 2, hardness: 3, y: [6, 40], chance: 0.035, color: [150, 190, 200] },
+  { id: SULPHUR_ORE, name: 'Sulphur Ore', drop: SULPHUR, tier: 2, hardness: 3, y: [2, 26], chance: 0.03, color: [232, 214, 52] },
+  { id: BAUXITE, name: 'Bauxite', ingot: ALUMINIUM_INGOT, tier: 2, hardness: 2.75, y: [16, 56], chance: 0.05, color: [186, 92, 58] },
+  { id: SILVER_ORE, name: 'Silver Ore', ingot: SILVER_INGOT, tier: 4, hardness: 3.5, y: [2, 22], chance: 0.016, color: [236, 238, 246] },
+  { id: GOLD_ORE, name: 'Gold Ore', ingot: GOLD_INGOT, tier: 4, hardness: 3.5, y: [1, 16], chance: 0.013, color: [248, 204, 56] },
+  { id: TUNGSTEN_ORE, name: 'Tungsten Ore', ingot: TUNGSTEN_INGOT, tier: 5, hardness: 5, y: [1, 9], chance: 0.03, color: [118, 104, 170] },
+];
+
+// Tool tiers: a block with `tier` n only drops (and only breaks quickly) with a tool of tier n or more.
+export const TOOL_TIERS = {
+  1: 'wooden', 2: 'stone', 3: 'copper-class', 4: 'iron-class', 5: 'stainless steel', 6: 'tungsten',
+};
+
+// Metal tool materials. Copper, tin, zinc and aluminium are a little better than stone; the alloys
+// are better again within their class. Pickaxe and axe: 3 ingots + 2 sticks; shovel: 1 ingot + 2 sticks.
+export const TOOL_MATERIALS = [
+  { key: 'copper', name: 'Copper', ingot: COPPER_INGOT, tier: 3, speed: 6, dmg: 1 },
+  { key: 'tin', name: 'Tin', ingot: TIN_INGOT, tier: 3, speed: 6, dmg: 1 },
+  { key: 'zinc', name: 'Zinc', ingot: ZINC_INGOT, tier: 3, speed: 6, dmg: 1 },
+  { key: 'aluminium', name: 'Aluminium', ingot: ALUMINIUM_INGOT, tier: 3, speed: 6.5, dmg: 1 },
+  { key: 'bronze', name: 'Bronze', ingot: BRONZE_INGOT, tier: 3, speed: 7, dmg: 2 },
+  { key: 'albronze', name: 'Aluminium Bronze', ingot: AL_BRONZE_INGOT, tier: 3, speed: 7.5, dmg: 2 },
+  { key: 'iron', name: 'Iron', ingot: IRON_INGOT, tier: 4, speed: 8, dmg: 2 },
+  { key: 'steel', name: 'Steel', ingot: STEEL_INGOT, tier: 4, speed: 9.5, dmg: 3 },
+  { key: 'stainless', name: 'Stainless Steel', ingot: STAINLESS_INGOT, tier: 5, speed: 11, dmg: 4 },
+  { key: 'tungsten', name: 'Tungsten', ingot: TUNGSTEN_INGOT, tier: 6, speed: 14, dmg: 5 },
+];
+export const TOOL_KINDS = ['pick', 'axe', 'shovel'];
+export const metalTool = (matIndex, kind) => METAL_TOOLS + matIndex * 3 + TOOL_KINDS.indexOf(kind);
 
 export const BLOCKS = [];
 
@@ -67,6 +114,7 @@ function block(id, o) {
     hardness: o.hardness ?? 1, // seconds to break by hand with no penalty
     tool: o.tool ?? null, // 'pick' | 'axe' | 'shovel'
     needsTool: !!o.needsTool, // drops nothing (and is slow) without the right tool
+    tier: o.tier ?? 1, // ...of at least this tier
     drop: o.drop ?? id, // id, or function returning id (0 = nothing), or function returning [[id, n], ...]
     sound: o.sound ?? 'stone', // material for dig / step / place sounds
     liquid: !!o.liquid, // not solid, not targetable, never in the inventory
@@ -96,6 +144,11 @@ block(GLASS, { name: 'Glass', sound: 'glass', tex: T.GLASS, transparent: true, h
 block(TABLE, { name: 'Crafting Table', sound: 'wood', top: T.TABLE_TOP, bottom: T.PLANKS, side: T.TABLE_SIDE, hardness: 2.5, tool: 'axe' });
 block(BRICKS, { name: 'Stone Bricks', tex: T.BRICKS, hardness: 2.5, tool: 'pick', needsTool: true });
 block(COAL_ORE, { name: 'Coal Ore', tex: T.COAL_ORE, hardness: 3, tool: 'pick', needsTool: true, drop: COAL });
+ORES.forEach((o, i) => block(o.id, {
+  name: o.name, tex: T.ORE0 + i, hardness: o.hardness, tool: 'pick', needsTool: true, tier: o.tier,
+  drop: o.drop ? () => [[o.drop, 1 + (Math.random() < 0.4 ? 1 : 0)]] : o.id,
+}));
+export const isOre = (id) => id >= IRON_ORE && id <= TUNGSTEN_ORE;
 block(BEDROCK, { name: 'Bedrock', tex: T.BEDROCK, hardness: Infinity });
 block(WATER, { name: 'Water', transparent: true, liquid: true, hardness: Infinity, drop: 0, sound: 'water' });
 const torch = { name: 'Torch', sound: 'wood', tex: T.TORCH, transparent: true, solid: false, shape: 'torch', hardness: 0, light: 14, drop: TORCH };
@@ -241,12 +294,12 @@ export const MAX_LAMP_FUEL = 3;
 export const ITEMS = {
   [STICK]: { name: 'Stick' },
   [COAL]: { name: 'Coal' },
-  [WOOD_PICK]: { name: 'Wooden Pickaxe', tool: { type: 'pick', speed: 2.5 } },
-  [STONE_PICK]: { name: 'Stone Pickaxe', tool: { type: 'pick', speed: 5 } },
-  [WOOD_AXE]: { name: 'Wooden Axe', tool: { type: 'axe', speed: 2.5 } },
-  [STONE_AXE]: { name: 'Stone Axe', tool: { type: 'axe', speed: 5 } },
-  [WOOD_SHOVEL]: { name: 'Wooden Shovel', tool: { type: 'shovel', speed: 2.5 } },
-  [STONE_SHOVEL]: { name: 'Stone Shovel', tool: { type: 'shovel', speed: 5 } },
+  [WOOD_PICK]: { name: 'Wooden Pickaxe', tool: { type: 'pick', speed: 2.5, tier: 1 } },
+  [STONE_PICK]: { name: 'Stone Pickaxe', tool: { type: 'pick', speed: 5, tier: 2 } },
+  [WOOD_AXE]: { name: 'Wooden Axe', tool: { type: 'axe', speed: 2.5, tier: 1 } },
+  [STONE_AXE]: { name: 'Stone Axe', tool: { type: 'axe', speed: 5, tier: 2 } },
+  [WOOD_SHOVEL]: { name: 'Wooden Shovel', tool: { type: 'shovel', speed: 2.5, tier: 1 } },
+  [STONE_SHOVEL]: { name: 'Stone Shovel', tool: { type: 'shovel', speed: 5, tier: 2 } },
   [SEEDS]: { name: 'Wheat Seeds', places: WHEAT_0 },
   [WHEAT]: { name: 'Wheat' },
   [FLOUR]: { name: 'Flour' },
@@ -272,6 +325,25 @@ export const ITEMS = {
   [BAKED_FISH]: { name: 'Baked Fish', food: 6 },
 };
 
+const INGOT_NAMES = {
+  [IRON_INGOT]: 'Iron Ingot', [COPPER_INGOT]: 'Copper Ingot', [TIN_INGOT]: 'Tin Ingot', [LEAD_INGOT]: 'Lead Ingot',
+  [ZINC_INGOT]: 'Zinc Ingot', [ALUMINIUM_INGOT]: 'Aluminium Ingot', [SILVER_INGOT]: 'Silver Ingot', [GOLD_INGOT]: 'Gold Ingot',
+  [TUNGSTEN_INGOT]: 'Tungsten Ingot', [BRONZE_INGOT]: 'Bronze Ingot', [ELECTRUM_INGOT]: 'Electrum Ingot',
+  [STAINLESS_INGOT]: 'Stainless Steel Ingot', [STEEL_INGOT]: 'Steel Ingot', [AL_BRONZE_INGOT]: 'Aluminium Bronze Ingot',
+};
+for (const [id, name] of Object.entries(INGOT_NAMES)) ITEMS[id] = { name, ingot: true };
+ITEMS[SULPHUR] = { name: 'Sulphur' };
+const KIND_NAMES = { pick: 'Pickaxe', axe: 'Axe', shovel: 'Shovel' };
+const KIND_DAMAGE = { pick: 4, axe: 6, shovel: 4 }; // stone tools hit for 4 / 6 / 4
+TOOL_MATERIALS.forEach((m, i) => {
+  for (const kind of TOOL_KINDS) {
+    ITEMS[metalTool(i, kind)] = {
+      name: `${m.name} ${KIND_NAMES[kind]}`, mat: m.key,
+      tool: { type: kind, speed: m.speed, tier: m.tier, damage: KIND_DAMAGE[kind] + m.dmg },
+    };
+  }
+});
+
 export const foodValue = (id) => ITEMS[id]?.food ?? 0;
 
 // Placeable block that can live in the inventory.
@@ -292,7 +364,7 @@ export function breakTime(blockId, heldId) {
   const b = BLOCKS[blockId];
   if (!b || b.hardness === Infinity) return Infinity;
   const tool = ITEMS[heldId]?.tool;
-  if (tool && b.tool === tool.type) return b.hardness / tool.speed;
+  if (tool && b.tool === tool.type && (!b.needsTool || tool.tier >= b.tier)) return b.hardness / tool.speed;
   return b.needsTool ? b.hardness * 3.3 : b.hardness;
 }
 
@@ -300,7 +372,8 @@ export function breakTime(blockId, heldId) {
 export function dropsFor(blockId, heldId) {
   const b = BLOCKS[blockId];
   if (!b) return [];
-  if (b.needsTool && ITEMS[heldId]?.tool?.type !== b.tool) return [];
+  const tool = ITEMS[heldId]?.tool;
+  if (b.needsTool && (tool?.type !== b.tool || tool.tier < b.tier)) return [];
   const d = typeof b.drop === 'function' ? b.drop() : b.drop;
   if (Array.isArray(d)) return d.filter(([id, n]) => id && n > 0);
   return d ? [[d, 1]] : [];
@@ -347,5 +420,13 @@ export const RECIPES = [
   { out: [OVEN, 1], in: [[COBBLE, 6], [SAND, 2]], table: true },
   { out: [SMELTER, 1], in: [[COBBLE, 8]], table: true },
 ];
+// Metal tools. `metal` hides the recipe from the list until you're carrying that ingot.
+TOOL_MATERIALS.forEach((m, i) => {
+  RECIPES.push(
+    { out: [metalTool(i, 'pick'), 1], in: [[m.ingot, 3], [STICK, 2]], table: true, metal: m.ingot },
+    { out: [metalTool(i, 'axe'), 1], in: [[m.ingot, 3], [STICK, 2]], table: true, metal: m.ingot },
+    { out: [metalTool(i, 'shovel'), 1], in: [[m.ingot, 1], [STICK, 2]], table: true, metal: m.ingot },
+  );
+});
 // (Bread, cookies, cake and baked fish are baked in the oven, and glass, stone and charcoal come from the smelter:
 // see stations.js.)
