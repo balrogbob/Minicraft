@@ -5,7 +5,7 @@ import {
   WOOD_PICK, STONE_PICK, WOOD_AXE, STONE_AXE, WOOD_SHOVEL, STONE_SHOVEL,
   BED, BED_FOOT, CHAIR, LAMP, CARPET, CURTAIN, DOOR, SLIME_FUEL, FACING_DIRS, MAX_LAMP_FUEL,
   isBed, isChair, isLamp, isCurtain, isDoor, doorId,
-  OVEN, SMELTER, stationKind, maxStack, FISHING_ROD, RAW_FISH, TOOL_TIERS,
+  OVEN, SMELTER, stationKind, maxStack, FISHING_ROD, RAW_FISH, TOOL_TIERS, LOG, LEAVES, SAPLING,
   isBlock, isTorch, isWheat, itemName, breakTime, dropsFor, foodValue,
 } from './blocks.js';
 import { createAtlas, createIcons, createCrackCanvases, createWaterCanvas, createHudIcons } from './textures.js';
@@ -25,7 +25,7 @@ import { Fishing } from './fishing.js';
 
 // v2 = the 16k x 16k streaming world (player state here, edited chunks in IndexedDB).
 // v1 = the old 128 x 128 world, migrated into the middle of the big world on first launch.
-const GAME_VERSION = '14'; // shown in the menu; bump with each release
+const GAME_VERSION = '15'; // shown in the menu; bump with each release
 const SAVE_KEY = 'minicraft-save-v2';
 const LEGACY_SAVE_KEY = 'minicraft-save-v1';
 const SETTINGS_KEY = 'minicraft-settings-v1';
@@ -250,6 +250,13 @@ async function startWorld(save) {
   const seed = save?.seed ?? newSeed();
   world = new World(seed, store);
   world.onError = reportError;
+  // leaves falling from a tree you just cut drop their saplings and sticks to you, if you're nearby
+  world.onLeafDecay = (x, y, z) => {
+    const p = player.pos;
+    if (dead || (x + 0.5 - p.x) ** 2 + (y + 0.5 - p.y) ** 2 + (z + 0.5 - p.z) ** 2 > 16 * 16) return;
+    const drops = dropsFor(LEAVES, 0);
+    if (drops.length) giveDrops(drops);
+  };
   mobs.reset(world);
   arrows.reset();
   lastSwing = 0;
@@ -1040,6 +1047,8 @@ function place() {
   } else if (isWheat(id)) {
     // seeds go on top of grass or dirt
     if (there !== AIR || target.ny !== 1 || (target.id !== GRASS && target.id !== DIRT)) { toast('Plant seeds on top of grass or dirt'); return; }
+  } else if (id === SAPLING) {
+    if (there !== AIR || target.ny !== 1 || (target.id !== GRASS && target.id !== DIRT)) { toast('Plant saplings on top of grass or dirt'); return; }
   } else if (id === SUGAR_CANE) {
     // sugar cane goes on top of more cane, or on sand, grass or dirt right beside water
     const ground = target.id === SAND || target.id === GRASS || target.id === DIRT;
@@ -1153,8 +1162,19 @@ function breakBlock(x, y, z) {
     if (used(x, y, z) || used(ox, oy, oz)) bedSpawn = null;
     drops = [[BED, 1]];
   }
+  // cutting a tree's trunk with an axe brings down the whole tree above it
+  const felled = id === LOG && ITEMS[inventory.heldId()]?.tool?.type === 'axe' ? treeAbove(x, y, z) : [];
   world.setBlock(x, y, z, AIR);
   dropUnsupported(x, y, z);
+  for (const [lx, ly, lz] of felled) {
+    world.setBlock(lx, ly, lz, AIR);
+    dropUnsupported(lx, ly, lz);
+  }
+  if (felled.length) drops.push([LOG, felled.length]);
+  if (felled.length) {
+    sound.breakBlock('leaves');
+    toast(`Timber! +${felled.length + 1} Log`, 1800);
+  }
   if (drops.length) {
     let lost = 0;
     for (const [d, n] of drops) lost += inventory.add(d, n);
@@ -1165,6 +1185,30 @@ function breakBlock(x, y, z) {
       toast(`You need a ${TOOL_TIERS[def.tier]} ${kind} or better to collect ${def.name}`, 2500);
     } else toast(`You need a ${kind} to collect ${def.name}`);
   }
+}
+
+// The logs of a tree standing on the log at (x, y, z): every log joined to it at or above its height,
+// highest first. Only counts as a tree if some of those logs touch leaves, so log buildings are safe.
+const MAX_FELL = 64;
+function treeAbove(x, y, z) {
+  const seen = new Set([`${x},${y},${z}`]);
+  const logs = [];
+  const queue = [[x, y, z]];
+  let leafy = false;
+  while (queue.length && logs.length < MAX_FELL) {
+    const [cx, cy, cz] = queue.shift();
+    for (let dy = 0; dy <= 1; dy++) for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) {
+      const nx = cx + dx, ny = cy + dy, nz = cz + dz;
+      if (ny < y) continue;
+      const key = `${nx},${ny},${nz}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const id = world.get(nx, ny, nz);
+      if (id === LEAVES) leafy = true;
+      else if (id === LOG && logs.length < MAX_FELL) { logs.push([nx, ny, nz]); queue.push([nx, ny, nz]); }
+    }
+  }
+  return leafy ? logs.sort((a, b) => b[1] - a[1]) : [];
 }
 
 // Things resting on a block that was just removed pop off into the inventory: torches standing on
@@ -1190,7 +1234,7 @@ function dropUnsupported(x, y, z) {
   }
   for (let ty = y + 1; ty < H; ty++) {
     const id = world.get(x, ty, z);
-    if (!isWheat(id) && id !== SUGAR_CANE) break;
+    if (!isWheat(id) && id !== SUGAR_CANE && id !== SAPLING) break;
     for (const [d, n] of dropsFor(id, 0)) inventory.add(d, n);
     world.setBlock(x, ty, z, AIR);
     if (id !== SUGAR_CANE) break;
@@ -1368,6 +1412,7 @@ function stepGame(now, dt) {
     playMovementSounds(dt, wasGround, wasWater, fallSpeed);
     world.tickWater(dt);
     world.tickPlants(dt);
+    world.tickLeaves(dt);
     tickLamps(dt);
     updateHunger(dt);
     updateHealth(dt, wasGround, prevY);

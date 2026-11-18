@@ -1,7 +1,7 @@
 // Streaming voxel world: chunks are generated (or loaded) around the player and unloaded behind,
 // with block light and sunlight flowing across chunk borders, chunk meshing and raycasting.
 import * as THREE from 'three';
-import { BLOCKS, AIR, LEAVES, WATER, MAX_LIGHT, SUGAR_CANE, MAX_CANE_HEIGHT } from './blocks.js';
+import { BLOCKS, AIR, LEAVES, LOG, DIRT, GRASS, WATER, MAX_LIGHT, SUGAR_CANE, MAX_CANE_HEIGHT } from './blocks.js';
 import { TILE, ATLAS_COLS } from './textures.js';
 import { Generator, CHUNK, H, SEA_LEVEL, WORLD_SIZE, WORLD_CHUNKS, CHUNK_VOLUME, localIndex } from './terrain.js';
 
@@ -83,7 +83,9 @@ class Chunk {
 }
 
 // Average seconds between growth steps for each kind of plant (only while its chunk is loaded).
-const GROW_SECONDS = { wheat: 45, cane: 60 };
+const GROW_SECONDS = { wheat: 45, cane: 60, tree: 150 };
+// Leaves with no log within this many steps (through other leaves) decay.
+const LEAF_REACH = 4;
 
 export class World {
   constructor(seed, store) {
@@ -165,7 +167,11 @@ export class World {
     if (y < 0 || y >= H) return;
     const c = this.chunkAt(x, z);
     if (!c) return;
-    c.data[localIndex(x, y, z)] = id;
+    const li = localIndex(x, y, z), old = c.data[li];
+    c.data[li] = id;
+    // losing a log (or a leaf) may leave nearby leaves with nothing holding them up
+    if (old === LOG && id !== LOG) this.checkLeavesAround(x, y, z, LEAF_REACH);
+    else if (old === LEAVES && id !== LEAVES) this.checkLeavesAround(x, y, z, 1);
     this.unsaved.add(c.key);
     this.markCellDirty(x, z);
     this.updateLight(x, y, z);
@@ -209,8 +215,82 @@ export class World {
         if (Math.random() >= chance) continue;
         const x = c.cx * CHUNK + (li & 15), z = c.cz * CHUNK + ((li >> 4) & 15), y = li >> 8;
         if (def.grows === 'up') this.setBlock(x, y + 1, z, SUGAR_CANE);
+        else if (def.grows === 'tree') this.growTree(x, y, z);
         else this.setBlock(x, y, z, def.grows);
       }
+    }
+  }
+
+  // A sapling at (x, y, z) grows into a tree, if there's room for the trunk and it's on grass or dirt.
+  // Returns true if it grew. Same shape as the trees in the generated world.
+  growTree(x, y, z, trunk = 4 + Math.floor(Math.random() * 3)) {
+    const ground = this.get(x, y - 1, z);
+    if (ground !== GRASS && ground !== DIRT) return false;
+    const top = y + trunk - 1;
+    if (top + 2 >= H) return false;
+    for (let ty = y + 1; ty <= top + 1; ty++) if (this.get(x, ty, z) !== AIR) return false;
+    this.setBlock(x, y - 1, z, DIRT);
+    for (let ty = y; ty <= top; ty++) this.setBlock(x, ty, z, LOG);
+    for (let ly = top - 2; ly <= top + 1; ly++) {
+      const r = ly >= top ? 1 : 2;
+      for (let dz = -r; dz <= r; dz++) for (let dx = -r; dx <= r; dx++) {
+        const corner = Math.abs(dx) === r && Math.abs(dz) === r;
+        if (corner && (ly === top + 1 || Math.random() < 0.5)) continue;
+        if (this.get(x + dx, ly, z + dz) === AIR && this.chunkAt(x + dx, z + dz)) this.setBlock(x + dx, ly, z + dz, LEAVES);
+      }
+    }
+    return true;
+  }
+
+  // ---------- leaf decay ----------
+
+  // Queue the leaves within `r` of (x, y, z) to be checked a moment from now (staggered, so a cut
+  // tree's crown thins out over a few seconds rather than vanishing at once).
+  checkLeavesAround(x, y, z, r) {
+    this.decay ??= new Map();
+    for (let dy = -r; dy <= r; dy++) for (let dz = -r; dz <= r; dz++) for (let dx = -r; dx <= r; dx++) {
+      if (r === 1 && Math.abs(dx) + Math.abs(dy) + Math.abs(dz) !== 1) continue; // just the 6 neighbours
+      const lx = x + dx, ly = y + dy, lz = z + dz;
+      if (this.get(lx, ly, lz) !== LEAVES) continue;
+      const key = `${lx},${ly},${lz}`;
+      if (!this.decay.has(key)) this.decay.set(key, 0.4 + Math.random() * 2.6);
+    }
+  }
+
+  // Is there a log within LEAF_REACH steps of this leaf, through other leaves? Leaves at the edge of
+  // the loaded world count as held up, since we can't see what's past them.
+  leafSupported(x, y, z) {
+    const seen = new Set([`${x},${y},${z}`]);
+    let frontier = [[x, y, z]];
+    for (let step = 0; step < LEAF_REACH && frontier.length; step++) {
+      const next = [];
+      for (const [fx, fy, fz] of frontier) {
+        for (const [dx, dy, dz] of NEIGHBOURS) {
+          const nx = fx + dx, ny = fy + dy, nz = fz + dz;
+          const key = `${nx},${ny},${nz}`;
+          if (seen.has(key)) continue;
+          seen.add(key);
+          if (ny >= 0 && ny < H && this.inBounds(nx, ny, nz) && !this.chunkAt(nx, nz)) return true;
+          const id = this.get(nx, ny, nz);
+          if (id === LOG) return true;
+          if (id === LEAVES) next.push([nx, ny, nz]);
+        }
+      }
+      frontier = next;
+    }
+    return false;
+  }
+
+  // Count down queued leaves; those with no log nearby fall. onLeafDecay(x, y, z) is told about each.
+  tickLeaves(dt) {
+    if (!this.decay?.size) return;
+    for (const [key, t] of this.decay) {
+      if (t - dt > 0) { this.decay.set(key, t - dt); continue; }
+      this.decay.delete(key);
+      const [x, y, z] = key.split(',').map(Number);
+      if (this.get(x, y, z) !== LEAVES || this.leafSupported(x, y, z)) continue;
+      this.setBlock(x, y, z, AIR); // queues its neighbours in turn
+      this.onLeafDecay?.(x, y, z);
     }
   }
 

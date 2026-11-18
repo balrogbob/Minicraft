@@ -200,6 +200,21 @@ const P = {
       t.set(x0 - 1, ly, [110, 175, 80]); t.set(x0 + 2, ly + 4, [110, 175, 80]);
     }
   },
+  // a young tree: a thin brown stem with a few clumps of leaves
+  [T.SAPLING](t) {
+    for (let y = 8; y < TILE; y++) {
+      t.set(7, y, t.vary([112, 80, 46], 0.1));
+      t.set(8, y, t.vary([88, 62, 34], 0.1));
+    }
+    t.set(6, 11, [104, 74, 42]); t.set(9, 12, [96, 68, 38]);
+    const clump = (cx, cy, r) => {
+      for (let y = cy - r; y <= cy + r; y++) for (let x = cx - r; x <= cx + r; x++) {
+        if ((x - cx) ** 2 + (y - cy) ** 2 > r * r + 1 || t.r() < 0.12) continue;
+        t.set(x, y, t.vary(t.r() < 0.35 ? [45, 105, 30] : [70, 145, 46], 0.25));
+      }
+    };
+    clump(8, 5, 3); clump(4, 9, 2); clump(12, 8, 2);
+  },
   [T.CHURN_SIDE](t) {
     // upright wooden staves held by two dark hoops
     for (let x = 0; x < TILE; x++) {
