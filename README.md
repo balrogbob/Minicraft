@@ -10,6 +10,9 @@ It is designed for Android tablets (touch controls) but also plays with keyboard
 - Day/night cycle (12 minutes) with sunrise and sunset skies, sun, moon and stars
 - Sunlight: open ground is fully lit, while overhangs, tunnels and caves fade into darkness even at noon.
   Leaves and water dim the light a little, so it's shadier under trees and deeper in lakes
+- Animals: ducks paddle on lakes and waddle along shores, buffalo graze the plains in herds, alpacas
+  roam the hills, and little newts scurry around near water. Tap one to bump it and it runs off;
+  bumping an alpaca shears it for **wool** (its coat grows back after a couple of minutes)
 - Torches that light up the area around them with a warm, flickering glow. They stand on floors or hang on walls
 - Synthesised sound effects for digging, breaking, placing, footsteps and splashing, with no audio files
 - Break and place blocks, with break times that depend on the tool you hold
@@ -47,6 +50,7 @@ The version number is shown at the bottom of the ☰ menu; bump `GAME_VERSION` i
 | Look | Drag on the right side | Mouse (click to capture) |
 | Break | Hold your finger still on the right side | Hold left button |
 | Place / use crafting table | Tap on the right side | Right click |
+| Bump an animal (shear an alpaca) | Tap it | Left or right click |
 | Jump / swim up | ⤒ button (auto-jump also steps up 1-block ledges) | Space |
 | Select item | Tap a hotbar slot | 1–9 / mouse wheel |
 | Inventory & crafting | 🎒 button | E |
@@ -74,6 +78,7 @@ You aim with the crosshair in the middle of the screen. Volume, look speed and a
 | `js/store.js` | Saving edited chunks to IndexedDB |
 | `js/legacy.js` | The old 128 × 128 generator, used once to migrate old saves |
 | `js/player.js` | Player physics, collision and swimming |
+| `js/mobs.js` | Animals: box models, behaviour, physics, spawning by habitat |
 | `js/sky.js` | Day/night cycle: sky colour, fog, sun, moon, stars, world brightness |
 | `js/sound.js` | Web Audio sound effects |
 | `js/controls.js` | Touch joystick / look / tap / hold, plus desktop input |
