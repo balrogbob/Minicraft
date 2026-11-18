@@ -13,10 +13,11 @@ import { Sound } from './sound.js';
 import { Player } from './player.js';
 import { Inventory, SLOTS } from './inventory.js';
 import { Controls } from './controls.js';
+import { MobManager } from './mobs.js';
 
 // v2 = the 16k x 16k streaming world (player state here, edited chunks in IndexedDB).
 // v1 = the old 128 x 128 world, migrated into the middle of the big world on first launch.
-const GAME_VERSION = '6'; // shown in the menu; bump with each release
+const GAME_VERSION = '7'; // shown in the menu; bump with each release
 const SAVE_KEY = 'minicraft-save-v2';
 const LEGACY_SAVE_KEY = 'minicraft-save-v1';
 const SETTINGS_KEY = 'minicraft-settings-v1';
@@ -100,6 +101,7 @@ for (const ev of ['touchstart', 'pointerdown', 'keydown']) {
 }
 
 const icons = createIcons(atlasCanvas);
+const mobs = new MobManager(scene, sound);
 
 // block highlight + break cracks
 const highlight = new THREE.LineSegments(
@@ -127,6 +129,7 @@ let world, player, controls;
 const inventory = new Inventory();
 let paused = true;
 let target = null; // raycast hit
+let targetMob = null; // { mob, t } when the crosshair is on an animal (closer than any block)
 const breakState = { key: '', progress: 0 };
 let tableOpen = false;
 const store = new ChunkStore();
@@ -197,6 +200,7 @@ async function startWorld(save) {
   const seed = save?.seed ?? newSeed();
   world = new World(seed, store);
   world.onError = reportError;
+  mobs.reset(world);
   applyViewDistance();
   $('load-text').textContent = 'Generating terrain…';
   setProgress(0);
@@ -417,8 +421,20 @@ function toggleInventory() {
 }
 
 // ---------- actions ----------
+// Bump the animal under the crosshair (and collect anything it gives, like an alpaca's wool).
+function hitMob() {
+  if (!targetMob) return;
+  const drops = mobs.hit(targetMob.mob, player.pos);
+  for (const [id, n] of drops) {
+    if (inventory.add(id, n) > 0) toast('Inventory full');
+    else { toast(`+${n} ${itemName(id)}`, 1200); sound.pop(); }
+  }
+}
+
 function place() {
-  if (paused || !target) return;
+  if (paused) return;
+  if (targetMob) { hitMob(); return; }
+  if (!target) return;
   if (target.id === TABLE) { sound.click(); openInventory(true); return; }
   const held = inventory.held();
   if (!held || !isBlock(held.id)) return;
@@ -437,6 +453,14 @@ function place() {
 }
 
 function updateBreaking(dt) {
+  // holding on an animal bumps it every half second instead of breaking blocks
+  breakState.mobCooldown = Math.max(0, (breakState.mobCooldown || 0) - dt);
+  if (controls.breaking && targetMob) {
+    if (!breakState.mobCooldown) { hitMob(); breakState.mobCooldown = 0.5; }
+    breakState.key = ''; breakState.progress = 0;
+    crack.visible = false;
+    return;
+  }
   if (!controls.breaking || !target) {
     breakState.key = ''; breakState.progress = 0; breakState.tick = 0;
     crack.visible = false;
@@ -627,6 +651,7 @@ function updatePerf(now) {
   $('perf').textContent = `${perf.fps} fps · view ${settings.viewDistance * CHUNK} blocks\n` +
     `chunks: ${st.loaded} loaded, ${st.drawn} drawn, ${st.waiting} waiting` +
     (st.pending ? `, ${st.pending} reading` : '') + (st.failed ? `, ${st.failed} failed` : '') +
+    `\nanimals: ${mobs.mobs.length}` +
     (lastError ? `\nlast error: ${lastError}` : '');
 }
 
@@ -640,6 +665,7 @@ function stepGame(now, dt) {
     if (player.pos.y < -20) respawn();
     playMovementSounds(dt, wasGround, wasWater, fallSpeed);
     world.tickWater(dt);
+    mobs.update(dt, player, { day: lightUniforms.uDay.value, flicker: lightUniforms.uFlicker.value, ambient: AMBIENT });
   }
   // write edited chunks to storage shortly (1.5 s) after the player stops changing them
   if (world.unsaved.size !== unsavedCount) { unsavedCount = world.unsaved.size; lastEditAt = now; }
@@ -660,7 +686,12 @@ function stepGame(now, dt) {
   waterTex.offset.x = (waterTex.offset.x + dt * 0.06) % 1;
   waterTex.offset.y = (waterTex.offset.y + dt * 0.025) % 1;
 
-  target = paused ? null : world.raycast(eye, player.lookDir(), REACH);
+  const look = player.lookDir();
+  target = paused ? null : world.raycast(eye, look, REACH);
+  targetMob = paused ? null : mobs.raycast(eye, look, REACH);
+  // whichever is closer wins: an animal in front of a block, or a block in front of an animal
+  if (targetMob && target && target.t < targetMob.t) targetMob = null;
+  if (targetMob) target = null;
   if (target) {
     highlight.visible = true;
     highlight.position.set(target.x + 0.5, target.y + 0.5, target.z + 0.5);
@@ -677,4 +708,4 @@ boot().catch(reportError);
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').catch(() => {});
 
 // expose for debugging in the console
-window.minicraft = { get world() { return world; }, player, inventory, saveGame, sky, sound, breakBlock };
+window.minicraft = { get world() { return world; }, player, inventory, saveGame, sky, sound, breakBlock, mobs };

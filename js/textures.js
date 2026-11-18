@@ -167,6 +167,15 @@ const P = {
       else t.set(x, y, t.vary(x === 7 ? [128, 92, 50] : [100, 70, 38], 0.1));
     }
   },
+  [T.WOOL](t) {
+    // soft cream fleece with little curls
+    t.fill([236, 229, 214], 0.05);
+    for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+      const k = (x * 7 + y * 13 + ((y >> 1) & 1) * 3) % 9;
+      if (k === 0) t.set(x, y, t.vary([206, 197, 178], 0.05));
+      else if (k === 4) t.set(x, y, t.vary([248, 244, 234], 0.03));
+    }
+  },
   [T.BEDROCK](t) {
     for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
       const g = 30 + t.r() * 100;

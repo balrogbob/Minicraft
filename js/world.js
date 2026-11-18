@@ -47,14 +47,14 @@ const LIGHT_CURVE = Array.from({ length: 16 * 4 + 1 }, (_, i) => {
   const level = i / 4;
   return level <= 0 ? 0 : toLinear(Math.pow(0.83, 14 - Math.min(14, level)));
 });
-const lightBrightness = (level) => LIGHT_CURVE[Math.round(level * 4)];
+export const lightBrightness = (level) => LIGHT_CURVE[Math.round(level * 4)];
 
 // Sunlight level (0-15) -> linear brightness. Gentler falloff so cave mouths fade gradually.
 const SKY_CURVE = Array.from({ length: 16 * 4 + 1 }, (_, i) => {
   const level = i / 4;
   return level <= 0 ? 0 : toLinear(Math.pow(0.84, 15 - Math.min(15, level)));
 });
-const skyBrightness = (level) => SKY_CURVE[Math.round(level * 4)];
+export const skyBrightness = (level) => SKY_CURVE[Math.round(level * 4)];
 
 // Sunlight level after one step into a block of type `id`. Full sunlight shining straight down
 // through air or glass stays full; everything else (sideways, or down through leaves and water)
@@ -666,7 +666,8 @@ export class World {
     return vcount;
   }
 
-  // Voxel DDA raycast. Returns { x, y, z, id, nx, ny, nz } for the first solid block hit (water is ignored).
+  // Voxel DDA raycast. Returns { x, y, z, id, nx, ny, nz, t } for the first solid block hit (water is ignored);
+  // t is the distance along the ray.
   raycast(origin, dir, maxDist) {
     let x = Math.floor(origin.x), y = Math.floor(origin.y), z = Math.floor(origin.z);
     const sx = Math.sign(dir.x), sy = Math.sign(dir.y), sz = Math.sign(dir.z);
@@ -679,7 +680,7 @@ export class World {
     let nx = 0, ny = 0, nz = 0, t = 0;
     while (t <= maxDist) {
       const id = this.get(x, y, z);
-      if (id !== AIR && id !== WATER) return { x, y, z, id, nx, ny, nz };
+      if (id !== AIR && id !== WATER) return { x, y, z, id, nx, ny, nz, t };
       if (tmx < tmy && tmx < tmz) { x += sx; t = tmx; tmx += tdx; nx = -sx; ny = 0; nz = 0; }
       else if (tmy < tmz) { y += sy; t = tmy; tmy += tdy; nx = 0; ny = -sy; nz = 0; }
       else { z += sz; t = tmz; tmz += tdz; nx = 0; ny = 0; nz = -sz; }

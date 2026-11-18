@@ -4,7 +4,8 @@
 export const AIR = 0, GRASS = 1, DIRT = 2, STONE = 3, COBBLE = 4, LOG = 5, PLANKS = 6,
   LEAVES = 7, SAND = 8, GLASS = 9, TABLE = 10, BRICKS = 11, COAL_ORE = 12, BEDROCK = 13, WATER = 14,
   TORCH = 15, // standing torch; the only torch id that lives in the inventory
-  TORCH_WALL_W = 16, TORCH_WALL_E = 17, TORCH_WALL_N = 18, TORCH_WALL_S = 19; // mounted on a wall at -x/+x/-z/+z
+  TORCH_WALL_W = 16, TORCH_WALL_E = 17, TORCH_WALL_N = 18, TORCH_WALL_S = 19, // mounted on a wall at -x/+x/-z/+z
+  WOOL = 20;
 
 // Wall direction [dx, dz] for each wall-torch variant, in id order.
 export const WALL_TORCH_DIRS = [[-1, 0], [1, 0], [0, -1], [0, 1]];
@@ -20,7 +21,7 @@ export const STICK = 100, COAL = 101,
 export const T = {
   GRASS_TOP: 0, GRASS_SIDE: 1, DIRT: 2, STONE: 3, COBBLE: 4, LOG_SIDE: 5, LOG_TOP: 6,
   PLANKS: 7, LEAVES: 8, SAND: 9, GLASS: 10, TABLE_TOP: 11, TABLE_SIDE: 12, BRICKS: 13,
-  COAL_ORE: 14, BEDROCK: 15, TORCH: 16,
+  COAL_ORE: 14, BEDROCK: 15, TORCH: 16, WOOL: 17,
 };
 
 export const BLOCKS = [];
@@ -67,6 +68,8 @@ block(TORCH, torch);
 WALL_TORCH_DIRS.forEach((wall, i) => block(TORCH_WALL_W + i, { ...torch, wall, variantOf: TORCH }));
 
 export const isTorch = (id) => id >= TORCH && id <= TORCH_WALL_S;
+
+block(WOOL, { name: 'Wool', sound: 'wool', tex: T.WOOL, hardness: 0.8 });
 
 // Non-block items.
 export const ITEMS = {
