@@ -3,7 +3,9 @@ import {
   T, BLOCKS, isBlock, TORCH, STICK, COAL, WOOD_PICK, STONE_PICK, WOOD_AXE, STONE_AXE, WOOD_SHOVEL, STONE_SHOVEL,
   SEEDS, WHEAT, FLOUR, SUGAR, BUTTER, BREAD, COOKIE, CAKE, BUCKET, MILK_BUCKET, SLIME_BUCKET, FEATHER, MORTAR,
   STRING, ARROW, BOW, COAL_DUST, SLIME_FUEL, BED, FURN_TABLE, CHAIR, LAMP, CARPET, CURTAIN, DOOR, CHARCOAL,
-  FISHING_ROD, RAW_FISH, BAKED_FISH,
+  FISHING_ROD, RAW_FISH, BAKED_FISH, ORES, TOOL_MATERIALS, TOOL_KINDS, metalTool, SULPHUR,
+  IRON_INGOT, COPPER_INGOT, TIN_INGOT, LEAD_INGOT, ZINC_INGOT, ALUMINIUM_INGOT, SILVER_INGOT, GOLD_INGOT,
+  TUNGSTEN_INGOT, BRONZE_INGOT, ELECTRUM_INGOT, STAINLESS_INGOT, STEEL_INGOT, AL_BRONZE_INGOT,
 } from './blocks.js';
 
 export const TILE = 16;
@@ -282,6 +284,27 @@ const P = {
   },
 };
 
+// Ores: stone with clusters of coloured, slightly shiny nuggets (bauxite is a reddish rock with bigger blobs).
+const shade = (c, k) => c.map((v) => Math.max(0, Math.min(255, Math.round(v * k))));
+ORES.forEach((o, i) => {
+  P[T.ORE0 + i] = (t) => {
+    P[T.STONE](t);
+    const big = o.id === ORES.find((q) => q.name === 'Bauxite').id;
+    const clusters = big ? 7 : 6;
+    for (let n = 0; n < clusters; n++) {
+      const cx = 2 + t.r() * 11, cy = 2 + t.r() * 11;
+      for (let k = 0; k < (big ? 6 : 4); k++) {
+        const x = Math.round(cx + (t.r() - 0.5) * 3), y = Math.round(cy + (t.r() - 0.5) * 3);
+        t.set(x, y + 1, t.vary(shade(o.color, 0.6), 0.1)); // shadowed lower edge
+        t.set(x, y, t.vary(o.color, 0.1));
+        t.set(x + 1, y, t.vary(o.color, 0.1));
+        t.set(x + 1, y + 1, t.vary(shade(o.color, 0.8), 0.1));
+        if (t.r() < 0.4) t.set(x, y - 1, shade(o.color, 1.3)); // glint
+      }
+    }
+  };
+});
+
 // A plank door: a frame with a centre board; the upper half has a four-pane window you can see through,
 // the lower half has the handle.
 function doorPanel(t, upper) {
@@ -423,6 +446,15 @@ const MAT = {
   wood: [[160, 120, 70], [110, 80, 45]],
   stone: [[150, 150, 150], [95, 95, 95]],
 };
+// ingot colours, also used for metal tool heads
+const METAL_COLORS = {
+  [IRON_INGOT]: [196, 190, 184], [COPPER_INGOT]: [222, 128, 72], [TIN_INGOT]: [214, 218, 226], [LEAD_INGOT]: [104, 110, 134],
+  [ZINC_INGOT]: [172, 198, 208], [ALUMINIUM_INGOT]: [226, 230, 236], [SILVER_INGOT]: [240, 242, 250], [GOLD_INGOT]: [250, 210, 70],
+  [TUNGSTEN_INGOT]: [124, 120, 152], [BRONZE_INGOT]: [198, 146, 72], [ELECTRUM_INGOT]: [236, 218, 140],
+  [STAINLESS_INGOT]: [210, 218, 224], [STEEL_INGOT]: [146, 154, 166], [AL_BRONZE_INGOT]: [226, 186, 100],
+};
+const dim = (c, k) => c.map((v) => Math.round(v * k));
+for (const m of TOOL_MATERIALS) MAT[m.key] = [METAL_COLORS[m.ingot], dim(METAL_COLORS[m.ingot], 0.62)];
 const HANDLE = [[120, 85, 45], [80, 55, 28]];
 
 function px(ctx, x, y, c) {
@@ -708,6 +740,24 @@ ITEM_PAINTERS[WOOD_AXE] = toolPainter('axe', 'wood');
 ITEM_PAINTERS[STONE_AXE] = toolPainter('axe', 'stone');
 ITEM_PAINTERS[WOOD_SHOVEL] = toolPainter('shovel', 'wood');
 ITEM_PAINTERS[STONE_SHOVEL] = toolPainter('shovel', 'stone');
+
+// A bar of metal seen from slightly above: bright top, mid front, dark end.
+function ingotPainter(c) {
+  return (ctx) => {
+    for (let y = 6; y <= 8; y++) for (let x = 4 - (y - 6); x <= 13 - (y - 6); x++) px(ctx, x, y, dim(c, 1.12).map((v) => Math.min(255, v)));
+    for (let y = 9; y <= 12; y++) for (let x = 1; x <= 11; x++) px(ctx, x, y, c);
+    for (let y = 6; y <= 12; y++) for (let x = 12; x <= 14; x++) if (x - 12 <= y - 6 && y - 9 <= 14 - x + 1) px(ctx, x, y, dim(c, 0.7));
+    px(ctx, 3, 10, dim(c, 1.25).map((v) => Math.min(255, v))); px(ctx, 4, 10, dim(c, 1.25).map((v) => Math.min(255, v)));
+  };
+}
+for (const [id, c] of Object.entries(METAL_COLORS)) ITEM_PAINTERS[id] = ingotPainter(c);
+ITEM_PAINTERS[SULPHUR] = (ctx) => {
+  for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) {
+    const d = Math.hypot((x - 7.5) / 5, (y - 9) / 4.5);
+    if (d < 1) px(ctx, x, y, (x * 5 + y * 3) % 7 === 0 ? [255, 246, 150] : d > 0.75 ? [190, 168, 30] : [236, 214, 56]);
+  }
+};
+TOOL_MATERIALS.forEach((m, i) => { for (const kind of TOOL_KINDS) ITEM_PAINTERS[metalTool(i, kind)] = toolPainter(kind, m.key); });
 
 // Returns { id: dataURL } for every block and item.
 export function createIcons(atlas) {

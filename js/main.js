@@ -5,7 +5,7 @@ import {
   WOOD_PICK, STONE_PICK, WOOD_AXE, STONE_AXE, WOOD_SHOVEL, STONE_SHOVEL,
   BED, BED_FOOT, CHAIR, LAMP, CARPET, CURTAIN, DOOR, SLIME_FUEL, FACING_DIRS, MAX_LAMP_FUEL,
   isBed, isChair, isLamp, isCurtain, isDoor, doorId,
-  OVEN, SMELTER, stationKind, maxStack, FISHING_ROD, RAW_FISH,
+  OVEN, SMELTER, stationKind, maxStack, FISHING_ROD, RAW_FISH, TOOL_TIERS,
   isBlock, isTorch, isWheat, itemName, breakTime, dropsFor, foodValue,
 } from './blocks.js';
 import { createAtlas, createIcons, createCrackCanvases, createWaterCanvas, createHudIcons } from './textures.js';
@@ -25,7 +25,7 @@ import { Fishing } from './fishing.js';
 
 // v2 = the 16k x 16k streaming world (player state here, edited chunks in IndexedDB).
 // v1 = the old 128 x 128 world, migrated into the middle of the big world on first launch.
-const GAME_VERSION = '13'; // shown in the menu; bump with each release
+const GAME_VERSION = '14'; // shown in the menu; bump with each release
 const SAVE_KEY = 'minicraft-save-v2';
 const LEGACY_SAVE_KEY = 'minicraft-save-v1';
 const SETTINGS_KEY = 'minicraft-settings-v1';
@@ -646,6 +646,7 @@ function renderInventory() {
   const list = $('recipes');
   list.innerHTML = '';
   RECIPES.forEach((r) => {
+    if (r.metal && countOf(r.metal) <= 0) return; // metal tools only show up once you have that metal
     const stationOk = (!r.table || hasTable) && (!r.churn || hasChurn);
     const haveAll = r.in.every(([id, n]) => countOf(id) >= n) && (r.tools ?? []).every((id) => inventory.count(id) > 0);
     const canMake = haveAll && stationOk && inventory.room(r.out[0]) >= r.out[1];
@@ -766,7 +767,7 @@ function openStation(x, y, z) {
   for (let i = 0; i < 9; i++) make($('st-hotbar'), 'inv', i);
   // what it can make
   $('st-recipes').innerHTML = K.recipes.map((r) => {
-    const ing = r.in.map(([id, n]) => `<span class="ing" title="${itemName(id)}"><img src="${icons[id]}" alt="">${n}</span>`).join('');
+    const ing = r.in.map(([id, n]) => `<span class="ing" title="${idsOf(id).map(itemName).join(' or ')}"><img src="${icons[idsOf(id)[0]]}" alt="">${n}</span>`).join('');
     const tools = (r.tools ?? []).map((id) => `<span class="ing tool" title="${itemName(id)} (not used up)"><img src="${icons[id]}" alt="">kept</span>`).join('');
     return `<div class="recipe">${ing}${tools}<span class="arrow">→</span><img class="outimg" src="${icons[r.out[0]]}" alt="">` +
       `<span class="name">${r.out[1] > 1 ? r.out[1] + ' × ' : ''}${itemName(r.out[0])}</span></div>`;
@@ -846,7 +847,7 @@ function hitMob() {
     const now = performance.now();
     if (now - lastSwing < 450) return;
     lastSwing = now;
-    giveDrops(mobs.hurt(targetMob.mob, WEAPON_DAMAGE[inventory.heldId()] ?? 2, player.pos));
+    giveDrops(mobs.hurt(targetMob.mob, WEAPON_DAMAGE[inventory.heldId()] ?? ITEMS[inventory.heldId()]?.tool?.damage ?? 2, player.pos));
     return;
   }
   const r = mobs.interact(targetMob.mob, player.pos, inventory.heldId());
@@ -1159,7 +1160,10 @@ function breakBlock(x, y, z) {
     for (const [d, n] of drops) lost += inventory.add(d, n);
     if (lost) toast('Inventory full');
   } else if (def.needsTool) {
-    toast(`You need a ${def.tool === 'pick' ? 'pickaxe' : def.tool} to collect ${def.name}`);
+    const kind = def.tool === 'pick' ? 'pickaxe' : def.tool;
+    if (def.tier > 1) {
+      toast(`You need a ${TOOL_TIERS[def.tier]} ${kind} or better to collect ${def.name}`, 2500);
+    } else toast(`You need a ${kind} to collect ${def.name}`);
   }
 }
 
