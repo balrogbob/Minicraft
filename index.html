@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="theme-color" content="#87c5f5" />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <title>Minicraft</title>
+  <link rel="stylesheet" href="style.css" />
+  <script type="importmap">
+    { "imports": { "three": "./js/lib/three.module.min.js" } }
+  </script>
+</head>
+<body>
+  <div id="game">
+    <!-- 3D canvas is inserted here -->
+    <div id="touch-layer"></div>
+
+    <div id="crosshair"></div>
+
+    <div id="joy-base"><div id="joy-knob"></div></div>
+
+    <div id="top-left">
+      <button class="btn small" id="btn-fullscreen" title="Fullscreen">⛶</button>
+      <button class="btn small" id="btn-menu" title="Menu">☰</button>
+    </div>
+    <div id="toast"></div>
+    <div id="item-name"></div>
+
+    <div id="hotbar-wrap">
+      <div id="hotbar"></div>
+      <button class="btn" id="btn-inventory" title="Inventory & crafting">🎒</button>
+    </div>
+
+    <button class="btn round" id="btn-jump" title="Jump">⤒</button>
+
+    <div id="inventory" class="overlay hidden">
+      <div class="panel">
+        <div class="panel-head">
+          <h2>Inventory</h2>
+          <button class="btn small" id="btn-close-inv">✕</button>
+        </div>
+        <div class="panel-body">
+          <div class="inv-col">
+            <div class="slot-grid" id="inv-grid"></div>
+            <div class="slot-grid hotbar-row" id="inv-hotbar"></div>
+            <p class="hint">Tap a slot, then tap another to move or swap.</p>
+          </div>
+          <div class="craft-col">
+            <h3>Crafting <span id="table-status"></span></h3>
+            <div id="recipes"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="menu" class="overlay hidden">
+      <div class="panel menu-panel">
+        <div class="panel-head">
+          <h2>Menu</h2>
+          <button class="btn small" id="btn-close-menu">✕</button>
+        </div>
+        <div class="menu-items">
+          <button class="btn wide" id="btn-autojump">Auto-jump: on</button>
+          <label class="slider">Look speed <input type="range" id="sens" min="2" max="14" step="1" value="6" /></label>
+          <button class="btn wide" id="btn-save">Save now</button>
+          <button class="btn wide danger" id="btn-new">New world</button>
+          <p class="hint">
+            <b>Touch:</b> left side = move, right side = look.<br />
+            Tap = place block / open crafting table. Hold still = break.<br />
+            <b>Keyboard:</b> WASD, Space, mouse, E = inventory.
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <div id="loading" class="overlay">
+      <div class="loading-box">
+        <h1>Minicraft</h1>
+        <div class="bar"><div id="load-bar"></div></div>
+        <p id="load-text">Generating world…</p>
+      </div>
+    </div>
+  </div>
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>
