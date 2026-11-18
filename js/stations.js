@@ -151,6 +151,14 @@ export class Stations {
     return [...st.inputs, st.fuel, st.out].filter(Boolean).map((s) => [s.id, s.count]);
   }
 
+  // Like remove, but the whole stacks (keeping wear and enchantments), for spilling them on the ground.
+  removeStacks(x, y, z) {
+    const st = this.map.get(key(x, y, z));
+    this.map.delete(key(x, y, z));
+    if (!st) return [];
+    return [...st.inputs, st.fuel, st.out].filter(Boolean).map((s) => ({ ...s }));
+  }
+
   count(st, id) {
     let n = 0;
     const ids = idsOf(id);
