@@ -9,7 +9,7 @@ import {
   ORES, COAL_OR_CHARCOAL, IRON_INGOT, COPPER_INGOT, TIN_INGOT, ZINC_INGOT, ALUMINIUM_INGOT, SILVER_INGOT, GOLD_INGOT,
   BRONZE_INGOT, ELECTRUM_INGOT, STAINLESS_INGOT, STEEL_INGOT, AL_BRONZE_INGOT,
   GRAVEL, FLINT, FLINT_DUST, CLAY_BALL, CLAY_DUST, BRICK, FIRE_CLAY, FIRE_BRICK, oreDust, HIDE, LEATHER,
-  LAVA_BUCKET, LEAD_BUCKET, SALTPETRE,
+  LAVA_BUCKET, LEAD_BUCKET, SALTPETRE, WHEAT, SUGAR_CANE, COAL_DUST, PLATE_METALS, PLATES, TUNGSTEN_INGOT, FILAMENT,
 } from './blocks.js';
 
 // A recipe ingredient can be one id or a list of alternatives (coal or charcoal).
@@ -65,6 +65,7 @@ export const STATION_KINDS = {
   // Times are at 1x speed.
   crusher: {
     name: 'Rock Crusher',
+    verb: 'Crushing',
     inputs: 1,
     powered: true,
     recipes: [
@@ -75,6 +76,29 @@ export const STATION_KINDS = {
       { out: [CLAY_DUST, 2], in: [[BRICK, 1]], time: 4 },
     ],
   },
+};
+// More machines driven by shafts (times at 1x speed).
+STATION_KINDS.mill = {
+  name: 'Millstone', verb: 'Grinding', inputs: 1, powered: true,
+  recipes: [
+    { out: [FLOUR, 1], in: [[WHEAT, 1]], time: 3 },
+    { out: [SUGAR, 2], in: [[SUGAR_CANE, 1]], time: 3 },
+    { out: [COAL_DUST, 2], in: [[COAL_OR_CHARCOAL, 1]], time: 3 },
+  ],
+};
+STATION_KINDS.saw = {
+  name: 'Mechanical Saw', verb: 'Sawing', inputs: 1, powered: true,
+  recipes: [
+    { out: [PLANKS, 6], in: [[LOG, 1]], time: 3 },
+    { out: [STICK, 3], in: [[PLANKS, 1]], time: 2 },
+  ],
+};
+STATION_KINDS.hammer = {
+  name: 'Trip Hammer', verb: 'Hammering', inputs: 1, powered: true,
+  recipes: [
+    ...PLATE_METALS.map((m, i) => ({ out: [PLATES + i, 1], in: [[m.ingot, 1]], time: 6 })),
+    { out: [FILAMENT, 4], in: [[TUNGSTEN_INGOT, 1]], time: 10 }, // drawn out into fine wire
+  ],
 };
 // The blast smelter: lined with fire bricks, it smelts everything the smelter does, twice as fast.
 STATION_KINDS.blast = { ...STATION_KINDS.smelter, name: 'Blast Smelter', speed: 2 };
@@ -144,7 +168,8 @@ export class Stations {
 
   // Advance every loaded station by dt seconds. setLit(x, y, z, lit) is called when one lights or goes out.
   // powerAt(x, y, z) gives a powered station's speed (0 when it isn't turning).
-  tick(dt, world, setLit, powerAt = () => 0) {
+  // boostAt(x, y, z): how much faster a fuelled station works (1, or 1.5 with bellows blowing into it).
+  tick(dt, world, setLit, powerAt = () => 0, boostAt = () => 1) {
     for (const [k, st] of this.map) {
       const [x, y, z] = k.split(',').map(Number);
       if (!world.chunkAt(x, z)) continue;
@@ -163,7 +188,7 @@ export class Stations {
         }
         continue;
       }
-      const sdt = dt * (K.speed ?? 1); // a blast smelter cooks twice as fast, on the same fuel per item
+      const sdt = dt * (K.speed ?? 1) * boostAt(x, y, z); // a blast smelter cooks twice as fast, on the same fuel per item
       // light a new piece of fuel only when there's something to make and the last piece is used up
       if (r && st.burn <= 1e-9 && st.fuel && isFuel(st.fuel.id)) {
         st.burn = st.burnMax = FUEL_ITEMS[st.fuel.id];

@@ -3,7 +3,7 @@
 import * as THREE from 'three';
 import {
   BLOCKS, AIR, LEAVES, LOG, DIRT, GRASS, WATER, MAX_LIGHT, SUGAR_CANE, MAX_CANE_HEIGHT,
-  WATER_FLOW, WATER_FALL, WATER_WHEEL, isWaterId, isFlowing, waterLevel, LAVA, OBSIDIAN,
+  WATER_FLOW, WATER_FALL, WATER_WHEEL, isWaterId, isFlowing, waterLevel, LAVA, OBSIDIAN, PIPE, PUMP, SPOUT, T,
 } from './blocks.js';
 
 // Water wheels let water run through their cell (and over them); see waterAt().
@@ -204,8 +204,9 @@ export class World {
     // water nearby may now flow in, or drain away
     this.flow.push([x, y, z], [x + 1, y, z], [x - 1, y, z], [x, y + 1, z], [x, y - 1, z], [x, y, z + 1], [x, y, z - 1]);
     const def = BLOCKS[id];
-    if (def?.kinetic || def?.station === 'crusher') c.machines.add(li); else c.machines.delete(li);
-    if (BLOCKS[old]?.kinetic || BLOCKS[old]?.station === 'crusher' || def?.kinetic || def?.station === 'crusher') this.machinesChanged = true;
+    const isMachine = (d) => !!(d?.kinetic || d?.machine || d?.hopper);
+    if (isMachine(def)) c.machines.add(li); else c.machines.delete(li);
+    if (isMachine(BLOCKS[old]) || isMachine(def)) this.machinesChanged = true;
     // this cell, and the one below (a sugar cane that's no longer, or now is, the top), may start or stop growing
     this.refreshGrowth(c, x, y, z);
     if (y > 0) this.refreshGrowth(c, x, y - 1, z);
@@ -607,7 +608,7 @@ export class World {
       if (id < 15) continue; // (quick skip for the common blocks: none of these grow, flow or turn)
       const def = BLOCKS[id];
       if (def?.grows && this.canGrow(c, li & 15, li >> 8, (li >> 4) & 15)) c.growing.add(li);
-      else if (def?.kinetic || def?.station === 'crusher') { c.machines.add(li); this.machinesChanged = true; }
+      else if (def?.kinetic || def?.machine || def?.hopper) { c.machines.add(li); this.machinesChanged = true; }
       else if (isFlowing(id)) this.flow.push([x0 + (li & 15), li >> 8, z0 + ((li >> 4) & 15)]); // water left running
     }
     this.dirty.add(c.key);
@@ -843,6 +844,20 @@ export class World {
         continue;
       }
       if (def.shape === 'kinetic') continue; // drawn (and turned) by kinetics.js
+      if (def.shape === 'pipe') {
+        // a lead pipe: a short length at the centre, with arms reaching out to each pipe, pump or spout it touches
+        const model = [[5, 5, 5, 11, 11, 11, T.LEAD]];
+        const joins = (id) => id === PIPE || id === PUMP || id === SPOUT;
+        if (joins(this.get(x + 1, y, z))) model.push([11, 5.5, 5.5, 16, 10.5, 10.5, T.LEAD]);
+        if (joins(this.get(x - 1, y, z))) model.push([0, 5.5, 5.5, 5, 10.5, 10.5, T.LEAD]);
+        if (joins(this.get(x, y + 1, z))) model.push([5.5, 11, 5.5, 10.5, 16, 10.5, T.LEAD]);
+        if (joins(this.get(x, y - 1, z))) model.push([5.5, 0, 5.5, 10.5, 5, 10.5, T.LEAD]);
+        if (joins(this.get(x, y, z + 1))) model.push([5.5, 5.5, 11, 10.5, 10.5, 16, T.LEAD]);
+        if (joins(this.get(x, y, z - 1))) model.push([5.5, 5.5, 0, 10.5, 10.5, 5, T.LEAD]);
+        vcount = this.addModel(lx, y, lz, { model }, lightBrightness(this.lightAt(x, y, z)), skyBrightness(this.skyAt(x, y, z)),
+          pos, uv, col, tl, sl, index, vcount);
+        continue;
+      }
       if (def.shape === 'torch') {
         vcount = this.addTorch(lx, y, lz, def, pos, uv, col, tl, sl, index, vcount);
         continue;

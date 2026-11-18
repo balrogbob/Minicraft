@@ -43,6 +43,14 @@ export const AIR = 0, GRASS = 1, DIRT = 2, STONE = 3, COBBLE = 4, LOG = 5, PLANK
   SIGN_POST = 417, // 417..420: standing on a block, + facing
   SALTPETRE_ORE = 421, BLAST_CHARGE = 422,
   MIRROR_LAMP = 427, // 427..430: a lamp with an electrum reflector; + fuel like LAMP
+  PIPE = 424, PUMP = 425, SPOUT = 426, // lead pipework (see machines.js)
+  FILAMENT_LAMP = 431, // 431 = dark, 432 = lit (while it's turned by a shaft)
+  MILLSTONE = 433, SAW = 434, // saw: 434..437 + facing
+  BELLOWS = 438, TRIP_HAMMER = 439, // hammer: 439..442 + facing
+  DRILL = 443, // 443..446 + facing, 447 = facing down
+  WINDMILL = 448, // 448 = axle along x, 449 = along z
+  BELT = 450, // 450..453 + facing (the way it carries things)
+  HOPPER = 454, // 454..457 + facing, 458 = facing down
   LAVA = 460, OBSIDIAN = 461;
 
 // Wall direction [dx, dz] for each wall-torch variant, in id order.
@@ -76,7 +84,7 @@ export const FLINT = 300, CLAY_BALL = 301, BRICK = 302, FIRE_CLAY = 303, FIRE_BR
   ARMOUR = 340, // 340..359: + material * 4 + piece (see ARMOUR_MATS, ARMOUR_PIECES)
   PLATES = 360, // 360..364: hammered metal plates (see PLATE_METALS)
   SALTPETRE = 366, GUNPOWDER = 367, LEAD_SINKER = 368, WEIGHTED_ROD = 369, LEAD_BUCKET = 370, LAVA_BUCKET = 372,
-  GOLD_CLOCK = 373, COMPASS = 374, SILVER_ARROW = 375;
+  GOLD_CLOCK = 373, COMPASS = 374, SILVER_ARROW = 375, FILAMENT = 376, DRILL_BIT = 377;
 
 // Charcoal (smelted from logs) can stand in for coal anywhere coal is used.
 export const COAL_OR_CHARCOAL = [COAL, CHARCOAL];
@@ -95,6 +103,10 @@ export const T = {
   CRUSHER_SIDE: 55, CRUSHER_TOP: 56, CRUSHER_FRONT: 57, STAINLESS: 58,
   CHEST_SIDE: 59, CHEST_TOP: 60, CHEST_FRONT: 61, IRON_CHEST_SIDE: 62, IRON_CHEST_TOP: 63, IRON_CHEST_FRONT: 64,
   SALTPETRE_ORE: 65, ELECTRUM: 66, CHARGE_SIDE: 67, CHARGE_TOP: 68, LAVA: 69, OBSIDIAN: 70,
+  MILL_SIDE: 71, MILL_TOP: 72, SAW_SIDE: 73, SAW_TOP: 74, SAW_FRONT: 75, BELLOWS_SIDE: 76, BELLOWS_TOP: 77,
+  HAMMER_SIDE: 78, HAMMER_FRONT: 79, HAMMER_TOP: 80, PUMP_SIDE: 81, PUMP_TOP: 82, LEAD: 83,
+  DRILL_SIDE: 84, DRILL_FRONT: 85, BELT0: 86, // 86..89: belt tops, carrying toward each facing
+  IRON: 90, FILAMENT_OFF: 91, FILAMENT_ON: 92,
 };
 
 // Ores, deepest-reaching last. tier: the pickaxe tier needed to mine it (see TOOL_TIERS);
@@ -171,6 +183,9 @@ function block(id, o) {
     sign: !!o.sign, post: !!o.post, // holds a few lines of text (see signs.js); post: stands on a post
     lampBase: o.lampBase ?? 0, // a lamp's first (empty) variant
     blastproof: !!o.blastproof, // blasting charges can't break it
+    belt: !!o.belt, hopper: !!o.hopper,
+    machine: o.machine ?? null, // { load }: driven by a shaft or gear turning against it (see kinetics.js)
+    down: !!o.down, // a drill or hopper pointing down rather than to one side
   };
 }
 
@@ -384,6 +399,62 @@ for (const [base, station, name, side, top, front, hardness] of [
   }
 }
 export const stationKind = (id) => BLOCKS[id]?.station ?? null;
+// Load each machine puts on the network for each 1x of speed it turns at.
+export const MACHINE_LOAD = { crusher: 4, mill: 2, saw: 3, hammer: 4, bellows: 2, pump: 6, drill: 6, lamp: 1, belt: 0.5 };
+for (let k = 0; k < 4; k++) BLOCKS[CRUSHER + k].machine = { load: MACHINE_LOAD.crusher };
+const machine = { hardness: 2.5, tool: 'pick', sound: 'stone' };
+block(MILLSTONE, { ...machine, name: 'Millstone', station: 'mill', side: T.MILL_SIDE, top: T.MILL_TOP, bottom: T.STONE, stationBase: MILLSTONE, machine: { load: MACHINE_LOAD.mill } });
+block(BELLOWS, { name: 'Bellows', sound: 'wood', tool: 'axe', hardness: 1.5, side: T.BELLOWS_SIDE, top: T.BELLOWS_TOP, bottom: T.PLANKS, machine: { load: MACHINE_LOAD.bellows } });
+block(PUMP, { ...machine, name: 'Pump', side: T.PUMP_SIDE, top: T.PUMP_TOP, bottom: T.PUMP_TOP, machine: { load: MACHINE_LOAD.pump } });
+for (let k = 0; k < 4; k++) {
+  block(SAW + k, {
+    ...machine, name: 'Mechanical Saw', station: 'saw', side: T.SAW_SIDE, top: T.SAW_TOP, bottom: T.PLANKS, front: T.SAW_FRONT,
+    facing: k, variantOf: k ? SAW : 0, drop: SAW, stationBase: SAW, machine: { load: MACHINE_LOAD.saw },
+  });
+  block(TRIP_HAMMER + k, {
+    ...machine, name: 'Trip Hammer', station: 'hammer', side: T.HAMMER_SIDE, top: T.HAMMER_TOP, bottom: T.COBBLE, front: T.HAMMER_FRONT,
+    facing: k, variantOf: k ? TRIP_HAMMER : 0, drop: TRIP_HAMMER, stationBase: TRIP_HAMMER, machine: { load: MACHINE_LOAD.hammer },
+  });
+}
+// The drill bores a tunnel up to 32 blocks straight ahead (or down), passing what it digs out of its back.
+for (let k = 0; k < 5; k++) {
+  const down = k === 4;
+  block(DRILL + k, {
+    ...machine, name: 'Drill', side: T.DRILL_SIDE, top: T.DRILL_SIDE, bottom: down ? T.DRILL_FRONT : T.DRILL_SIDE,
+    front: down ? null : T.DRILL_FRONT, facing: down ? 0 : k, down, variantOf: k ? DRILL : 0, drop: DRILL, machine: { load: MACHINE_LOAD.drill },
+  });
+}
+// The filament lamp glows (brighter than any lamp) while a shaft turns it, and needs no fuel.
+for (let k = 0; k < 2; k++) {
+  block(FILAMENT_LAMP + k, {
+    name: 'Filament Lamp', sound: 'glass', hardness: 0.8, transparent: true, tex: k ? T.FILAMENT_ON : T.FILAMENT_OFF,
+    light: k ? 18 : 0, variantOf: k ? FILAMENT_LAMP : 0, drop: FILAMENT_LAMP, machine: { load: MACHINE_LOAD.lamp }, lit: !!k,
+  });
+}
+// Lead pipes join up whichever way they touch (see world.js); a pump pushes water through them out of spouts.
+block(PIPE, { name: 'Lead Pipe', shape: 'pipe', transparent: true, sound: 'stone', hardness: 1, tool: 'pick' });
+block(SPOUT, {
+  name: 'Spout', sound: 'stone', hardness: 1, tool: 'pick', transparent: true, solid: false,
+  model: [[5, 6, 5, 11, 16, 11, T.LEAD], [4, 3, 4, 12, 6, 12, T.LEAD], [6, 2, 6, 10, 3, 10, T.LEAD]],
+});
+// Belts carry things along (while turned); hoppers take things out of the chest or machine above and
+// pass them on to the one they point at. Hopper models are drawn for facing 0 (toward +z).
+const BELT_MODEL = (f) => [[0, 0, 0, 16, 4, 16, { top: T.BELT0 + f, side: T.LOG_SIDE, bottom: T.PLANKS }]];
+for (let f = 0; f < 4; f++) {
+  block(BELT + f, {
+    name: 'Conveyor Belt', sound: 'wool', hardness: 0.8, tool: 'axe', transparent: true, model: BELT_MODEL(f),
+    facing: f, variantOf: f ? BELT : 0, drop: BELT, machine: { load: MACHINE_LOAD.belt }, belt: true,
+  });
+}
+const HOPPER_TOP = [[0, 10, 0, 16, 16, 16, T.IRON], [4, 5, 4, 12, 10, 12, T.IRON]];
+for (let k = 0; k < 5; k++) {
+  const down = k === 4;
+  block(HOPPER + k, {
+    name: 'Hopper', sound: 'stone', hardness: 2, tool: 'pick', transparent: true, facing: down ? 0 : k, down,
+    model: down ? [...HOPPER_TOP, [6, 0, 6, 10, 5, 10, T.IRON]] : rotateModel([...HOPPER_TOP, [6, 5, 12, 10, 9, 16, T.IRON]], k),
+    variantOf: k ? HOPPER : 0, drop: HOPPER, hopper: true,
+  });
+}
 
 // Ladders hang on a wall (facing 0: the wall is toward -z); scaffolding stands on its own. You climb
 // both: walk into them (or jump) to go up, back off to go down, and stand still to slide down slowly.
@@ -429,12 +500,13 @@ export const KINETIC_MATS = [
   { key: 'stainless', name: 'Stainless Steel', cap: 256, tile: T.STAINLESS },
 ];
 export const KINETIC_PARTS = ['shaft', 'gear', 'large'];
-export const WHEEL_POWER = 8, CRUSHER_LOAD = 4;
+export const WHEEL_POWER = 8, CRUSHER_LOAD = MACHINE_LOAD.crusher;
 // Shafts, small gears and large gears: one id for each part, material and axle direction.
 export const kineticId = (part, mat, axis = 0) => KINETIC + (KINETIC_PARTS.indexOf(part) * 3 + mat) * 3 + axis;
 const PART_NAMES = { shaft: 'Shaft', gear: 'Small Gear', large: 'Large Gear' };
 const kineticShape = { shape: 'kinetic', transparent: true, sound: 'wood', hardness: 1, tool: 'axe' };
 for (let a = 0; a < 2; a++) {
+  block(WINDMILL + a, { ...kineticShape, name: 'Windmill', variantOf: a ? WINDMILL : 0, drop: WINDMILL, kinetic: { part: 'windmill', mat: 0, axis: a ? 2 : 0 } });
   block(WATER_WHEEL + a, { ...kineticShape, name: 'Water Wheel', variantOf: a ? WATER_WHEEL : 0, drop: WATER_WHEEL, kinetic: { part: 'wheel', mat: 0, axis: a ? 2 : 0 } });
 }
 KINETIC_PARTS.forEach((part) => KINETIC_MATS.forEach((m, mat) => {
@@ -499,6 +571,8 @@ export const ITEMS = {
   [GOLD_CLOCK]: { name: 'Gold Clock', stack: 1 }, // carried anywhere, it shows the time of day
   [COMPASS]: { name: 'Compass', stack: 1 }, // carried anywhere, it shows which way is home
   [SILVER_ARROW]: { name: 'Silver Arrow' }, // twice the damage to night creatures
+  [FILAMENT]: { name: 'Tungsten Filament' },
+  [DRILL_BIT]: { name: 'Tungsten Drill Bit', stack: 1 },
   [RAW_FISH]: { name: 'Raw Fish', food: 2 },
   [BAKED_FISH]: { name: 'Baked Fish', food: 6 },
 };
@@ -678,6 +752,20 @@ RECIPES.push(
   { out: [COMPASS, 1], in: [[IRON_INGOT, 2], [COPPER_INGOT, 2], [GLASS, 1]], table: true, metal: IRON_INGOT },
   { out: [SILVER_ARROW, 4], in: [[ARROW, 4], [SILVER_INGOT, 1]], table: true, metal: SILVER_INGOT },
   { out: [MIRROR_LAMP, 1], in: [[LAMP, 1], [ELECTRUM_INGOT, 2]], table: true, metal: ELECTRUM_INGOT },
+  // machines
+  { out: [MILLSTONE, 1], in: [[STONE, 4], [kineticId('gear', 1), 1]], table: true },
+  { out: [SAW, 1], in: [[plateOf(IRON_INGOT), 1], [PLANKS, 3], [kineticId('gear', 0), 1]], table: true, metal: IRON_INGOT },
+  { out: [BELLOWS, 1], in: [[PLANKS, 4], [LEATHER, 2], [kineticId('shaft', 0), 1]], table: true, metal: LEATHER },
+  { out: [TRIP_HAMMER, 1], in: [[IRON_INGOT, 3], [LOG, 3], [kineticId('large', 0), 1]], table: true, metal: IRON_INGOT },
+  { out: [PIPE, 4], in: [[LEAD_INGOT, 1]], table: true, metal: LEAD_INGOT },
+  { out: [SPOUT, 1], in: [[PIPE, 2]], table: true, metal: LEAD_INGOT },
+  { out: [PUMP, 1], in: [[LEAD_INGOT, 4], [kineticId('gear', 1), 1], [PIPE, 1]], table: true, metal: LEAD_INGOT },
+  { out: [WINDMILL, 1], in: [[WOOL, 4], [PLANKS, 6], [STICK, 4]], table: true },
+  { out: [BELT, 6], in: [[LEATHER, 3], [kineticId('shaft', 0), 2]], table: true, metal: LEATHER },
+  { out: [HOPPER, 1], in: [[plateOf(IRON_INGOT), 3], [CHEST, 1]], table: true, metal: IRON_INGOT },
+  { out: [DRILL_BIT, 1], in: [[TUNGSTEN_INGOT, 2], [STEEL_INGOT, 1]], table: true, metal: TUNGSTEN_INGOT },
+  { out: [DRILL, 1], in: [[DRILL_BIT, 1], [STEEL_INGOT, 3], [kineticId('gear', 1), 1]], table: true, metal: DRILL_BIT },
+  { out: [FILAMENT_LAMP, 1], in: [[GLASS, 1], [FILAMENT, 1], [COPPER_INGOT, 2]], table: true, metal: FILAMENT },
   // storage and getting about
   { out: [CHEST, 1], in: [[PLANKS, 8]], table: true },
   { out: [IRON_CHEST, 1], in: [[CHEST, 2], [plateOf(IRON_INGOT), 2]], table: true, metal: IRON_INGOT },

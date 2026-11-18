@@ -8,6 +8,7 @@ import {
   OVEN, SMELTER, stationKind, maxStack, FISHING_ROD, RAW_FISH, TOOL_TIERS, LOG, LEAVES, SAPLING,
   BLAST_SMELTER, CRUSHER, WATER_BUCKET, WATER_WHEEL, isWaterId, isFlowing,
   CHEST, IRON_CHEST, LADDER, SCAFFOLD, SIGN, SIGN_POST, isSign, isSword, ARMOUR_PIECES,
+  SAW, TRIP_HAMMER, DRILL, HOPPER, BELT, WINDMILL, BELLOWS, PUMP, FILAMENT_LAMP, MILLSTONE,
   LAVA, BLAST_CHARGE, LEAD_BUCKET, LAVA_BUCKET, GOLD_CLOCK, COMPASS, SILVER_ARROW, MIRROR_LAMP, WEIGHTED_ROD, isRod, metalTool, TOOL_MATERIALS,
   isBlock, isTorch, isWheat, itemName, breakTime, dropsFor, foodValue,
 } from './blocks.js';
@@ -27,6 +28,7 @@ import { Stations, STATION_KINDS, isFuel } from './stations.js';
 import { Fishing } from './fishing.js';
 import { Kinetics } from './kinetics.js';
 import { Signs } from './signs.js';
+import { Machines } from './machines.js';
 
 // v2 = the 16k x 16k streaming world (player state here, edited chunks in IndexedDB).
 // v1 = the old 128 x 128 world, migrated into the middle of the big world on first launch.
@@ -189,6 +191,10 @@ const stations = new Stations(); // what's inside each oven and smelter
 const kinetics = new Kinetics(scene, atlas); // water wheels, shafts and gears, and what they drive
 const powerAt = (x, y, z) => kinetics.powerAt(x, y, z);
 const signs = new Signs(scene); // what's written on each sign
+const machines = new Machines(scene, icons); // pumps, drills, hoppers and belts
+// Bellows blowing into an oven or smelter (while they're turned) make it work half as fast again.
+const boostAt = (x, y, z) => ([[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]]
+  .some(([dx, dy, dz]) => world.get(x + dx, y + dy, z + dz) === BELLOWS && powerAt(x + dx, y + dy, z + dz) > 0) ? 1.5 : 1);
 // Armour worn: an item id (or null) for helmet, chestplate, leggings and boots.
 const armour = [null, null, null, null];
 const armourPoints = () => armour.reduce((t, id) => t + (id ? ITEMS[id].armour.points : 0), 0);
@@ -275,6 +281,7 @@ async function startWorld(save) {
   kinetics.clear();
   for (const [k, f] of fuses) removeFuse(k, f);
   signs.load(save?.signs);
+  machines.load(save?.machines);
   arrows.reset();
   lastSwing = 0;
   applyViewDistance();
@@ -371,6 +378,7 @@ function saveGame() {
     lamps: [...lamps],
     stations: stations.serialize(),
     signs: signs.serialize(),
+    machines: machines.serialize(),
     armour: [...armour],
     caneToday,
     time: sky.time,
@@ -848,8 +856,8 @@ function openStation(x, y, z) {
     const tools = (r.tools ?? []).map((id) => `<span class="ing tool" title="${itemName(id)} (not used up)"><img src="${icons[id]}" alt="">kept</span>`).join('');
     return `<div class="recipe">${ing}${tools}<span class="arrow">→</span><img class="outimg" src="${icons[r.out[0]]}" alt="">` +
       `<span class="name">${r.out[1] > 1 ? r.out[1] + ' × ' : ''}${itemName(r.out[0])}</span></div>`;
-  }).join('') + (K.powered ? '<p class="hint">Times are at 1x speed. Drive it with a water wheel by turning a shaft or gear ' +
-    'against any face; gear it up for more speed. Ore dust smelts into ingots, so crushing ore doubles what you get.</p>'
+  }).join('') + (K.powered ? '<p class="hint">Times are at 1x speed. Drive it with a water wheel or windmill by turning a shaft or gear ' +
+    'against any face; gear it up for more speed.' + (kind === 'crusher' ? ' Ore dust smelts into ingots, so crushing ore doubles what you get.' : '') + '</p>'
     : '<p class="hint">Fuel, in items cooked per piece: log or planks 1, stick ½, coal or charcoal 10, ' +
     'slime fuel 40, lava bucket 100 (their buckets are left in the fuel slot). Fuel is only used while something is cooking.' +
     (K.speed ? ' A blast smelter works twice as fast on the same fuel.' : '') + '</p>');
@@ -882,7 +890,8 @@ function renderStation() {
   if (STATION_KINDS[st.kind].powered) {
     const { x, y, z } = openStationAt;
     const power = kinetics.statusAt(x, y, z);
-    $('st-status').textContent = r && st.speed > 0 ? `Crushing ${itemName(r.in[0][0]).toLowerCase()}… ${power}` : `${r ? '' : 'Put something in to crush. '}${power}`;
+    const verb = STATION_KINDS[st.kind].verb;
+    $('st-status').textContent = r && st.speed > 0 ? `${verb} ${itemName(idsOf(r.in[0][0])[0]).toLowerCase()}… ${power}` : `${r ? '' : 'Put something in. '}${power}`;
     return;
   }
   $('st-flame').style.opacity = st.burn > 0 ? String(0.35 + 0.65 * (st.burn / (st.burnMax || 1))) : '0.12';
@@ -1110,7 +1119,7 @@ async function sleepUntilMorning() {
   sky.time = 0.001;
   day++;
   caneToday = 0;
-  stations.tick(skipped, world, setStationLit, powerAt);
+  stations.tick(skipped, world, setStationLit, powerAt, boostAt);
   tickLamps(skipped);
   for (let i = 0; i < 6; i++) world.tickPlants(skipped / 6);
   hunger = Math.max(0, hunger - 3); // a night's sleep makes you a bit peckish
@@ -1172,6 +1181,13 @@ function place() {
     if (isSign(tid)) { editSign(tx, ty, tz); return; }
     if (tid === BLAST_CHARGE) { lightFuse(tx, ty, tz); toast('The fuse is lit! Stand back…', 1500); return; }
     if (stationKind(tid)) { sound.click(); openStation(tx, ty, tz); return; }
+    if (BLOCKS[tid].machine || BLOCKS[tid].kinetic) {
+      // tap a machine (or a wheel or windmill) to see how it's running
+      const what = BLOCKS[tid];
+      let msg = kinetics.statusAt(tx, ty, tz);
+      if (tid >= DRILL && tid <= DRILL + 4 && powerAt(tx, ty, tz) > 0) msg = machines.drillStatus(tx, ty, tz);
+      if (!(held && isBlock(held.id))) { toast(`${what.name}: ${msg}`, 2500); return; } // (holding a block, you place it)
+    }
   }
   // sugar cane in hand: plant it if you're aiming at a good spot beside water, otherwise eat it
   if (held?.id === SUGAR_CANE) {
@@ -1253,7 +1269,10 @@ function place() {
     if (there !== AIR || !world.isSolid(x, y - 1, z)) { toast(`${BLOCKS[id].name}s need something solid underneath`); return; }
   } else {
     // chairs face you; curtains hang across your line of sight
-    if ([CHAIR, OVEN, SMELTER, BLAST_SMELTER, CRUSHER, CHEST, IRON_CHEST].includes(id)) id += facingTowardPlayer(x, z); // the front faces you
+    if ([CHAIR, OVEN, SMELTER, BLAST_SMELTER, CRUSHER, CHEST, IRON_CHEST, SAW, TRIP_HAMMER].includes(id)) id += facingTowardPlayer(x, z); // the front faces you
+    else if (id === DRILL) id += player.pitch < -0.75 ? 4 : (facingTowardPlayer(x, z) + 2) % 4; // drills the way you're looking
+    else if (id === BELT) id += (facingTowardPlayer(x, z) + 2) % 4; // carries things away from you
+    else if (id === HOPPER) id += target.ny === 1 ? 4 : FACING_DIRS.findIndex(([dx, dz]) => dx === -target.nx && dz === -target.nz); // into the block you tapped
     else if (BLOCKS[id].kinetic) id = kineticVariant(id);
     else if (id === CURTAIN) id += facingTowardPlayer(x, z) % 2; // facing 0/2 -> hangs across x, 1/3 -> across z
     if (BLOCKS[id].solid && player.overlapsBlock(x, y, z)) return;
@@ -1271,9 +1290,9 @@ function kineticVariant(id) {
   let axis = target.nx ? 0 : target.ny ? 1 : 2;
   const other = BLOCKS[target.id].kinetic;
   if (other && other.axis !== axis) axis = other.axis;
-  if (k.part === 'wheel') {
+  if (k.part === 'wheel' || k.part === 'windmill') {
     if (axis === 1) { const look = player.lookDir(); axis = Math.abs(look.x) > Math.abs(look.z) ? 0 : 2; }
-    return WATER_WHEEL + (axis === 2 ? 1 : 0);
+    return (k.part === 'wheel' ? WATER_WHEEL : WINDMILL) + (axis === 2 ? 1 : 0);
   }
   return id + axis;
 }
@@ -1480,6 +1499,7 @@ function breakBlock(x, y, z) {
   if (isLamp(id)) lamps.delete(lampKey(x, y, z));
   if (isSign(id)) signs.remove(x, y, z);
   if (stationKind(id)) giveDrops(stations.remove(x, y, z)); // whatever was inside comes back too
+  if (def.machine) giveDrops(machines.removeAt(x, y, z)); // and whatever was on a belt or in a drill
   if (isBed(id)) {
     // either half takes the whole bed with it
     const [ox, oy, oz] = bedPartner(x, y, z);
@@ -1741,7 +1761,7 @@ function frame(now) {
   // gameplay, streaming and rendering are isolated so an error in one can't stop the others
   try { stepGame(now, dt); } catch (err) { reportError(err); }
   try {
-    if (!dead) stations.tick(dt, world, setStationLit, powerAt);
+    if (!dead) stations.tick(dt, world, setStationLit, powerAt, boostAt);
     if (openStationAt && (stationRefresh -= dt) <= 0) { stationRefresh = 0.15; renderStation(); }
   } catch (err) { reportError(err); }
   try { world.update(player.pos.x, player.pos.z, scene, materials, 6, dt); } catch (err) { reportError(err); }
@@ -1799,6 +1819,9 @@ function stepGame(now, dt) {
   if (unsavedCount && now - lastEditAt > 1500 && worldReady) { world.saveChunks(); unsavedCount = 0; }
   kinetics.update(paused ? 0 : dt, world, { day: lightUniforms.uDay.value, flicker: lightUniforms.uFlicker.value, ambient: AMBIENT });
   tickBlasts(dt);
+  try {
+    machines.tick(paused ? 0 : dt, world, kinetics, stations, { day: lightUniforms.uDay.value, flicker: lightUniforms.uFlicker.value, ambient: AMBIENT });
+  } catch (err) { reportError(err); }
   signs.update(dt, world, { day: lightUniforms.uDay.value, flicker: lightUniforms.uFlicker.value, ambient: AMBIENT });
   coordsTimer -= dt;
   if (coordsTimer <= 0) {
@@ -1848,7 +1871,7 @@ window.minicraft = {
   get paused() { return paused; },
   get health() { return health; }, set health(v) { health = v; renderHealth(); },
   get poisoned() { return poisoned; }, get dead() { return dead; }, get air() { return air; }, set air(v) { air = v; },
-  arrows, fishing, kinetics, signs, armour, damage, explode, lightFuse, fuses, clockTime, compassText, place, editSign, closeSign, openInventory, closeInventory, chestMove, lamps, tickLamps, sleepUntilMorning, stations, openStation, closeStation,
+  arrows, fishing, kinetics, machines, signs, armour, damage, explode, lightFuse, fuses, clockTime, compassText, place, editSign, closeSign, openInventory, closeInventory, chestMove, lamps, tickLamps, sleepUntilMorning, stations, openStation, closeStation,
   get caneToday() { return caneToday; },
   get bedSpawn() { return bedSpawn; },
 };

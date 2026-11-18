@@ -10,6 +10,7 @@ import {
   WATER_WHEEL, KINETIC_MATS, kineticId,
   LADDER, SCAFFOLD, SIGN, WOOD_SWORD, STONE_SWORD, metalSword, HIDE, LEATHER, ARMOUR_MATS, ARMOUR_PIECES, armourId,
   PLATE_METALS, PLATES,
+  PIPE, SPOUT, BELT, HOPPER, WINDMILL, FILAMENT, DRILL_BIT,
   SALTPETRE, GUNPOWDER, LEAD_SINKER, WEIGHTED_ROD, LEAD_BUCKET, LAVA_BUCKET, GOLD_CLOCK, COMPASS, SILVER_ARROW, MIRROR_LAMP,
 } from './blocks.js';
 
@@ -442,6 +443,90 @@ Object.assign(P, {
     t.speckle([12, 8, 18], 0.1, 0.1);
   },
 });
+
+// ----- machines -----
+const IRON_C = [118, 122, 130];
+function frame(t, c, w = 2) {
+  for (let i = 0; i < TILE; i++) for (let k = 0; k < w; k++) {
+    t.set(i, k, t.vary(c, 0.06)); t.set(i, 15 - k, t.vary(c, 0.06)); t.set(k, i, t.vary(c, 0.06)); t.set(15 - k, i, t.vary(c, 0.06));
+  }
+}
+function arrowTile(t, dir) {
+  // a rubber belt with chevrons pointing along it (dir: 0 +z (down the tile), 1 -x, 2 -z, 3 +x)
+  for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+    const [u, v] = dir === 0 ? [x, y] : dir === 2 ? [x, 15 - y] : dir === 1 ? [y, x] : [y, 15 - x]; // (+z is up the tile)
+    const chevron = (v - Math.abs(u - 7.5) * 0.6 + 32) % 6 < 1.4 && u > 1 && u < 14;
+    t.set(x, y, t.vary(u < 1 || u > 14 ? [60, 60, 64] : chevron ? [140, 140, 136] : [44, 42, 40], 0.06));
+  }
+}
+Object.assign(P, {
+  [T.MILL_SIDE](t) { P[T.STONE](t); for (let x = 0; x < TILE; x++) { t.set(x, 7, [96, 96, 98]); t.set(x, 8, [150, 150, 152]); } },
+  [T.MILL_TOP](t) {
+    for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+      const d = Math.hypot(x - 7.5, y - 7.5), a = Math.atan2(y - 7.5, x - 7.5);
+      t.set(x, y, t.vary(d < 1.6 ? [70, 52, 30] : Math.abs(Math.sin(a * 4)) < 0.15 && d < 7 ? [104, 104, 106] : [150, 150, 152], 0.07)); // grooved stone round the spindle
+    }
+  },
+  [T.SAW_SIDE](t) { P[T.PLANKS](t); frame(t, IRON_C, 1); },
+  [T.SAW_TOP](t) {
+    P[T.PLANKS](t); frame(t, IRON_C, 1);
+    for (let y = 2; y < 14; y++) { t.set(7, y, [210, 214, 222]); t.set(8, y, y % 2 ? [150, 154, 160] : [230, 232, 238]); } // the blade through its slot
+  },
+  [T.SAW_FRONT](t) {
+    P[T.SAW_SIDE](t);
+    for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+      const d = Math.hypot(x - 7.5, y - 9);
+      if (d < 5.5) t.set(x, y, d > 4.6 && (Math.atan2(y - 9, x - 7.5) * 8 / Math.PI | 0) % 2 ? [120, 124, 130] : d < 1.2 ? [70, 70, 74] : [206, 210, 218]);
+    }
+  },
+  [T.BELLOWS_SIDE](t) {
+    for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+      const fold = y > 3 && y < 13 && (x + (y % 2)) % 3 === 0;
+      t.set(x, y, t.vary(y < 3 || y > 12 ? [150, 110, 64] : fold ? [96, 62, 34] : [134, 88, 50], 0.07));
+    }
+  },
+  [T.BELLOWS_TOP](t) { P[T.PLANKS](t); for (let y = 6; y < 10; y++) for (let x = 6; x < 10; x++) t.set(x, y, [60, 60, 64]); },
+  [T.HAMMER_SIDE](t) { P[T.COBBLE](t); frame(t, [96, 70, 40], 2); },
+  [T.HAMMER_TOP](t) { P[T.PLANKS](t); frame(t, IRON_C, 1); for (let y = 3; y < 13; y++) for (let x = 5; x < 11; x++) t.set(x, y, t.vary([90, 92, 98], 0.05)); },
+  [T.HAMMER_FRONT](t) {
+    P[T.HAMMER_SIDE](t);
+    for (let y = 2; y < 8; y++) for (let x = 4; x < 12; x++) t.set(x, y, t.vary([84, 86, 92], 0.05)); // the hammer head
+    for (let y = 8; y < 12; y++) for (let x = 7; x < 9; x++) t.set(x, y, [110, 80, 46]);
+    for (let x = 3; x < 13; x++) for (let y = 12; y < 14; y++) t.set(x, y, [60, 60, 66]); // the anvil
+  },
+  [T.PUMP_SIDE](t) {
+    for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) t.set(x, y, t.vary([104, 110, 134], 0.06));
+    frame(t, [70, 76, 98], 1);
+    for (let y = 4; y < 12; y++) for (let x = 4; x < 12; x++) t.set(x, y, t.vary(Math.hypot(x - 7.5, y - 7.5) < 3 ? [60, 64, 84] : [128, 134, 158], 0.05));
+  },
+  [T.PUMP_TOP](t) { P[T.PUMP_SIDE](t); for (let y = 6; y < 10; y++) for (let x = 6; x < 10; x++) t.set(x, y, [40, 44, 60]); },
+  [T.LEAD](t) { for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) t.set(x, y, t.vary(shade([110, 116, 140], 0.88 + 0.12 * Math.sin(y * 0.8)), 0.04)); },
+  [T.DRILL_SIDE](t) {
+    for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) t.set(x, y, t.vary([146, 154, 166], 0.05));
+    frame(t, [96, 100, 110], 1);
+    for (const [x, y] of [[3, 3], [12, 3], [3, 12], [12, 12]]) t.set(x, y, [70, 72, 80]);
+  },
+  [T.DRILL_FRONT](t) {
+    P[T.DRILL_SIDE](t);
+    for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+      const d = Math.hypot(x - 7.5, y - 7.5), a = Math.atan2(y - 7.5, x - 7.5);
+      if (d < 6) t.set(x, y, (a * 3 / Math.PI + d * 0.5 + 6) % 2 < 1 ? [124, 120, 152] : [84, 80, 110]); // a spiral tungsten bit
+    }
+  },
+  [T.IRON](t) { for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) t.set(x, y, t.vary(shade(IRON_C, 0.9 + 0.1 * ((x + y) % 4 === 0)), 0.05)); frame(t, [84, 86, 94], 1); },
+  [T.FILAMENT_OFF](t) {
+    for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) t.set(x, y, [0, 0, 0], 0);
+    frame(t, [200, 120, 70], 1);
+    for (let y = 3; y < 13; y++) for (let x = 3; x < 13; x++) t.set(x, y, [210, 228, 236], 90); // glass
+    for (let x = 4; x < 12; x++) t.set(x, 7 + ((x % 2)), [90, 86, 100]); // the coiled filament
+  },
+  [T.FILAMENT_ON](t) {
+    for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) t.set(x, y, t.vary([255, 236, 170], 0.05));
+    frame(t, [200, 120, 70], 1);
+    for (let x = 4; x < 12; x++) t.set(x, 7 + ((x % 2)), [255, 255, 240]);
+  },
+});
+for (let f = 0; f < 4; f++) P[T.BELT0 + f] = (t) => arrowTile(t, f);
 
 // A plank door: a frame with a centre board; the upper half has a four-pane window you can see through,
 // the lower half has the handle.
@@ -1096,11 +1181,39 @@ Object.assign(ITEM_PAINTERS, {
   },
 });
 
+// ----- machines -----
+Object.assign(ITEM_PAINTERS, {
+  [PIPE](ctx) { rect(ctx, 1, 6, 14, 4, [110, 116, 140]); rect(ctx, 1, 6, 14, 1, [150, 156, 180]); rect(ctx, 1, 9, 14, 1, [80, 86, 108]); rect(ctx, 0, 5, 2, 6, [90, 96, 118]); rect(ctx, 14, 5, 2, 6, [90, 96, 118]); },
+  [SPOUT](ctx) { rect(ctx, 6, 0, 4, 8, [110, 116, 140]); rect(ctx, 4, 8, 8, 3, [90, 96, 118]); rect(ctx, 6, 11, 4, 1, [80, 86, 108]); for (const y of [13, 15]) px(ctx, 7 + (y % 3 ? 0 : 1), y, [80, 140, 230]); },
+  [BELT](ctx) {
+    rect(ctx, 0, 6, 16, 6, [44, 42, 40]);
+    for (const x of [3, 8, 13]) { px(ctx, x, 8, [140, 140, 136]); px(ctx, x + 1, 9, [140, 140, 136]); px(ctx, x, 10, [140, 140, 136]); }
+    rect(ctx, 0, 12, 16, 2, [120, 86, 50]);
+  },
+  [HOPPER](ctx) {
+    for (let y = 2; y < 8; y++) rect(ctx, 1 + (y - 2) * 0.5, y, 14 - (y - 2), 1, y === 2 ? [150, 154, 162] : IRON_C);
+    rect(ctx, 5, 8, 6, 3, IRON_C); rect(ctx, 7, 11, 2, 4, [90, 92, 100]);
+  },
+  [WINDMILL](ctx) {
+    for (let i = 0; i < 4; i++) {
+      const a = (i * Math.PI) / 2 + Math.PI / 4;
+      for (let r = 1; r < 8; r++) px(ctx, Math.round(7.5 + Math.cos(a) * r), Math.round(7.5 + Math.sin(a) * r), [120, 86, 50]);
+      for (let r = 3; r < 8; r++) for (let w = 1; w < 3; w++) px(ctx, Math.round(7.5 + Math.cos(a) * r - Math.sin(a) * w), Math.round(7.5 + Math.sin(a) * r + Math.cos(a) * w), [236, 229, 214]);
+    }
+    rect(ctx, 6, 6, 3, 3, [80, 56, 30]);
+  },
+  [FILAMENT](ctx) { for (let x = 1; x < 15; x++) { px(ctx, x, 7 + Math.round(Math.sin(x * 1.6) * 2), [150, 146, 176]); px(ctx, x, 8 + Math.round(Math.sin(x * 1.6) * 2), [100, 96, 126]); } },
+  [DRILL_BIT](ctx) {
+    for (let y = 1; y < 15; y++) { const w = Math.max(1, Math.round((15 - y) * 0.3)); for (let x = 8 - w; x < 8 + w; x++) px(ctx, x, y, (x + y) % 3 ? [124, 120, 152] : [84, 80, 110]); }
+    rect(ctx, 6, 13, 4, 3, [146, 154, 166]);
+  },
+});
+
 // Returns { id: dataURL } for every block and item.
 export function createIcons(atlas) {
   const icons = {};
   for (const def of BLOCKS) {
-    if (!def || !isBlock(def.id) || def.shape === 'torch' || def.shape === 'model' || def.shape === 'kinetic') continue; // (those have painted icons)
+    if (!def || !isBlock(def.id) || def.shape === 'torch' || def.shape === 'model' || def.shape === 'kinetic' || def.shape === 'pipe') continue; // (those have painted icons)
     const c = document.createElement('canvas');
     c.width = c.height = 64;
     const ctx = c.getContext('2d');
