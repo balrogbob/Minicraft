@@ -117,6 +117,7 @@ export const T = {
   FLOWER0: 130, // 130..134: poppy, dandelion, cornflower, lavender, daisy
   TRAPDOOR: 135,
   GEARBOX: 136, FRAME_BACK: 137,
+  MOSSY_BRICKS: 138, SHRINE_SIDE: 139, SHRINE_TOP: 140, SHRINE_SPENT: 141, CAULDRON: 142, CAULDRON_WATER: 143,
 };
 
 // Ores, deepest-reaching last. tier: the pickaxe tier needed to mine it (see TOOL_TIERS);
@@ -205,6 +206,7 @@ function block(id, o) {
     color: o.color ?? -1, // index into COLORS for dyed blocks
     switch: o.switch ?? null, on: !!o.on, floor: !!o.floor, // levers, buttons and pressure plates
     frame: !!o.frame,
+    water: o.water ?? 0, // a cauldron's water level (0..3)
   };
 }
 
@@ -1118,4 +1120,69 @@ RECIPES.push(
   { out: [ITEM_FRAME, 2], in: [[STICK, 6], [LEATHER, 1]], table: true, metal: LEATHER },
   { out: [LOADER_RAIL, 2], in: [[RAIL, 2], [HOPPER, 1]], table: true, metal: IRON_INGOT },
   { out: [STORAGE_CART, 1], in: [[MINECART, 1], [CHEST, 1]], table: true, metal: IRON_INGOT },
+);
+
+// ---------- survival: wear and repair, dungeons, cauldrons and teas, shields ----------
+export const ANVIL = 610, MOSSY_BRICKS = 611, BOSS_SHRINE = 612, SPENT_SHRINE = 613, LOOT_CHEST = 614,
+  CAULDRON = 615; // 615..618: + water level
+export const GLASS_BOTTLE = 1000, NIGHT_TEA = 1001, HASTE_TEA = 1002, FIRE_TEA = 1003, HEAL_TEA = 1004,
+  WOOD_SHIELD = 1006, IRON_SHIELD = 1007, KING_CROWN = 1008;
+
+block(ANVIL, {
+  name: 'Anvil', sound: 'stone', hardness: 4, tool: 'pick', needsTool: true, transparent: true,
+  model: [[2, 0, 2, 14, 3, 14, T.IRON], [5, 3, 4, 11, 9, 12, T.IRON], [1, 9, 3, 15, 15, 13, T.IRON]],
+  boxes: [[1, 0, 2, 15, 15, 14]],
+});
+block(MOSSY_BRICKS, { name: 'Mossy Stone Bricks', tex: T.MOSSY_BRICKS, hardness: 2.5, tool: 'pick', needsTool: true });
+// the shrine in the middle of a dungeon calls up its guardian, the Mossback King, when you come near
+block(BOSS_SHRINE, { name: 'Mossy Shrine', top: T.SHRINE_TOP, bottom: T.MOSSY_BRICKS, side: T.SHRINE_SIDE, hardness: Infinity, light: 7, blastproof: true, drop: 0 });
+block(SPENT_SHRINE, { name: 'Quiet Shrine', top: T.SHRINE_SPENT, bottom: T.MOSSY_BRICKS, side: T.SHRINE_SIDE, hardness: 6, tool: 'pick', needsTool: true, tier: 3, drop: MOSSY_BRICKS });
+// a dungeon chest: an ordinary chest, filled with loot the first time it's opened
+block(LOOT_CHEST, {
+  name: 'Chest', station: 'chest', side: T.CHEST_SIDE, top: T.CHEST_TOP, bottom: T.CHEST_TOP, front: T.CHEST_FRONT, facing: 0,
+  sound: 'wood', hardness: 2, tool: 'axe', variantOf: CHEST, drop: CHEST, stationBase: CHEST,
+});
+const cauldronModel = (level) => [
+  [1, 0, 1, 15, 2, 15, T.CAULDRON], [1, 2, 1, 15, 14, 3, T.CAULDRON], [1, 2, 13, 15, 14, 15, T.CAULDRON],
+  [1, 2, 3, 3, 14, 13, T.CAULDRON], [13, 2, 3, 15, 14, 13, T.CAULDRON],
+  ...[[0, 0], [14, 0], [0, 14], [14, 14]].map(([x, z]) => [x, 0, z, x + 2, 3, z + 2, T.CAULDRON]),
+  ...(level ? [[3, 2, 3, 13, 2 + level * 3.6, 13, T.CAULDRON_WATER]] : []),
+];
+for (let k = 0; k < 4; k++) {
+  block(CAULDRON + k, {
+    name: 'Cauldron', sound: 'stone', hardness: 2.5, tool: 'pick', transparent: true, model: cauldronModel(k), water: k,
+    station: 'cauldron', stationBase: CAULDRON, variantOf: k ? CAULDRON : 0, drop: CAULDRON, grows: k < 3 ? 'fill' : null,
+  });
+}
+
+// Teas: brewed in a cauldron from a herb in a glass bottle of its water. effect: [kind, seconds]
+ITEMS[GLASS_BOTTLE] = { name: 'Glass Bottle' };
+ITEMS[NIGHT_TEA] = { name: 'Night-Eye Tea', stack: 8, tea: ['night', 240], about: 'see in the dark' };
+ITEMS[HASTE_TEA] = { name: 'Miner\'s Tea', stack: 8, tea: ['haste', 180], about: 'dig half as fast again' };
+ITEMS[FIRE_TEA] = { name: 'Fireproof Tea', stack: 8, tea: ['fire', 120], about: 'lava doesn\'t burn you' };
+ITEMS[HEAL_TEA] = { name: 'Healing Tea', stack: 8, tea: ['heal', 10], about: 'heals you quickly' };
+// Shields: worn in their own slot; they stop hits and thorns from in front of you, and wear as they do.
+ITEMS[WOOD_SHIELD] = { name: 'Wooden Shield', stack: 1, armour: { piece: 4, points: 0 }, wearMax: 60, repair: PLANKS };
+ITEMS[IRON_SHIELD] = { name: 'Iron Shield', stack: 1, armour: { piece: 4, points: 0 }, wearMax: 240, repair: IRON_INGOT };
+ITEMS[KING_CROWN] = { name: 'Crown of the Mossback King', stack: 1, armour: { piece: 0, points: 5 }, wearMax: 600, repair: GOLD_INGOT };
+
+// How many uses tools, weapons and armour take before they break (see main.js), and what repairs them at an anvil.
+const WEAR_BY_MAT = { copper: 200, tin: 200, zinc: 200, aluminium: 220, bronze: 300, albronze: 340, iron: 400, steel: 600, stainless: 900, tungsten: 1500 };
+for (const id of [WOOD_PICK, WOOD_AXE, WOOD_SHOVEL, WOOD_SWORD]) Object.assign(ITEMS[id], { wearMax: 60, repair: PLANKS });
+for (const id of [STONE_PICK, STONE_AXE, STONE_SHOVEL, STONE_SWORD]) Object.assign(ITEMS[id], { wearMax: 130, repair: COBBLE });
+TOOL_MATERIALS.forEach((m, i) => {
+  for (const id of [metalSword(i), ...TOOL_KINDS.map((k) => metalTool(i, k))]) Object.assign(ITEMS[id], { wearMax: WEAR_BY_MAT[m.key], repair: m.ingot });
+});
+const ARMOUR_WEAR = [80, 160, 220, 320, 450];
+ARMOUR_MATS.forEach((m, mi) => ARMOUR_PIECES.forEach((p, pi) => Object.assign(ITEMS[armourId(mi, pi)], { wearMax: ARMOUR_WEAR[mi], repair: m.plate ?? LEATHER })));
+export const maxWear = (id) => ITEMS[id]?.wearMax ?? 0;
+
+RECIPES.push(
+  { out: [ANVIL, 1], in: [[IRON_INGOT, 5], [plateOf(IRON_INGOT), 2]], table: true, metal: IRON_INGOT },
+  { out: [CAULDRON, 1], in: [[[IRON_INGOT, COPPER_INGOT], 5]], table: true, metal: [IRON_INGOT, COPPER_INGOT] },
+  { out: [GLASS_BOTTLE, 3], in: [[GLASS, 3]], table: true },
+  { out: [WOOD_SHIELD, 1], in: [[PLANKS, 6], [IRON_INGOT, 1]], table: true, metal: IRON_INGOT },
+  { out: [WOOD_SHIELD, 1], in: [[PLANKS, 6], [LEATHER, 2]], table: true, metal: LEATHER },
+  { out: [IRON_SHIELD, 1], in: [[plateOf(IRON_INGOT), 4], [LEATHER, 1]], table: true, metal: IRON_INGOT },
+  { out: [MOSSY_BRICKS, 4], in: [[BRICKS, 4], [LEAVES, 2]], table: true },
 );

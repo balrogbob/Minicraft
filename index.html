@@ -32,6 +32,7 @@
       <button class="btn small" id="btn-menu" title="Menu">☰</button>
     </div>
     <div id="coords"></div>
+    <div id="boss-bar" class="hidden"><span id="boss-name"></span><div class="bar"><div id="boss-fill"></div></div></div>
     <canvas id="map" class="hidden"></canvas>
     <div id="perf" class="hidden"></div>
     <div id="toast"></div>
@@ -61,7 +62,7 @@
           <div class="inv-col">
             <div class="slot-grid" id="inv-grid"></div>
             <div class="slot-grid hotbar-row" id="inv-hotbar"></div>
-            <div class="armour-row"><span class="armour-label">Armour</span><div class="slot-grid" id="inv-armour"></div><span id="armour-total"></span></div>
+            <div class="armour-row"><span class="armour-label">Armour &amp; shield</span><div class="slot-grid" id="inv-armour"></div><span id="armour-total"></span></div>
             <p class="hint">Tap a slot, then tap another to move or swap. Put armour in the armour slots to wear it.</p>
           </div>
           <div class="craft-col">
@@ -123,6 +124,7 @@
           <button class="btn wide" id="btn-difficulty">Difficulty: Worrying</button>
           <p class="hint" id="difficulty-about"></p>
           <button class="btn wide" id="btn-autojump">Auto-jump: on</button>
+          <button class="btn wide" id="btn-wear">Tool wear: on</button>
           <label class="slider"><span id="view-label">View distance</span> <input type="range" id="view" min="3" max="10" step="1" value="6" /></label>
           <label class="slider">Look speed <input type="range" id="sens" min="2" max="14" step="1" value="6" /></label>
           <label class="slider">Sound <input type="range" id="volume" min="0" max="100" step="5" value="70" /></label>

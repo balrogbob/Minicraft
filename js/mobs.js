@@ -6,7 +6,7 @@
 // physics as the player (gravity, block collisions, stepping up one block) and float in water.
 // They aren't saved: they're spawned fresh around wherever you are.
 import * as THREE from 'three';
-import { AIR, WATER, LEAVES, LOG, GRASS, SAND, DIRT, WOOL, BUCKET, MILK_BUCKET, SLIME_BUCKET, FEATHER, COAL, COBBLE, ARROW, HIDE, SNOW_GRASS, SNOW } from './blocks.js';
+import { AIR, WATER, LEAVES, LOG, GRASS, SAND, DIRT, WOOL, BUCKET, MILK_BUCKET, SLIME_BUCKET, FEATHER, COAL, COBBLE, ARROW, HIDE, SNOW_GRASS, SNOW, KING_CROWN, GOLD_INGOT, MOSSY_BRICKS } from './blocks.js';
 import { SEA_LEVEL, H } from './terrain.js';
 import { skyBrightness, lightBrightness } from './world.js';
 import { THORN_SPEED, THORN_GRAVITY } from './arrows.js';
@@ -289,6 +289,23 @@ const SPECIES = {
     },
   },
 
+  // the guardian of a dungeon shrine: a towering mossback wearing a crown of gold
+  mossking: {
+    w: 1.8, h: 3.2, speed: 0.7, chaseSpeed: 2.3, fleeSpeed: 2.3, sink: 2, stride: 3.2, legSwing: 0.45,
+    avoidWater: true, hostile: true, boss: true, noBurn: true, hp: 140, damage: 9, reach: 2.7, attackEvery: 1.7, weight: 0, heavy: true,
+    name: 'The Mossback King', cause: 'The Mossback King crushed you.',
+    drops: () => [[KING_CROWN, 1], [GOLD_INGOT, 3 + Math.floor(Math.random() * 3)], [MOSSY_BRICKS, 4]],
+    build(b, root) {
+      const parts = SPECIES.mossback.build(b, root);
+      root.scale.setScalar(1.45);
+      const crown = b.pivot(parts.head, [0, 0.36, 0.1]);
+      b.box(crown, [0.56, 0.12, 0.5], 0xf0c838, [0, 0, 0]);
+      for (const [x, z] of [[-0.22, 0.2], [0, 0.2], [0.22, 0.2], [-0.22, -0.2], [0.22, -0.2]]) b.box(crown, [0.1, 0.16, 0.08], 0xf8d850, [x, 0.13, z]);
+      b.box(crown, [0.08, 0.08, 0.04], 0xd02828, [0, 0.03, 0.26], true);
+      return parts;
+    },
+  },
+
   newt: {
     w: 0.3, h: 0.15, speed: 0.9, fleeSpeed: 2.6, sink: 0.08, stride: 16, legSwing: 0.6,
     group: [1, 2], cap: 5, avoidWater: false, grazes: false,
@@ -319,7 +336,7 @@ const SPECIES = {
 };
 
 export const MOB_KINDS = Object.keys(SPECIES);
-const HOSTILE_KINDS = MOB_KINDS.filter((k) => SPECIES[k].hostile);
+const HOSTILE_KINDS = MOB_KINDS.filter((k) => SPECIES[k].hostile && !SPECIES[k].boss);
 const ANIMAL_CAP = MAX_MOBS;
 
 // How night creatures behave at each difficulty:
@@ -373,6 +390,7 @@ class Mob {
     const b = new Builder(this.material, this.glowMaterial);
     this.root = new THREE.Group();
     this.parts = this.spec.build(b, this.root);
+    this.baseScale = this.root.scale.x;
     this.geometries = b.geometries;
   }
 
@@ -397,7 +415,7 @@ export class MobManager {
   }
 
   get animals() { return this.mobs.filter((m) => !m.spec.hostile).length; }
-  get creatures() { return this.mobs.filter((m) => m.spec.hostile).length; }
+  get creatures() { return this.mobs.filter((m) => m.spec.hostile && !m.spec.boss).length; }
 
   // After the player respawns, creatures forget the grudge.
   calm() { for (const m of this.mobs) { m.angry = 0; m.hunting = false; } }
@@ -552,7 +570,7 @@ export class MobManager {
         // defeated: shrink away
         m.dying -= dt;
         const k = Math.max(0.01, m.dying / 0.4);
-        m.root.scale.setScalar(k);
+        m.root.scale.setScalar(k * m.baseScale);
         m.root.rotation.z = (1 - k) * 1.2;
         if (m.dying <= 0) { m.dispose(this.scene); this.mobs.splice(i, 1); }
         continue;
@@ -560,7 +578,7 @@ export class MobManager {
       if (m.spec.hostile) {
         // caught in daylight: dissolve back into shadow
         const head = Math.min(H - 1, Math.floor(m.pos.y + m.spec.h * 0.8));
-        if (ctx.daylight > 0.55 && w.skyAt(Math.floor(m.pos.x), head, Math.floor(m.pos.z)) >= 12) m.burn += dt;
+        if (!m.spec.noBurn && ctx.daylight > 0.55 && w.skyAt(Math.floor(m.pos.x), head, Math.floor(m.pos.z)) >= 12) m.burn += dt;
         else m.burn = Math.max(0, m.burn - dt);
         if (m.burn > 1.5) { this.sound?.poof(); m.dispose(this.scene); this.mobs.splice(i, 1); continue; }
         this.thinkHostile(m, dt, player, ctx);
@@ -569,7 +587,7 @@ export class MobManager {
       }
       this.move(m, dt);
       this.animate(m, dt);
-      if (m.burn > 0) m.root.scale.setScalar(1 - m.burn * 0.4);
+      if (m.burn > 0) m.root.scale.setScalar((1 - m.burn * 0.4) * m.baseScale);
       this.light(m, light, dt);
       m.soundTimer -= dt;
       if (m.soundTimer <= 0) {
@@ -909,6 +927,7 @@ export class MobManager {
     if (m.hp <= 0) {
       m.dying = 0.4;
       this.sound?.poof();
+      this.onDefeat?.(m);
       return m.spec.drops();
     }
     return [];

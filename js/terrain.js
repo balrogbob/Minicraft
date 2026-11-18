@@ -7,6 +7,7 @@
 import {
   AIR, GRASS, DIRT, STONE, LOG, LEAVES, SAND, COAL_ORE, BEDROCK, WATER, WHEAT_3, SUGAR_CANE, MAX_CANE_HEIGHT, ORES, GRAVEL, CLAY,
   LAVA, SALTPETRE_ORE, SNOW_GRASS, SNOW, ICE, SANDSTONE, CACTUS, FLOWERS,
+  BRICKS, MOSSY_BRICKS, COBBLE, BOSS_SHRINE, LOOT_CHEST,
 } from './blocks.js';
 
 export const CHUNK = 16;
@@ -103,6 +104,7 @@ const MARGIN = 3;
 const VEIN_KINDS = [...ORES, { id: GRAVEL, y: [4, 52], chance: 0.02, big: true }];
 const SNOW_LINE = 46; // mountain tops this high are capped with snow
 const LAVA_LEVEL = 6; // deep cave floors at or below this height are flooded with lava
+const DUNGEON_CHANCE = 0.025; // chunks with a dungeon room deep underground
 const VEIN_CELL = 4; // metal ore veins: at most one small blob per 4x4x4 cell of stone // columns of height data kept around a chunk for trees and water checks
 
 export class Generator {
@@ -304,7 +306,43 @@ export class Generator {
         }
       }
     }
+    if (hash3(this.seed ^ 0x1d2c3b4a, cx, 77, cz) < DUNGEON_CHANCE) this.dungeon(data, cx, cz, hAt);
     return data;
+  }
+
+  // Is there a dungeon in this chunk, and where is its shrine? { x, y, z } or null.
+  dungeonAt(cx, cz) {
+    if (hash3(this.seed ^ 0x1d2c3b4a, cx, 77, cz) >= DUNGEON_CHANCE) return null;
+    const x0 = cx * CHUNK, z0 = cz * CHUNK;
+    let h = H;
+    for (let z = z0 + 3; z <= z0 + 13; z++) for (let x = x0 + 3; x <= x0 + 13; x++) h = Math.min(h, this.height(x, z));
+    const top = Math.min(h - 12, 34);
+    if (top < 10) return null;
+    const y0 = 8 + Math.floor(hash3(this.seed ^ 0x1d2c3b4a, cx, 78, cz) * (top - 8));
+    return { x: x0 + 8, y: y0 + 1, z: z0 + 8, y0 };
+  }
+
+  // A stone-brick room, 9 x 9 inside and 5 high, with a shrine in the middle and a chest or two of loot.
+  dungeon(data, cx, cz) {
+    const d = this.dungeonAt(cx, cz);
+    if (!d) return;
+    const { y0 } = d;
+    const x0 = cx * CHUNK, z0 = cz * CHUNK;
+    const r = (k, x, y, z) => hash3(this.seed ^ k, x0 + x, y, z0 + z);
+    for (let y = y0; y <= y0 + 6; y++) for (let lz = 3; lz <= 13; lz++) for (let lx = 3; lx <= 13; lx++) {
+      const edge = lx === 3 || lx === 13 || lz === 3 || lz === 13 || y === y0 || y === y0 + 6;
+      let id = AIR;
+      if (edge) id = r(0x0a1b2c3d, lx, y, lz) < 0.45 ? MOSSY_BRICKS : y === y0 && r(0x0a1b2c3e, lx, y, lz) < 0.3 ? COBBLE : BRICKS;
+      data[localIndex(lx, y, lz)] = id;
+    }
+    // pillars in the corners, a doorway in one wall, the shrine and the chests
+    for (const [lx, lz] of [[5, 5], [11, 5], [5, 11], [11, 11]]) for (let y = y0 + 1; y <= y0 + 5; y++) data[localIndex(lx, y, lz)] = MOSSY_BRICKS;
+    const side = Math.floor(r(0x0a1b2c3f, 0, 0, 0) * 4);
+    const [dx, dz] = [[8, 3], [8, 13], [3, 8], [13, 8]][side];
+    for (let y = y0 + 1; y <= y0 + 2; y++) data[localIndex(dx, y, dz)] = AIR;
+    data[localIndex(8, y0 + 1, 8)] = BOSS_SHRINE;
+    data[localIndex(4, y0 + 1, 12)] = LOOT_CHEST;
+    if (r(0x0a1b2c40, 0, 0, 0) < 0.5) data[localIndex(12, y0 + 1, 4)] = LOOT_CHEST;
   }
 
   // Open grass near the world centre, away from trees and cave mouths.

@@ -231,7 +231,8 @@ html, body {
 #station.storage #st-inputs { grid-template-columns: repeat(9, var(--slot)); }
 .armour-row { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
 .armour-label { font-size: 14px; font-weight: 600; }
-#inv-armour { grid-template-columns: repeat(4, var(--slot)); }
+#inv-armour { grid-template-columns: repeat(5, var(--slot)); }
+#inv-armour .slot:last-child { margin-left: 6px; }
 #armour-total { font-size: 13px; color: #444; }
 .empty-armour { opacity: 0.35; font-size: calc(var(--slot) * 0.45); display: flex; height: 100%; align-items: center; justify-content: center; filter: grayscale(1); }
 .sign-panel { width: min(360px, 100%); }
@@ -257,3 +258,12 @@ html, body {
   #recipes { max-height: none; }
   .craft-col { min-width: 0; }
 }
+
+/* boss health bar */
+#boss-bar { position: absolute; top: 46px; left: 50%; transform: translateX(-50%); width: min(420px, 70vw); text-align: center;
+  color: #fff; font: bold 14px sans-serif; text-shadow: 0 1px 2px #000; pointer-events: none; z-index: 5; }
+#boss-bar .bar { height: 10px; margin-top: 3px; background: rgba(0,0,0,0.55); border: 1px solid rgba(255,255,255,0.5); border-radius: 3px; overflow: hidden; }
+#boss-fill { height: 100%; width: 100%; background: linear-gradient(#7fbf4a, #3f7a22); }
+/* how worn a tool or piece of armour is */
+.slot .wear { position: absolute; left: 12%; right: 12%; bottom: 8%; height: 3px; background: #222; pointer-events: none; }
+.slot .wear > i { display: block; height: 100%; background: var(--wc, #4c4); width: var(--w, 100%); }

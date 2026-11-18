@@ -15,6 +15,7 @@ import {
   COLORS, DYE, WOOL, dyedWool, dyedCarpet, DYED_WOOL, DYED_CARPET, STAINED_GLASS, PAINTED_PLANKS, GLASS, PLANKS,
   isFlower, isSlab, slabId, SHAPE_MATS, FENCE_GATE, TRAPDOOR, isGate, isTrapdoor,
   LEVER, BUTTON, PRESSURE_PLATE, ITEM_FRAME, LOADER_RAIL, STORAGE_CART, isFrame,
+  ANVIL, LOOT_CHEST, BOSS_SHRINE, SPENT_SHRINE, CAULDRON, GLASS_BOTTLE, maxWear,   IRON_INGOT, GOLD_INGOT, SILVER_INGOT, ELECTRUM_INGOT, TUNGSTEN_INGOT, GUNPOWDER, NIGHT_TEA, HASTE_TEA, FIRE_TEA, HEAL_TEA, IRON_SHIELD, BAKED_FISH,
 } from './blocks.js';
 import { createAtlas, createIcons, createCrackCanvases, createWaterCanvas, createHudIcons } from './textures.js';
 import { World, CHUNK, WORLD_SIZE, chunkKey } from './world.js';
@@ -55,7 +56,7 @@ function writeSave(obj) {
 }
 // Settings live apart from the world so they survive "New world".
 const settings = (() => {
-  const defaults = { sens: 6, volume: 70, viewDistance: 6, perf: false, difficulty: 'worrying' };
+  const defaults = { sens: 6, volume: 70, viewDistance: 6, perf: false, difficulty: 'worrying', wear: true };
   try { return { ...defaults, ...JSON.parse(localStorage.getItem(SETTINGS_KEY)) }; } catch { return defaults; }
 })();
 function saveSettings() {
@@ -89,15 +90,15 @@ const material = new THREE.MeshBasicMaterial({ map: atlas, vertexColors: true, a
 // daylight is a uniform set by the sky, so nights darken everything the sun reaches,
 // caves stay dark all day, and torches glow wherever they are.
 const AMBIENT = 0.03; // linear; just enough to make out cave walls without a torch
-const lightUniforms = { uDay: { value: 1 }, uFlicker: { value: 1 } };
+const lightUniforms = { uDay: { value: 1 }, uFlicker: { value: 1 }, uAmbient: { value: AMBIENT } };
 function addTorchLight(mat) {
   mat.onBeforeCompile = (shader) => {
     Object.assign(shader.uniforms, lightUniforms);
     shader.vertexShader = 'attribute float torch;\nattribute float sky;\nvarying float vTorch;\nvarying float vSky;\n' + shader.vertexShader
       .replace('#include <color_vertex>', '#include <color_vertex>\nvTorch = torch;\nvSky = sky;');
-    shader.fragmentShader = 'uniform float uDay;\nuniform float uFlicker;\nvarying float vTorch;\nvarying float vSky;\n' + shader.fragmentShader
+    shader.fragmentShader = 'uniform float uDay;\nuniform float uFlicker;\nuniform float uAmbient;\nvarying float vTorch;\nvarying float vSky;\n' + shader.fragmentShader
       .replace('#include <color_fragment>',
-        '#include <color_fragment>\ndiffuseColor.rgb *= max(vec3(max(uDay * vSky, ' + AMBIENT.toFixed(3) + ')), vTorch * uFlicker * vec3(1.0, 0.86, 0.66));');
+        '#include <color_fragment>\ndiffuseColor.rgb *= max(vec3(max(uDay * vSky, uAmbient)), vTorch * uFlicker * vec3(1.0, 0.86, 0.66));');
   };
 }
 addTorchLight(material);
@@ -139,6 +140,7 @@ mobs.onHurtPlayer = (amount, cause, from) => {
   const dx = player.pos.x - from.x, dz = player.pos.z - from.z, len = Math.hypot(dx, dz) || 1;
   player.kx = (dx / len) * 7; player.kz = (dz / len) * 7;
   if (player.onGround) player.vel.y = 4.5;
+  if (shieldBlocks(from, amount)) return;
   damage(armoured(amount), cause);
 };
 mobs.onShoot = (origin, dir, dmg) => arrows.shootThorn(origin, dir, dmg);
@@ -209,11 +211,12 @@ machines.frames = frames; machines.carts = carts;
 const boostAt = (x, y, z) => ([[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]]
   .some(([dx, dy, dz]) => world.get(x + dx, y + dy, z + dz) === BELLOWS && powerAt(x + dx, y + dy, z + dz) > 0) ? 1.5 : 1);
 // Armour worn: an item id (or null) for helmet, chestplate, leggings and boots.
-const armour = [null, null, null, null];
+const armour = [null, null, null, null, null]; // (the fifth is the shield)
+const armourWear = [0, 0, 0, 0, 0];
 const armourPoints = () => armour.reduce((t, id) => t + (id ? ITEMS[id].armour.points : 0), 0);
 // Each point of armour takes 4% off what creatures do to you, up to 80%.
 const armourShare = () => Math.min(0.8, armourPoints() * 0.04);
-const armoured = (amount) => amount * (1 - armourShare());
+const armoured = (amount) => { if (amount > 0) wearArmour(); return amount * (1 - armourShare()); };
 let caneToday = 0; // raw sugar cane eaten since sunrise: the 5th gives you food poisoning
 const store = new ChunkStore();
 let worldReady = false; // false while a world is loading: nothing gets saved until the player is placed
@@ -329,10 +332,12 @@ async function startWorld(save) {
   lamps.clear();
   for (const [key, secs] of save?.lamps ?? []) if (typeof key === 'string' && Number.isFinite(secs)) lamps.set(key, secs);
   stations.load(save?.stations);
-  for (let i = 0; i < 4; i++) {
+  for (let i = 0; i < 5; i++) {
     const id = save?.armour?.[i];
     armour[i] = ITEMS[id]?.armour?.piece === i ? id : null;
+    armourWear[i] = armour[i] ? Math.max(0, +save?.armourWear?.[i] || 0) : 0;
   }
+  for (const k of Object.keys(effects)) effects[k] = Math.max(0, +save?.effects?.[k] || 0);
   caneToday = Number.isFinite(save?.caneToday) ? save.caneToday : 0;
   air = MAX_AIR;
   dead = false;
@@ -399,6 +404,8 @@ function saveGame() {
     machines: machines.serialize(),
     carts: carts.serialize(),
     armour: [...armour],
+    armourWear: [...armourWear],
+    effects: { ...effects },
     caneToday,
     time: sky.time,
   });
@@ -441,7 +448,12 @@ function showItemName() {
 
 function slotHTML(s) {
   if (!s) return '';
-  return `<img src="${icons[s.id]}" alt=""><span class="count">${s.count > 1 ? s.count : ''}</span>`;
+  let bar = '';
+  if (s.wear > 0 && maxWear(s.id)) {
+    const left = Math.max(0, 1 - s.wear / maxWear(s.id));
+    bar = `<span class="wear"><i style="--w:${Math.round(left * 100)}%;--wc:hsl(${Math.round(left * 120)},70%,45%)"></i></span>`;
+  }
+  return `<img src="${icons[s.id]}" alt=""><span class="count">${s.count > 1 ? s.count : ''}</span>${bar}`;
 }
 
 const hotbarEls = [];
@@ -616,7 +628,7 @@ function updateHealth(dt, wasGround, prevY) {
     if ((timers.cactus = (timers.cactus ?? 0) - dt) <= 0) { timers.cactus = 0.5; damage(1, 'You hugged a cactus.'); }
   } else timers.cactus = 0;
   // lava burns: 3 points every half second
-  if (player.inLava) {
+  if (player.inLava && !(effects.fire > 0)) {
     if ((timers.lava -= dt) <= 0) { timers.lava = 0.5; damage(3, 'You tried to swim in lava.'); }
   } else timers.lava = 0;
   // starving
@@ -688,7 +700,7 @@ function buildInventoryGrid() {
   };
   for (let i = 9; i < SLOTS; i++) make(i, $('inv-grid'));
   for (let i = 0; i < 9; i++) make(i, $('inv-hotbar'));
-  for (let k = 0; k < 4; k++) make(ARMOUR_SLOT + k, $('inv-armour'));
+  for (let k = 0; k < 5; k++) make(ARMOUR_SLOT + k, $('inv-armour'));
 }
 const ARMOUR_SLOT = 100; // the armour slots count as 100..103 in the inventory panel
 buildInventoryGrid();
@@ -704,11 +716,12 @@ function onInvSlot(i) {
     const [k, s] = i >= ARMOUR_SLOT ? [i - ARMOUR_SLOT, picked] : [picked - ARMOUR_SLOT, i];
     if (s >= ARMOUR_SLOT) { picked = -1; renderInventory(); return; }
     const item = inventory.slots[s];
-    if (item && armourPiece(item.id) !== k) toast(`That isn't ${ARMOUR_PIECES[k].name.toLowerCase()} armour`);
+    if (item && armourPiece(item.id) !== k) toast(k === 4 ? 'That isn\'t a shield' : `That isn't ${ARMOUR_PIECES[k].name.toLowerCase()} armour`);
     else {
-      const worn = armour[k];
+      const worn = armour[k], wornWear = armourWear[k];
       armour[k] = item?.id ?? null;
-      inventory.slots[s] = worn ? { id: worn, count: 1 } : null;
+      armourWear[k] = item?.wear ?? 0;
+      inventory.slots[s] = worn ? { id: worn, count: 1, ...(wornWear ? { wear: wornWear } : {}) } : null;
       sound.pop();
       inventory.onChange();
     }
@@ -724,12 +737,13 @@ function onInvSlot(i) {
 function wearHeld() {
   const held = inventory.held();
   const k = armourPiece(held.id);
-  const worn = armour[k];
+  const worn = armour[k], wornWear = armourWear[k];
   armour[k] = held.id;
-  inventory.slots[inventory.selected] = worn ? { id: worn, count: 1 } : null;
+  armourWear[k] = held.wear ?? 0;
+  inventory.slots[inventory.selected] = worn ? { id: worn, count: 1, ...(wornWear ? { wear: wornWear } : {}) } : null;
   inventory.onChange();
   sound.pop();
-  toast(`Wearing ${itemName(held.id).toLowerCase()} · armour ${Math.round(armourShare() * 100)}%`, 1800);
+  toast(k === 4 ? `Carrying ${itemName(held.id).toLowerCase()}: it stops hits from in front of you` : `Wearing ${itemName(held.id).toLowerCase()} · armour ${Math.round(armourShare() * 100)}%`, 1800);
 }
 
 // Is a block of this kind (a crafting table or butter churn) within reach?
@@ -747,9 +761,9 @@ function renderInventory() {
     invEls[i].innerHTML = slotHTML(inventory.slots[i]);
     invEls[i].classList.toggle('picked', i === picked);
   }
-  for (let k = 0; k < 4; k++) {
+  for (let k = 0; k < 5; k++) {
     const el = invEls[ARMOUR_SLOT + k];
-    el.innerHTML = armour[k] ? slotHTML({ id: armour[k], count: 1 }) : `<span class="empty-armour">${['⛑', '👕', '👖', '👢'][k]}</span>`;
+    el.innerHTML = armour[k] ? slotHTML({ id: armour[k], count: 1, wear: armourWear[k] }) : `<span class="empty-armour">${['⛑', '👕', '👖', '👢', '🛡'][k]}</span>`;
     el.classList.toggle('picked', ARMOUR_SLOT + k === picked);
   }
   $('armour-total').textContent = armourPoints() ? `blocks ${Math.round(armourShare() * 100)}% of creature damage` : '';
@@ -892,7 +906,8 @@ function openStation(x, y, z, cart = null) {
     'against any face; gear it up for more speed.' + (kind === 'crusher' ? ' Ore dust smelts into ingots, so crushing ore doubles what you get.' : '') + '</p>'
     : '<p class="hint">Fuel, in items cooked per piece: log or planks 1, stick ½, coal or charcoal 10, ' +
     'slime fuel 40, lava bucket 100 (their buckets are left in the fuel slot). Fuel is only used while something is cooking.' +
-    (K.speed ? ' A blast smelter works twice as fast on the same fuel.' : '') + '</p>');
+    (K.speed ? ' A blast smelter works twice as fast on the same fuel.' : '') +
+    (K.water ? ' It needs water: tap it with a water bucket (or leave it out in the rain). Every two teas use a level.' : '') + '</p>');
   $('station').classList.remove('hidden');
   renderStation();
 }
@@ -926,6 +941,10 @@ function renderStation() {
     $('st-status').textContent = r && st.speed > 0 ? `${verb} ${itemName(idsOf(r.in[0][0])[0]).toLowerCase()}… ${power}` : `${r ? '' : 'Put something in. '}${power}`;
     return;
   }
+  if (K.water && !(BLOCKS[world.get(openStationAt.x, openStationAt.y, openStationAt.z)]?.water > 0)) {
+    $('st-status').textContent = 'The cauldron is dry: tap it with a water bucket, or leave it out in the rain';
+    return;
+  }
   $('st-flame').style.opacity = st.burn > 0 ? String(0.35 + 0.65 * (st.burn / (st.burnMax || 1))) : '0.12';
   const fuelLeft = st.burn > 1e-9 ? ` (fuel for ${+st.burn.toFixed(1)} more)` : '';
   $('st-status').textContent = r ? (st.burn > 1e-9 || (st.fuel && isFuel(st.fuel.id)) ? `Making ${itemName(r.out[0]).toLowerCase()}…${fuelLeft}` : 'Needs fuel') :
@@ -943,7 +962,7 @@ function chestMove(intoChest) {
       const t = slots[j];
       if (t && t.id === s.id && t.count < maxStack(s.id)) { const k = Math.min(s.count, maxStack(s.id) - t.count); t.count += k; s.count -= k; }
     }
-    for (let j = 0; j < slots.length && s.count; j++) if (!slots[j]) { slots[j] = { id: s.id, count: s.count }; s.count = 0; }
+    for (let j = 0; j < slots.length && s.count; j++) if (!slots[j]) { slots[j] = { ...s }; s.count = 0; }
     if (!s.count) from[i] = null;
   };
   if (intoChest) for (let i = 9; i < SLOTS; i++) put(st.inputs, inventory.slots, i);
@@ -951,8 +970,8 @@ function chestMove(intoChest) {
     for (let i = 0; i < st.inputs.length; i++) {
       const s = st.inputs[i];
       if (!s) continue;
-      const left = inventory.add(s.id, s.count);
-      st.inputs[i] = left ? { id: s.id, count: left } : null;
+      const left = inventory.addItem(s);
+      st.inputs[i] = left ? { ...s, count: left } : null;
     }
   }
   sound.pop();
@@ -968,7 +987,7 @@ function onStationSlot(area, i) {
   // tapping the result collects it
   if (area === 'out' && !stPicked) {
     if (st.out) {
-      const left = inventory.add(st.out.id, st.out.count);
+      const left = inventory.addItem(st.out);
       st.out = left ? { id: st.out.id, count: left } : null;
       if (left) toast('Inventory full'); else sound.pop();
     }
@@ -1010,6 +1029,7 @@ function hitMob() {
     if (now - lastSwing < (isSword(inventory.heldId()) ? 300 : 450)) return; // swords swing quicker
     lastSwing = now;
     giveDrops(mobs.hurt(targetMob.mob, WEAPON_DAMAGE[inventory.heldId()] ?? ITEMS[inventory.heldId()]?.tool?.damage ?? 2, player.pos));
+    wearOutHeld(1);
     return;
   }
   const r = mobs.interact(targetMob.mob, player.pos, inventory.heldId());
@@ -1196,6 +1216,123 @@ async function sleepUntilMorning() {
   sound.wake();
   toast(`Good morning! Day ${day}`, 2500);
   paused = false;
+}
+
+// ---------- wear and repair ----------
+// Tools, weapons, armour and shields wear a little with each use and break when worn out (unless wear
+// is turned off in the menu). An anvil puts them right with a piece of what they're made of.
+function wearOutHeld(n) {
+  const s = inventory.held();
+  if (!settings.wear || !s || !maxWear(s.id)) return;
+  s.wear = (s.wear ?? 0) + n;
+  if (s.wear >= maxWear(s.id)) {
+    inventory.slots[inventory.selected] = null;
+    sound.breakBlock('stone');
+    toast(`Your ${itemName(s.id).toLowerCase()} broke!`, 2000);
+  }
+  inventory.onChange();
+}
+function wearArmour(k = -1, n = 1) {
+  if (!settings.wear) return;
+  for (let i = 0; i < 5; i++) {
+    if (!armour[i] || (k >= 0 ? i !== k : i === 4)) continue;
+    armourWear[i] += n;
+    if (armourWear[i] >= maxWear(armour[i])) {
+      toast(`Your ${itemName(armour[i]).toLowerCase()} fell apart!`, 2000);
+      sound.breakBlock('stone');
+      armour[i] = null; armourWear[i] = 0;
+    }
+  }
+}
+// A shield stops a hit (or a thorn) coming from in front of you; it wears by how hard the hit was.
+function shieldBlocks(from, amount) {
+  if (!armour[4] || !from) return false;
+  const look = player.lookDir();
+  const dx = from.x - player.pos.x, dz = from.z - player.pos.z, len = Math.hypot(dx, dz) || 1;
+  const lookLen = Math.hypot(look.x, look.z) || 1;
+  if ((dx * look.x + dz * look.z) / (len * lookLen) < 0.35) return false; // from the side or behind
+  wearArmour(4, Math.max(1, Math.ceil(amount)));
+  sound.place('stone');
+  toast('Blocked!', 600);
+  return true;
+}
+function useAnvil() {
+  const s = inventory.held();
+  if (!s || !maxWear(s.id)) { toast('Hold a worn tool, weapon, piece of armour or shield and tap the anvil to repair it', 2500); return; }
+  if (!s.wear) { toast(`Your ${itemName(s.id).toLowerCase()} doesn't need repairing`); return; }
+  const mat = ITEMS[s.id].repair;
+  if (inventory.count(mat) < 1) { toast(`You need ${itemName(mat).toLowerCase()} to repair this`); return; }
+  inventory.remove(mat, 1);
+  s.wear = Math.max(0, Math.round(s.wear - maxWear(s.id) * 0.5));
+  if (!s.wear) delete s.wear;
+  inventory.onChange();
+  sound.place('stone');
+  toast(`Repaired with ${itemName(mat).toLowerCase()}: ${Math.round(100 - ((s.wear ?? 0) / maxWear(s.id)) * 100)}% as good as new`, 2000);
+}
+
+// ---------- teas ----------
+const effects = { night: 0, haste: 0, fire: 0, heal: 0 }; // seconds left of each
+const EFFECT_ICONS = { night: '🌙', haste: '⛏', fire: '🔥', heal: '💚' };
+function drinkTea(id) {
+  const [kind, secs] = ITEMS[id].tea;
+  effects[kind] = Math.max(effects[kind], secs);
+  inventory.consumeHeld();
+  if (inventory.add(GLASS_BOTTLE, 1)) toast('Inventory full');
+  sound.gulp();
+  toast(`${itemName(id)}: you ${ITEMS[id].about}`, 2000);
+}
+function tickEffects(dt) {
+  for (const k of Object.keys(effects)) effects[k] = Math.max(0, effects[k] - dt);
+  if (effects.heal > 0 && health < MAX_HEALTH) { health = Math.min(MAX_HEALTH, health + dt * 1.2); renderHealth(); }
+  lightUniforms.uAmbient.value = effects.night > 0 ? 0.3 : AMBIENT;
+}
+const effectsText = () => Object.entries(effects).filter(([, t]) => t > 0)
+  .map(([k, t]) => `${EFFECT_ICONS[k]} ${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}`).join('  ');
+
+// ---------- dungeons ----------
+// Deep underground, rare stone-brick rooms hold a shrine and a chest or two of loot. Come near an
+// active shrine and its guardian, the Mossback King, rises to meet you; beat it and the shrine goes quiet.
+const LOOT = [
+  [IRON_INGOT, 2, 6, 0.8], [GOLD_INGOT, 1, 3, 0.5], [SILVER_INGOT, 1, 3, 0.4], [ELECTRUM_INGOT, 1, 2, 0.25],
+  [TUNGSTEN_INGOT, 1, 2, 0.15], [GUNPOWDER, 2, 6, 0.5], [SILVER_ARROW, 4, 8, 0.4], [BAKED_FISH, 2, 4, 0.6],
+  [NIGHT_TEA, 1, 2, 0.35], [HASTE_TEA, 1, 2, 0.3], [FIRE_TEA, 1, 1, 0.25], [HEAL_TEA, 1, 2, 0.3], [IRON_SHIELD, 1, 1, 0.12],
+];
+function rollLoot() {
+  const out = [];
+  for (const [id, a, b, p] of LOOT) if (Math.random() < p) out.push([id, a + Math.floor(Math.random() * (b - a + 1))]);
+  return out.length ? out : [[IRON_INGOT, 3]];
+}
+let bossTimer = 0;
+function tickBoss(dt) {
+  if ((bossTimer -= dt) > 0) return;
+  bossTimer = 1;
+  if (dead) return;
+  const pcx = Math.floor(player.pos.x / CHUNK), pcz = Math.floor(player.pos.z / CHUNK);
+  for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) {
+    const d = world.generator.dungeonAt(pcx + dx, pcz + dz);
+    if (!d || world.get(d.x, d.y, d.z) !== BOSS_SHRINE) continue;
+    if (Math.hypot(d.x + 0.5 - player.pos.x, d.z + 0.5 - player.pos.z) > 9 || Math.abs(d.y - player.pos.y) > 5) continue;
+    const k = `${d.x},${d.y},${d.z}`;
+    if (mobs.mobs.some((m) => m.shrine === k && !m.dying)) continue;
+    const m = mobs.spawn('mossking', d.x + 0.5, d.y, d.z + 2.5);
+    m.shrine = k;
+    if (settings.difficulty !== 'peaceful') m.angry = 1e6;
+    sound.boom(0.4);
+    toast('The Mossback King rises from the shrine!', 3000);
+  }
+}
+mobs.onDefeat = (m) => {
+  if (!m.spec.boss || !m.shrine) return;
+  const [x, y, z] = m.shrine.split(',').map(Number);
+  if (world.get(x, y, z) === BOSS_SHRINE) world.setBlock(x, y, z, SPENT_SHRINE);
+  toast('The Mossback King is defeated! The shrine falls quiet.', 4000);
+};
+function renderBossBar() {
+  const boss = mobs.mobs.find((m) => m.spec.boss && !m.dying && m.pos.distanceTo(player.pos) < 32);
+  $('boss-bar').classList.toggle('hidden', !boss);
+  if (!boss) return;
+  $('boss-name').textContent = boss.spec.name;
+  $('boss-fill').style.width = `${Math.max(0, (boss.hp / boss.spec.hp) * 100)}%`;
 }
 
 // ---------- switches and signals ----------
@@ -1423,6 +1560,20 @@ function place() {
     if (isLamp(tid)) { useLamp(tx, ty, tz, held); return; }
     if (isSign(tid)) { editSign(tx, ty, tz); return; }
     if (tid === BLAST_CHARGE) { lightFuse(tx, ty, tz); toast('The fuse is lit! Stand back…', 1500); return; }
+    if (tid === ANVIL) { useAnvil(); return; }
+    if (BLOCKS[tid].station === 'cauldron' && held?.id === WATER_BUCKET) {
+      world.setBlock(tx, ty, tz, CAULDRON + 3);
+      inventory.slots[inventory.selected] = { id: BUCKET, count: 1 };
+      inventory.onChange();
+      sound.splash(false);
+      return;
+    }
+    if (tid === LOOT_CHEST) {
+      // a dungeon chest: its loot is put in the first time it's opened
+      const st = stations.get(tx, ty, tz, 'chest');
+      rollLoot().forEach(([id, n], i) => { st.inputs[i * 2 % st.inputs.length] = { id, count: n }; });
+      world.setBlock(tx, ty, tz, CHEST);
+    }
     if (stationKind(tid)) { sound.click(); openStation(tx, ty, tz); return; }
     if (BLOCKS[tid].machine || BLOCKS[tid].kinetic) {
       // tap a machine (or a wheel or windmill) to see how it's running
@@ -1442,6 +1593,7 @@ function place() {
   if (held?.id === BUCKET || held?.id === WATER_BUCKET) { useBucket(held.id); return; }
   if (held?.id === LEAD_BUCKET || held?.id === LAVA_BUCKET) { useLeadBucket(held.id); return; }
   if (held && (foodValue(held.id) || ITEMS[held.id]?.drink)) { eat(held.id); return; }
+  if (held && ITEMS[held.id]?.tea) { drinkTea(held.id); return; }
   if (held && ITEMS[held.id]?.armour) { wearHeld(); return; }
   if (!target || !held) return;
   // ladders and scaffolding tapped with more of the same grow upward from the top of the column
@@ -1768,7 +1920,7 @@ function updateBreaking(dt) {
   const held = inventory.heldId();
   const t = breakTime(target.id, held);
   if (!isFinite(t)) { crack.visible = false; return; }
-  breakState.progress += dt / Math.max(t, 0.05);
+  breakState.progress += dt * (effects.haste > 0 ? 1.5 : 1) / Math.max(t, 0.05);
   breakState.tick = (breakState.tick || 0) - dt;
   if (breakState.tick <= 0) { sound.dig(BLOCKS[target.id].sound); breakState.tick = 0.24; }
   if (breakState.progress >= 1) {
@@ -1791,6 +1943,8 @@ function breakBlock(x, y, z) {
   if (!def || id === AIR) return;
   sound.breakBlock(def.sound);
   let drops = dropsFor(id, inventory.heldId());
+  if (id === LOOT_CHEST) drops.push(...rollLoot());
+  if (ITEMS[inventory.heldId()]?.tool?.type === def.tool && def.hardness > 0) wearOutHeld(1);
   if (isDoor(id)) {
     // either half takes the whole door with it
     const oy = def.upper ? y - 1 : y + 1;
@@ -1933,6 +2087,9 @@ $('btn-menu').addEventListener('click', () => {
 });
 $('btn-close-menu').addEventListener('click', () => { $('menu').classList.add('hidden'); paused = false; });
 $('btn-autojump').addEventListener('click', () => { player.autoJump = !player.autoJump; updateAutoJumpLabel(); saveGame(); });
+function updateWearLabel() { $('btn-wear').textContent = `Tool wear: ${settings.wear ? 'on' : 'off'}`; }
+updateWearLabel();
+$('btn-wear').addEventListener('click', () => { settings.wear = !settings.wear; updateWearLabel(); saveSettings(); });
 $('btn-save').addEventListener('click', () => toast(saveGame() ? 'World saved' : 'Could not save (storage unavailable)'));
 $('btn-new').addEventListener('click', () => {
   // (startWorld(null) also clears the stored chunks)
@@ -2106,7 +2263,7 @@ function stepGame(now, dt) {
     controls.update();
     const wasGround = player.onGround, wasWater = player.inWater, fallSpeed = -player.vel.y, prevY = player.pos.y;
     carts.update(dt, world, (x, y, z) => powerAt(x, y, z) || (signalAt(x, y, z) ? 1 : 0), riding && { cart: riding, push: controls.moveZ, look: player.lookDir() },
-      { day: lightUniforms.uDay.value, flicker: lightUniforms.uFlicker.value, ambient: AMBIENT });
+      { day: lightUniforms.uDay.value, flicker: lightUniforms.uFlicker.value, ambient: lightUniforms.uAmbient.value });
     if (riding) followCart();
     else player.update(dt, { moveX: controls.moveX, moveZ: controls.moveZ, jump: controls.jump });
     if (player.pos.y < -20) respawn();
@@ -2117,39 +2274,43 @@ function stepGame(now, dt) {
     tickLamps(dt);
     tickFuses(dt);
     tickSwitches(dt);
+    tickEffects(dt);
+    tickBoss(dt);
+    renderBossBar();
     updateHunger(dt);
     updateHealth(dt, wasGround, prevY);
     const picked = arrows.update(dt, {
-      world, mobs, player, light: { day: lightUniforms.uDay.value, flicker: lightUniforms.uFlicker.value, ambient: AMBIENT },
+      world, mobs, player, light: { day: lightUniforms.uDay.value, flicker: lightUniforms.uFlicker.value, ambient: lightUniforms.uAmbient.value },
       // arrows bump animals, and hurt creatures more the further the bow was drawn
       onHitMob: (m, arrow, from) => {
         if (m.spec.hostile) giveDrops(mobs.hurt(m, Math.round(2 + 6 * arrow.power) * (arrow.silver ? 2 : 1), from));
         else mobs.bump(m, from);
       },
-      onHitPlayer: (dmg) => { if (!dead) damage(armoured(dmg), 'A thornspitter shot you full of thorns.'); },
+      onHitPlayer: (dmg, from) => { if (!dead && !shieldBlocks(from, dmg)) damage(armoured(dmg), 'A thornspitter shot you full of thorns.'); },
     });
     for (const id of picked) { inventory.add(id, 1); sound.pop(); }
     updateFishing(dt);
-    mobs.update(dt, player, { day: lightUniforms.uDay.value, flicker: lightUniforms.uFlicker.value, ambient: AMBIENT },
+    mobs.update(dt, player, { day: lightUniforms.uDay.value, flicker: lightUniforms.uFlicker.value, ambient: lightUniforms.uAmbient.value },
       { difficulty: difficulty(), daylight: sky.light, playerDead: dead });
   }
   // write edited chunks to storage shortly (1.5 s) after the player stops changing them
   if (world.unsaved.size !== unsavedCount) { unsavedCount = world.unsaved.size; lastEditAt = now; }
   if (unsavedCount && now - lastEditAt > 1500 && worldReady) { world.saveChunks(); unsavedCount = 0; }
-  kinetics.update(paused ? 0 : dt, world, { day: lightUniforms.uDay.value, flicker: lightUniforms.uFlicker.value, ambient: AMBIENT });
+  kinetics.update(paused ? 0 : dt, world, { day: lightUniforms.uDay.value, flicker: lightUniforms.uFlicker.value, ambient: lightUniforms.uAmbient.value });
   tickBlasts(dt);
   minimap.show(!paused && inventory.heldId() === MAP);
   minimap.update(world, player, bedSpawn ?? (world.spawnCache ??= world.generator.findSpawn()));
   try {
-    machines.tick(paused ? 0 : dt, world, kinetics, stations, { day: lightUniforms.uDay.value, flicker: lightUniforms.uFlicker.value, ambient: AMBIENT });
+    machines.tick(paused ? 0 : dt, world, kinetics, stations, { day: lightUniforms.uDay.value, flicker: lightUniforms.uFlicker.value, ambient: lightUniforms.uAmbient.value });
   } catch (err) { reportError(err); }
-  frames.update(dt, world, { day: lightUniforms.uDay.value, flicker: lightUniforms.uFlicker.value, ambient: AMBIENT });
-  signs.update(dt, world, { day: lightUniforms.uDay.value, flicker: lightUniforms.uFlicker.value, ambient: AMBIENT });
+  frames.update(dt, world, { day: lightUniforms.uDay.value, flicker: lightUniforms.uFlicker.value, ambient: lightUniforms.uAmbient.value });
+  signs.update(dt, world, { day: lightUniforms.uDay.value, flicker: lightUniforms.uFlicker.value, ambient: lightUniforms.uAmbient.value });
   coordsTimer -= dt;
   if (coordsTimer <= 0) {
     coordsTimer = 0.25;
     $('coords').textContent = `Day ${day}   X ${Math.floor(player.pos.x)}  Y ${Math.floor(player.pos.y)}  Z ${Math.floor(player.pos.z)}` +
-      (inventory.count(GOLD_CLOCK) ? `   🕰 ${clockTime()}` : '') + (inventory.count(COMPASS) ? `   🧭 ${compassText()}` : '');
+      (inventory.count(GOLD_CLOCK) ? `   🕰 ${clockTime()}` : '') + (inventory.count(COMPASS) ? `   🧭 ${compassText()}` : '') +
+      (effectsText() ? `   ${effectsText()}` : '');
   }
 
   const eye = player.eye;
@@ -2198,6 +2359,6 @@ window.minicraft = {
   get poisoned() { return poisoned; }, get dead() { return dead; }, get air() { return air; }, set air(v) { air = v; },
   arrows, fishing, kinetics, frames, signalAt, setSwitch, machines, carts, minimap, signs, armour, damage, placeRail, getInCart, getOutOfCart,
   get riding() { return riding; }, explode, lightFuse, fuses, clockTime, compassText, place, editSign, closeSign, openInventory, closeInventory, chestMove, lamps, tickLamps, sleepUntilMorning, stations, openStation, closeStation,
-  get caneToday() { return caneToday; },
+  get caneToday() { return caneToday; }, effects, armourWear, useAnvil, rollLoot, settings,
   get bedSpawn() { return bedSpawn; },
 };

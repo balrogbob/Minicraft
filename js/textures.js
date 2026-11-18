@@ -13,6 +13,7 @@ import {
   PIPE, SPOUT, BELT, HOPPER, WINDMILL, FILAMENT, DRILL_BIT,
   RAIL, POWERED_RAIL, CACTUS, MINECART, MAP, PAPER,
   COLORS, DYE, CLUTCH, STORAGE_CART, LOADER_RAIL,
+  GLASS_BOTTLE, NIGHT_TEA, HASTE_TEA, FIRE_TEA, HEAL_TEA, WOOD_SHIELD, IRON_SHIELD, KING_CROWN,
   SALTPETRE, GUNPOWDER, LEAD_SINKER, WEIGHTED_ROD, LEAD_BUCKET, LAVA_BUCKET, GOLD_CLOCK, COMPASS, SILVER_ARROW, MIRROR_LAMP,
 } from './blocks.js';
 
@@ -624,6 +625,30 @@ P[T.GEARBOX] = (t) => {
     else if (d <= 2.2) t.set(x, y, [70, 70, 76]);
   }
 };
+P[T.MOSSY_BRICKS] = (t) => {
+  P[T.BRICKS](t);
+  for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+    const n = Math.sin(x * 0.9 + y * 0.4) + Math.cos(y * 1.1 - x * 0.3) + t.r() * 0.8;
+    if (n > 0.9 || (y < 3 && t.r() < 0.5)) t.set(x, y, t.vary(t.r() < 0.5 ? [72, 112, 46] : [92, 134, 58], 0.12));
+  }
+};
+P[T.SHRINE_SIDE] = (t) => {
+  P[T.MOSSY_BRICKS](t);
+  for (let y = 4; y < 12; y++) for (let x = 5; x < 11; x++) if ((x === 5 || x === 10 || y === 4 || y === 11)) t.set(x, y, [60, 62, 58]);
+  for (const [x, y] of [[7, 6], [8, 6], [7, 9], [8, 9], [6, 7], [9, 8]]) t.set(x, y, [150, 230, 120]); // a glowing rune
+};
+const shrineTop = (glow) => (t) => {
+  t.fill([96, 98, 92], 0.08);
+  for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+    const d = Math.hypot(x - 7.5, y - 7.5);
+    if (d < 5) t.set(x, y, glow ? t.vary(d < 2.5 ? [200, 255, 170] : [110, 200, 90], 0.08) : t.vary([60, 66, 58], 0.08));
+    else if (x === 0 || y === 0 || x === 15 || y === 15) t.set(x, y, [72, 112, 46]);
+  }
+};
+P[T.SHRINE_TOP] = shrineTop(true);
+P[T.SHRINE_SPENT] = shrineTop(false);
+P[T.CAULDRON] = (t) => { t.fill([52, 52, 58], 0.08); for (let x = 0; x < TILE; x++) { t.set(x, 0, [86, 86, 94]); t.set(x, 15, [36, 36, 40]); } };
+P[T.CAULDRON_WATER] = (t) => { for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) t.set(x, y, t.vary(Math.sin(x * 0.8 + y * 0.5) > 0.6 ? [96, 150, 226] : [52, 100, 200], 0.06)); };
 P[T.FRAME_BACK] = (t) => { t.fill([128, 88, 52], 0.06); t.speckle([110, 74, 42], 0.15, 0.05); };
 P[T.TRAPDOOR] = (t) => {
   P[T.PLANKS](t);
@@ -1349,6 +1374,43 @@ Object.assign(ITEM_PAINTERS, {
 });
 
 COLORS.forEach((c, i) => { ITEM_PAINTERS[DYE + i] = dustPainter(c.rgb); });
+function bottlePainter(fill) {
+  return (ctx) => {
+    rect(ctx, 7, 1, 2, 3, [180, 140, 90]); // cork
+    rect(ctx, 6, 4, 4, 2, [190, 220, 236]);
+    for (let y = 6; y < 15; y++) for (let x = 3; x < 13; x++) {
+      const d = Math.hypot((x - 7.5) / 4.6, (y - 10.5) / 4.4);
+      if (d >= 1) continue;
+      const edge = d > 0.82;
+      px(ctx, x, y, edge ? [170, 205, 225] : fill && y >= 8 ? (x < 6 ? shade(fill, 1.2) : fill) : [214, 236, 246]);
+    }
+    px(ctx, 5, 9, [255, 255, 255]);
+  };
+}
+ITEM_PAINTERS[GLASS_BOTTLE] = bottlePainter(null);
+ITEM_PAINTERS[NIGHT_TEA] = bottlePainter([60, 80, 190]);
+ITEM_PAINTERS[HASTE_TEA] = bottlePainter([226, 176, 40]);
+ITEM_PAINTERS[FIRE_TEA] = bottlePainter([206, 64, 40]);
+ITEM_PAINTERS[HEAL_TEA] = bottlePainter([150, 96, 196]);
+function shieldPainter(face, rim) {
+  return (ctx) => {
+    for (let y = 1; y < 15; y++) for (let x = 2; x < 14; x++) {
+      const w = y < 9 ? 6 : 6 - (y - 9) * 0.9;
+      if (Math.abs(x - 7.5) > w) continue;
+      const edge = Math.abs(x - 7.5) > w - 1.2 || y === 1;
+      px(ctx, x, y, edge ? rim : (x + y) % 5 === 0 ? shade(face, 0.85) : face);
+    }
+    rect(ctx, 7, 4, 2, 7, rim); rect(ctx, 5, 6, 6, 2, rim);
+  };
+}
+ITEM_PAINTERS[WOOD_SHIELD] = shieldPainter([160, 118, 70], [110, 112, 120]);
+ITEM_PAINTERS[IRON_SHIELD] = shieldPainter([176, 180, 190], [100, 104, 112]);
+ITEM_PAINTERS[KING_CROWN] = (ctx) => {
+  rect(ctx, 2, 8, 12, 5, [236, 190, 50]); rect(ctx, 2, 12, 12, 1, [190, 140, 30]);
+  for (const x of [2, 7, 12]) { rect(ctx, x, 4, 2, 4, [246, 206, 64]); px(ctx, x, 3, [255, 236, 120]); }
+  for (const x of [4, 10]) rect(ctx, x, 6, 2, 2, [246, 206, 64]);
+  px(ctx, 7, 10, [210, 40, 40]); px(ctx, 8, 10, [210, 40, 40]); px(ctx, 4, 10, [70, 140, 220]); px(ctx, 11, 10, [70, 140, 220]);
+};
 ITEM_PAINTERS[CLUTCH] = (ctx) => {
   rect(ctx, 0, 7, 16, 3, [150, 150, 150]); rect(ctx, 0, 7, 16, 1, [180, 180, 180]);
   rect(ctx, 5, 3, 6, 11, IRON_C); rect(ctx, 7, 2, 2, 13, [104, 110, 134]); rect(ctx, 5, 3, 6, 1, [160, 164, 172]);

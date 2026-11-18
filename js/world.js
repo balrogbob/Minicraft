@@ -323,9 +323,15 @@ export class World {
       for (const li of [...c.growing]) {
         const id = c.data[li];
         const def = BLOCKS[id];
-        const chance = elapsed / (def.grows === 'up' ? GROW_SECONDS.cane : GROW_SECONDS.wheat);
-        if (Math.random() >= chance) continue;
         const x = c.cx * CHUNK + (li & 15), z = c.cz * CHUNK + ((li >> 4) & 15), y = li >> 8;
+        if (def.grows === 'fill') {
+          // a cauldron out in the rain slowly fills up
+          if (this.raining && this.skyAt(x, y + 1, z) >= MAX_LIGHT && Math.random() < elapsed / 25) this.setBlock(x, y, z, id + 1);
+          continue;
+        }
+        // plants grow twice as fast in the rain
+        const chance = elapsed * (this.raining ? 2 : 1) / (def.grows === 'up' ? GROW_SECONDS.cane : GROW_SECONDS.wheat);
+        if (Math.random() >= chance) continue;
         if (def.grows === 'up') this.setBlock(x, y + 1, z, SUGAR_CANE);
         else if (def.grows === 'tree') this.growTree(x, y, z);
         else this.setBlock(x, y, z, def.grows);
