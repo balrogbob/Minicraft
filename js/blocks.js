@@ -1,6 +1,6 @@
 // Block and item definitions.
 
-// Block ids (< 100). Stored in the world Uint8Array.
+// Block ids (< 100, and 190..255). Stored in the world Uint8Array. Item ids are 100..189 and 300 up.
 export const AIR = 0, GRASS = 1, DIRT = 2, STONE = 3, COBBLE = 4, LOG = 5, PLANKS = 6,
   LEAVES = 7, SAND = 8, GLASS = 9, TABLE = 10, BRICKS = 11, COAL_ORE = 12, BEDROCK = 13, WATER = 14,
   TORCH = 15, // standing torch; the only torch id that lives in the inventory
@@ -24,7 +24,15 @@ export const AIR = 0, GRASS = 1, DIRT = 2, STONE = 3, COBBLE = 4, LOG = 5, PLANK
   // metal ores (see ORES below)
   IRON_ORE = 82, COPPER_ORE = 83, TIN_ORE = 84, LEAD_ORE = 85, ZINC_ORE = 86, SULPHUR_ORE = 87,
   BAUXITE = 88, SILVER_ORE = 89, GOLD_ORE = 90, TUNGSTEN_ORE = 91,
-  SAPLING = 92; // grows into a tree
+  SAPLING = 92, // grows into a tree
+  GRAVEL = 93, CLAY = 94, CLAY_BRICKS = 95, FIRE_BRICKS = 96,
+  // (ids 100..189 are items; more blocks continue from 190)
+  WATER_FLOW = 190, // 190..196: flowing water, level 1..7 (7 is next to the source)
+  WATER_FALL = 197, // falling water
+  CRUSHER = 198, // 198..201: + facing
+  WATER_WHEEL = 202, // 202 = axle along x, 203 = along z
+  KINETIC = 204, // 204..230: shafts, small gears and large gears; see kineticId()
+  BLAST_SMELTER = 231; // 231..238: + facing, + 4 while burning
 
 // Wall direction [dx, dz] for each wall-torch variant, in id order.
 export const WALL_TORCH_DIRS = [[-1, 0], [1, 0], [0, -1], [0, 1]];
@@ -47,6 +55,10 @@ export const STICK = 100, COAL = 101,
   BRONZE_INGOT = 152, ELECTRUM_INGOT = 153, STAINLESS_INGOT = 154, STEEL_INGOT = 155, AL_BRONZE_INGOT = 156;
 // Metal tools are 160 + 3 * (material index in TOOL_MATERIALS) + 0 pick / 1 axe / 2 shovel.
 export const METAL_TOOLS = 160;
+// Items added after the metal tools.
+export const FLINT = 300, CLAY_BALL = 301, BRICK = 302, FIRE_CLAY = 303, FIRE_BRICK = 304,
+  FLINT_DUST = 305, CLAY_DUST = 306, WATER_BUCKET = 307,
+  ORE_DUST = 310; // 310..: the dust of each smeltable ore, in ORES order (see oreDust())
 
 // Charcoal (smelted from logs) can stand in for coal anywhere coal is used.
 export const COAL_OR_CHARCOAL = [COAL, CHARCOAL];
@@ -61,19 +73,21 @@ export const T = {
   OVEN_SIDE: 32, OVEN_TOP: 33, OVEN_FRONT: 34, OVEN_FRONT_LIT: 35,
   SMELTER_SIDE: 36, SMELTER_TOP: 37, SMELTER_FRONT: 38, SMELTER_FRONT_LIT: 39,
   ORE0: 40, // 40..49: the ores, in ORES order
-  SAPLING: 50,
+  SAPLING: 50, GRAVEL: 51, CLAY: 52, CLAY_BRICKS: 53, FIRE_BRICKS: 54,
+  CRUSHER_SIDE: 55, CRUSHER_TOP: 56, CRUSHER_FRONT: 57, STAINLESS: 58,
 };
 
 // Ores, deepest-reaching last. tier: the pickaxe tier needed to mine it (see TOOL_TIERS);
 // y range and chance (per 4x4x4 cell of stone) control where veins are generated.
-// Most drop the ore block itself, which the smelter turns into `ingot`.
+// They drop the ore block itself. The smelter turns it into `ingot`, and the rock crusher into two of
+// its dust (each of which smelts into an ingot). Sulphur can only be got out of its ore by crushing.
 export const ORES = [
   { id: IRON_ORE, name: 'Iron Ore', ingot: IRON_INGOT, tier: 3, hardness: 3.5, y: [4, 44], chance: 0.05, color: [226, 182, 156] },
   { id: COPPER_ORE, name: 'Copper Ore', ingot: COPPER_INGOT, tier: 2, hardness: 3, y: [8, 50], chance: 0.055, color: [216, 116, 60] },
   { id: TIN_ORE, name: 'Tin Ore', ingot: TIN_INGOT, tier: 2, hardness: 3, y: [6, 40], chance: 0.035, color: [170, 174, 182] },
   { id: LEAD_ORE, name: 'Lead Ore', ingot: LEAD_INGOT, tier: 2, hardness: 3, y: [4, 34], chance: 0.03, color: [84, 92, 118] },
   { id: ZINC_ORE, name: 'Zinc Ore', ingot: ZINC_INGOT, tier: 2, hardness: 3, y: [6, 40], chance: 0.035, color: [150, 190, 200] },
-  { id: SULPHUR_ORE, name: 'Sulphur Ore', drop: SULPHUR, tier: 2, hardness: 3, y: [2, 26], chance: 0.03, color: [232, 214, 52] },
+  { id: SULPHUR_ORE, name: 'Sulphur Ore', crush: [SULPHUR, 2], tier: 2, hardness: 3, y: [2, 26], chance: 0.03, color: [232, 214, 52] },
   { id: BAUXITE, name: 'Bauxite', ingot: ALUMINIUM_INGOT, tier: 2, hardness: 2.75, y: [16, 56], chance: 0.05, color: [186, 92, 58] },
   { id: SILVER_ORE, name: 'Silver Ore', ingot: SILVER_INGOT, tier: 4, hardness: 3.5, y: [2, 22], chance: 0.016, color: [236, 238, 246] },
   { id: GOLD_ORE, name: 'Gold Ore', ingot: GOLD_INGOT, tier: 4, hardness: 3.5, y: [1, 16], chance: 0.013, color: [248, 204, 56] },
@@ -130,7 +144,9 @@ function block(id, o) {
     // furniture state, encoded in which variant id is placed
     facing: o.facing ?? 0, open: !!o.open, upper: !!o.upper, axis: o.axis ?? 0, fuel: o.fuel ?? 0, foot: !!o.foot,
     front: o.front ?? null, // a different tile on the side that faces `facing` (ovens, smelters)
-    lit: !!o.lit, station: o.station ?? null, // 'oven' | 'smelter'
+    lit: !!o.lit, station: o.station ?? null, // 'oven' | 'smelter' | 'blast' | 'crusher'
+    stationBase: o.stationBase ?? 0, // the id of a station's first variant
+    kinetic: o.kinetic ?? null, // { part: 'wheel' | 'shaft' | 'gear' | 'large', mat, axis: 0 x | 1 y | 2 z }
   };
 }
 
@@ -146,6 +162,11 @@ block(LEAVES, {
   drop: () => [[SAPLING, Math.random() < 0.08 ? 1 : 0], [STICK, Math.random() < 0.12 ? 1 : 0]],
 });
 block(SAND, { name: 'Sand', sound: 'sand', tex: T.SAND, hardness: 0.75, tool: 'shovel' });
+// gravel sometimes gives flint instead; clay breaks up into clay balls
+block(GRAVEL, { name: 'Gravel', sound: 'sand', tex: T.GRAVEL, hardness: 0.9, tool: 'shovel', drop: () => (Math.random() < 0.1 ? FLINT : GRAVEL) });
+block(CLAY, { name: 'Clay', sound: 'grass', tex: T.CLAY, hardness: 0.9, tool: 'shovel', drop: () => [[CLAY_BALL, 4]] });
+block(CLAY_BRICKS, { name: 'Bricks', tex: T.CLAY_BRICKS, hardness: 2.5, tool: 'pick', needsTool: true });
+block(FIRE_BRICKS, { name: 'Fire Bricks', tex: T.FIRE_BRICKS, hardness: 3, tool: 'pick', needsTool: true });
 block(GLASS, { name: 'Glass', sound: 'glass', tex: T.GLASS, transparent: true, hardness: 0.4 });
 block(TABLE, { name: 'Crafting Table', sound: 'wood', top: T.TABLE_TOP, bottom: T.PLANKS, side: T.TABLE_SIDE, hardness: 2.5, tool: 'axe' });
 block(BRICKS, { name: 'Stone Bricks', tex: T.BRICKS, hardness: 2.5, tool: 'pick', needsTool: true });
@@ -157,6 +178,15 @@ ORES.forEach((o, i) => block(o.id, {
 export const isOre = (id) => id >= IRON_ORE && id <= TUNGSTEN_ORE;
 block(BEDROCK, { name: 'Bedrock', tex: T.BEDROCK, hardness: Infinity });
 block(WATER, { name: 'Water', transparent: true, liquid: true, hardness: Infinity, drop: 0, sound: 'water' });
+// Flowing water: spreads out from a source (placed with a water bucket) and falls over edges.
+for (let level = 1; level <= 7; level++) {
+  block(WATER_FLOW + level - 1, { name: 'Water', transparent: true, liquid: true, hardness: Infinity, drop: 0, sound: 'water', variantOf: WATER });
+}
+block(WATER_FALL, { name: 'Water', transparent: true, liquid: true, hardness: Infinity, drop: 0, sound: 'water', variantOf: WATER });
+export const isWaterId = (id) => id === WATER || (id >= WATER_FLOW && id <= WATER_FALL);
+export const isFlowing = (id) => id >= WATER_FLOW && id <= WATER_FALL;
+// How strongly a water cell pushes water outward: 8 for a source or falling water, else its level.
+export const waterLevel = (id) => (id === WATER || id === WATER_FALL ? 8 : id >= WATER_FLOW && id < WATER_FALL ? id - WATER_FLOW + 1 : 0);
 const torch = { name: 'Torch', sound: 'wood', tex: T.TORCH, transparent: true, solid: false, shape: 'torch', hardness: 0, light: 14, drop: TORCH };
 block(TORCH, torch);
 WALL_TORCH_DIRS.forEach((wall, i) => block(TORCH_WALL_W + i, { ...torch, wall, variantOf: TORCH }));
@@ -284,16 +314,52 @@ export const isDoor = (id) => id >= DOOR && id < DOOR + 16;
 for (const [base, station, name, side, top, front, frontLit] of [
   [OVEN, 'oven', 'Oven', T.OVEN_SIDE, T.OVEN_TOP, T.OVEN_FRONT, T.OVEN_FRONT_LIT],
   [SMELTER, 'smelter', 'Smelter', T.SMELTER_SIDE, T.SMELTER_TOP, T.SMELTER_FRONT, T.SMELTER_FRONT_LIT],
+  [BLAST_SMELTER, 'blast', 'Blast Smelter', T.FIRE_BRICKS, T.FIRE_BRICKS, T.SMELTER_FRONT, T.SMELTER_FRONT_LIT],
 ]) {
   for (let k = 0; k < 8; k++) {
     const facing = k & 3, lit = k >= 4;
     block(base + k, {
       name, station, side, top, bottom: side, front: lit ? frontLit : front, facing, lit, light: lit ? 13 : 0,
-      hardness: 2.5, tool: 'pick', variantOf: k ? base : 0, drop: base,
+      hardness: 2.5, tool: 'pick', variantOf: k ? base : 0, drop: base, stationBase: base,
     });
   }
 }
+// The rock crusher: driven by a shaft or gear turning against any of its faces (see kinetics.js).
+for (let k = 0; k < 4; k++) {
+  block(CRUSHER + k, {
+    name: 'Rock Crusher', station: 'crusher', side: T.CRUSHER_SIDE, top: T.CRUSHER_TOP, bottom: T.CRUSHER_SIDE,
+    front: T.CRUSHER_FRONT, facing: k, hardness: 2.5, tool: 'pick', variantOf: k ? CRUSHER : 0, drop: CRUSHER, stationBase: CRUSHER,
+  });
+}
 export const stationKind = (id) => BLOCKS[id]?.station ?? null;
+
+// Power transmission. Each material sets how much load its shafts and gears can carry; a water wheel
+// gives WHEEL_POWER, and a crusher takes CRUSHER_LOAD for each 1x of speed it turns at.
+export const KINETIC_MATS = [
+  { key: 'wood', name: 'Wooden', cap: 16, tile: T.PLANKS },
+  { key: 'stone', name: 'Stone', cap: 64, tile: T.STONE },
+  { key: 'stainless', name: 'Stainless Steel', cap: 256, tile: T.STAINLESS },
+];
+export const KINETIC_PARTS = ['shaft', 'gear', 'large'];
+export const WHEEL_POWER = 8, CRUSHER_LOAD = 4;
+// Shafts, small gears and large gears: one id for each part, material and axle direction.
+export const kineticId = (part, mat, axis = 0) => KINETIC + (KINETIC_PARTS.indexOf(part) * 3 + mat) * 3 + axis;
+const PART_NAMES = { shaft: 'Shaft', gear: 'Small Gear', large: 'Large Gear' };
+const kineticShape = { shape: 'kinetic', transparent: true, sound: 'wood', hardness: 1, tool: 'axe' };
+for (let a = 0; a < 2; a++) {
+  block(WATER_WHEEL + a, { ...kineticShape, name: 'Water Wheel', variantOf: a ? WATER_WHEEL : 0, drop: WATER_WHEEL, kinetic: { part: 'wheel', mat: 0, axis: a ? 2 : 0 } });
+}
+KINETIC_PARTS.forEach((part) => KINETIC_MATS.forEach((m, mat) => {
+  for (let axis = 0; axis < 3; axis++) {
+    const base = kineticId(part, mat, 0);
+    block(kineticId(part, mat, axis), {
+      ...kineticShape, name: `${m.name} ${PART_NAMES[part]}`, variantOf: axis ? base : 0, drop: base,
+      kinetic: { part, mat, axis },
+      ...(mat ? { sound: 'stone', tool: 'pick', hardness: 1.5 } : {}),
+    });
+  }
+}));
+export const isKinetic = (id) => !!BLOCKS[id]?.kinetic;
 export const doorId = (facing, open, upper) => DOOR + facing * 4 + (open ? 2 : 0) + (upper ? 1 : 0);
 export const MAX_LAMP_FUEL = 3;
 
@@ -328,6 +394,14 @@ export const ITEMS = {
   [SLIME_FUEL]: { name: 'Slime Fuel', stack: 1 }, // a bucket of lamp fuel; the bucket stays with you
   [CHARCOAL]: { name: 'Charcoal' },
   [FISHING_ROD]: { name: 'Fishing Rod', stack: 1 },
+  [FLINT]: { name: 'Flint' },
+  [CLAY_BALL]: { name: 'Clay Ball' },
+  [BRICK]: { name: 'Brick' },
+  [FIRE_CLAY]: { name: 'Fire Clay' },
+  [FIRE_BRICK]: { name: 'Fire Brick' },
+  [FLINT_DUST]: { name: 'Flint Dust' },
+  [CLAY_DUST]: { name: 'Clay Dust' },
+  [WATER_BUCKET]: { name: 'Water Bucket', stack: 1 },
   [RAW_FISH]: { name: 'Raw Fish', food: 2 },
   [BAKED_FISH]: { name: 'Baked Fish', food: 6 },
 };
@@ -340,6 +414,9 @@ const INGOT_NAMES = {
 };
 for (const [id, name] of Object.entries(INGOT_NAMES)) ITEMS[id] = { name, ingot: true };
 ITEMS[SULPHUR] = { name: 'Sulphur' };
+// Ore dust from the rock crusher: one kind for each ore that smelts into an ingot.
+export const oreDust = (oreId) => ORE_DUST + ORES.findIndex((o) => o.id === oreId);
+for (const o of ORES) if (o.ingot) ITEMS[oreDust(o.id)] = { name: o.name.replace(' Ore', '') + ' Dust', dust: o };
 const KIND_NAMES = { pick: 'Pickaxe', axe: 'Axe', shovel: 'Shovel' };
 const KIND_DAMAGE = { pick: 4, axe: 6, shovel: 4 }; // stone tools hit for 4 / 6 / 4
 TOOL_MATERIALS.forEach((m, i) => {
@@ -355,7 +432,7 @@ export const foodValue = (id) => ITEMS[id]?.food ?? 0;
 
 // Placeable block that can live in the inventory.
 export function isBlock(id) {
-  return id > 0 && id < 100 && !!BLOCKS[id] && !BLOCKS[id].liquid && !BLOCKS[id].variantOf;
+  return id > 0 && id < 256 && !!BLOCKS[id] && !BLOCKS[id].liquid && !BLOCKS[id].variantOf;
 }
 
 export function itemName(id) {
@@ -426,7 +503,29 @@ export const RECIPES = [
   { out: [DOOR, 1], in: [[PLANKS, 4]], table: true },
   { out: [OVEN, 1], in: [[COBBLE, 6], [SAND, 2]], table: true },
   { out: [SMELTER, 1], in: [[COBBLE, 8]], table: true },
+  // gravel, flint and clay
+  { out: [FLINT, 1], in: [[GRAVEL, 3]] },
+  { out: [ARROW, 4], in: [[FLINT, 1], [STICK, 1], [FEATHER, 1]], table: true },
+  { out: [CLAY, 1], in: [[CLAY_BALL, 4]] },
+  { out: [CLAY_BRICKS, 1], in: [[BRICK, 4]], table: true },
+  { out: [CLAY_BALL, 4], in: [[CLAY_DUST, 4], [WATER_BUCKET, 1]], also: [[BUCKET, 1]], metal: CLAY_DUST },
+  { out: [FIRE_CLAY, 4], in: [[CLAY_DUST, 2], [FLINT_DUST, 2]], metal: FLINT_DUST },
+  { out: [FIRE_BRICKS, 1], in: [[FIRE_BRICK, 4]], table: true, metal: FIRE_BRICK },
+  { out: [BLAST_SMELTER, 1], in: [[SMELTER, 1], [FIRE_BRICK, 8]], table: true, metal: FIRE_BRICK },
+  // power: water wheels, shafts and gears, and the rock crusher they drive
+  { out: [WATER_WHEEL, 1], in: [[PLANKS, 8], [STICK, 4]], table: true },
+  { out: [CRUSHER, 1], in: [[BRONZE_INGOT, 3], [COBBLE, 4], [kineticId('large', 0), 1], [kineticId('gear', 0), 1]], table: true, metal: BRONZE_INGOT },
 ];
+// Shafts, small gears (shaft + 4 of the material) and large gears (small gear + 4 more), in each material.
+// Stainless steel parts are only listed once you're carrying the ingots.
+[[PLANKS, 0], [STONE, 0], [STAINLESS_INGOT, STAINLESS_INGOT]].forEach(([mat, show], i) => {
+  const extra = show ? { metal: show } : {};
+  RECIPES.push(
+    { out: [kineticId('shaft', i), 4], in: [[mat, 2]], table: true, ...extra },
+    { out: [kineticId('gear', i), 1], in: [[kineticId('shaft', i), 1], [mat, 4]], table: true, ...extra },
+    { out: [kineticId('large', i), 1], in: [[kineticId('gear', i), 1], [mat, 4]], table: true, ...extra },
+  );
+});
 // Metal tools. `metal` hides the recipe from the list until you're carrying that ingot.
 TOOL_MATERIALS.forEach((m, i) => {
   RECIPES.push(

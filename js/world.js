@@ -1,7 +1,10 @@
 // Streaming voxel world: chunks are generated (or loaded) around the player and unloaded behind,
 // with block light and sunlight flowing across chunk borders, chunk meshing and raycasting.
 import * as THREE from 'three';
-import { BLOCKS, AIR, LEAVES, LOG, DIRT, GRASS, WATER, MAX_LIGHT, SUGAR_CANE, MAX_CANE_HEIGHT } from './blocks.js';
+import {
+  BLOCKS, AIR, LEAVES, LOG, DIRT, GRASS, WATER, MAX_LIGHT, SUGAR_CANE, MAX_CANE_HEIGHT,
+  WATER_FLOW, WATER_FALL, isWaterId, isFlowing, waterLevel,
+} from './blocks.js';
 import { TILE, ATLAS_COLS } from './textures.js';
 import { Generator, CHUNK, H, SEA_LEVEL, WORLD_SIZE, WORLD_CHUNKS, CHUNK_VOLUME, localIndex } from './terrain.js';
 
@@ -62,10 +65,11 @@ export const skyBrightness = (level) => SKY_CURVE[Math.round(level * 4)];
 // through air or glass stays full; everything else (sideways, or down through leaves and water)
 // loses one level per block. Both chunk lighting and the incremental updates use this rule.
 function skyStep(level, down, id) {
-  return down && level === MAX_LIGHT && id !== LEAVES && id !== WATER ? MAX_LIGHT : level - 1;
+  return down && level === MAX_LIGHT && id !== LEAVES && !isWaterId(id) ? MAX_LIGHT : level - 1;
 }
 
 const NEIGHBOURS = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]];
+const SIDES = [[1, 0], [-1, 0], [0, 1], [0, -1]];
 const passes = (id) => id === AIR || BLOCKS[id].transparent;
 
 class Chunk {
@@ -79,6 +83,7 @@ class Chunk {
     this.solid = null; // meshes
     this.water = null;
     this.growing = new Set(); // local indices of plants that can still grow
+    this.machines = new Set(); // local indices of water wheels, shafts, gears and crushers
   }
 }
 
@@ -142,7 +147,7 @@ export class World {
     return BLOCKS[c.data[localIndex(x, y, z)]]?.solid ?? false;
   }
 
-  isWater(x, y, z) { return this.get(x, y, z) === WATER; }
+  isWater(x, y, z) { return isWaterId(this.get(x, y, z)); }
 
   lightAt(x, y, z) {
     if (y < 0 || y >= H) return 0;
@@ -175,7 +180,11 @@ export class World {
     this.unsaved.add(c.key);
     this.markCellDirty(x, z);
     this.updateLight(x, y, z);
-    if (id === AIR) this.flow.push([x, y, z]);
+    // water nearby may now flow in, or drain away
+    this.flow.push([x, y, z], [x + 1, y, z], [x - 1, y, z], [x, y + 1, z], [x, y - 1, z], [x, y, z + 1], [x, y, z - 1]);
+    const def = BLOCKS[id];
+    if (def?.kinetic || def?.station === 'crusher') c.machines.add(li); else c.machines.delete(li);
+    if (BLOCKS[old]?.kinetic || BLOCKS[old]?.station === 'crusher' || def?.kinetic || def?.station === 'crusher') this.machinesChanged = true;
     // this cell, and the one below (a sugar cane that's no longer, or now is, the top), may start or stop growing
     this.refreshGrowth(c, x, y, z);
     if (y > 0) this.refreshGrowth(c, x, y - 1, z);
@@ -305,8 +314,12 @@ export class World {
     }
   }
 
-  // Water spreads into open cells at or below sea level that touch water from the side or above.
-  // Bounded by SEA_LEVEL, so it can flood holes and caves you dig by the sea, but never runs away.
+  // ---------- water ----------
+  // Two kinds of water. Sea and lake water (and water poured below sea level) fills any open cell at or
+  // below sea level that touches it, as still "source" water, so holes dug by the sea flood but it
+  // never runs away. Water poured from a bucket above sea level is a source too, and runs: it falls
+  // straight down over edges, and on a floor spreads sideways, one level weaker per block, for up to
+  // 7 blocks. Flowing water drains away again when its source is taken.
   tickWater(dt) {
     if (!this.flow.length) return;
     this.flowTimer += dt;
@@ -316,17 +329,82 @@ export class World {
     this.flow = [];
     const seen = new Set();
     for (const [x, y, z] of batch) {
+      if (y < 0 || y >= H) continue;
       const k = pack(x, y, z);
-      if (seen.has(k) || y > SEA_LEVEL || !this.chunkAt(x, z) || this.get(x, y, z) !== AIR) continue;
+      if (seen.has(k) || !this.chunkAt(x, z)) continue;
       seen.add(k);
-      const wet = this.isWater(x + 1, y, z) || this.isWater(x - 1, y, z) || this.isWater(x, y, z + 1) ||
-        this.isWater(x, y, z - 1) || this.isWater(x, y + 1, z);
-      if (!wet) continue;
+      this.updateWater(x, y, z);
+    }
+  }
+
+  updateWater(x, y, z) {
+    let id = this.get(x, y, z);
+    const open = id === AIR || isFlowing(id);
+    if (!open && id !== WATER) return;
+    // the sea fills in
+    if (open && y <= SEA_LEVEL && (this.get(x + 1, y, z) === WATER || this.get(x - 1, y, z) === WATER ||
+      this.get(x, y, z + 1) === WATER || this.get(x, y, z - 1) === WATER || this.get(x, y + 1, z) === WATER)) {
       this.setBlock(x, y, z, WATER);
-      for (const [dx, dy, dz] of [[1, 0, 0], [-1, 0, 0], [0, 0, 1], [0, 0, -1], [0, -1, 0]]) {
-        if (this.get(x + dx, y + dy, z + dz) === AIR) this.flow.push([x + dx, y + dy, z + dz]);
+      return;
+    }
+    // what a flowing cell should be, from the water around it
+    if (open) {
+      let want = AIR;
+      if (isWaterId(this.get(x, y + 1, z))) want = WATER_FALL;
+      else {
+        let m = 0;
+        for (const [dx, dz] of SIDES) {
+          const nid = this.get(x + dx, y, z + dz);
+          if (isWaterId(nid) && this.isFloor(x + dx, y - 1, z + dz)) m = Math.max(m, waterLevel(nid));
+        }
+        if (m >= 2) want = WATER_FLOW + m - 2;
+      }
+      if (want !== id) { this.setBlock(x, y, z, want); id = want; }
+      if (id === AIR) return;
+    }
+    // and where it runs from here: down if it can, otherwise out to the sides
+    const below = y > 0 ? this.get(x, y - 1, z) : -1;
+    if (below === AIR || (isFlowing(below) && below !== WATER_FALL)) {
+      this.setBlock(x, y - 1, z, WATER_FALL);
+    } else if (this.isFloor(x, y - 1, z)) {
+      const next = waterLevel(id) - 1;
+      if (next < 1) return;
+      for (const [dx, dz] of SIDES) {
+        const nid = this.get(x + dx, y, z + dz);
+        if (!this.chunkAt(x + dx, z + dz)) continue;
+        if (nid === AIR || (isFlowing(nid) && nid !== WATER_FALL && waterLevel(nid) < next)) this.setBlock(x + dx, y, z + dz, WATER_FLOW + next - 1);
       }
     }
+  }
+
+  // Can water rest on this cell and spread sideways over it? Anything but air and water (the bottom of
+  // the world counts too). Water running onto still water just joins it.
+  isFloor(x, y, z) {
+    if (y < 0) return true;
+    const id = this.get(x, y, z);
+    return id !== AIR && !isWaterId(id);
+  }
+
+  // Height of the water surface at one corner of a cell: the average of the water cells sharing that
+  // corner, so flowing water slopes smoothly down from its source. Full if any of them has water above.
+  waterCorner(x, y, z, cx, cz) {
+    let sum = 0, n = 0;
+    for (let dz = cz - 1; dz <= cz; dz++) for (let dx = cx - 1; dx <= cx; dx++) {
+      const id = this.get(x + dx, y, z + dz);
+      if (!isWaterId(id)) continue;
+      const h = this.waterHeight(x + dx, y, z + dz, id);
+      if (h === 1) return 1;
+      sum += h; n++;
+    }
+    return n ? sum / n : WATER_TOP;
+  }
+
+  // Surface height of the water in a cell, for drawing: still water sits a little below the top,
+  // flowing water is lower the further it has run, and water with water above fills the cell.
+  waterHeight(x, y, z, id) {
+    if (isWaterId(this.get(x, y + 1, z))) return 1;
+    if (id === WATER || id === WATER_FALL) return WATER_TOP;
+    return Math.max(0.12, (WATER_TOP * waterLevel(id)) / 8);
   }
 
   // ---------- light ----------
@@ -479,8 +557,14 @@ export class World {
     const c = new Chunk(cx, cz, data);
     this.chunks.set(c.key, c);
     this.lightChunk(c);
+    const x0 = cx * CHUNK, z0 = cz * CHUNK;
     for (let li = 0; li < CHUNK_VOLUME; li++) {
-      if (BLOCKS[data[li]]?.grows && this.canGrow(c, li & 15, li >> 8, (li >> 4) & 15)) c.growing.add(li);
+      const id = data[li];
+      if (id < 15) continue; // (quick skip for the common blocks: none of these grow, flow or turn)
+      const def = BLOCKS[id];
+      if (def?.grows && this.canGrow(c, li & 15, li >> 8, (li >> 4) & 15)) c.growing.add(li);
+      else if (def?.kinetic || def?.station === 'crusher') { c.machines.add(li); this.machinesChanged = true; }
+      else if (isFlowing(id)) this.flow.push([x0 + (li & 15), li >> 8, z0 + ((li >> 4) & 15)]); // water left running
     }
     this.dirty.add(c.key);
     return c;
@@ -677,14 +761,17 @@ export class World {
       if (id === AIR) continue;
       const x = x0 + lx, z = z0 + lz;
       const def = BLOCKS[id];
-      if (id === WATER) {
-        const surface = this.get(x, y + 1, z) !== WATER;
+      if (isWaterId(id)) {
+        const height = this.waterHeight(x, y, z, id);
         for (const f of FACES) {
           if (f.n[1] < 0 && y === 0) continue;
-          const nid = this.get(x + f.n[0], y + f.n[1], z + f.n[2]);
-          if (nid === WATER || (nid !== AIR && !BLOCKS[nid].transparent)) continue;
+          const nx = x + f.n[0], ny = y + f.n[1], nz = z + f.n[2];
+          const nid = this.get(nx, ny, nz);
+          if (nid !== AIR && !isWaterId(nid) && !BLOCKS[nid].transparent) continue;
+          // between two water cells, only where this one stands higher than its neighbour
+          if (isWaterId(nid) && (f.d === 1 || this.waterHeight(nx, ny, nz, nid) >= height)) continue;
           for (const cr of f.corners) {
-            const top = cr.o[1] === 1 && surface ? WATER_TOP : cr.o[1];
+            const top = cr.o[1] === 1 ? (height === 1 ? 1 : this.waterCorner(x, y, z, cr.o[0], cr.o[2])) : cr.o[1];
             const px = lx + cr.o[0], py = y + top, pz = lz + cr.o[2];
             wpos.push(px, py, pz);
             // world-space UVs (wrapped every 64 blocks) so the texture tiles seamlessly and can scroll
@@ -701,6 +788,7 @@ export class World {
         }
         continue;
       }
+      if (def.shape === 'kinetic') continue; // drawn (and turned) by kinetics.js
       if (def.shape === 'torch') {
         vcount = this.addTorch(lx, y, lz, def, pos, uv, col, tl, sl, index, vcount);
         continue;
@@ -864,7 +952,7 @@ export class World {
 
   // Voxel DDA raycast. Returns { x, y, z, id, nx, ny, nz, t } for the first solid block hit (water is ignored);
   // t is the distance along the ray. With solidOnly, walk-through blocks (plants, torches) are skipped too.
-  raycast(origin, dir, maxDist, solidOnly = false) {
+  raycast(origin, dir, maxDist, solidOnly = false, liquids = false) {
     let x = Math.floor(origin.x), y = Math.floor(origin.y), z = Math.floor(origin.z);
     const sx = Math.sign(dir.x), sy = Math.sign(dir.y), sz = Math.sign(dir.z);
     const tdx = sx ? Math.abs(1 / dir.x) : Infinity;
@@ -876,7 +964,7 @@ export class World {
     let nx = 0, ny = 0, nz = 0, t = 0;
     while (t <= maxDist) {
       const id = this.get(x, y, z);
-      if (id !== AIR && id !== WATER && (!solidOnly || BLOCKS[id].solid)) return { x, y, z, id, nx, ny, nz, t };
+      if (id !== AIR && (!BLOCKS[id].liquid || (liquids && id === WATER)) && (!solidOnly || BLOCKS[id].solid)) return { x, y, z, id, nx, ny, nz, t };
       if (tmx < tmy && tmx < tmz) { x += sx; t = tmx; tmx += tdx; nx = -sx; ny = 0; nz = 0; }
       else if (tmy < tmz) { y += sy; t = tmy; tmy += tdy; nx = 0; ny = -sy; nz = 0; }
       else { z += sz; t = tmz; tmz += tdz; nx = 0; ny = 0; nz = -sz; }

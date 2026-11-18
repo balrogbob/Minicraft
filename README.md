@@ -43,6 +43,11 @@ It is designed for Android tablets (touch controls) but also plays with keyboard
 - Mining and metalwork: iron, copper, tin, lead, zinc, sulphur, bauxite (aluminium), silver, gold and,
   deep down, tungsten. Smelt ores into ingots and alloys (bronze, aluminium bronze, steel, stainless steel,
   electrum), and make better tools as you go. Each tier of pickaxe opens up the next ores
+- Water power: pour water from a bucket so it runs downhill, and set a **water wheel** in the flow. Shafts
+  and gears carry its turning to a **rock crusher**, which crushes ore into dust that smelts into twice the
+  metal. Gear up for more speed, add wheels for more power, and use stone or stainless steel parts for big
+  networks
+- Gravel (with flint) and clay on lake and sea beds: fire clay bricks, a faster **blast smelter**, flint arrows
 - Torches that light up the area around them with a warm, flickering glow. They stand on floors or hang on walls
 - Synthesised sound effects for digging, breaking, placing, footsteps and splashing, with no audio files
 - Break and place blocks, with break times that depend on the tool you hold
@@ -85,6 +90,7 @@ The version number is shown at the bottom of the ☰ menu; bump `GAME_VERSION` i
 | Eat (or drink a slime bucket) | Tap with food in hand | Right click |
 | Sleep / open a door or curtain / fuel a lamp | Tap it | Right click |
 | Fish (cast / reel in) | Tap with the fishing rod in hand | Right click |
+| Fill a bucket / pour water | Tap still water with an empty bucket / tap a block with a full one | Right click |
 | Shoot the bow | Hold to draw, release to shoot (tap: quick shot) | Hold and release left button (right click: quick shot) |
 | Jump / swim up | ⤒ button (auto-jump also steps up 1-block ledges) | Space |
 | Select item | Tap a hotbar slot | 1–9 / mouse wheel |
@@ -183,7 +189,7 @@ Without a good enough pickaxe an ore breaks slowly and drops nothing.
 | Tin ore | 6–40 | stone | tin ingot |
 | Zinc ore | 6–40 | stone | zinc ingot |
 | Lead ore | 4–34 | stone | lead ingot |
-| Sulphur ore | 2–26 | stone | (drops 1–2 sulphur directly) |
+| Sulphur ore | 2–26 | stone | crush it for 2 sulphur (it can't be smelted) |
 | Iron ore | 4–44 | copper-class | iron ingot |
 | Silver ore | 2–22 | iron-class | silver ingot |
 | Gold ore | 1–16 | iron-class | gold ingot |
@@ -223,9 +229,87 @@ something is cooking, so whatever's left of a piece waits for the next job.
 
 | Station | Makes |
 | --- | --- |
-| Oven (6 cobblestone + 2 sand) | bread, cookies, cake, baked fish (see Food above) |
-| Smelter (8 cobblestone) | cobblestone → stone, sand → glass, log → charcoal, ores → ingots, alloys (see above) |
+| Oven (6 cobblestone + 2 sand) | bread, cookies, cake, baked fish (see Food above), clay ball → brick |
+| Smelter (8 cobblestone) | cobblestone → stone, sand → glass (flint dust + sand → 2 glass), log → charcoal, ores and ore dust → ingots, alloys (see above), clay ball → brick, fire clay → fire brick |
+| Blast smelter (smelter + 8 fire bricks) | everything the smelter does, twice as fast on the same fuel |
+| Rock crusher | see **Water power and the rock crusher** below; no fuel, it's driven by a water wheel |
  The hunger bar holds 20 points (ten loaves).
+
+### Gravel, flint and clay
+
+**Gravel** lies in patches on lake and sea beds and in pockets in the rock; **clay** lies in the shallows.
+Both need a shovel. Gravel sometimes drops **flint** instead (about 1 in 10), and clay breaks into 4
+**clay balls**.
+
+| Recipe | Where | Makes |
+| --- | --- | --- |
+| 3 gravel | 🎒 | 1 flint |
+| 1 flint + 1 stick + 1 feather | crafting table | 4 arrows |
+| 4 clay balls | 🎒 | 1 clay block |
+| 1 clay ball | oven or smelter | 1 brick |
+| 4 bricks | crafting table | 1 bricks block |
+| 2 clay dust + 2 flint dust | 🎒 | 4 fire clay |
+| 1 fire clay | smelter | 1 fire brick |
+| 4 fire bricks | crafting table | 1 fire bricks block |
+| 1 smelter + 8 fire bricks | crafting table | 1 blast smelter |
+| 4 clay dust + 1 water bucket | 🎒 | 4 clay balls (and the bucket back) |
+
+Flint dust and clay dust come from the rock crusher (below).
+
+### Water power and the rock crusher
+
+**Flowing water.** Fill a wooden bucket from still water (the sea refills behind it) and tap a block to
+pour it out. Poured above sea level, it's a source: it falls straight down over edges, and on a floor
+spreads out up to 7 blocks, lower the further it runs. Take the source back up with a bucket and the flow
+drains away. Water at or below sea level just fills the hole, as before.
+
+**Parts** (all at a crafting table):
+
+| Part | Recipe |
+| --- | --- |
+| Water wheel | 8 planks + 4 sticks |
+| Shaft (×4) | 2 planks / 2 stone / 2 stainless steel ingots |
+| Small gear | 1 shaft + 4 planks / stone / stainless steel ingots (same material) |
+| Large gear | 1 small gear + 4 more of the same material |
+| Rock crusher | 3 bronze ingots + 4 cobblestone + 1 wooden large gear + 1 wooden small gear |
+
+**Placing.** A part's axle points out of the face you tap. Tap the side of another part and the new one
+lines up with it instead, so gears sit side by side. A water wheel's axle is always level.
+
+**How they connect:**
+- Shafts, gears and wheels join end to end along their axles.
+- Two small gears side by side (on parallel axles) mesh, at the same speed.
+- A large gear meshes with a small gear set **one block diagonally** from it across the axle. The small
+  gear turns **twice as fast** as the large one; drive the small one and the large one turns at half speed.
+- A shaft, gear or wheel whose axle points into a face of the rock crusher drives it.
+
+**Power.** A water wheel turns at 1x while flowing (not still) water touches it above, below or at the
+sides of its rim, and gives 8 power. The crusher takes 4 power for each 1x of speed. So:
+
+| Setup | Crusher speed | Time per ore |
+| --- | --- | --- |
+| 1 wheel, no gearing (or 2 crushers at 1x) | 1x | 8 s |
+| 1 wheel, geared up once | 2x | 4 s |
+| 2 wheels, geared up twice | 4x | 2 s |
+| 4 wheels, geared up three times | 8x | 1 s |
+
+One network can drive several crushers if there's enough power. Wheels in one network must turn at the
+same speed relative to each other.
+
+**Materials.** Each shaft and gear can carry a limited load: wooden 16, stone 64, stainless steel 256.
+The weakest part sets the limit for its whole network. Too much load (more than the wheels give, or more
+than the weakest part can carry) and the whole network stops. The crusher's panel says why.
+
+**What it crushes** (times at 1x):
+
+| Input | Output |
+| --- | --- |
+| Any metal ore | 2 ore dust (12 s for tungsten), each of which smelts into 1 ingot |
+| Sulphur ore | 2 sulphur |
+| Cobblestone | 1 gravel |
+| Gravel | 1 sand |
+| Flint | 2 flint dust |
+| Brick | 2 clay dust |
 
 ## Code layout
 
@@ -241,7 +325,8 @@ something is cooking, so whatever's left of a piece waits for the next job.
 | `js/mobs.js` | Animals and night creatures: box models, behaviour and hunting, physics, spawning, difficulty |
 | `js/arrows.js` | Arrows and thorns: flight, hits, sticking in blocks, pick-up |
 | `js/fishing.js` | Fishing: the bobber's cast, bites and the line |
-| `js/stations.js` | Ovens and smelters: their contents, fuel, recipes and cooking |
+| `js/stations.js` | Ovens, smelters, blast smelters and rock crushers: their contents, fuel, recipes and cooking |
+| `js/kinetics.js` | Water wheels, shafts and gears: power networks, gear ratios, load, and the turning models |
 | `js/sky.js` | Day/night cycle: sky colour, fog, sun, moon, stars, world brightness |
 | `js/sound.js` | Web Audio sound effects |
 | `js/controls.js` | Touch joystick / look / tap / hold, plus desktop input |
