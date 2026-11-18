@@ -123,6 +123,8 @@ export const T = {
   HIVE_SIDE: 150, HIVE_TOP: 151, HIVE_FRONT: 152, HIVE_FULL: 153, BELL: 154,
   ALTAR_TOP: 155, ALTAR_SIDE: 156, TOMB_SHRINE: 157, CRYPT_SHRINE: 158, FORT_SHRINE: 159, SHRINE_GLYPH: 160,
   DART_FRONT: 161, TRAP_PLATE: 162, FROST_BRICKS: 163, FORT_BRICKS: 164, CUT_SANDSTONE: 165,
+  OBSERVER_FACE: 166, OBSERVER_FACE_ON: 167, OBSERVER_SIDE: 168, GAUGE_FACE: 169, GAUGE_FACE_ON: 170, HARVESTER_FRONT: 171,
+  ENGINE_SIDE: 172, ENGINE_FRONT: 173, ENGINE_FRONT_ON: 174, ENGINE_TOP: 175,
 };
 
 // Ores, deepest-reaching last. tier: the pickaxe tier needed to mine it (see TOOL_TIERS);
@@ -214,6 +216,7 @@ function block(id, o) {
     water: o.water ?? 0, // a cauldron's water level (0..3)
     hive: o.hive ?? -1, bell: !!o.bell, // a bee hive's honey level; the bell in the middle of a village
     lair: !!o.lair, trap: !!o.trap, dart: !!o.dart, // lair shrines and a tomb's traps
+    sensor: o.sensor ?? null, harvester: !!o.harvester, engine: !!o.engine, // automation (see machines.js)
   };
 }
 
@@ -1322,4 +1325,70 @@ export const hasEnch = (slot, e) => !!slot?.ench?.includes(e);
 RECIPES.push(
   { out: [ENCHANT_ALTAR, 1], in: [[OBSIDIAN, 4], [CRYSTAL_SHARD, 4], [GOLD_INGOT, 1]], table: true, metal: GOLD_INGOT },
   { out: [CUT_SANDSTONE, 4], in: [[SANDSTONE, 4]], table: true },
+);
+
+// ---------- more automation: observers, gauges, harvesters, steam engines and switch rails ----------
+// An observer watches the block in front of it and gives a short pulse of signal (like a button) when
+// that block changes. A storage gauge reads the chest, machine or cauldron in front of it and gives a
+// steady signal while it holds anything (or, tapped to change it, only while it's full). Both are
+// switches, so they work doors, clutches, powered rails and switch rails; the signal also passes through
+// the block behind them.
+export const OBSERVER = 645, // 645..652: + facing (the way it looks) + 4 while signalling
+  GAUGE = 653, // 653..660: + facing + 4 while signalling
+  HARVESTER = 661, // 661..664: + facing (the way it reaps)
+  STEAM_ENGINE = 665, // 665..672: + facing (its firebox door) + 4 while it's burning
+  SWITCH_RAIL = 673; // 673..688: see switchRailId
+const sensorBase = { hardness: 1.5, tool: 'pick', sound: 'stone', side: T.OBSERVER_SIDE, top: T.OBSERVER_SIDE, bottom: T.OBSERVER_SIDE };
+for (let k = 0; k < 8; k++) {
+  const f = k & 3, on = k >= 4;
+  block(OBSERVER + k, {
+    ...sensorBase, name: 'Observer', front: on ? T.OBSERVER_FACE_ON : T.OBSERVER_FACE, facing: f, switch: 'observer', on, sensor: 'observer',
+    variantOf: k ? OBSERVER : 0, drop: OBSERVER,
+  });
+  block(GAUGE + k, {
+    ...sensorBase, name: 'Storage Gauge', front: on ? T.GAUGE_FACE_ON : T.GAUGE_FACE, facing: f, switch: 'gauge', on, sensor: 'gauge',
+    variantOf: k ? GAUGE : 0, drop: GAUGE, light: on ? 4 : 0,
+  });
+}
+// A harvester, driven by a shaft, reaps ripe crops (wheat, berries, sugar cane) in the 5 x 5 patch in
+// front of it, replants them, and passes the harvest to whatever is behind it, like a drill.
+for (let f = 0; f < 4; f++) {
+  block(HARVESTER + f, {
+    hardness: 2.5, tool: 'pick', sound: 'stone', name: 'Harvester', side: T.DRILL_SIDE, top: T.DRILL_SIDE, bottom: T.DRILL_SIDE,
+    front: T.HARVESTER_FRONT, facing: f, harvester: true, machine: { load: 3 }, variantOf: f ? HARVESTER : 0, drop: HARVESTER,
+  });
+}
+// A steam engine: a boiler that burns coal (or any fuel) put into it by hand or by a hopper, and turns
+// every shaft or gear that points into it, like a gearbox, with more power than a water wheel. It needs
+// water beside it (a cauldron with water in it will do).
+export const ENGINE_POWER = 16;
+for (let k = 0; k < 8; k++) {
+  const f = k & 3, on = k >= 4;
+  block(STEAM_ENGINE + k, {
+    hardness: 3, tool: 'pick', needsTool: true, sound: 'stone', name: 'Steam Engine', side: T.ENGINE_SIDE, top: T.ENGINE_TOP, bottom: T.ENGINE_SIDE,
+    front: on ? T.ENGINE_FRONT_ON : T.ENGINE_FRONT, facing: f, engine: true, lit: on, light: on ? 10 : 0,
+    kinetic: { part: 'engine', mat: 1, axis: -1 }, variantOf: k ? STEAM_ENGINE : 0, drop: STEAM_ENGINE,
+  });
+}
+// A switch rail joins a branch line to a straight one. It runs straight until it gets a signal (a lever
+// beside it, an observer, a gauge...), then switches carts onto the branch. Carts coming in off either
+// line always run on to the shared end (the stem).
+export const switchRailId = (stem, branch, curved) => SWITCH_RAIL + ((stem * 2 + (branch === (stem + 1) % 4 ? 0 : 1)) * 2) + (curved ? 1 : 0);
+for (let k = 0; k < 16; k++) {
+  const stem = k >> 2, branch = (k >> 1) & 1 ? (stem + 3) % 4 : (stem + 1) % 4, curved = !!(k & 1), straight = (stem + 2) % 4;
+  const [bx, bz] = FACING_DIRS[curved ? straight : branch];
+  block(SWITCH_RAIL + k, {
+    name: 'Switch Rail', sound: 'stone', transparent: true, solid: false, hardness: 0.7, tool: 'pick',
+    // the rail it's set to, and a little red lamp toward the end that's switched off
+    model: [...railModel({ ends: [stem, curved ? branch : straight] }), [7 + bx * 6, 0, 7 + bz * 6, 9 + bx * 6, 2, 9 + bz * 6, T.GOLD]],
+    rail: { ends: [stem, curved ? branch : straight], slope: -1, powered: false, junction: { stem, straight, branch, curved }, all: [stem, straight, branch] },
+    variantOf: k ? SWITCH_RAIL : 0, drop: SWITCH_RAIL,
+  });
+}
+RECIPES.push(
+  { out: [OBSERVER, 1], in: [[COBBLE, 6], [CRYSTAL_SHARD, 1], [IRON_INGOT, 1]], table: true, metal: IRON_INGOT },
+  { out: [GAUGE, 1], in: [[COBBLE, 4], [COPPER_INGOT, 2], [GLASS, 1]], table: true, metal: COPPER_INGOT },
+  { out: [HARVESTER, 1], in: [[STEEL_INGOT, 2], [IRON_INGOT, 3], [kineticId('gear', 1), 1]], table: true, metal: STEEL_INGOT },
+  { out: [STEAM_ENGINE, 1], in: [[IRON_INGOT, 6], [COPPER_INGOT, 4], [BRICKS, 4], [kineticId('gear', 1), 1]], table: true, metal: IRON_INGOT },
+  { out: [SWITCH_RAIL, 1], in: [[RAIL, 3], [LEVER, 1]], table: true, metal: IRON_INGOT },
 );

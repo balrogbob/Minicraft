@@ -11,12 +11,17 @@
 //    output) and passes it on to the chest, machine, hopper or belt it points at. Pointing down into a
 //    machine it fills the ingredients; from the side it fills the fuel slot (if it's fuel).
 //  - A conveyor belt, while driven, carries things along to whatever its end points at.
+//  - A pump beside lava pumps lava instead; a spout over a cauldron fills it with water.
+//  - A harvester reaps the ripe crops in front of it and passes them back, like a drill.
+//  - A steam engine burns the fuel put into it while there's water beside it, and drives shafts.
+//  - Observers and storage gauges watch the block in front of them and switch on (see onSwitch).
 import * as THREE from 'three';
 import {
-  BLOCKS, AIR, WATER, PIPE, PUMP, SPOUT, DRILL, FILAMENT_LAMP, BELT, FACING_DIRS, TOOL_MATERIALS,
-  metalTool, maxStack, dropsFor, isFlowing, stationKind,
+  BLOCKS, AIR, WATER, LAVA, PIPE, PUMP, SPOUT, DRILL, FILAMENT_LAMP, BELT, FACING_DIRS, TOOL_MATERIALS,
+  metalTool, maxStack, dropsFor, isFlowing, stationKind, CAULDRON, WHEAT_0, WHEAT_3, SEEDS, BERRY_BUSH, BERRIES, SUGAR_CANE,
+  STEAM_ENGINE, MAX_HONEY,
 } from './blocks.js';
-import { STATION_KINDS, isFuel } from './stations.js';
+import { STATION_KINDS, isFuel, FUEL_ITEMS } from './stations.js';
 import { CHUNK } from './terrain.js';
 import { skyBrightness, lightBrightness } from './world.js';
 
@@ -28,6 +33,9 @@ const TUNGSTEN_PICK = metalTool(TOOL_MATERIALS.findIndex((m) => m.key === 'tungs
 const BELT_SPEED = 1.5; // blocks a second at 1x
 const BELT_GAP = 0.3; // spacing between things on a belt
 const HOPPER_EVERY = 0.4; // seconds between items a hopper moves
+const HARVEST_TIME = 1.5; // seconds a harvester takes over each crop at 1x
+const ENGINE_BURN = 30; // seconds a steam engine runs on one "item" of fuel (a coal runs it for 5 minutes)
+const PULSE = 0.4; // seconds an observer's signal lasts
 
 // The way a drill, hopper or belt points: [dx, dy, dz].
 export function pointing(def) {
@@ -55,8 +63,14 @@ export class Machines {
     this.scene = scene;
     this.icons = icons;
     this.belts = new Map(); // "x,y,z" -> [{ id, t, sprite }], front first (t from 0 at the start to 1 at the end)
-    this.spoutWater = new Set(); // cells holding water poured by a spout
-    this.drills = new Map(); // "x,y,z" -> { progress, target: "x,y,z", held: [[id, n]], status }
+    this.spoutWater = new Map(); // cells holding water (or lava) poured by a spout -> which
+    this.drills = new Map(); // "x,y,z" -> { progress, target: "x,y,z", held: [[id, n]], status } (harvesters too)
+    this.engines = new Map(); // "x,y,z" -> { burn: seconds left, fuel: { id, count } | null }
+    this.seen = new Map(); // observer "x,y,z" -> the block it last saw in front of it
+    this.pulses = new Map(); // observer "x,y,z" -> seconds left of its signal
+    this.gaugeFull = new Set(); // gauges set to signal only when what they watch is full
+    this.sensorTimer = 0;
+    this.world = null;
     this.hopperTimer = 0;
     this.pumpTimer = 0;
     this.textures = new Map();
@@ -67,6 +81,10 @@ export class Machines {
     this.belts.clear();
     this.spoutWater.clear();
     this.drills.clear();
+    this.engines.clear();
+    this.seen.clear();
+    this.pulses.clear();
+    this.gaugeFull.clear();
   }
 
   // ---------- putting things into blocks ----------
@@ -103,6 +121,14 @@ export class Machines {
       if (filter?.length && !filter.includes(id)) return 0;
       const [dx, dy, dz] = pointing(def);
       return this.insert(world, stations, x + dx, y + dy, z + dz, id, n, !def.down, depth + 1);
+    }
+    if (def.engine) {
+      if (!isFuel(id)) return 0;
+      const e = this.engine(x, y, z);
+      if (e.fuel && e.fuel.id !== id) return 0;
+      const k = Math.min(n, maxStack(id) - (e.fuel?.count ?? 0));
+      if (k > 0) e.fuel = { id, count: (e.fuel?.count ?? 0) + k };
+      return Math.max(0, k);
     }
     if (def.belt) {
       const items = this.belts.get(key(x, y, z)) ?? [];
@@ -147,7 +173,8 @@ export class Machines {
 
   tick(dt, world, kinetics, stations, light) {
     // gather the machines in the loaded world
-    const pumps = [], drills = [], lamps = [], hoppers = [];
+    this.world = world;
+    const pumps = [], drills = [], lamps = [], hoppers = [], sensors = [], harvesters = [], engines = [];
     for (const c of world.chunks.values()) {
       for (const li of c.machines) {
         const id = c.data[li], def = BLOCKS[id];
@@ -156,6 +183,9 @@ export class Machines {
         else if (def.machine && id >= DRILL && id <= DRILL + 4) drills.push([x, y, z, def]);
         else if (id === FILAMENT_LAMP || id === FILAMENT_LAMP + 1) lamps.push([x, y, z, id]);
         else if (def.hopper) hoppers.push([x, y, z, def]);
+        else if (def.sensor) sensors.push([x, y, z, def]);
+        else if (def.harvester) harvesters.push([x, y, z, def]);
+        else if (def.engine) engines.push([x, y, z, def]);
       }
     }
     for (const [x, y, z, id] of lamps) {
@@ -164,6 +194,9 @@ export class Machines {
     }
     if ((this.pumpTimer -= dt) <= 0) { this.pumpTimer = 0.5; this.tickPumps(world, kinetics, pumps); }
     for (const d of drills) this.tickDrill(dt, world, kinetics, stations, d);
+    for (const h of harvesters) this.tickHarvester(dt, world, kinetics, stations, h);
+    for (const e of engines) this.tickEngine(dt, world, e);
+    this.tickSensors(dt, world, stations, sensors);
     if ((this.hopperTimer -= dt) <= 0) {
       this.hopperTimer = HOPPER_EVERY;
       for (const [x, y, z, def] of hoppers) {
@@ -178,10 +211,12 @@ export class Machines {
   }
 
   tickPumps(world, kinetics, pumps) {
-    const active = new Set();
+    const active = new Map(); // cell below a spout -> WATER or LAVA
     for (const [x, y, z] of pumps) {
       if (kinetics.powerAt(x, y, z) <= 0) continue;
-      if (!SIDES6.some(([dx, dy, dz]) => world.get(x + dx, y + dy, z + dz) === WATER)) continue;
+      const near = SIDES6.map(([dx, dy, dz]) => world.get(x + dx, y + dy, z + dz));
+      const liquid = near.includes(WATER) ? WATER : near.includes(LAVA) ? LAVA : 0;
+      if (!liquid) continue;
       // follow the pipes from the pump; spouts touching any of them pour
       const seen = new Set([key(x, y, z)]);
       const queue = [[x, y, z]];
@@ -191,22 +226,24 @@ export class Machines {
           const nx = px + dx, ny = py + dy, nz = pz + dz, k = key(nx, ny, nz);
           if (seen.has(k)) continue;
           const id = world.get(nx, ny, nz);
-          if (id === PIPE) { seen.add(k); queue.push([nx, ny, nz]); } else if (id === SPOUT) { seen.add(k); active.add(key(nx, ny - 1, nz)); }
+          if (id === PIPE) { seen.add(k); queue.push([nx, ny, nz]); } else if (id === SPOUT) { seen.add(k); if (!active.has(key(nx, ny - 1, nz))) active.set(key(nx, ny - 1, nz), liquid); }
         }
       }
     }
-    for (const k of active) {
+    for (const [k, liquid] of active) {
       const [x, y, z] = unkey(k);
-      const id = world.get(x, y, z);
-      if (id === AIR || isFlowing(id)) world.setBlock(x, y, z, WATER);
-      if (world.get(x, y, z) === WATER) this.spoutWater.add(k);
+      const id = world.get(x, y, z), def = BLOCKS[id];
+      // a cauldron under a water spout fills up, a level at a time
+      if (def?.stationBase === CAULDRON) { if (liquid === WATER && def.water < 3) world.setBlock(x, y, z, CAULDRON + def.water + 1); continue; }
+      if (id === AIR || isFlowing(id)) world.setBlock(x, y, z, liquid);
+      if (world.get(x, y, z) === liquid) this.spoutWater.set(k, liquid);
     }
-    // spouts that stopped: their water is drawn back
-    for (const k of this.spoutWater) {
-      if (active.has(k)) continue;
+    // spouts that stopped: what they poured is drawn back
+    for (const [k, liquid] of this.spoutWater) {
+      if (active.get(k) === liquid) continue;
       const [x, y, z] = unkey(k);
       if (!world.chunkAt(x, z)) continue;
-      if (world.get(x, y, z) === WATER) world.setBlock(x, y, z, AIR);
+      if (world.get(x, y, z) === liquid) world.setBlock(x, y, z, AIR);
       this.spoutWater.delete(k);
     }
   }
@@ -249,6 +286,146 @@ export class Machines {
     d.progress = 0;
     d.held.push(...dropsFor(id, TUNGSTEN_PICK).map(([i, n]) => [i, n]));
     world.setBlock(tx, ty, tz, AIR);
+  }
+
+  // ---------- harvesters ----------
+
+  // A ripe crop at (x, y, z): what reaping it gives, and what's left growing. Or null.
+  reap(world, x, y, z) {
+    const id = world.get(x, y, z);
+    if (id === WHEAT_3) {
+      const drops = dropsFor(id).map(([i, n]) => [i, i === SEEDS ? n - 1 : n]).filter(([, n]) => n > 0); // one seed is replanted
+      return { drops, after: WHEAT_0 };
+    }
+    if (id === BERRY_BUSH + 1) return { drops: [[BERRIES, 2]], after: BERRY_BUSH };
+    if (id === SUGAR_CANE && world.get(x, y - 1, z) === SUGAR_CANE && world.get(x, y + 1, z) !== SUGAR_CANE) return { drops: [[SUGAR_CANE, 1]], after: AIR };
+    return null;
+  }
+
+  tickHarvester(dt, world, kinetics, stations, [x, y, z, def]) {
+    const k = key(x, y, z);
+    let d = this.drills.get(k);
+    if (!d) { d = { progress: 0, target: '', held: [], status: '' }; this.drills.set(k, d); }
+    const [dx, , dz] = pointing(def);
+    if (d.held.length) {
+      const [id, n] = d.held[0];
+      const put = this.insert(world, stations, x - dx, y, z - dz, id, n, false);
+      if (put >= n) d.held.shift(); else d.held[0][1] = n - put;
+      if (d.held.length) { d.status = 'Stopped: there\'s nowhere behind it to put the harvest'; return; }
+      d.status = 'Harvesting';
+    }
+    const speed = kinetics.powerAt(x, y, z);
+    if (speed <= 0) { d.status = 'Not turning'; d.progress = 0; return; }
+    d.progress += dt * speed;
+    if (d.progress < HARVEST_TIME) return;
+    d.progress = 0;
+    // the 5 x 5 patch in front of it, nearest rows first, at its own level and one above or below
+    const [sx, sz] = [-dz, dx]; // sideways
+    for (let row = 1; row <= 5; row++) for (const side of [0, -1, 1, -2, 2]) for (const dy of [0, 1, -1, 2]) {
+      const cx = x + dx * row + sx * side, cz = z + dz * row + sz * side, cy = y + dy;
+      const r = this.reap(world, cx, cy, cz);
+      if (!r) continue;
+      world.setBlock(cx, cy, cz, r.after);
+      d.held.push(...r.drops);
+      d.status = 'Harvesting';
+      return;
+    }
+    d.status = 'Waiting for something to ripen';
+  }
+
+  // ---------- steam engines ----------
+
+  engine(x, y, z) {
+    const k = key(x, y, z);
+    let e = this.engines.get(k);
+    if (!e) { e = { burn: 0, fuel: null }; this.engines.set(k, e); }
+    return e;
+  }
+
+  hasWater(world, x, y, z) {
+    return SIDES6.some(([dx, dy, dz]) => {
+      const id = world.get(x + dx, y + dy, z + dz);
+      return id === WATER || isFlowing(id) || BLOCKS[id]?.water > 0;
+    });
+  }
+
+  // Is the steam engine at (x, y, z) giving power? (for kinetics)
+  engineOn(x, y, z) { return !!BLOCKS[this.world?.get(x, y, z)]?.lit; }
+
+  engineStatus(x, y, z) {
+    const e = this.engines.get(key(x, y, z));
+    if (!this.world || !this.hasWater(this.world, x, y, z)) return 'Dry: it needs water beside it (or a cauldron of water)';
+    if (!e?.fuel && !(e?.burn > 0)) return 'Cold: put coal or wood in it (by hand or with a hopper)';
+    return 'Getting up steam...';
+  }
+
+  tickEngine(dt, world, [x, y, z, def]) {
+    const e = this.engine(x, y, z);
+    const water = this.hasWater(world, x, y, z);
+    if (water && e.burn <= 0 && e.fuel) {
+      e.burn += (FUEL_ITEMS[e.fuel.id] ?? 1) * ENGINE_BURN;
+      if (!--e.fuel.count) e.fuel = null;
+    }
+    const on = water && e.burn > 0;
+    if (on) e.burn = Math.max(0, e.burn - dt);
+    if (on !== def.lit) world.setBlock(x, y, z, STEAM_ENGINE + def.facing + (on ? 4 : 0));
+  }
+
+  // What's in a steam engine, for a toast.
+  engineText(x, y, z) {
+    const e = this.engines.get(key(x, y, z));
+    const mins = Math.ceil((e?.burn ?? 0) / 60);
+    return `${e?.fuel ? `${e.fuel.count} fuel in the firebox` : 'No fuel in the firebox'}${e?.burn > 0 ? `, ${mins} minute${mins > 1 ? 's' : ''} of steam left` : ''}`;
+  }
+
+  // ---------- observers and gauges ----------
+
+  // Does the block at (x, y, z) hold anything (or, `full`, is it full)?
+  holds(world, stations, x, y, z, full) {
+    const id = world.get(x, y, z), def = BLOCKS[id];
+    if (!def) return false;
+    if (def.stationBase === CAULDRON) return full ? def.water >= 3 : def.water > 0;
+    if (def.hive >= 0) return full ? def.hive >= MAX_HONEY : def.hive > 0;
+    if (def.engine) { const e = this.engines.get(key(x, y, z)); return full ? (e?.fuel?.count ?? 0) >= maxStack(e?.fuel?.id ?? 0) : !!e?.fuel; }
+    if (def.rail?.loader) {
+      const cart = this.carts?.storageAt(x, y, z);
+      return !!cart && (full ? cart.store.inputs.every((s) => s && s.count >= maxStack(s.id)) : cart.store.inputs.some(Boolean));
+    }
+    const kind = stationKind(id);
+    if (!kind) return false;
+    const st = stations.get(x, y, z, kind);
+    const slots = [...st.inputs, ...(STATION_KINDS[kind].storage ? [] : [st.out])];
+    return full ? st.inputs.every((s) => s && s.count >= maxStack(s.id)) : slots.some(Boolean);
+  }
+
+  tickSensors(dt, world, stations, sensors) {
+    for (const [k, t] of this.pulses) {
+      if (t - dt > 0) { this.pulses.set(k, t - dt); continue; }
+      this.pulses.delete(k);
+      const [x, y, z] = unkey(k);
+      if (BLOCKS[world.get(x, y, z)]?.sensor === 'observer') this.onSwitch?.(x, y, z, false);
+    }
+    if ((this.sensorTimer -= dt) > 0) return;
+    this.sensorTimer = 0.1;
+    for (const [x, y, z, def] of sensors) {
+      const [dx, dz] = FACING_DIRS[def.facing];
+      const fx = x + dx, fz = z + dz, k = key(x, y, z);
+      if (def.sensor === 'observer') {
+        const now = world.get(fx, y, fz), was = this.seen.get(k);
+        this.seen.set(k, now);
+        if (was !== undefined && was !== now && !this.pulses.has(k)) { this.pulses.set(k, PULSE); this.onSwitch?.(x, y, z, true); }
+      } else {
+        const want = this.holds(world, stations, fx, y, fz, this.gaugeFull.has(k));
+        if (want !== def.on) this.onSwitch?.(x, y, z, want);
+      }
+    }
+  }
+
+  // Tapping a gauge switches it between "anything in it" and "full".
+  toggleGauge(x, y, z) {
+    const k = key(x, y, z);
+    if (this.gaugeFull.has(k)) this.gaugeFull.delete(k); else this.gaugeFull.add(k);
+    return this.gaugeFull.has(k);
   }
 
   tickBelts(dt, world, kinetics, stations, light) {
@@ -318,6 +495,11 @@ export class Machines {
     this.belts.delete(k);
     for (const [id, n] of this.drills.get(k)?.held ?? []) out.push([id, n]);
     this.drills.delete(k);
+    const e = this.engines.get(k);
+    if (e?.fuel) out.push([e.fuel.id, e.fuel.count]);
+    this.engines.delete(k);
+    this.gaugeFull.delete(k);
+    this.seen.delete(k);
     return out;
   }
 
@@ -327,8 +509,10 @@ export class Machines {
   serialize() {
     return {
       belts: [...this.belts].map(([k, items]) => [k, items.map((it) => [it.id, it.t])]),
-      spoutWater: [...this.spoutWater],
+      spoutWater: [...this.spoutWater].map(([k, l]) => (l === WATER ? k : [k, l])),
       drills: [...this.drills].filter(([, d]) => d.held.length).map(([k, d]) => [k, d.held]),
+      engines: [...this.engines].filter(([, e]) => e.fuel || e.burn > 0).map(([k, e]) => [k, +e.burn.toFixed(1), e.fuel ? [e.fuel.id, e.fuel.count] : 0]),
+      gaugeFull: [...this.gaugeFull],
     };
   }
 
@@ -337,7 +521,15 @@ export class Machines {
     for (const [k, items] of o?.belts ?? []) {
       if (typeof k === 'string' && Array.isArray(items)) this.belts.set(k, items.filter((it) => it?.[0] > 0).map(([id, t]) => ({ id, t: Math.min(1, Math.max(0, +t || 0)), sprite: null })));
     }
-    for (const k of o?.spoutWater ?? []) if (typeof k === 'string') this.spoutWater.add(k);
+    for (const k of o?.spoutWater ?? []) {
+      if (typeof k === 'string') this.spoutWater.set(k, WATER);
+      else if (Array.isArray(k) && typeof k[0] === 'string' && (k[1] === WATER || k[1] === LAVA)) this.spoutWater.set(k[0], k[1]);
+    }
+    for (const [k, burn, fuel] of o?.engines ?? []) {
+      if (typeof k !== 'string') continue;
+      this.engines.set(k, { burn: Math.max(0, +burn || 0), fuel: Array.isArray(fuel) && fuel[0] > 0 && fuel[1] > 0 ? { id: fuel[0], count: fuel[1] } : null });
+    }
+    for (const k of o?.gaugeFull ?? []) if (typeof k === 'string') this.gaugeFull.add(k);
     for (const [k, held] of o?.drills ?? []) {
       if (typeof k === 'string' && Array.isArray(held)) this.drills.set(k, { progress: 0, target: '', held: held.filter((h) => h?.[0] > 0 && h[1] > 0), status: '' });
     }

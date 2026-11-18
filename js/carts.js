@@ -30,12 +30,12 @@ function railPoint(r, d) {
 // up or down a block through a slope.
 export function railBeyond(world, x, y, z, d) {
   const r = railAt(world, x, y, z);
-  if (!r || !r.ends.includes(d)) return null;
+  if (!r || !(r.all ?? r.ends).includes(d)) return null;
   const [dx, dz] = FACING_DIRS[d];
   const up = r.slope === d ? 1 : 0;
   const nx = x + dx, nz = z + dz;
   const flat = railAt(world, nx, y + up, nz);
-  if (flat && flat.ends.includes(OPP(d))) return [nx, y + up, nz];
+  if (flat && (flat.all ?? flat.ends).includes(OPP(d))) return [nx, y + up, nz]; // (a switch rail joins all three ways)
   const below = railAt(world, nx, y + up - 1, nz);
   if (below && below.slope === OPP(d)) return [nx, y + up - 1, nz];
   return null;
@@ -122,7 +122,9 @@ export class Carts {
     for (const c of this.carts) {
       if (!world.chunkAt(c.x, c.z)) continue;
       let r = railAt(world, c.x, c.y, c.z);
-      if (r && !r.ends.includes(c.to)) { c.from = r.ends[0]; c.to = r.ends[1]; } // its rail was reshaped
+      if (r?.junction && c.from === r.junction.stem) c.to = r.ends[1]; // a switch rail was switched under it
+      else if (r?.junction && !r.all.includes(c.to)) c.to = r.ends[0];
+      else if (r && !r.junction && !r.ends.includes(c.to)) { c.from = r.ends[0]; c.to = r.ends[1]; } // its rail was reshaped
       if (!r) { c.speed = 0; this.light(c, world, light); continue; } // off the rails: it just sits there
       // pushing and braking from inside
       if (rider?.cart === c) {

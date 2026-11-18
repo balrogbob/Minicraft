@@ -12,7 +12,7 @@ import {
   PLATE_METALS, PLATES,
   PIPE, SPOUT, BELT, HOPPER, WINDMILL, FILAMENT, DRILL_BIT,
   RAIL, POWERED_RAIL, CACTUS, MINECART, MAP, PAPER,
-  COLORS, DYE, CLUTCH, STORAGE_CART, LOADER_RAIL,
+  COLORS, DYE, CLUTCH, STORAGE_CART, LOADER_RAIL, SWITCH_RAIL,
   BERRIES, GLASS_BOTTLE, NIGHT_TEA, HASTE_TEA, FIRE_TEA, HEAL_TEA, WOOD_SHIELD, IRON_SHIELD, KING_CROWN,
   SUN_SCARAB, FROST_HEART, EMBER_CORE, SUN_MASK, FROST_CIRCLET, EMBER_CROWN, HONEY_TEA, MUSHROOM_STEW, FISH_PIE,
   CRYSTAL_SHARD, HONEY_BOTTLE, HONEYCOMB, SALMON, BAKED_SALMON, ICEFISH, BAKED_ICEFISH, PUFFERFISH, OLD_BOOT,
@@ -756,6 +756,58 @@ P[T.SHRINE_GLYPH] = (t) => {
     if (d < 5 && (Math.abs(x - 7.5) < 1 || Math.abs(y - 7.5) < 1 || Math.abs(d - 4) < 0.6)) t.set(x, y, [250, 236, 200]);
   }
 };
+
+// automation: an observer's stone face with a slit eye (red while it signals); a gauge's dial;
+// a harvester's blades; a steam engine's riveted boiler with its firebox door
+P[T.OBSERVER_SIDE] = (t) => {
+  for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) t.set(x, y, t.vary([112, 112, 116], 0.06));
+  frame(t, [78, 78, 84], 1);
+  for (let x = 3; x < 13; x++) t.set(x, 7, [90, 90, 96]);
+};
+const observerFace = (on) => (t) => {
+  P[T.OBSERVER_SIDE](t);
+  for (let y = 5; y < 11; y++) for (let x = 2; x < 14; x++) t.set(x, y, [40, 40, 46]);
+  for (let x = 4; x < 12; x++) t.set(x, 7, on ? [255, 70, 50] : [150, 150, 160]), t.set(x, 8, on ? [200, 40, 30] : [110, 110, 120]);
+};
+P[T.OBSERVER_FACE] = observerFace(false);
+P[T.OBSERVER_FACE_ON] = observerFace(true);
+const gaugeFace = (on) => (t) => {
+  P[T.OBSERVER_SIDE](t);
+  for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+    const d = Math.hypot(x - 7.5, y - 8.5);
+    if (d < 5.5) t.set(x, y, d > 4.6 ? [184, 116, 64] : [232, 226, 206]);
+  }
+  // the needle: down to the left when empty, swung up to the right when it signals
+  for (let i = 0; i < 4; i++) t.set(Math.round(7.5 + (on ? 1 : -1) * i * 0.8), Math.round(8.5 - i * (on ? 0.9 : -0.3)), on ? [220, 40, 30] : [40, 40, 50]);
+  t.set(7, 8, [40, 40, 50]);
+};
+P[T.GAUGE_FACE] = gaugeFace(false);
+P[T.GAUGE_FACE_ON] = gaugeFace(true);
+P[T.HARVESTER_FRONT] = (t) => {
+  P[T.DRILL_SIDE](t);
+  for (let y = 2; y < 14; y += 4) for (let x = 1; x < 15; x++) {
+    t.set(x, y, [210, 214, 222]); t.set(x, y + 1, x % 3 ? [150, 154, 164] : [96, 100, 110]);
+  }
+};
+P[T.ENGINE_SIDE] = (t) => {
+  for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) t.set(x, y, t.vary(shade([176, 104, 60], 0.85 + 0.15 * Math.sin(y * 0.9)), 0.04));
+  for (const y of [1, 14]) for (let x = 1; x < 15; x += 3) t.set(x, y, [230, 190, 120]);
+  for (const x of [0, 15]) for (let y = 0; y < TILE; y++) t.set(x, y, [70, 70, 76]);
+};
+P[T.ENGINE_TOP] = (t) => {
+  P[T.ENGINE_SIDE](t);
+  for (let y = 5; y < 11; y++) for (let x = 5; x < 11; x++) t.set(x, y, Math.hypot(x - 7.5, y - 7.5) < 2 ? [30, 30, 34] : [90, 92, 100]); // the chimney
+};
+const engineFront = (on) => (t) => {
+  P[T.ENGINE_SIDE](t);
+  for (let y = 6; y < 13; y++) for (let x = 3; x < 13; x++) {
+    const edge = y === 6 || y === 12 || x === 3 || x === 12;
+    t.set(x, y, edge ? [50, 50, 56] : on ? ((x + y) % 3 ? [255, 150, 40] : [255, 220, 90]) : [34, 30, 30]);
+  }
+  for (const [x, y] of [[5, 3], [10, 3]]) t.set(x, y, [210, 210, 220]); // gauges
+};
+P[T.ENGINE_FRONT] = engineFront(false);
+P[T.ENGINE_FRONT_ON] = engineFront(true);
 
 // A plank door: a frame with a centre board; the upper half has a four-pane window you can see through,
 // the lower half has the handle.
@@ -1599,6 +1651,10 @@ ITEM_PAINTERS[CLUTCH] = (ctx) => {
 ITEM_PAINTERS[STORAGE_CART] = (ctx) => {
   ITEM_PAINTERS[MINECART](ctx);
   rect(ctx, 3, 1, 10, 6, [122, 82, 48]); rect(ctx, 3, 1, 10, 1, [92, 60, 34]); rect(ctx, 7, 3, 2, 2, [160, 164, 172]);
+};
+ITEM_PAINTERS[SWITCH_RAIL] = (ctx) => {
+  railIcon([150, 154, 162])(ctx);
+  rect(ctx, 11, 6, 5, 2, [150, 154, 162]); rect(ctx, 12, 9, 4, 2, [150, 154, 162]); rect(ctx, 6, 6, 3, 3, [210, 40, 30]);
 };
 ITEM_PAINTERS[LOADER_RAIL] = (ctx) => { railIcon([150, 154, 162])(ctx); rect(ctx, 5, 5, 6, 6, IRON_C); rect(ctx, 6, 6, 4, 4, [70, 72, 80]); };
 

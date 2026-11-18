@@ -17,7 +17,7 @@
 // and the whole network stops.
 import * as THREE from 'three';
 import {
-  BLOCKS, KINETIC_MATS, WHEEL_POWER, isFlowing, T, AIR,
+  BLOCKS, KINETIC_MATS, WHEEL_POWER, ENGINE_POWER, isFlowing, T, AIR,
 } from './blocks.js';
 import { TILE, ATLAS_COLS } from './textures.js';
 import { CHUNK, SEA_LEVEL } from './terrain.js';
@@ -63,6 +63,7 @@ export class Kinetics {
     if (n && n.part !== 'machine' && n.net != null) {
       const net = this.nets[n.net];
       if (n.part === 'windmill') return n.power ? `Windmill: ${fmt(n.power)} power at this height` : 'Becalmed: the sails need clear space all round';
+      if (n.part === 'engine' && !n.power) return this.engineStatus?.(n.x, n.y, n.z) ?? 'Cold: put fuel in it';
       return net.status || `Turning at ${fmt(Math.abs(n.speed))}x · load ${fmt(net.load)} of ${fmt(net.power)} power`;
     }
     if (!n || n.net == null) return 'Not connected: turn a shaft or gear against any face';
@@ -89,15 +90,17 @@ export class Kinetics {
     // the parts a part turns, with the speed ratio (sign: which way round)
     // a clutch only passes power on while it's switched on
     for (const n of nodes.values()) if (n.part === 'clutch') n.engaged = !!this.signalAt?.(n.x, n.y, n.z);
+    // a steam engine is a hub like a gearbox: every face drives a shaft or gear pointing into it
+    const hub = (m) => m.part === 'gearbox' || m.part === 'engine';
     const open = (m) => m && m.part !== 'machine' && !(m.part === 'clutch' && !m.engaged);
     const links = (n) => {
       const out = [];
       if (n.part === 'clutch' && !n.engaged) return out;
-      if (n.part === 'gearbox') {
+      if (hub(n)) {
         // every face of a gearbox is the end of an axle: it turns whatever shaft or gear points into it
         for (let a = 0; a < 3; a++) for (const s of [1, -1]) {
           const m = at(n.x + UNIT[a][0] * s, n.y + UNIT[a][1] * s, n.z + UNIT[a][2] * s);
-          if (open(m) && (m.axis === a || m.part === 'gearbox')) out.push([m, 1, null, true]);
+          if (open(m) && (m.axis === a || hub(m))) out.push([m, 1, null, true]);
         }
         return out;
       }
@@ -105,7 +108,7 @@ export class Kinetics {
       for (const s of [1, -1]) {
         const m = at(n.x + a[0] * s, n.y + a[1] * s, n.z + a[2] * s);
         if (open(m) && m.axis === n.axis) out.push([m, 1, null]);
-        else if (open(m) && m.part === 'gearbox') out.push([m, 1, null, true]);
+        else if (open(m) && hub(m)) out.push([m, 1, null, true]);
       }
       if (n.part === 'gear' || n.part === 'large') {
         const [u, v] = [UNIT[(n.axis + 1) % 3], UNIT[(n.axis + 2) % 3]];
@@ -160,7 +163,7 @@ export class Kinetics {
       for (let a = 0; a < 3 && n.net === null; a++) {
         for (const s of [1, -1]) {
           const m = at(n.x - UNIT[a][0] * s, n.y - UNIT[a][1] * s, n.z - UNIT[a][2] * s);
-          if (m && m.part !== 'machine' && (m.axis === a || m.part === 'gearbox') && !(m.part === 'clutch' && !m.engaged)) { n.net = m.net; n.drive = m; nets[m.net].machines.push(n); break; }
+          if (m && m.part !== 'machine' && (m.axis === a || hub(m)) && !(m.part === 'clutch' && !m.engaged)) { n.net = m.net; n.drive = m; nets[m.net].machines.push(n); break; }
         }
       }
     }
@@ -183,7 +186,11 @@ export class Kinetics {
     }
     for (const net of nets) {
       for (const n of net.parts) {
-        if (n.part === 'windmill') {
+        if (n.part === 'engine') {
+          // a steam engine gives its power while it's burning (see machines.js)
+          n.power = this.engineOn?.(n.x, n.y, n.z) ? ENGINE_POWER : 0;
+          if (n.power) net.wheels.push(n);
+        } else if (n.part === 'windmill') {
           n.power = windPower(world, n);
           if (n.power > 0) net.wheels.push(n);
         } else if (n.part === 'wheel') {
@@ -204,7 +211,8 @@ export class Kinetics {
       else if (!net.wheels.length) {
         net.status = net.parts.some((n) => n.part === 'wheel') ? 'No power: a water wheel needs flowing water beside it'
           : net.parts.some((n) => n.part === 'windmill') ? 'No power: a windmill needs clear space all round its sails'
-            : 'No power: connect a water wheel or windmill';
+            : net.parts.some((n) => n.part === 'engine') ? 'No power: the steam engine needs fuel, and water beside it'
+            : 'No power: connect a water wheel, windmill or steam engine';
       } else {
         const base = Math.abs(net.wheels[0].rel);
         if (net.wheels.some((w) => Math.abs(Math.abs(w.rel) - base) > 1e-6)) net.status = 'Stuck: wheels or windmills are geared to different speeds';
@@ -244,7 +252,7 @@ export class Kinetics {
       if (!n || n.id !== m.id) { this.removeMesh(k, m); }
     }
     for (const [k, n] of this.nodes) {
-      if (n.part === 'machine' || n.part === 'gearbox') continue;
+      if (n.part === 'machine' || n.part === 'gearbox' || n.part === 'engine') continue;
       let m = this.meshes.get(k);
       if (!m) m = this.addMesh(k, n);
       m.angle += n.speed * TURN_RATE * dt;
