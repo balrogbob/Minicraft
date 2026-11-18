@@ -3,7 +3,9 @@
 A small block-building game for the browser, built with [three.js](https://threejs.org/).
 It is designed for Android tablets (touch controls) but also plays with keyboard and mouse.
 
-- Procedurally generated 128×128×64 world with hills, lakes and seas, beaches, trees, caves and coal ore
+- A 16,384 × 16,384 block world (64 high) that streams in around you as you explore: hills, lakes and seas,
+  beaches, trees, winding caves and coal ore. You start in the middle; the edges are walls
+- Adjustable view distance (48–160 blocks) and an on-screen coordinates readout
 - Water you can swim in. It flows into holes you dig next to it, as long as they're at or below sea level
 - Day/night cycle (12 minutes) with sunrise and sunset skies, sun, moon and stars
 - Sunlight: open ground is fully lit, while overhangs, tunnels and caves fade into darkness even at noon.
@@ -14,7 +16,9 @@ It is designed for Android tablets (touch controls) but also plays with keyboard
 - Recipe-based crafting: some recipes need a crafting table nearby
 - Pixel-art textures are all generated in code at startup, with no image files
 - Ambient-occlusion lighting on the voxel meshes
-- The world auto-saves to the browser's local storage
+- The world auto-saves in the browser. Only chunks you've changed are stored (in IndexedDB); everything
+  else regenerates from the world's seed. Worlds from the earlier 128 × 128 version are moved,
+  builds and all, into the middle of the big world the first time you open the new version
 
 ## Running it
 
@@ -60,7 +64,10 @@ You aim with the crosshair in the middle of the screen. Volume, look speed and a
 | --- | --- |
 | `js/blocks.js` | Block & item definitions, break times, drops, recipes |
 | `js/textures.js` | Procedural texture atlas, item icons, break cracks |
-| `js/world.js` | Terrain and cave generation, sunlight and torch light propagation, chunk meshing (face culling + AO + smooth light, separate water mesh), water flow, raycasting |
+| `js/terrain.js` | Chunk-by-chunk terrain generation (every block is a pure function of seed and position) |
+| `js/world.js` | Chunk streaming, sunlight and torch light propagation across chunks, chunk meshing (face culling + AO + smooth light, separate water mesh), water flow, raycasting |
+| `js/store.js` | Saving edited chunks to IndexedDB |
+| `js/legacy.js` | The old 128 × 128 generator, used once to migrate old saves |
 | `js/player.js` | Player physics, collision and swimming |
 | `js/sky.js` | Day/night cycle: sky colour, fog, sun, moon, stars, world brightness |
 | `js/sound.js` | Web Audio sound effects |

@@ -43,6 +43,8 @@ export class Sky {
     this.scene = scene;
     this.time = 0.02; // start just after sunrise
     this.light = 1;
+    this.fogNear = 38; // set from the view distance
+    this.fogFar = 80;
     this.skyColor = new THREE.Color();
 
     const sunTex = discTexture((g) => {
@@ -98,7 +100,7 @@ export class Sky {
     } else {
       this.scene.background = this.skyColor;
       this.scene.fog.color.copy(this.skyColor);
-      this.scene.fog.near = 38; this.scene.fog.far = 80;
+      this.scene.fog.near = this.fogNear; this.scene.fog.far = this.fogFar;
     }
 
     const lin = Math.pow(light, 2.2) * 0.85 + 0.15 * light; // keep nights dark but readable

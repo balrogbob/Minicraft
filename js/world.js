@@ -1,57 +1,19 @@
-// Voxel world: storage, terrain generation, block light, chunk meshing, raycasting.
+// Streaming voxel world: chunks are generated (or loaded) around the player and unloaded behind,
+// with block light and sunlight flowing across chunk borders, chunk meshing and raycasting.
 import * as THREE from 'three';
-import { BLOCKS, AIR, GRASS, DIRT, STONE, LOG, LEAVES, SAND, COAL_ORE, BEDROCK, WATER, MAX_LIGHT } from './blocks.js';
+import { BLOCKS, AIR, LEAVES, WATER, MAX_LIGHT } from './blocks.js';
 import { TILE, ATLAS_COLS } from './textures.js';
+import { Generator, CHUNK, H, SEA_LEVEL, WORLD_SIZE, WORLD_CHUNKS, CHUNK_VOLUME, localIndex } from './terrain.js';
 
-export const CHUNK = 16;
-export const WORLD_CHUNKS = 8; // world is WORLD_CHUNKS x WORLD_CHUNKS chunks
-export const W = CHUNK * WORLD_CHUNKS; // 128 blocks wide
-export const H = 64; // blocks tall
-export const SEA_LEVEL = 24; // water fills every open cell at or below this height
+export { CHUNK, H, SEA_LEVEL, WORLD_SIZE, WORLD_CHUNKS };
+
 const WATER_TOP = 0.875; // surface sits a little below the block top
-// Terrain generator version. Saves remember theirs so old worlds regenerate identically.
-// 1 = original terrain, 2 = adds caves.
-export const GEN_VERSION = 2;
 
-// ---------- noise ----------
-function mulberry32(a) {
-  return function () {
-    a |= 0; a = (a + 0x6d2b79f5) | 0;
-    let t = Math.imul(a ^ (a >>> 15), 1 | a);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
+export const chunkKey = (cx, cz) => cx * WORLD_CHUNKS + cz;
 
-function makePerlin(rand) {
-  const p = new Uint8Array(512);
-  const base = [...Array(256).keys()];
-  for (let i = 255; i > 0; i--) {
-    const j = Math.floor(rand() * (i + 1));
-    [base[i], base[j]] = [base[j], base[i]];
-  }
-  for (let i = 0; i < 512; i++) p[i] = base[i & 255];
-  const G = [[1, 1], [-1, 1], [1, -1], [-1, -1], [1, 0], [-1, 0], [0, 1], [0, -1]];
-  const fade = (t) => t * t * t * (t * (t * 6 - 15) + 10);
-  const grad = (h, x, y) => { const g = G[h & 7]; return g[0] * x + g[1] * y; };
-  const noise = (x, y) => {
-    const X = Math.floor(x) & 255, Y = Math.floor(y) & 255;
-    const xf = x - Math.floor(x), yf = y - Math.floor(y);
-    const u = fade(xf), v = fade(yf);
-    const aa = p[p[X] + Y], ab = p[p[X] + Y + 1], ba = p[p[X + 1] + Y], bb = p[p[X + 1] + Y + 1];
-    const x1 = grad(aa, xf, yf) + u * (grad(ba, xf - 1, yf) - grad(aa, xf, yf));
-    const x2 = grad(ab, xf, yf - 1) + u * (grad(bb, xf - 1, yf - 1) - grad(ab, xf, yf - 1));
-    return x1 + v * (x2 - x1);
-  };
-  return (x, y, oct = 4) => {
-    let sum = 0, amp = 1, freq = 1, norm = 0;
-    for (let i = 0; i < oct; i++) {
-      sum += noise(x * freq, y * freq) * amp;
-      norm += amp; amp *= 0.5; freq *= 2;
-    }
-    return sum / norm;
-  };
-}
+// Light-propagation queues hold packed global coordinates.
+const S1 = WORLD_SIZE, S2 = WORLD_SIZE * WORLD_SIZE;
+const pack = (x, y, z) => x + z * S1 + y * S2;
 
 // ---------- face tables for meshing ----------
 // For each of the 6 faces: axis d, sign s, plus per-corner vertex offset, AO neighbour offsets and uv.
@@ -96,249 +58,114 @@ const skyBrightness = (level) => SKY_CURVE[Math.round(level * 4)];
 
 // Sunlight level after one step into a block of type `id`. Full sunlight shining straight down
 // through air or glass stays full; everything else (sideways, or down through leaves and water)
-// loses one level per block. Both the full rebuild and the incremental updates use this rule.
+// loses one level per block. Both chunk lighting and the incremental updates use this rule.
 function skyStep(level, down, id) {
   return down && level === MAX_LIGHT && id !== LEAVES && id !== WATER ? MAX_LIGHT : level - 1;
 }
 
 const NEIGHBOURS = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]];
+const passes = (id) => id === AIR || BLOCKS[id].transparent;
+
+class Chunk {
+  constructor(cx, cz, data) {
+    this.cx = cx;
+    this.cz = cz;
+    this.key = chunkKey(cx, cz);
+    this.data = data;
+    this.light = new Uint8Array(CHUNK_VOLUME); // torch light
+    this.sky = new Uint8Array(CHUNK_VOLUME); // sunlight
+    this.solid = null; // meshes
+    this.water = null;
+  }
+}
 
 export class World {
-  constructor(seed, gen = GEN_VERSION) {
+  constructor(seed, store) {
     this.seed = seed;
-    this.gen = gen;
-    this.data = new Uint8Array(W * W * H);
-    this.light = new Uint8Array(W * W * H); // block light from torches, 0-15
-    this.sky = new Uint8Array(W * W * H); // sunlight, 0-15 (15 = open sky)
-    this.mods = new Map(); // index -> id, player edits (for saving)
-    this.chunkMeshes = new Map();
-    this.dirty = new Set();
+    this.generator = new Generator(seed);
+    this.store = store;
+    this.chunks = new Map();
+    this.dirty = new Set(); // chunk keys needing a (re)mesh
+    this.pending = new Set(); // chunk keys being loaded from storage
+    this.unsaved = new Set(); // chunk keys edited since the last save
     this.flow = []; // cells to re-check for water spreading into them
     this.flowTimer = 0;
+    this.renderDistance = 6; // in chunks
+    this.lastChunk = null;
+    this.unloadTimer = 0;
+    this.ringCache = null;
   }
 
-  idx(x, y, z) { return x + z * W + y * W * W; }
+  // ---------- block access ----------
 
-  inBounds(x, y, z) { return x >= 0 && z >= 0 && x < W && z < W && y >= 0 && y < H; }
+  chunkAt(x, z) {
+    if (x < 0 || z < 0 || x >= WORLD_SIZE || z >= WORLD_SIZE) return null;
+    const cx = x >> 4, cz = z >> 4;
+    const lc = this.lastChunk;
+    if (lc && lc.cx === cx && lc.cz === cz) return lc;
+    const c = this.chunks.get(chunkKey(cx, cz));
+    if (c) this.lastChunk = c;
+    return c ?? null;
+  }
+
+  inBounds(x, y, z) { return x >= 0 && z >= 0 && x < WORLD_SIZE && z < WORLD_SIZE && y >= 0 && y < H; }
 
   get(x, y, z) {
-    if (!this.inBounds(x, y, z)) return AIR;
-    return this.data[x + z * W + y * W * W];
+    if (y < 0 || y >= H) return AIR;
+    const c = this.chunkAt(x, z);
+    return c ? c.data[localIndex(x, y, z)] : AIR;
   }
 
-  // Used for player collision: the world edges and floor are solid walls.
+  // Used for player collision: the floor, world edges and not-yet-loaded chunks are solid.
   isSolid(x, y, z) {
-    if (y < 0 || x < 0 || z < 0 || x >= W || z >= W) return true;
+    if (y < 0) return true;
     if (y >= H) return false;
-    return BLOCKS[this.data[x + z * W + y * W * W]]?.solid ?? false;
+    const c = this.chunkAt(x, z);
+    if (!c) return true;
+    return BLOCKS[c.data[localIndex(x, y, z)]]?.solid ?? false;
   }
 
   isWater(x, y, z) { return this.get(x, y, z) === WATER; }
 
-  // Player edit: records the change, updates light and marks chunks for remeshing.
-  setBlock(x, y, z, id) {
-    if (!this.inBounds(x, y, z)) return;
-    const i = this.idx(x, y, z);
-    this.data[i] = id;
-    this.mods.set(i, id);
-    this.markCellDirty(x, z);
-    this.updateLight(i);
-    if (id === AIR) this.flow.push([x, y, z]);
-  }
-
-  // A cell's mesh (and AO/light sampling) can affect the chunk next door when it's on the border.
-  markCellDirty(x, z) {
-    const cx = Math.floor(x / CHUNK), cz = Math.floor(z / CHUNK);
-    this.markDirty(cx, cz);
-    const lx = x - cx * CHUNK, lz = z - cz * CHUNK;
-    if (lx === 0) this.markDirty(cx - 1, cz);
-    if (lx === CHUNK - 1) this.markDirty(cx + 1, cz);
-    if (lz === 0) this.markDirty(cx, cz - 1);
-    if (lz === CHUNK - 1) this.markDirty(cx, cz + 1);
-  }
-
-  // ---------- block light ----------
-  // Light floods out from emitters (torches), losing one level per block, through any non-opaque cell.
-
-  lightPasses(i) {
-    const id = this.data[i];
-    return id === AIR || BLOCKS[id].transparent;
-  }
-
-  // Calls fn(j) for each in-bounds neighbour index of cell i.
-  eachNeighbour(i, fn) {
-    const x = i % W, z = Math.floor(i / W) % W, y = Math.floor(i / (W * W));
-    for (const [dx, dy, dz] of NEIGHBOURS) {
-      const nx = x + dx, ny = y + dy, nz = z + dz;
-      if (nx >= 0 && nz >= 0 && ny >= 0 && nx < W && nz < W && ny < H) fn(nx + nz * W + ny * W * W);
-    }
-  }
-
-  spreadLight(queue, changed) {
-    const L = this.light;
-    for (let h = 0; h < queue.length; h++) {
-      const i = queue[h];
-      const next = L[i] - 1;
-      if (next <= 0) continue;
-      this.eachNeighbour(i, (j) => {
-        if (L[j] < next && this.lightPasses(j)) {
-          L[j] = next;
-          changed?.add(j);
-          queue.push(j);
-        }
-      });
-    }
-  }
-
-  // Darken everything lit by cell i, then re-spread from any brighter light at the edge of the dark area.
-  removeLight(i, changed) {
-    const L = this.light;
-    const dark = [[i, L[i]]];
-    const relight = [];
-    L[i] = 0;
-    changed.add(i);
-    for (let h = 0; h < dark.length; h++) {
-      const [c, level] = dark[h];
-      this.eachNeighbour(c, (j) => {
-        const nl = L[j];
-        if (nl && nl < level) {
-          L[j] = 0;
-          changed.add(j);
-          dark.push([j, nl]);
-        } else if (nl >= level) {
-          relight.push(j);
-        }
-      });
-    }
-    this.spreadLight(relight, changed);
-  }
-
-  // Recompute light after the block at index i changed.
-  updateLight(i) {
-    const changed = new Set();
-    this.updateSky(i, changed);
-    if (this.light[i] > 0) this.removeLight(i, changed);
-    const emit = BLOCKS[this.data[i]]?.light ?? 0;
-    if (emit) {
-      this.light[i] = emit;
-      changed.add(i);
-      this.spreadLight([i], changed);
-    } else if (this.lightPasses(i)) {
-      // an opening: let neighbouring light flow in
-      const q = [];
-      this.eachNeighbour(i, (j) => { if (this.light[j] > 1) q.push(j); });
-      this.spreadLight(q, changed);
-    }
-    for (const j of changed) this.markCellDirty(j % W, Math.floor(j / W) % W);
-  }
-
-  // ---------- sunlight ----------
-  // Like torch light, except sunlight at full strength travels straight down without fading,
-  // so open ground is fully lit while overhangs, caves and tunnels fall off into darkness.
-
-  spreadSky(queue, changed) {
-    const S = this.sky, D = this.data;
-    for (let h = 0; h < queue.length; h++) {
-      const i = queue[h];
-      const level = S[i];
-      if (level <= 1 && level !== MAX_LIGHT) continue;
-      const x = i % W, z = Math.floor(i / W) % W, y = Math.floor(i / (W * W));
-      for (const [dx, dy, dz] of NEIGHBOURS) {
-        const nx = x + dx, ny = y + dy, nz = z + dz;
-        if (nx < 0 || nz < 0 || ny < 0 || nx >= W || nz >= W || ny >= H) continue;
-        const j = nx + nz * W + ny * W * W;
-        if (!this.lightPasses(j)) continue;
-        const next = skyStep(level, dy === -1, D[j]);
-        if (next > S[j]) {
-          S[j] = next;
-          changed?.add(j);
-          queue.push(j);
-        }
-      }
-    }
-  }
-
-  removeSky(i, changed) {
-    const S = this.sky;
-    const dark = [[i, S[i]]];
-    const relight = [];
-    S[i] = 0;
-    changed.add(i);
-    for (let h = 0; h < dark.length; h++) {
-      const [c, level] = dark[h];
-      const x = c % W, z = Math.floor(c / W) % W, y = Math.floor(c / (W * W));
-      for (const [dx, dy, dz] of NEIGHBOURS) {
-        const nx = x + dx, ny = y + dy, nz = z + dz;
-        if (nx < 0 || nz < 0 || ny < 0 || nx >= W || nz >= W || ny >= H) continue;
-        const j = nx + nz * W + ny * W * W;
-        const nl = S[j];
-        if (!nl) continue;
-        // a full-strength column below us was lit by us, even though it's just as bright
-        if (nl < level || (dy === -1 && level === MAX_LIGHT && nl === MAX_LIGHT)) {
-          S[j] = 0;
-          changed.add(j);
-          dark.push([j, nl]);
-        } else {
-          relight.push(j);
-        }
-      }
-    }
-    this.spreadSky(relight, changed);
-  }
-
-  updateSky(i, changed) {
-    if (this.sky[i] > 0) this.removeSky(i, changed);
-    if (!this.lightPasses(i)) return;
-    // let sunlight back in from the neighbours (the top of the world is open sky)
-    const y = Math.floor(i / (W * W));
-    if (y === H - 1) {
-      this.sky[i] = skyStep(MAX_LIGHT, true, this.data[i]);
-      changed.add(i);
-      this.spreadSky([i], changed);
-      return;
-    }
-    const q = [];
-    this.eachNeighbour(i, (j) => { if (this.sky[j] > 0) q.push(j); });
-    this.spreadSky(q, changed);
-  }
-
-  // Full rebuild of both light channels, used after generating or loading a world.
-  computeAllLight() {
-    this.light.fill(0);
-    const q = [];
-    for (let i = 0; i < this.data.length; i++) {
-      const e = BLOCKS[this.data[i]]?.light;
-      if (e) { this.light[i] = Math.min(e, MAX_LIGHT); q.push(i); }
-    }
-    this.spreadLight(q, null);
-
-    // sunlight: shine straight down each column, then spread sideways into overhangs and caves
-    const S = this.sky, D = this.data;
-    S.fill(0);
-    const sq = [];
-    for (let z = 0; z < W; z++) for (let x = 0; x < W; x++) {
-      let level = MAX_LIGHT; // open sky above the world
-      for (let y = H - 1; y >= 0; y--) {
-        const i = x + z * W + y * W * W;
-        if (!this.lightPasses(i)) break;
-        level = skyStep(level, true, D[i]);
-        if (level <= 0) break;
-        S[i] = level;
-        sq.push(i);
-      }
-    }
-    this.spreadSky(sq, null);
+  lightAt(x, y, z) {
+    if (y < 0 || y >= H) return 0;
+    const c = this.chunkAt(x, z);
+    return c ? c.light[localIndex(x, y, z)] : 0;
   }
 
   skyAt(x, y, z) {
     if (y >= H) return MAX_LIGHT;
-    if (!this.inBounds(x, y, z)) return 0;
-    return this.sky[x + z * W + y * W * W];
+    if (y < 0) return 0;
+    const c = this.chunkAt(x, z);
+    return c ? c.sky[localIndex(x, y, z)] : 0;
   }
 
-  lightAt(x, y, z) {
-    if (!this.inBounds(x, y, z)) return 0;
-    return this.light[x + z * W + y * W * W];
+  heightAt(x, z) {
+    for (let y = H - 1; y >= 0; y--) if (this.get(x, y, z) !== AIR) return y;
+    return 0;
+  }
+
+  // Player edit: records the change, updates light and marks chunks for remeshing.
+  setBlock(x, y, z, id) {
+    if (y < 0 || y >= H) return;
+    const c = this.chunkAt(x, z);
+    if (!c) return;
+    c.data[localIndex(x, y, z)] = id;
+    this.unsaved.add(c.key);
+    this.markCellDirty(x, z);
+    this.updateLight(x, y, z);
+    if (id === AIR) this.flow.push([x, y, z]);
+  }
+
+  // A cell's mesh (and AO/light sampling) can affect the chunks next door when it's on a border.
+  markCellDirty(x, z) {
+    const cx = x >> 4, cz = z >> 4, lx = x & 15, lz = z & 15;
+    const xs = lx === 0 ? [cx, cx - 1] : lx === 15 ? [cx, cx + 1] : [cx];
+    const zs = lz === 0 ? [cz, cz - 1] : lz === 15 ? [cz, cz + 1] : [cz];
+    for (const a of xs) for (const b of zs) {
+      const k = chunkKey(a, b);
+      if (this.chunks.has(k)) this.dirty.add(k);
+    }
   }
 
   // Water spreads into open cells at or below sea level that touch water from the side or above.
@@ -352,8 +179,8 @@ export class World {
     this.flow = [];
     const seen = new Set();
     for (const [x, y, z] of batch) {
-      const k = this.idx(x, y, z);
-      if (seen.has(k) || y > SEA_LEVEL || this.get(x, y, z) !== AIR) continue;
+      const k = pack(x, y, z);
+      if (seen.has(k) || y > SEA_LEVEL || !this.chunkAt(x, z) || this.get(x, y, z) !== AIR) continue;
       seen.add(k);
       const wet = this.isWater(x + 1, y, z) || this.isWater(x - 1, y, z) || this.isWater(x, y, z + 1) ||
         this.isWater(x, y, z - 1) || this.isWater(x, y + 1, z);
@@ -365,111 +192,307 @@ export class World {
     }
   }
 
-  markDirty(cx, cz) {
-    if (cx >= 0 && cz >= 0 && cx < WORLD_CHUNKS && cz < WORLD_CHUNKS) this.dirty.add(cx + ',' + cz);
-  }
+  // ---------- light ----------
+  // Two channels, both flood-filled one level per block through non-opaque cells:
+  // torch light (from emitting blocks) and sunlight (which also shines straight down unchanged).
+  // Light only flows through loaded chunks; when a chunk loads it pulls light in from its neighbours.
 
-  applyMods(list) {
-    for (const [i, id] of list) {
-      if (i >= 0 && i < this.data.length) { this.data[i] = id; this.mods.set(i, id); }
-    }
-  }
-
-  heightAt(x, z) {
-    for (let y = H - 1; y >= 0; y--) if (this.get(x, y, z) !== AIR) return y;
-    return 0;
-  }
-
-  generate() {
-    const rand = mulberry32(this.seed);
-    const n1 = makePerlin(rand), n2 = makePerlin(rand), n3 = makePerlin(rand);
-    const heights = new Int16Array(W * W);
-    for (let z = 0; z < W; z++) for (let x = 0; x < W; x++) {
-      // "continent" noise decides land vs. lakes/sea; hills and mountains only rise on land
-      const cont = n1(x / 70, z / 70, 4);
-      const land = cont * 34;
-      const detail = n2(x / 18, z / 18, 2) * 3;
-      const mountain = Math.max(0, n3(x / 80, z / 80, 3)) * 30 * Math.min(1, Math.max(0, cont * 5));
-      let h = Math.round(SEA_LEVEL + 4 + land + detail + mountain);
-      h = Math.max(6, Math.min(H - 14, h));
-      heights[x + z * W] = h;
-      const sandy = h <= SEA_LEVEL + 1;
-      for (let y = 0; y <= h; y++) {
-        let id;
-        if (y === 0) id = BEDROCK;
-        else if (y < h - 3) id = rand() < 0.012 && y < h - 5 ? COAL_ORE : STONE;
-        else if (sandy) id = SAND;
-        else id = y === h ? GRASS : DIRT;
-        this.data[this.idx(x, y, z)] = id;
-      }
-      for (let y = h + 1; y <= SEA_LEVEL; y++) this.data[this.idx(x, y, z)] = WATER;
-    }
-    if (this.gen >= 2) this.carveCaves();
-    // trees
-    for (let z = 3; z < W - 3; z++) for (let x = 3; x < W - 3; x++) {
-      const h = heights[x + z * W];
-      if (this.get(x, h, z) !== GRASS || rand() > 0.014) continue;
-      const trunk = 4 + Math.floor(rand() * 3);
-      if (h + trunk + 2 >= H) continue;
-      this.data[this.idx(x, h, z)] = DIRT;
-      for (let y = 1; y <= trunk; y++) this.data[this.idx(x, h + y, z)] = LOG;
-      const top = h + trunk;
-      for (let y = top - 2; y <= top + 1; y++) {
-        const r = y >= top ? 1 : 2;
-        for (let dz = -r; dz <= r; dz++) for (let dx = -r; dx <= r; dx++) {
-          const corner = Math.abs(dx) === r && Math.abs(dz) === r;
-          if (corner && (y === top + 1 || rand() < 0.5)) continue;
-          const i = this.idx(x + dx, y, z + dz);
-          if (this.data[i] === AIR) this.data[i] = LEAVES;
+  // Spread one channel ('light' or 'sky') outward from the packed cells in `queue`.
+  spread(channel, queue) {
+    const isSky = channel === 'sky';
+    for (let h = 0; h < queue.length; h++) {
+      const p = queue[h];
+      const y = Math.floor(p / S2), r = p - y * S2, z = Math.floor(r / S1), x = r - z * S1;
+      const c = this.chunkAt(x, z);
+      if (!c) continue;
+      const level = c[channel][localIndex(x, y, z)];
+      if (level <= 1) continue;
+      for (const [dx, dy, dz] of NEIGHBOURS) {
+        const ny = y + dy;
+        if (ny < 0 || ny >= H) continue;
+        const nx = x + dx, nz = z + dz;
+        const nc = this.chunkAt(nx, nz);
+        if (!nc) continue;
+        const li = localIndex(nx, ny, nz);
+        const id = nc.data[li];
+        if (!passes(id)) continue;
+        const next = isSky ? skyStep(level, dy === -1, id) : level - 1;
+        if (next > nc[channel][li]) {
+          nc[channel][li] = next;
+          this.markCellDirty(nx, nz);
+          queue.push(pack(nx, ny, nz));
         }
       }
     }
-    for (let cz = 0; cz < WORLD_CHUNKS; cz++) for (let cx = 0; cx < WORLD_CHUNKS; cx++) this.markDirty(cx, cz);
   }
 
-  // Winding "worm" tunnels: random walks that carve out spheres. They have their own random
-  // stream so tree placement is unchanged, and they never cut into water, so lakes don't hang in the air.
-  carveCaves() {
-    const rand = mulberry32(this.seed ^ 0x2c1b3c6d);
-    const touchesWater = (x, y, z) => this.isWater(x, y + 1, z) || this.isWater(x + 1, y, z) ||
-      this.isWater(x - 1, y, z) || this.isWater(x, y, z + 1) || this.isWater(x, y, z - 1);
-    const carve = (cx, cy, cz, r) => {
-      const r2 = r * r;
-      for (let y = Math.max(1, Math.floor(cy - r)); y <= Math.ceil(cy + r); y++)
-        for (let z = Math.floor(cz - r); z <= Math.ceil(cz + r); z++)
-          for (let x = Math.floor(cx - r); x <= Math.ceil(cx + r); x++) {
-            if (!this.inBounds(x, y, z)) continue;
-            const dx = x + 0.5 - cx, dy = (y + 0.5 - cy) * 1.3, dz = z + 0.5 - cz; // squashed: wider than tall
-            if (dx * dx + dy * dy + dz * dz > r2) continue;
-            const i = this.idx(x, y, z), id = this.data[i];
-            if (id === AIR || id === WATER || id === BEDROCK || touchesWater(x, y, z)) continue;
-            this.data[i] = AIR;
-          }
-    };
-    for (let w = 0; w < 30; w++) {
-      let x = rand() * W, z = rand() * W, y = 6 + rand() * 24;
-      let yaw = rand() * Math.PI * 2, pitch = (rand() - 0.5) * 0.6, r = 1.4 + rand() * 0.8;
-      const steps = 50 + rand() * 100;
-      for (let s = 0; s < steps; s++) {
-        carve(x, y, z, r);
-        r = Math.max(1.1, Math.min(2.8, r + (rand() - 0.5) * 0.4));
-        yaw += (rand() - 0.5) * 0.6;
-        pitch = Math.max(-0.8, Math.min(0.8, pitch * 0.85 + (rand() - 0.5) * 0.4));
-        x += Math.cos(yaw) * Math.cos(pitch);
-        z += Math.sin(yaw) * Math.cos(pitch);
-        y += Math.sin(pitch);
-        if (y < 3) pitch = Math.abs(pitch);
-        if (x < 1 || z < 1 || x >= W - 1 || z >= W - 1) break;
+  // Darken everything lit through (x, y, z), then re-spread from brighter light at the edge of the dark area.
+  remove(channel, x, y, z) {
+    const isSky = channel === 'sky';
+    const c0 = this.chunkAt(x, z);
+    const dark = [[pack(x, y, z), c0[channel][localIndex(x, y, z)]]];
+    const relight = [];
+    c0[channel][localIndex(x, y, z)] = 0;
+    this.markCellDirty(x, z);
+    for (let h = 0; h < dark.length; h++) {
+      const [p, level] = dark[h];
+      const cy = Math.floor(p / S2), r = p - cy * S2, cz = Math.floor(r / S1), cx = r - cz * S1;
+      for (const [dx, dy, dz] of NEIGHBOURS) {
+        const ny = cy + dy;
+        if (ny < 0 || ny >= H) continue;
+        const nx = cx + dx, nz = cz + dz;
+        const nc = this.chunkAt(nx, nz);
+        if (!nc) continue;
+        const li = localIndex(nx, ny, nz);
+        const nl = nc[channel][li];
+        if (!nl) continue;
+        // for sunlight, a full-strength column below was lit by us even though it's just as bright
+        if (nl < level || (isSky && dy === -1 && level === MAX_LIGHT && nl === MAX_LIGHT)) {
+          nc[channel][li] = 0;
+          this.markCellDirty(nx, nz);
+          dark.push([pack(nx, ny, nz), nl]);
+        } else {
+          relight.push(pack(nx, ny, nz));
+        }
+      }
+    }
+    this.spread(channel, relight);
+  }
+
+  // Recompute both channels after the block at (x, y, z) changed.
+  updateLight(x, y, z) {
+    const c = this.chunkAt(x, z);
+    const li = localIndex(x, y, z);
+    const id = c.data[li];
+    // sunlight
+    if (c.sky[li] > 0) this.remove('sky', x, y, z);
+    if (passes(id)) {
+      if (y === H - 1) {
+        c.sky[li] = skyStep(MAX_LIGHT, true, id);
+        this.spread('sky', [pack(x, y, z)]);
+      } else {
+        this.spread('sky', this.litNeighbours('sky', x, y, z));
+      }
+    }
+    // torch light
+    if (c.light[li] > 0) this.remove('light', x, y, z);
+    const emit = BLOCKS[id]?.light ?? 0;
+    if (emit) {
+      c.light[li] = emit;
+      this.spread('light', [pack(x, y, z)]);
+    } else if (passes(id)) {
+      this.spread('light', this.litNeighbours('light', x, y, z));
+    }
+  }
+
+  litNeighbours(channel, x, y, z) {
+    const q = [];
+    for (const [dx, dy, dz] of NEIGHBOURS) {
+      const nx = x + dx, ny = y + dy, nz = z + dz;
+      if (ny < 0 || ny >= H) continue;
+      const nc = this.chunkAt(nx, nz);
+      if (nc && nc[channel][localIndex(nx, ny, nz)] > 0) q.push(pack(nx, ny, nz));
+    }
+    return q;
+  }
+
+  // Light a freshly loaded chunk: sunlight down its columns, its own torches, plus whatever
+  // flows in across the borders from neighbours that are already loaded.
+  lightChunk(c) {
+    const x0 = c.cx * CHUNK, z0 = c.cz * CHUNK;
+    const skyQ = [], lightQ = [];
+    for (let lz = 0; lz < CHUNK; lz++) for (let lx = 0; lx < CHUNK; lx++) {
+      let level = MAX_LIGHT; // open sky above the world
+      for (let y = H - 1; y >= 0; y--) {
+        const li = localIndex(lx, y, lz);
+        const id = c.data[li];
+        if (!passes(id)) break;
+        level = skyStep(level, true, id);
+        if (level <= 0) break;
+        c.sky[li] = level;
+        skyQ.push(pack(x0 + lx, y, z0 + lz));
+      }
+    }
+    for (let li = 0; li < CHUNK_VOLUME; li++) {
+      const e = BLOCKS[c.data[li]]?.light;
+      if (e) {
+        c.light[li] = e;
+        lightQ.push(pack(x0 + (li & 15), li >> 8, z0 + ((li >> 4) & 15)));
+      }
+    }
+    // the border cells of each loaded neighbour that face this chunk
+    for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const n = this.chunks.get(chunkKey(c.cx + dx, c.cz + dz));
+      if (!n) continue;
+      for (let i = 0; i < CHUNK; i++) for (let y = 0; y < H; y++) {
+        const gx = dx === 1 ? x0 + CHUNK : dx === -1 ? x0 - 1 : x0 + i;
+        const gz = dz === 1 ? z0 + CHUNK : dz === -1 ? z0 - 1 : z0 + i;
+        const li = localIndex(gx, y, gz);
+        if (n.sky[li] > 1) skyQ.push(pack(gx, y, gz));
+        if (n.light[li] > 1) lightQ.push(pack(gx, y, gz));
+      }
+    }
+    this.spread('sky', skyQ);
+    this.spread('light', lightQ);
+  }
+
+  // ---------- streaming ----------
+
+  addChunk(cx, cz, data) {
+    const c = new Chunk(cx, cz, data);
+    this.chunks.set(c.key, c);
+    this.lightChunk(c);
+    this.dirty.add(c.key);
+    return c;
+  }
+
+  // Square ring offsets within radius r, nearest first.
+  ring(r) {
+    if (this.ringCache?.r === r) return this.ringCache.list;
+    const list = [];
+    for (let dz = -r; dz <= r; dz++) for (let dx = -r; dx <= r; dx++) list.push([dx, dz, dx * dx + dz * dz]);
+    list.sort((a, b) => a[2] - b[2]);
+    this.ringCache = { r, list };
+    return list;
+  }
+
+  inWorld(cx, cz) { return cx >= 0 && cz >= 0 && cx < WORLD_CHUNKS && cz < WORLD_CHUNKS; }
+
+  // A chunk can be meshed once its 8 neighbours are loaded (for face culling, AO and light at the edges).
+  meshReady(cx, cz) {
+    for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) {
+      if (this.inWorld(cx + dx, cz + dz) && !this.chunks.has(chunkKey(cx + dx, cz + dz))) return false;
+    }
+    return true;
+  }
+
+  // Load and mesh chunks around (px, pz) within a time budget; unload far ones.
+  update(px, pz, scene, materials, budgetMs = 6, dt = 0) {
+    const t0 = performance.now();
+    const pcx = Math.floor(px / CHUNK), pcz = Math.floor(pz / CHUNK);
+    const R = this.renderDistance;
+    // 1. load: one ring wider than we draw, so every drawn chunk has its neighbours
+    for (const [dx, dz] of this.ring(R + 1)) {
+      if (performance.now() - t0 > budgetMs * 0.5) break;
+      const cx = pcx + dx, cz = pcz + dz;
+      if (!this.inWorld(cx, cz)) continue;
+      const key = chunkKey(cx, cz);
+      if (this.chunks.has(key) || this.pending.has(key)) continue;
+      if (this.store.has(key)) {
+        this.pending.add(key);
+        this.store.load(key).then((data) => {
+          this.pending.delete(key);
+          if (this.disposed || this.chunks.has(key)) return;
+          this.addChunk(cx, cz, data ?? this.generator.generateChunk(cx, cz));
+        });
+      } else {
+        this.addChunk(cx, cz, this.generator.generateChunk(cx, cz));
+      }
+    }
+    // 2. mesh: nearest dirty chunks that are in view distance and have all their neighbours
+    if (this.dirty.size) {
+      const list = [];
+      for (const key of this.dirty) {
+        const c = this.chunks.get(key);
+        if (!c) { this.dirty.delete(key); continue; }
+        const dx = c.cx - pcx, dz = c.cz - pcz;
+        if (Math.max(Math.abs(dx), Math.abs(dz)) > R || !this.meshReady(c.cx, c.cz)) continue;
+        list.push([dx * dx + dz * dz, c]);
+      }
+      list.sort((a, b) => a[0] - b[0]);
+      for (const [, c] of list) {
+        // always mesh at least one chunk so edits show up even when generation is busy
+        if (performance.now() - t0 > budgetMs && c !== list[0][1]) break;
+        this.dirty.delete(c.key);
+        this.meshChunk(c, scene, materials);
+      }
+    }
+    // 3. unload (and save) chunks well outside the loaded area, a couple of times a second
+    this.unloadTimer -= dt;
+    if (this.unloadTimer <= 0) {
+      this.unloadTimer = 0.5;
+      for (const c of this.chunks.values()) {
+        const far = Math.max(Math.abs(c.cx - pcx), Math.abs(c.cz - pcz));
+        if (far > R + 3) this.unloadChunk(c, scene);
+        else if (far > R && (c.solid || c.water)) this.dropMeshes(c, scene); // out of view: free GPU memory
       }
     }
   }
 
+  // Fraction of chunks within radius r of (px, pz) that are loaded and meshed (for the loading screen).
+  readiness(px, pz, r) {
+    const pcx = Math.floor(px / CHUNK), pcz = Math.floor(pz / CHUNK);
+    let ready = 0, total = 0;
+    for (const [dx, dz] of this.ring(r)) {
+      const cx = pcx + dx, cz = pcz + dz;
+      if (!this.inWorld(cx, cz)) continue;
+      total++;
+      const c = this.chunks.get(chunkKey(cx, cz));
+      if (c && !this.dirty.has(c.key)) ready++;
+    }
+    return total ? ready / total : 1;
+  }
+
+  dropMeshes(c, scene) {
+    for (const kind of ['solid', 'water']) {
+      if (c[kind]) { scene.remove(c[kind]); c[kind].geometry.dispose(); c[kind] = null; }
+    }
+    this.dirty.add(c.key); // rebuild if it comes back into view
+  }
+
+  unloadChunk(c, scene) {
+    if (this.unsaved.has(c.key)) { this.store.save(c.key, c.data); this.unsaved.delete(c.key); }
+    this.dropMeshes(c, scene);
+    this.dirty.delete(c.key);
+    this.chunks.delete(c.key);
+    if (this.lastChunk === c) this.lastChunk = null;
+  }
+
+  // Write every edited chunk to storage.
+  saveChunks() {
+    const writes = [];
+    for (const key of this.unsaved) {
+      const c = this.chunks.get(key);
+      if (c) writes.push(this.store.save(key, c.data));
+    }
+    this.unsaved.clear();
+    return Promise.all(writes);
+  }
+
+  dispose(scene) {
+    this.disposed = true;
+    for (const c of this.chunks.values()) this.dropMeshes(c, scene);
+    this.chunks.clear();
+    this.dirty.clear();
+  }
+
   // ---------- meshing ----------
-  buildChunkGeometry(cx, cz) {
+
+  meshChunk(c, scene, materials) {
+    const geo = this.buildChunkGeometry(c);
+    for (const kind of ['solid', 'water']) {
+      const g = geo[kind];
+      let mesh = c[kind];
+      if (mesh) {
+        mesh.geometry.dispose();
+        if (g) mesh.geometry = g;
+        else { scene.remove(mesh); c[kind] = null; }
+      } else if (g) {
+        mesh = new THREE.Mesh(g, materials[kind]);
+        // vertices are chunk-local; the mesh sits at the chunk origin (keeps float precision far from 0)
+        mesh.position.set(c.cx * CHUNK, 0, c.cz * CHUNK);
+        if (kind === 'water') mesh.renderOrder = 1;
+        c[kind] = mesh;
+        scene.add(mesh);
+      }
+    }
+  }
+
+  buildChunkGeometry(c) {
     const pos = [], uv = [], col = [], tl = [], sl = [], index = [];
     const wpos = [], wuv = [], wcol = [], wtl = [], wsl = [], windex = [];
-    let wcount = 0;
-    const data = this.data;
+    let wcount = 0, vcount = 0;
+    const data = c.data;
     const tileUV = 1 / ATLAS_COLS;
     const eps = 0.5 / (TILE * ATLAS_COLS); // half-texel inset to avoid atlas bleeding
     const opaque = (x, y, z) => {
@@ -477,23 +500,26 @@ export class World {
       const id = this.get(x, y, z);
       return id !== AIR && !BLOCKS[id].transparent;
     };
-    const x0 = cx * CHUNK, z0 = cz * CHUNK;
-    let vcount = 0;
-    for (let y = 0; y < H; y++) for (let z = z0; z < z0 + CHUNK; z++) for (let x = x0; x < x0 + CHUNK; x++) {
-      const id = data[x + z * W + y * W * W];
+    const x0 = c.cx * CHUNK, z0 = c.cz * CHUNK;
+    const waterU = x0 % 64, waterV = z0 % 64; // keeps water UVs small but seamless across chunks
+    for (let y = 0; y < H; y++) for (let lz = 0; lz < CHUNK; lz++) for (let lx = 0; lx < CHUNK; lx++) {
+      const id = data[localIndex(lx, y, lz)];
       if (id === AIR) continue;
+      const x = x0 + lx, z = z0 + lz;
       const def = BLOCKS[id];
       if (id === WATER) {
         const surface = this.get(x, y + 1, z) !== WATER;
         for (const f of FACES) {
-          const nid = f.n[1] < 0 && y === 0 ? STONE : this.get(x + f.n[0], y + f.n[1], z + f.n[2]);
+          if (f.n[1] < 0 && y === 0) continue;
+          const nid = this.get(x + f.n[0], y + f.n[1], z + f.n[2]);
           if (nid === WATER || (nid !== AIR && !BLOCKS[nid].transparent)) continue;
-          for (const c of f.corners) {
-            const top = c.o[1] === 1 && surface ? WATER_TOP : c.o[1];
-            const px = x + c.o[0], py = y + top, pz = z + c.o[2];
+          for (const cr of f.corners) {
+            const top = cr.o[1] === 1 && surface ? WATER_TOP : cr.o[1];
+            const px = lx + cr.o[0], py = y + top, pz = lz + cr.o[2];
             wpos.push(px, py, pz);
-            // world-space UVs so the texture tiles seamlessly and can scroll
-            if (f.d === 1) wuv.push(px, pz); else if (f.d === 0) wuv.push(pz, py); else wuv.push(px, py);
+            // world-space UVs (wrapped every 64 blocks) so the texture tiles seamlessly and can scroll
+            const ux = waterU + px, uz = waterV + pz;
+            if (f.d === 1) wuv.push(ux, uz); else if (f.d === 0) wuv.push(uz, py); else wuv.push(ux, py);
             const b = toLinear(f.shade);
             wcol.push(b, b, b);
             const fx = x + f.n[0], fy = y + f.n[1], fz = z + f.n[2];
@@ -506,7 +532,7 @@ export class World {
         continue;
       }
       if (def.shape === 'torch') {
-        vcount = this.addTorch(x, y, z, def, pos, uv, col, tl, sl, index, vcount);
+        vcount = this.addTorch(lx, y, lz, def, pos, uv, col, tl, sl, index, vcount);
         continue;
       }
       for (const f of FACES) {
@@ -523,24 +549,24 @@ export class World {
         const tvTop = 1 - Math.floor(tile / ATLAS_COLS) * tileUV;
         const ao = [0, 0, 0, 0];
         for (let k = 0; k < 4; k++) {
-          const c = f.corners[k];
-          pos.push(x + c.o[0], y + c.o[1], z + c.o[2]);
+          const cr = f.corners[k];
+          pos.push(lx + cr.o[0], y + cr.o[1], lz + cr.o[2]);
           uv.push(
-            tu + eps + c.uv[0] * (tileUV - 2 * eps),
-            tvTop - tileUV + eps + c.uv[1] * (tileUV - 2 * eps),
+            tu + eps + cr.uv[0] * (tileUV - 2 * eps),
+            tvTop - tileUV + eps + cr.uv[1] * (tileUV - 2 * eps),
           );
-          const s1 = opaque(x + c.a[0], y + c.a[1], z + c.a[2]) ? 1 : 0;
-          const s2 = opaque(x + c.b[0], y + c.b[1], z + c.b[2]) ? 1 : 0;
-          const cc = opaque(x + c.c[0], y + c.c[1], z + c.c[2]) ? 1 : 0;
+          const s1 = opaque(x + cr.a[0], y + cr.a[1], z + cr.a[2]) ? 1 : 0;
+          const s2 = opaque(x + cr.b[0], y + cr.b[1], z + cr.b[2]) ? 1 : 0;
+          const cc = opaque(x + cr.c[0], y + cr.c[1], z + cr.c[2]) ? 1 : 0;
           const a = s1 && s2 ? 0 : 3 - (s1 + s2 + cc);
           ao[k] = a;
           const b = toLinear(f.shade * AO_LEVELS[a]);
           col.push(b, b, b);
           // smooth light: average the open cells around this corner, in front of the face
           let sum = this.lightAt(nx, ny, nz), sun = this.skyAt(nx, ny, nz), n = 1;
-          if (!s1) { sum += this.lightAt(x + c.a[0], y + c.a[1], z + c.a[2]); sun += this.skyAt(x + c.a[0], y + c.a[1], z + c.a[2]); n++; }
-          if (!s2) { sum += this.lightAt(x + c.b[0], y + c.b[1], z + c.b[2]); sun += this.skyAt(x + c.b[0], y + c.b[1], z + c.b[2]); n++; }
-          if (!cc && !(s1 && s2)) { sum += this.lightAt(x + c.c[0], y + c.c[1], z + c.c[2]); sun += this.skyAt(x + c.c[0], y + c.c[1], z + c.c[2]); n++; }
+          if (!s1) { sum += this.lightAt(x + cr.a[0], y + cr.a[1], z + cr.a[2]); sun += this.skyAt(x + cr.a[0], y + cr.a[1], z + cr.a[2]); n++; }
+          if (!s2) { sum += this.lightAt(x + cr.b[0], y + cr.b[1], z + cr.b[2]); sun += this.skyAt(x + cr.b[0], y + cr.b[1], z + cr.b[2]); n++; }
+          if (!cc && !(s1 && s2)) { sum += this.lightAt(x + cr.c[0], y + cr.c[1], z + cr.c[2]); sun += this.skyAt(x + cr.c[0], y + cr.c[1], z + cr.c[2]); n++; }
           tl.push(lightBrightness(sum / n));
           sl.push(skyBrightness(sun / n));
         }
@@ -553,21 +579,25 @@ export class World {
         vcount += 4;
       }
     }
-    const geo = (p, u, c, t, sk, i) => {
+    const geo = (p, u, cl, t, sk, i) => {
       const g = new THREE.BufferGeometry();
       g.setAttribute('position', new THREE.Float32BufferAttribute(p, 3));
       g.setAttribute('uv', new THREE.Float32BufferAttribute(u, 2));
-      g.setAttribute('color', new THREE.Float32BufferAttribute(c, 3));
+      g.setAttribute('color', new THREE.Float32BufferAttribute(cl, 3));
       g.setAttribute('torch', new THREE.Float32BufferAttribute(t, 1));
       g.setAttribute('sky', new THREE.Float32BufferAttribute(sk, 1));
       g.setIndex(i);
       g.computeBoundingSphere();
       return g;
     };
-    return { solid: geo(pos, uv, col, tl, sl, index), water: wcount ? geo(wpos, wuv, wcol, wtl, wsl, windex) : null };
+    return {
+      solid: vcount ? geo(pos, uv, col, tl, sl, index) : null,
+      water: wcount ? geo(wpos, wuv, wcol, wtl, wsl, windex) : null,
+    };
   }
 
   // A torch is a 2x10-pixel stick. Wall torches sit low against the wall and lean out of it.
+  // (x, y, z) here are chunk-local.
   addTorch(x, y, z, def, pos, uv, col, tl, sl, index, vcount) {
     const tileUV = 1 / ATLAS_COLS;
     const tu = (def.top % ATLAS_COLS) * tileUV;
@@ -595,48 +625,6 @@ export class World {
       vcount += 4;
     }
     return vcount;
-  }
-
-  // Rebuild up to `max` dirty chunks, nearest to (px, pz) first.
-  // materials: { solid, water }
-  remeshDirty(scene, materials, px, pz, max = Infinity) {
-    if (!this.dirty.size) return 0;
-    const list = [...this.dirty].map((k) => {
-      const [cx, cz] = k.split(',').map(Number);
-      const dx = (cx + 0.5) * CHUNK - px, dz = (cz + 0.5) * CHUNK - pz;
-      return { k, cx, cz, d: dx * dx + dz * dz };
-    }).sort((a, b) => a.d - b.d);
-    let n = 0;
-    for (const c of list) {
-      if (n >= max) break;
-      this.dirty.delete(c.k);
-      const geo = this.buildChunkGeometry(c.cx, c.cz);
-      let entry = this.chunkMeshes.get(c.k);
-      if (!entry) { entry = { solid: null, water: null }; this.chunkMeshes.set(c.k, entry); }
-      for (const kind of ['solid', 'water']) {
-        const g = geo[kind];
-        let mesh = entry[kind];
-        if (mesh) {
-          mesh.geometry.dispose();
-          if (g) mesh.geometry = g;
-          else { scene.remove(mesh); entry[kind] = null; }
-        } else if (g) {
-          mesh = new THREE.Mesh(g, materials[kind]);
-          if (kind === 'water') mesh.renderOrder = 1;
-          entry[kind] = mesh;
-          scene.add(mesh);
-        }
-      }
-      n++;
-    }
-    return n;
-  }
-
-  dispose(scene) {
-    for (const e of this.chunkMeshes.values()) {
-      for (const m of [e.solid, e.water]) if (m) { scene.remove(m); m.geometry.dispose(); }
-    }
-    this.chunkMeshes.clear();
   }
 
   // Voxel DDA raycast. Returns { x, y, z, id, nx, ny, nz } for the first solid block hit (water is ignored).

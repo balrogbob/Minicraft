@@ -13,6 +13,10 @@ const LOOK_SENS = 0.006; // radians per px (touch)
 const MOUSE_SENS = 0.0025;
 const JOY_RADIUS = 60;
 
+// When the touch actually happened. Event timestamps use the same clock as performance.now(),
+// but aren't delayed by slow frames, so a quick tap during a lag spike still counts as a tap.
+const eventTime = (e) => (e.timeStamp > 0 && e.timeStamp <= performance.now() ? e.timeStamp : performance.now());
+
 export class Controls {
   constructor(layer, player, hooks) {
     this.layer = layer;
@@ -61,7 +65,7 @@ export class Controls {
     L.addEventListener('touchstart', (e) => {
       e.preventDefault();
       if (this.hooks.isPaused()) return;
-      const now = performance.now();
+      const now = eventTime(e);
       for (const t of e.changedTouches) {
         if (t.clientX < window.innerWidth * 0.4 && !this.joy) {
           this.joy = { id: t.identifier, ox: t.clientX, oy: t.clientY };
@@ -74,7 +78,7 @@ export class Controls {
 
     L.addEventListener('touchmove', (e) => {
       e.preventDefault();
-      const now = performance.now();
+      const now = eventTime(e);
       for (const t of e.changedTouches) {
         if (this.joy && t.identifier === this.joy.id) {
           let dx = t.clientX - this.joy.ox, dy = t.clientY - this.joy.oy;
@@ -99,14 +103,16 @@ export class Controls {
 
     const end = (e) => {
       e.preventDefault();
-      const now = performance.now();
+      const now = eventTime(e);
       for (const t of e.changedTouches) {
         if (this.joy && t.identifier === this.joy.id) {
           this.joy = null; this.moveX = this.moveZ = 0;
           this.showJoy(false);
         } else if (this.look && t.identifier === this.look.id) {
           const lk = this.look;
-          if (!lk.breaking && now - lk.start < TAP_MS && lk.travel < MOVE_SLOP) this.hooks.place();
+          // judged by the touch's own timestamps: a short tap still counts even if a slow frame
+          // in between already started treating it as a hold (a real hold always outlasts TAP_MS)
+          if (now - lk.start < TAP_MS && lk.travel < MOVE_SLOP) this.hooks.place();
           this.look = null;
           this.breaking = false;
         }

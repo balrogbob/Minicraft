@@ -1,31 +1,38 @@
 import * as THREE from 'three';
 import {
-  BLOCKS, RECIPES, TABLE, AIR, GRASS, SAND, WATER, TORCH, TORCH_WALL_W, WALL_TORCH_DIRS,
+  BLOCKS, RECIPES, TABLE, AIR, WATER, TORCH, TORCH_WALL_W, WALL_TORCH_DIRS,
   isBlock, isTorch, itemName, breakTime, dropFor,
 } from './blocks.js';
 import { createAtlas, createIcons, createCrackCanvases, createWaterCanvas } from './textures.js';
-import { World, W } from './world.js';
+import { World, CHUNK, WORLD_SIZE, chunkKey } from './world.js';
+import { localIndex, CHUNK_VOLUME, H } from './terrain.js';
+import { ChunkStore } from './store.js';
+import { buildLegacyWorld, LEGACY_W } from './legacy.js';
 import { Sky } from './sky.js';
 import { Sound } from './sound.js';
 import { Player } from './player.js';
 import { Inventory, SLOTS } from './inventory.js';
 import { Controls } from './controls.js';
 
-const SAVE_KEY = 'minicraft-save-v1';
+// v2 = the 16k x 16k streaming world (player state here, edited chunks in IndexedDB).
+// v1 = the old 128 x 128 world, migrated into the middle of the big world on first launch.
+const SAVE_KEY = 'minicraft-save-v2';
+const LEGACY_SAVE_KEY = 'minicraft-save-v1';
 const SETTINGS_KEY = 'minicraft-settings-v1';
 const REACH = 5.5;
 const $ = (id) => document.getElementById(id);
 
 // ---------- storage (never trusted to exist) ----------
-function loadSave() {
-  try { return JSON.parse(localStorage.getItem(SAVE_KEY)); } catch { return null; }
+function loadSave(key = SAVE_KEY) {
+  try { return JSON.parse(localStorage.getItem(key)); } catch { return null; }
 }
 function writeSave(obj) {
   try { localStorage.setItem(SAVE_KEY, JSON.stringify(obj)); return true; } catch { return false; }
 }
 // Settings live apart from the world so they survive "New world".
 const settings = (() => {
-  try { return { sens: 6, volume: 70, ...JSON.parse(localStorage.getItem(SETTINGS_KEY)) }; } catch { return { sens: 6, volume: 70 }; }
+  const defaults = { sens: 6, volume: 70, viewDistance: 6 };
+  try { return { ...defaults, ...JSON.parse(localStorage.getItem(SETTINGS_KEY)) }; } catch { return defaults; }
 })();
 function saveSettings() {
   try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch { /* storage unavailable */ }
@@ -121,24 +128,78 @@ let paused = true;
 let target = null; // raycast hit
 const breakState = { key: '', progress: 0 };
 let tableOpen = false;
+const store = new ChunkStore();
+let worldReady = false; // false while a world is loading: nothing gets saved until the player is placed
 
 function newSeed() { return (Math.random() * 2 ** 31) | 0; }
 
+// View distance (in chunks) drives fog and the camera's far plane.
+function applyViewDistance() {
+  const r = settings.viewDistance;
+  if (world) world.renderDistance = r;
+  sky.fogFar = r * CHUNK;
+  sky.fogNear = sky.fogFar * 0.55;
+  camera.far = Math.max(160, r * CHUNK + 48);
+  camera.updateProjectionMatrix();
+  $('view-label').textContent = `View distance: ${r * CHUNK} blocks`;
+}
+
+// The old 128 x 128 world is placed here, in the middle of the big world.
+const LEGACY_OFFSET = WORLD_SIZE / 2 - LEGACY_W / 2;
+
+// Rebuild a world saved by the previous version and store it as edited chunks in the big world.
+async function migrateLegacyWorld(old) {
+  $('load-text').textContent = 'Moving your world into the big world…';
+  await nextFrame();
+  await store.clear();
+  const blocks = buildLegacyWorld(old);
+  const entries = [];
+  const n = LEGACY_W / CHUNK, base = LEGACY_OFFSET / CHUNK;
+  for (let cz = 0; cz < n; cz++) for (let cx = 0; cx < n; cx++) {
+    const data = new Uint8Array(CHUNK_VOLUME);
+    for (let y = 0; y < H; y++) for (let lz = 0; lz < CHUNK; lz++) for (let lx = 0; lx < CHUNK; lx++) {
+      const x = cx * CHUNK + lx, z = cz * CHUNK + lz;
+      data[localIndex(lx, y, lz)] = blocks[x + z * LEGACY_W + y * LEGACY_W * LEGACY_W];
+    }
+    entries.push([chunkKey(base + cx, base + cz), data]);
+  }
+  await store.saveMany(entries);
+  const p = old.player && Number.isFinite(old.player.x) ? old.player : { x: 64.5, y: 50, z: 64.5, yaw: 0, pitch: 0 };
+  const save = {
+    seed: old.seed,
+    inv: old.inv,
+    autoJump: old.autoJump,
+    time: old.time,
+    player: { x: p.x + LEGACY_OFFSET, y: p.y, z: p.z + LEGACY_OFFSET, yaw: p.yaw, pitch: p.pitch },
+    migrated: true,
+  };
+  writeSave(save);
+  return save;
+}
+
+async function boot() {
+  $('load-text').textContent = 'Opening save…';
+  if (!(await store.open())) toast('Storage is unavailable here, so this world won\'t be saved', 5000);
+  let save = loadSave();
+  const legacy = !save && loadSave(LEGACY_SAVE_KEY);
+  if (legacy?.seed !== undefined) save = await migrateLegacyWorld(legacy);
+  await startWorld(save);
+  if (legacy?.seed !== undefined) toast('Your world now sits in the middle of a 16,384 × 16,384 block world.<br>Walk out past its edges to explore!', 7000);
+}
+
 async function startWorld(save) {
+  worldReady = false;
   paused = true;
   $('loading').classList.remove('hidden');
   if (world) world.dispose(scene);
+  if (!save) await store.clear();
   const seed = save?.seed ?? newSeed();
-  // worlds saved before caves existed keep generating without them, so their edits still line up
-  world = new World(seed, save ? save.gen ?? 1 : undefined);
+  world = new World(seed, store);
+  applyViewDistance();
   $('load-text').textContent = 'Generating terrain…';
-  setProgress(0.05);
+  setProgress(0);
   await nextFrame();
-  world.generate();
-  if (save?.mods) world.applyMods(save.mods);
-  world.computeAllLight();
 
-  if (!player) player = new Player(world);
   player.world = world;
   inventory.slots.fill(null);
   inventory.selected = 0;
@@ -156,39 +217,25 @@ async function startWorld(save) {
   sky.time = Number.isFinite(save?.time) ? save.time : 0.02;
   updateAutoJumpLabel();
 
-  // mesh every chunk with a progress bar, nearest first
-  $('load-text').textContent = 'Building chunks…';
-  const total = world.dirty.size;
-  while (world.dirty.size) {
-    world.remeshDirty(scene, materials, player.pos.x, player.pos.z, 4);
-    setProgress(0.1 + 0.9 * (1 - world.dirty.size / total));
+  // build the area around the player before starting; the rest streams in while playing
+  for (;;) {
+    world.update(player.pos.x, player.pos.z, scene, materials, 40);
+    const ready = world.readiness(player.pos.x, player.pos.z, 2);
+    setProgress(ready);
+    if (ready >= 1) break;
     await nextFrame();
   }
   $('loading').classList.add('hidden');
+  worldReady = true;
   paused = false;
   if (!save) toast('Hold on a tree to punch it and collect logs.<br>Tap 🎒 to craft.', 5000);
   save || saveGame();
 }
 
 function respawn() {
-  // walk diagonally from the centre until we find open ground with no tree overhead nearby
-  const clear = (x, z) => {
-    for (let dz = -2; dz <= 2; dz++) for (let dx = -2; dx <= 2; dx++) {
-      const top = world.get(x + dx, world.heightAt(x + dx, z + dz), z + dz);
-      if (top !== GRASS && top !== SAND) return false;
-    }
-    return true;
-  };
-  // search outward from the centre in growing square rings
-  const c = Math.floor(W / 2);
-  let sx = c, sz = c;
-  search: for (let r = 0; r < c - 3; r += 2) {
-    for (let dz = -r; dz <= r; dz += 2) for (let dx = -r; dx <= r; dx += 2) {
-      if (Math.max(Math.abs(dx), Math.abs(dz)) !== r) continue;
-      if (clear(c + dx, c + dz)) { sx = c + dx; sz = c + dz; break search; }
-    }
-  }
-  player.spawn(sx + 0.5, world.heightAt(sx, sz) + 1, sz + 0.5);
+  // open grass near the middle of the world, found from the terrain function (no chunks needed)
+  const s = world.generator.findSpawn();
+  player.spawn(s.x + 0.5, s.h + 1, s.z + 0.5);
   player.yaw = Math.PI * 0.25;
   player.pitch = -0.2;
 }
@@ -197,11 +244,10 @@ function setProgress(f) { $('load-bar').style.width = Math.round(f * 100) + '%';
 const nextFrame = () => new Promise((r) => requestAnimationFrame(() => r()));
 
 function saveGame() {
-  if (!world || !player) return false;
+  if (!world || !player || !worldReady) return false;
+  world.saveChunks();
   return writeSave({
     seed: world.seed,
-    gen: world.gen,
-    mods: [...world.mods],
     inv: inventory.serialize(),
     player: { x: player.pos.x, y: player.pos.y, z: player.pos.z, yaw: player.yaw, pitch: player.pitch },
     autoJump: player.autoJump,
@@ -437,9 +483,16 @@ $('btn-close-menu').addEventListener('click', () => { $('menu').classList.add('h
 $('btn-autojump').addEventListener('click', () => { player.autoJump = !player.autoJump; updateAutoJumpLabel(); saveGame(); });
 $('btn-save').addEventListener('click', () => toast(saveGame() ? 'World saved' : 'Could not save (storage unavailable)'));
 $('btn-new').addEventListener('click', () => {
+  // (startWorld(null) also clears the stored chunks)
   if (!confirm('Start a new world? Your current world will be lost.')) return;
   $('menu').classList.add('hidden');
   startWorld(null);
+});
+$('view').value = settings.viewDistance;
+$('view').addEventListener('input', (e) => {
+  settings.viewDistance = +e.target.value;
+  applyViewDistance();
+  saveSettings();
 });
 $('sens').value = settings.sens;
 $('sens').addEventListener('input', (e) => { settings.sens = +e.target.value; controls.lookSens = settings.sens / 1000; saveSettings(); });
@@ -475,9 +528,8 @@ jumpBtn.addEventListener('mouseup', setJump(false));
 player = null;
 controls = null;
 {
-  // Player must exist before Controls; startWorld re-binds the world.
-  const tmp = new World(0);
-  player = new Player(tmp);
+  // Player must exist before Controls; startWorld gives it the real world.
+  player = new Player(null);
   controls = new Controls($('touch-layer'), player, {
     place,
     selectSlot,
@@ -522,19 +574,31 @@ function playMovementSounds(dt, wasGround, wasWater, fallSpeed) {
 
 // ---------- main loop ----------
 let last = performance.now();
+let coordsTimer = 0;
+let unsavedCount = 0, lastEditAt = 0;
 function frame(now) {
   requestAnimationFrame(frame);
   const dt = Math.min((now - last) / 1000, 0.05);
   last = now;
   if (!world) return;
 
-  if (!paused) {
+  // the player waits (frozen) until the chunk they're standing in has loaded
+  const here = world.chunkAt(Math.floor(player.pos.x), Math.floor(player.pos.z));
+  if (!paused && here) {
     controls.update();
     const wasGround = player.onGround, wasWater = player.inWater, fallSpeed = -player.vel.y;
     player.update(dt, { moveX: controls.moveX, moveZ: controls.moveZ, jump: controls.jump });
     if (player.pos.y < -20) respawn();
     playMovementSounds(dt, wasGround, wasWater, fallSpeed);
     world.tickWater(dt);
+  }
+  // write edited chunks to storage shortly (1.5 s) after the player stops changing them
+  if (world.unsaved.size !== unsavedCount) { unsavedCount = world.unsaved.size; lastEditAt = now; }
+  if (unsavedCount && now - lastEditAt > 1500 && worldReady) { world.saveChunks(); unsavedCount = 0; }
+  coordsTimer -= dt;
+  if (coordsTimer <= 0) {
+    coordsTimer = 0.25;
+    $('coords').textContent = `X ${Math.floor(player.pos.x)}  Y ${Math.floor(player.pos.y)}  Z ${Math.floor(player.pos.z)}`;
   }
 
   const eye = player.eye;
@@ -556,12 +620,12 @@ function frame(now) {
   if (!paused) updateBreaking(dt);
   else crack.visible = false;
 
-  world.remeshDirty(scene, materials, player.pos.x, player.pos.z, 3);
+  world.update(player.pos.x, player.pos.z, scene, materials, 6, dt);
   renderer.render(scene, camera);
 }
 requestAnimationFrame(frame);
 
-startWorld(loadSave());
+boot();
 
 // expose for debugging in the console
 window.minicraft = { get world() { return world; }, player, inventory, saveGame, sky, sound, breakBlock };

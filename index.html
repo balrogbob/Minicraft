@@ -27,6 +27,7 @@
       <button class="btn small" id="btn-fullscreen" title="Fullscreen">⛶</button>
       <button class="btn small" id="btn-menu" title="Menu">☰</button>
     </div>
+    <div id="coords"></div>
     <div id="toast"></div>
     <div id="item-name"></div>
 
@@ -65,6 +66,7 @@
         </div>
         <div class="menu-items">
           <button class="btn wide" id="btn-autojump">Auto-jump: on</button>
+          <label class="slider"><span id="view-label">View distance</span> <input type="range" id="view" min="3" max="10" step="1" value="6" /></label>
           <label class="slider">Look speed <input type="range" id="sens" min="2" max="14" step="1" value="6" /></label>
           <label class="slider">Sound <input type="range" id="volume" min="0" max="100" step="5" value="70" /></label>
           <button class="btn wide" id="btn-save">Save now</button>
