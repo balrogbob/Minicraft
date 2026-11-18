@@ -36,7 +36,8 @@ export const STICK = 100, COAL = 101,
   BUCKET = 128, MILK_BUCKET = 129, SLIME_BUCKET = 130,
   FEATHER = 131, MORTAR = 132,
   STRING = 133, ARROW = 134, BOW = 135,
-  COAL_DUST = 136, SLIME_FUEL = 137, CHARCOAL = 138;
+  COAL_DUST = 136, SLIME_FUEL = 137, CHARCOAL = 138,
+  FISHING_ROD = 139, RAW_FISH = 140, BAKED_FISH = 141;
 
 // Charcoal (smelted from logs) can stand in for coal anywhere coal is used.
 export const COAL_OR_CHARCOAL = [COAL, CHARCOAL];
@@ -266,6 +267,9 @@ export const ITEMS = {
   [COAL_DUST]: { name: 'Coal Dust' },
   [SLIME_FUEL]: { name: 'Slime Fuel', stack: 1 }, // a bucket of lamp fuel; the bucket stays with you
   [CHARCOAL]: { name: 'Charcoal' },
+  [FISHING_ROD]: { name: 'Fishing Rod', stack: 1 },
+  [RAW_FISH]: { name: 'Raw Fish', food: 2 },
+  [BAKED_FISH]: { name: 'Baked Fish', food: 6 },
 };
 
 export const foodValue = (id) => ITEMS[id]?.food ?? 0;
@@ -329,6 +333,7 @@ export const RECIPES = [
   { out: [STRING, 1], in: [[SLIME_BUCKET, 1], [WHEAT, 3]], also: [[BUCKET, 1]] },
   { out: [ARROW, 1], in: [[FEATHER, 1], [COBBLE, 1], [STICK, 1]], table: true },
   { out: [BOW, 1], in: [[STICK, 3], [STRING, 3]], table: true },
+  { out: [FISHING_ROD, 1], in: [[STICK, 3], [STRING, 2]], table: true },
   { out: [COAL_DUST, 1], in: [[COAL_OR_CHARCOAL, 1]], tools: [MORTAR] },
   { out: [SLIME_FUEL, 1], in: [[COAL_DUST, 3], [SLIME_BUCKET, 1]] },
   { out: [LAMP, 1], in: [[GLASS, 1], [COBBLE, 2]], table: true },
@@ -342,5 +347,5 @@ export const RECIPES = [
   { out: [OVEN, 1], in: [[COBBLE, 6], [SAND, 2]], table: true },
   { out: [SMELTER, 1], in: [[COBBLE, 8]], table: true },
 ];
-// (Bread, cookies and cake are baked in the oven, and glass, stone and charcoal come from the smelter:
+// (Bread, cookies, cake and baked fish are baked in the oven, and glass, stone and charcoal come from the smelter:
 // see stations.js.)

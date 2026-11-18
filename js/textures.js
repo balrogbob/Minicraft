@@ -3,6 +3,7 @@ import {
   T, BLOCKS, isBlock, TORCH, STICK, COAL, WOOD_PICK, STONE_PICK, WOOD_AXE, STONE_AXE, WOOD_SHOVEL, STONE_SHOVEL,
   SEEDS, WHEAT, FLOUR, SUGAR, BUTTER, BREAD, COOKIE, CAKE, BUCKET, MILK_BUCKET, SLIME_BUCKET, FEATHER, MORTAR,
   STRING, ARROW, BOW, COAL_DUST, SLIME_FUEL, BED, FURN_TABLE, CHAIR, LAMP, CARPET, CURTAIN, DOOR, CHARCOAL,
+  FISHING_ROD, RAW_FISH, BAKED_FISH,
 } from './blocks.js';
 
 export const TILE = 16;
@@ -673,6 +674,33 @@ export function createHudIcons() {
     bubble: make(HUD_ART.bubble, { X: '#2a5aa8', H: '#ffffff', B: '#8fc4ff' }),
   };
 }
+
+// a fish facing left: body, tail fin, eye. colors = [back, belly, fin]
+function fishPainter([back, belly, fin], baked = false) {
+  return (ctx) => {
+    for (let y = 0; y < 16; y++) for (let x = 1; x < 12; x++) {
+      const d = Math.hypot((x - 6.5) / 5.5, (y - 8) / 3.2);
+      if (d < 1) px(ctx, x, y, y < 8 ? back : belly);
+    }
+    for (let y = 4; y <= 12; y++) {
+      const w = Math.abs(y - 8);
+      for (let x = 12; x <= 12 + Math.min(3, w); x++) px(ctx, x, y, fin);
+    }
+    px(ctx, 11, 8, fin);
+    if (baked) for (const x of [4, 7, 10]) { px(ctx, x, 6, [92, 52, 20]); px(ctx, x - 1, 7, [92, 52, 20]); } // grill marks
+    else { px(ctx, 3, 7, [20, 20, 24]); for (let x = 5; x <= 9; x++) px(ctx, x, 5, fin); } // eye, dorsal fin
+  };
+}
+
+Object.assign(ITEM_PAINTERS, {
+  [FISHING_ROD](ctx) {
+    for (let i = 0; i <= 13; i++) px(ctx, 1 + i, 14 - i, i < 4 ? [92, 60, 30] : [140, 100, 56]); // rod, darker handle
+    for (let y = 2; y <= 11; y++) px(ctx, 14, y, [230, 222, 190]); // line
+    px(ctx, 14, 12, [216, 56, 46]); px(ctx, 14, 13, [244, 241, 234]); // bobber
+  },
+  [RAW_FISH]: fishPainter([[86, 128, 150], [196, 210, 214], [70, 104, 124]]),
+  [BAKED_FISH]: fishPainter([[176, 110, 50], [214, 160, 92], [140, 84, 36]], true),
+});
 
 ITEM_PAINTERS[WOOD_PICK] = toolPainter('pick', 'wood');
 ITEM_PAINTERS[STONE_PICK] = toolPainter('pick', 'stone');

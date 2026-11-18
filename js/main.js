@@ -5,7 +5,7 @@ import {
   WOOD_PICK, STONE_PICK, WOOD_AXE, STONE_AXE, WOOD_SHOVEL, STONE_SHOVEL,
   BED, BED_FOOT, CHAIR, LAMP, CARPET, CURTAIN, DOOR, SLIME_FUEL, FACING_DIRS, MAX_LAMP_FUEL,
   isBed, isChair, isLamp, isCurtain, isDoor, doorId,
-  OVEN, SMELTER, stationKind, maxStack,
+  OVEN, SMELTER, stationKind, maxStack, FISHING_ROD, RAW_FISH,
   isBlock, isTorch, isWheat, itemName, breakTime, dropsFor, foodValue,
 } from './blocks.js';
 import { createAtlas, createIcons, createCrackCanvases, createWaterCanvas, createHudIcons } from './textures.js';
@@ -21,10 +21,11 @@ import { Controls } from './controls.js';
 import { MobManager, DIFFICULTY, DIFFICULTY_ORDER } from './mobs.js';
 import { ArrowManager } from './arrows.js';
 import { Stations, STATION_KINDS, isFuel } from './stations.js';
+import { Fishing } from './fishing.js';
 
 // v2 = the 16k x 16k streaming world (player state here, edited chunks in IndexedDB).
 // v1 = the old 128 x 128 world, migrated into the middle of the big world on first launch.
-const GAME_VERSION = '12'; // shown in the menu; bump with each release
+const GAME_VERSION = '13'; // shown in the menu; bump with each release
 const SAVE_KEY = 'minicraft-save-v2';
 const LEGACY_SAVE_KEY = 'minicraft-save-v1';
 const SETTINGS_KEY = 'minicraft-settings-v1';
@@ -110,6 +111,7 @@ for (const ev of ['touchstart', 'pointerdown', 'keydown']) {
 const icons = createIcons(atlasCanvas);
 const mobs = new MobManager(scene, sound);
 const arrows = new ArrowManager(scene, sound);
+const fishing = new Fishing(scene, sound);
 
 // ---------- night creatures ----------
 const difficulty = () => DIFFICULTY[settings.difficulty] ?? DIFFICULTY.worrying;
@@ -573,6 +575,30 @@ function shootArrow(power) {
   arrows.shoot(player.eye, player.lookDir(), power);
 }
 
+// ---------- fishing ----------
+// Tap with the rod to cast; tap again to reel in. Reel in while the bobber is bobbing under (a bite) to catch a fish.
+function useRod() {
+  if (!fishing.active) { fishing.cast(player.eye, player.lookDir()); return; }
+  if (!fishing.reel()) return;
+  if (inventory.add(RAW_FISH, 1) > 0) { toast('Inventory full: the fish got away'); return; }
+  toast('You caught a fish!', 1500);
+  sound.pop();
+}
+
+// Where the line leaves the rod: a little to the right of and below your eye.
+const rodTip = new THREE.Vector3();
+function updateFishing(dt) {
+  if (!fishing.active) return;
+  if (inventory.heldId() !== FISHING_ROD || dead) { fishing.stop(); return; }
+  const look = player.lookDir();
+  rodTip.copy(player.eye).addScaledVector(look, 0.7);
+  rodTip.x += Math.cos(player.yaw) * 0.3; rodTip.z -= Math.sin(player.yaw) * 0.3; rodTip.y -= 0.12;
+  const ev = fishing.update(dt, world, rodTip, Math.max(lightUniforms.uDay.value, 0.3));
+  if (ev === 'bite') toast('Something\'s biting! Tap to reel in', 1200);
+  else if (ev === 'escaped') toast('It got away…', 1200);
+  else if (ev === 'snapped') toast('You walked too far: the line reeled back in', 1800);
+}
+
 // ---------- inventory / crafting UI ----------
 let picked = -1;
 const invEls = [];
@@ -978,6 +1004,7 @@ async function sleepUntilMorning() {
 function place() {
   if (paused) return;
   const held = inventory.held();
+  if (held?.id === FISHING_ROD) { useRod(); return; }
   // with the bow in hand a tap always shoots (a quick, short shot), whatever you're looking at
   if (held?.id === BOW) { shootArrow(Math.max(0.25, Math.min(1, bowCharge / FULL_DRAW))); bowCharge = 0; return; }
   if (targetMob) { hitMob(); return; }
@@ -1064,6 +1091,8 @@ function updateBreaking(dt) {
     return;
   }
   if (bowCharge) { bowCharge = 0; $('charge').classList.remove('show'); }
+  // the rod is for fishing, not digging: holding it does nothing
+  if (inventory.heldId() === FISHING_ROD) { crack.visible = false; breakState.key = ''; breakState.progress = 0; return; }
   // holding on an animal taps it again every half second instead of breaking blocks. The first
   // repeat waits half a second too, so a tap (which acts once, on release) never acts twice.
   if (!controls.breaking) breakState.mobCooldown = 0.5;
@@ -1348,6 +1377,7 @@ function stepGame(now, dt) {
       onHitPlayer: (dmg) => { if (!dead) damage(dmg, 'A thornspitter shot you full of thorns.'); },
     });
     if (picked) { inventory.add(ARROW, picked); sound.pop(); }
+    updateFishing(dt);
     mobs.update(dt, player, { day: lightUniforms.uDay.value, flicker: lightUniforms.uFlicker.value, ambient: AMBIENT },
       { difficulty: difficulty(), daylight: sky.light, playerDead: dead });
   }
@@ -1401,7 +1431,7 @@ window.minicraft = {
   get paused() { return paused; },
   get health() { return health; }, set health(v) { health = v; renderHealth(); },
   get poisoned() { return poisoned; }, get dead() { return dead; }, get air() { return air; }, set air(v) { air = v; },
-  arrows, damage, lamps, tickLamps, sleepUntilMorning, stations, openStation, closeStation,
+  arrows, fishing, damage, lamps, tickLamps, sleepUntilMorning, stations, openStation, closeStation,
   get caneToday() { return caneToday; },
   get bedSpawn() { return bedSpawn; },
 };
