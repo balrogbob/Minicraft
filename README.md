@@ -118,10 +118,10 @@ The version number is shown at the bottom of the ☰ menu; bump `GAME_VERSION` i
 | --- | --- | --- |
 | Move | Drag on the left side of the screen (floating joystick) | WASD |
 | Look | Drag on the right side | Mouse (click to capture) |
-| Break | Hold your finger still on the right side | Hold left button |
+| Break | Double-tap and hold your finger still on the right side | Hold left button |
 | Place / use crafting table | Tap on the right side | Right click |
 | Tap an animal (bump, shear, pluck, milk…) | Tap it | Left or right click |
-| Hit a night creature | Tap it (hold to keep swinging) | Left or right click |
+| Hit a night creature | Tap it (double-tap and hold to keep swinging) | Left or right click |
 | Eat (or drink a slime bucket) | Tap with food in hand | Right click |
 | Sleep / open a door or curtain / fuel a lamp | Tap it | Right click |
 | Fish (cast / reel in) | Tap with the fishing rod in hand | Right click |
@@ -131,7 +131,7 @@ The version number is shown at the bottom of the ☰ menu; bump `GAME_VERSION` i
 | Wear armour | Tap with it in hand, or put it in an armour slot in 🎒 | Right click |
 | Write on a sign | Tap it (it asks as soon as you place it) | Right click |
 | Light a blasting charge | Tap it, then stand well back | Right click |
-| Ride a minecart | Tap it to get in, tap again to get out; forward pushes, back brakes; hold on it to pick it up | Right click / W / S |
+| Ride a minecart | Tap it to get in, tap again to get out; forward pushes, back brakes; double-tap and hold on it to pick it up | Right click / W / S |
 | See how a machine is running | Tap it with nothing (or a tool) in hand | Right click |
 | Open or shut a gate or trapdoor / flip a lever / press a button | Tap it | Right click |
 | Put something in an item frame / take it out | Tap it with the thing in hand / tap it | Right click |
@@ -146,10 +146,17 @@ The version number is shown at the bottom of the ☰ menu; bump `GAME_VERSION` i
 | Jump / swim up | ⤒ button (auto-jump also steps up 1-block ledges) | Space |
 | Select item | Tap a hotbar slot | 1–9 / mouse wheel |
 | Inventory & crafting | 🎒 button | E |
+| Throw an item (one / the whole stack) | Hold its hotbar slot (keeps throwing while held) | Q / Shift + Q |
+| Put an item on a belt or into a hopper | Tap it with the item in hand | Right click |
 | World map | ☰ → World map, or tap the corner map | M |
 | Fly on / off (creative) | 🕊 button | F |
 | Fly up / down (creative) | ⤒ / ⤓ buttons | Space / Left Shift |
-| Copy and paste a build (creative) | Tap two corners with the copy wand, then tap to paste; hold still to clear | Right click / hold left button |
+| Copy and paste a build (creative) | Tap two corners with the copy wand, then tap to paste; double-tap and hold to clear | Right click / hold left button |
+
+On a touch screen, breaking needs a **double tap and hold**, so a finger resting on the look side while you
+walk doesn't dig: a single tap still places or uses, a quick double tap counts as one tap, and with the bow
+in hand you just hold to draw. (A tap's action waits a third of a second in case a second tap follows.) To go
+back to plain hold-to-break, change ☰ → **Touch breaking**.
 
 You aim with the crosshair in the middle of the screen. Volume, look speed, field of view and auto-jump are
 in the ☰ menu, and every keyboard key above can be changed under ☰ → **Keyboard keys**.
@@ -558,7 +565,7 @@ take it out). Frames hung on a **hopper** make it a **sorting hopper**: it only 
 that match one of its frames. A hopper under a running belt takes things off the belt as they pass over
 it (if it can), so a belt over a row of sorting hoppers sends each kind of thing to its own machine or chest.
 
-A **storage cart** carries 18 slots of things: tap it to open it, hold on it to pick it up (contents and
+A **storage cart** carries 18 slots of things: tap it to open it, double-tap and hold on it to pick it up (contents and
 all). On a **loader rail** a storage cart stops while hoppers fill it (a hopper pointing at the rail) or
 empty it (a hopper under the rail). It waits until nothing has moved for a moment, then rolls on.
 
@@ -629,6 +636,13 @@ trader moves on after a few minutes.
 Search recipes by name (of what they make, or what goes in) at the top of the crafting list, tap ☆ to
 favourite a recipe (favourites come first), and use ★ and ✓ to show only favourites or only what you can
 make right now. **Sort backpack** (and **Sort** in a chest) stacks things up and puts them in order.
+
+**Throwing things.** Press Q (Shift + Q for the whole stack), or hold a hotbar slot, to throw what you're
+holding. It lies on the ground until you walk over it (things you've just thrown wait a moment first) and
+vanishes after five minutes. A thrown item that lands on a running **conveyor belt** rides off along it, and
+one that lands on a **hopper** drops in (sorting hoppers still only take what matches their frames). You can
+also tap a belt or hopper holding an item to put it straight in. Breaking a chest, oven or machine **spills**
+what was inside onto the ground, with enchantments and wear kept.
 
 Tooltips (on by default, ☰ → Tooltips) name what the crosshair is on, and in 🎒 show the name and details of
 the item under the mouse or the one you tap.
@@ -736,6 +750,7 @@ guide to how everything works.
 | `js/frames.js` | Item frames: what each holds, the pictures in them, and hopper filters |
 | `js/weather.js` | Rain, snow and sandstorms: when they come, and the falling particles |
 | `js/minimap.js` | The map you hold: the land drawn from above |
+| `js/drops.js` | Loose items on the ground: throwing, bouncing, pick-up, and riding belts or dropping into hoppers |
 | `js/worldmap.js` | The full-screen world map: explored chunks, panning, zoom and waypoints |
 | `js/achievements.js` | The list of achievements |
 | `js/bees.js` | Bees buzzing around their hives |
