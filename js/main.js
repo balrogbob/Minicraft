@@ -7,6 +7,10 @@ import {
   isBed, isChair, isLamp, isCurtain, isDoor, doorId,
   OVEN, SMELTER, stationKind, maxStack, FISHING_ROD, RAW_FISH, TOOL_TIERS, LOG, LEAVES, SAPLING,
   BLAST_SMELTER, CRUSHER, WATER_BUCKET, WATER_WHEEL, isWaterId, isFlowing,
+  CHEST, IRON_CHEST, LADDER, SCAFFOLD, SIGN, SIGN_POST, isSign, isSword, ARMOUR_PIECES,
+  SAW, TRIP_HAMMER, DRILL, HOPPER, BELT, WINDMILL, BELLOWS, PUMP, FILAMENT_LAMP, MILLSTONE,
+  RAIL, POWERED_RAIL, MINECART, MAP, ICE, isRail, railId,
+  LAVA, BLAST_CHARGE, LEAD_BUCKET, LAVA_BUCKET, GOLD_CLOCK, COMPASS, SILVER_ARROW, MIRROR_LAMP, WEIGHTED_ROD, isRod, metalTool, TOOL_MATERIALS,
   isBlock, isTorch, isWheat, itemName, breakTime, dropsFor, foodValue,
 } from './blocks.js';
 import { createAtlas, createIcons, createCrackCanvases, createWaterCanvas, createHudIcons } from './textures.js';
@@ -24,10 +28,14 @@ import { ArrowManager } from './arrows.js';
 import { Stations, STATION_KINDS, isFuel } from './stations.js';
 import { Fishing } from './fishing.js';
 import { Kinetics } from './kinetics.js';
+import { Signs } from './signs.js';
+import { Machines } from './machines.js';
+import { Carts, railBeyond } from './carts.js';
+import { MiniMap } from './minimap.js';
 
 // v2 = the 16k x 16k streaming world (player state here, edited chunks in IndexedDB).
 // v1 = the old 128 x 128 world, migrated into the middle of the big world on first launch.
-const GAME_VERSION = '16'; // shown in the menu; bump with each release
+const GAME_VERSION = '17'; // shown in the menu; bump with each release
 const SAVE_KEY = 'minicraft-save-v2';
 const LEGACY_SAVE_KEY = 'minicraft-save-v1';
 const SETTINGS_KEY = 'minicraft-settings-v1';
@@ -127,7 +135,7 @@ mobs.onHurtPlayer = (amount, cause, from) => {
   const dx = player.pos.x - from.x, dz = player.pos.z - from.z, len = Math.hypot(dx, dz) || 1;
   player.kx = (dx / len) * 7; player.kz = (dz / len) * 7;
   if (player.onGround) player.vel.y = 4.5;
-  damage(amount, cause);
+  damage(armoured(amount), cause);
 };
 mobs.onShoot = (origin, dir, dmg) => arrows.shootThorn(origin, dir, dmg);
 
@@ -166,6 +174,7 @@ const inventory = new Inventory();
 let paused = true;
 let target = null; // raycast hit
 let targetMob = null; // { mob, t } when the crosshair is on an animal (closer than any block)
+let targetCart = null; // { cart, t } when the crosshair is on a minecart
 const breakState = { key: '', progress: 0 };
 let openedAt = null; // the station block (crafting table or churn) tapped to open crafting
 const MAX_HUNGER = 20;
@@ -177,7 +186,7 @@ let air = MAX_AIR; // seconds of breath left underwater
 let poisoned = 0; // seconds of food poisoning left
 let dead = false;
 let fallTop = null; // highest point of the current fall, for fall damage
-const timers = { regen: 0, starve: 0, poison: 0, drown: 0 };
+const timers = { regen: 0, starve: 0, poison: 0, drown: 0, lava: 0 };
 let bowCharge = 0; // seconds the bow has been drawn (holding)
 let bedSpawn = null; // { x, y, z } of the bed you last used: where you respawn
 // Lit lamps: "x,y,z" -> seconds left in the fuel unit now burning (each unit lasts one in-game day).
@@ -185,6 +194,20 @@ const lamps = new Map();
 const stations = new Stations(); // what's inside each oven and smelter
 const kinetics = new Kinetics(scene, atlas); // water wheels, shafts and gears, and what they drive
 const powerAt = (x, y, z) => kinetics.powerAt(x, y, z);
+const signs = new Signs(scene); // what's written on each sign
+const machines = new Machines(scene, icons); // pumps, drills, hoppers and belts
+const carts = new Carts(scene); // minecarts on rails
+let riding = null; // the minecart you're sitting in
+const minimap = new MiniMap($('map'), atlasCanvas);
+// Bellows blowing into an oven or smelter (while they're turned) make it work half as fast again.
+const boostAt = (x, y, z) => ([[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]]
+  .some(([dx, dy, dz]) => world.get(x + dx, y + dy, z + dz) === BELLOWS && powerAt(x + dx, y + dy, z + dz) > 0) ? 1.5 : 1);
+// Armour worn: an item id (or null) for helmet, chestplate, leggings and boots.
+const armour = [null, null, null, null];
+const armourPoints = () => armour.reduce((t, id) => t + (id ? ITEMS[id].armour.points : 0), 0);
+// Each point of armour takes 4% off what creatures do to you, up to 80%.
+const armourShare = () => Math.min(0.8, armourPoints() * 0.04);
+const armoured = (amount) => amount * (1 - armourShare());
 let caneToday = 0; // raw sugar cane eaten since sunrise: the 5th gives you food poisoning
 const store = new ChunkStore();
 let worldReady = false; // false while a world is loading: nothing gets saved until the player is placed
@@ -214,7 +237,7 @@ async function migrateLegacyWorld(old) {
   const entries = [];
   const n = LEGACY_W / CHUNK, base = LEGACY_OFFSET / CHUNK;
   for (let cz = 0; cz < n; cz++) for (let cx = 0; cx < n; cx++) {
-    const data = new Uint8Array(CHUNK_VOLUME);
+    const data = new Uint16Array(CHUNK_VOLUME);
     for (let y = 0; y < H; y++) for (let lz = 0; lz < CHUNK; lz++) for (let lx = 0; lx < CHUNK; lx++) {
       const x = cx * CHUNK + lx, z = cz * CHUNK + lz;
       data[localIndex(lx, y, lz)] = blocks[x + z * LEGACY_W + y * LEGACY_W * LEGACY_W];
@@ -263,6 +286,11 @@ async function startWorld(save) {
   };
   mobs.reset(world);
   kinetics.clear();
+  for (const [k, f] of fuses) removeFuse(k, f);
+  signs.load(save?.signs);
+  machines.load(save?.machines);
+  carts.load(save?.carts);
+  riding = null;
   arrows.reset();
   lastSwing = 0;
   applyViewDistance();
@@ -293,6 +321,10 @@ async function startWorld(save) {
   lamps.clear();
   for (const [key, secs] of save?.lamps ?? []) if (typeof key === 'string' && Number.isFinite(secs)) lamps.set(key, secs);
   stations.load(save?.stations);
+  for (let i = 0; i < 4; i++) {
+    const id = save?.armour?.[i];
+    armour[i] = ITEMS[id]?.armour?.piece === i ? id : null;
+  }
   caneToday = Number.isFinite(save?.caneToday) ? save.caneToday : 0;
   air = MAX_AIR;
   dead = false;
@@ -354,6 +386,10 @@ function saveGame() {
     bed: bedSpawn,
     lamps: [...lamps],
     stations: stations.serialize(),
+    signs: signs.serialize(),
+    machines: machines.serialize(),
+    carts: carts.serialize(),
+    armour: [...armour],
     caneToday,
     time: sky.time,
   });
@@ -499,6 +535,14 @@ function renderAir() {
   if (show) bubbleEls.forEach((b, i) => { b.style.visibility = i < Math.ceil(air) ? 'visible' : 'hidden'; });
 }
 
+function touchingPrickly() {
+  const p = player.pos, r = 0.36;
+  for (let y = Math.floor(p.y); y <= Math.floor(p.y + 1.7); y++)
+    for (let z = Math.floor(p.z - r); z <= Math.floor(p.z + r); z++)
+      for (let x = Math.floor(p.x - r); x <= Math.floor(p.x + r); x++) if (BLOCKS[world.get(x, y, z)]?.prickly) return true;
+  return false;
+}
+
 function damage(amount, cause) {
   if (dead || amount <= 0) return;
   health = Math.max(0, health - amount);
@@ -520,6 +564,7 @@ function die(cause) {
 }
 
 function respawnPlayer() {
+  riding = null;
   respawn();
   health = MAX_HEALTH; hunger = MAX_HUNGER; air = MAX_AIR; poisoned = 0;
   fallTop = null; dead = false;
@@ -540,7 +585,7 @@ function respawnPlayer() {
 //   a well-fed player (hunger 16+) heals a point every 3 s, using up a little hunger.
 function updateHealth(dt, wasGround, prevY) {
   // falling: track the highest point since leaving the ground (including where this step started)
-  if (player.inWater || player.onGround && wasGround) fallTop = null;
+  if (riding || player.inWater || player.inLava || player.climbing || player.onGround && wasGround) fallTop = null;
   if (!player.onGround && !player.inWater) fallTop = Math.max(fallTop ?? prevY, prevY, player.pos.y);
   else if (player.onGround && !wasGround && fallTop === null && !player.inWater) fallTop = prevY;
   if (player.onGround && !wasGround && fallTop !== null) {
@@ -557,6 +602,14 @@ function updateHealth(dt, wasGround, prevY) {
     timers.drown = 0;
   }
   renderAir();
+  // cactus spines: a point every half second while you're up against one
+  if (touchingPrickly()) {
+    if ((timers.cactus = (timers.cactus ?? 0) - dt) <= 0) { timers.cactus = 0.5; damage(1, 'You hugged a cactus.'); }
+  } else timers.cactus = 0;
+  // lava burns: 3 points every half second
+  if (player.inLava) {
+    if ((timers.lava -= dt) <= 0) { timers.lava = 0.5; damage(3, 'You tried to swim in lava.'); }
+  } else timers.lava = 0;
   // starving
   if (hunger <= 0) {
     if ((timers.starve += dt) >= 4) { timers.starve = 0; if (health > 1) damage(1, 'You starved.'); }
@@ -581,16 +634,18 @@ function updateHealth(dt, wasGround, prevY) {
 
 // ---------- bow ----------
 const FULL_DRAW = 1; // seconds to draw the bow all the way
+// Silver arrows are used first when you have them.
 function shootArrow(power) {
-  if (inventory.count(ARROW) <= 0) { toast('You need arrows'); return; }
-  inventory.remove(ARROW, 1);
-  arrows.shoot(player.eye, player.lookDir(), power);
+  const silver = inventory.count(SILVER_ARROW) > 0;
+  if (!silver && inventory.count(ARROW) <= 0) { toast('You need arrows'); return; }
+  inventory.remove(silver ? SILVER_ARROW : ARROW, 1);
+  arrows.shoot(player.eye, player.lookDir(), power, silver);
 }
 
 // ---------- fishing ----------
 // Tap with the rod to cast; tap again to reel in. Reel in while the bobber is bobbing under (a bite) to catch a fish.
-function useRod() {
-  if (!fishing.active) { fishing.cast(player.eye, player.lookDir()); return; }
+function useRod(id) {
+  if (!fishing.active) { fishing.cast(player.eye, player.lookDir(), id === WEIGHTED_ROD); return; }
   if (!fishing.reel()) return;
   if (inventory.add(RAW_FISH, 1) > 0) { toast('Inventory full: the fish got away'); return; }
   toast('You caught a fish!', 1500);
@@ -601,7 +656,7 @@ function useRod() {
 const rodTip = new THREE.Vector3();
 function updateFishing(dt) {
   if (!fishing.active) return;
-  if (inventory.heldId() !== FISHING_ROD || dead) { fishing.stop(); return; }
+  if (!isRod(inventory.heldId()) || dead) { fishing.stop(); return; }
   const look = player.lookDir();
   rodTip.copy(player.eye).addScaledVector(look, 0.7);
   rodTip.x += Math.cos(player.yaw) * 0.3; rodTip.z -= Math.sin(player.yaw) * 0.3; rodTip.y -= 0.12;
@@ -624,17 +679,48 @@ function buildInventoryGrid() {
   };
   for (let i = 9; i < SLOTS; i++) make(i, $('inv-grid'));
   for (let i = 0; i < 9; i++) make(i, $('inv-hotbar'));
+  for (let k = 0; k < 4; k++) make(ARMOUR_SLOT + k, $('inv-armour'));
 }
+const ARMOUR_SLOT = 100; // the armour slots count as 100..103 in the inventory panel
 buildInventoryGrid();
 
+const armourPiece = (id) => ITEMS[id]?.armour?.piece ?? -1;
 function onInvSlot(i) {
   if (picked < 0) {
-    if (inventory.slots[i]) picked = i;
+    if (i >= ARMOUR_SLOT ? armour[i - ARMOUR_SLOT] : inventory.slots[i]) picked = i;
+  } else if (picked === i) {
+    picked = -1;
+  } else if (i >= ARMOUR_SLOT || picked >= ARMOUR_SLOT) {
+    // between the backpack and an armour slot: only the right piece goes in each slot
+    const [k, s] = i >= ARMOUR_SLOT ? [i - ARMOUR_SLOT, picked] : [picked - ARMOUR_SLOT, i];
+    if (s >= ARMOUR_SLOT) { picked = -1; renderInventory(); return; }
+    const item = inventory.slots[s];
+    if (item && armourPiece(item.id) !== k) toast(`That isn't ${ARMOUR_PIECES[k].name.toLowerCase()} armour`);
+    else {
+      const worn = armour[k];
+      armour[k] = item?.id ?? null;
+      inventory.slots[s] = worn ? { id: worn, count: 1 } : null;
+      sound.pop();
+      inventory.onChange();
+    }
+    picked = -1;
   } else {
     inventory.moveSlot(picked, i);
     picked = -1;
   }
   renderInventory();
+}
+
+// Tap with a piece of armour in hand to put it on (swapping with whatever you were wearing there).
+function wearHeld() {
+  const held = inventory.held();
+  const k = armourPiece(held.id);
+  const worn = armour[k];
+  armour[k] = held.id;
+  inventory.slots[inventory.selected] = worn ? { id: worn, count: 1 } : null;
+  inventory.onChange();
+  sound.pop();
+  toast(`Wearing ${itemName(held.id).toLowerCase()} · armour ${Math.round(armourShare() * 100)}%`, 1800);
 }
 
 // Is a block of this kind (a crafting table or butter churn) within reach?
@@ -652,6 +738,12 @@ function renderInventory() {
     invEls[i].innerHTML = slotHTML(inventory.slots[i]);
     invEls[i].classList.toggle('picked', i === picked);
   }
+  for (let k = 0; k < 4; k++) {
+    const el = invEls[ARMOUR_SLOT + k];
+    el.innerHTML = armour[k] ? slotHTML({ id: armour[k], count: 1 }) : `<span class="empty-armour">${['⛑', '👕', '👖', '👢'][k]}</span>`;
+    el.classList.toggle('picked', ARMOUR_SLOT + k === picked);
+  }
+  $('armour-total').textContent = armourPoints() ? `blocks ${Math.round(armourShare() * 100)}% of creature damage` : '';
   const hasTable = openedAt === TABLE || nearBlock(TABLE);
   const hasChurn = openedAt === CHURN || nearBlock(CHURN);
   $('table-status').textContent = `— crafting table ${hasTable ? '✓' : '✗'} · butter churn ${hasChurn ? '✓' : '✗'}`;
@@ -759,6 +851,7 @@ function openStation(x, y, z) {
   document.exitPointerLock?.();
   const K = STATION_KINDS[kind];
   $('station-title').textContent = K.name;
+  $('station').classList.toggle('storage', !!K.storage);
   // build the slots for this kind of station
   const make = (parent, area, i) => {
     const el = document.createElement('div');
@@ -770,9 +863,12 @@ function openStation(x, y, z) {
   };
   const ins = $('st-inputs');
   ins.innerHTML = '';
-  ins.style.gridTemplateColumns = `repeat(${K.inputs > 1 ? 2 : 1}, var(--slot))`;
+  ins.style.gridTemplateColumns = K.storage ? '' : `repeat(${K.inputs > 1 ? 2 : 1}, var(--slot))`;
   for (let i = 0; i < K.inputs; i++) make(ins, 'in', i);
-  for (const [id, area] of [['st-fuel', 'fuel'], ['st-out', 'out']]) { $(id).innerHTML = ''; if (area === 'out' || !K.powered) make($(id), area, 0); }
+  for (const [id, area] of [['st-fuel', 'fuel'], ['st-out', 'out']]) {
+    $(id).innerHTML = '';
+    if (!K.storage && (area === 'out' || !K.powered)) make($(id), area, 0);
+  }
   $('station').querySelector('.st-fuel-row').style.display = K.powered ? 'none' : '';
   $('st-inv').innerHTML = ''; $('st-hotbar').innerHTML = '';
   for (let i = 9; i < SLOTS; i++) make($('st-inv'), 'inv', i);
@@ -783,10 +879,10 @@ function openStation(x, y, z) {
     const tools = (r.tools ?? []).map((id) => `<span class="ing tool" title="${itemName(id)} (not used up)"><img src="${icons[id]}" alt="">kept</span>`).join('');
     return `<div class="recipe">${ing}${tools}<span class="arrow">→</span><img class="outimg" src="${icons[r.out[0]]}" alt="">` +
       `<span class="name">${r.out[1] > 1 ? r.out[1] + ' × ' : ''}${itemName(r.out[0])}</span></div>`;
-  }).join('') + (K.powered ? '<p class="hint">Times are at 1x speed. Drive it with a water wheel by turning a shaft or gear ' +
-    'against any face; gear it up for more speed. Ore dust smelts into ingots, so crushing ore doubles what you get.</p>'
+  }).join('') + (K.powered ? '<p class="hint">Times are at 1x speed. Drive it with a water wheel or windmill by turning a shaft or gear ' +
+    'against any face; gear it up for more speed.' + (kind === 'crusher' ? ' Ore dust smelts into ingots, so crushing ore doubles what you get.' : '') + '</p>'
     : '<p class="hint">Fuel, in items cooked per piece: log or planks 1, stick ½, coal or charcoal 10, ' +
-    'slime fuel 40 (its bucket is left in the fuel slot). Fuel is only used while something is cooking.' +
+    'slime fuel 40, lava bucket 100 (their buckets are left in the fuel slot). Fuel is only used while something is cooking.' +
     (K.speed ? ' A blast smelter works twice as fast on the same fuel.' : '') + '</p>');
   $('station').classList.remove('hidden');
   renderStation();
@@ -807,12 +903,18 @@ function renderStation() {
     el.innerHTML = slotHTML(stationSlot(area, i).get());
     el.classList.toggle('picked', !!stPicked && stPicked.area === area && stPicked.i === i);
   }
+  const K = STATION_KINDS[st.kind];
+  if (K.storage) {
+    $('st-status').textContent = `${st.inputs.filter(Boolean).length} of ${K.inputs} slots used`;
+    return;
+  }
   const r = stations.recipeFor(st);
   $('st-progress').style.width = `${r ? Math.min(100, (st.progress / r.time) * 100) : 0}%`;
   if (STATION_KINDS[st.kind].powered) {
     const { x, y, z } = openStationAt;
     const power = kinetics.statusAt(x, y, z);
-    $('st-status').textContent = r && st.speed > 0 ? `Crushing ${itemName(r.in[0][0]).toLowerCase()}… ${power}` : `${r ? '' : 'Put something in to crush. '}${power}`;
+    const verb = STATION_KINDS[st.kind].verb;
+    $('st-status').textContent = r && st.speed > 0 ? `${verb} ${itemName(idsOf(r.in[0][0])[0]).toLowerCase()}… ${power}` : `${r ? '' : 'Put something in. '}${power}`;
     return;
   }
   $('st-flame').style.opacity = st.burn > 0 ? String(0.35 + 0.65 * (st.burn / (st.burnMax || 1))) : '0.12';
@@ -820,6 +922,36 @@ function renderStation() {
   $('st-status').textContent = r ? (st.burn > 1e-9 || (st.fuel && isFuel(st.fuel.id)) ? `Making ${itemName(r.out[0]).toLowerCase()}…${fuelLeft}` : 'Needs fuel') :
     `Put ingredients in${fuelLeft}`;
 }
+
+// Chest buttons: move everything in the backpack (not the hotbar) into the chest, or take it all out.
+function chestMove(intoChest) {
+  const st = currentStation();
+  if (!st) return;
+  const put = (slots, from, i) => {
+    const s = from[i];
+    if (!s) return;
+    for (let j = 0; j < slots.length && s.count; j++) {
+      const t = slots[j];
+      if (t && t.id === s.id && t.count < maxStack(s.id)) { const k = Math.min(s.count, maxStack(s.id) - t.count); t.count += k; s.count -= k; }
+    }
+    for (let j = 0; j < slots.length && s.count; j++) if (!slots[j]) { slots[j] = { id: s.id, count: s.count }; s.count = 0; }
+    if (!s.count) from[i] = null;
+  };
+  if (intoChest) for (let i = 9; i < SLOTS; i++) put(st.inputs, inventory.slots, i);
+  else {
+    for (let i = 0; i < st.inputs.length; i++) {
+      const s = st.inputs[i];
+      if (!s) continue;
+      const left = inventory.add(s.id, s.count);
+      st.inputs[i] = left ? { id: s.id, count: left } : null;
+    }
+  }
+  sound.pop();
+  inventory.onChange();
+  renderStation();
+}
+$('btn-chest-in').addEventListener('click', () => chestMove(true));
+$('btn-chest-out').addEventListener('click', () => chestMove(false));
 
 function onStationSlot(area, i) {
   const st = currentStation();
@@ -866,7 +998,7 @@ function hitMob() {
   if (targetMob.mob.spec.hostile) {
     // fight a night creature: damage depends on what's in your hand
     const now = performance.now();
-    if (now - lastSwing < 450) return;
+    if (now - lastSwing < (isSword(inventory.heldId()) ? 300 : 450)) return; // swords swing quicker
     lastSwing = now;
     giveDrops(mobs.hurt(targetMob.mob, WEAPON_DAMAGE[inventory.heldId()] ?? ITEMS[inventory.heldId()]?.tool?.damage ?? 2, player.pos));
     return;
@@ -965,7 +1097,7 @@ function useLamp(x, y, z, held) {
   const fuel = BLOCKS[world.get(x, y, z)].fuel;
   if (held?.id === SLIME_FUEL) {
     if (fuel >= MAX_LAMP_FUEL) { toast('This lamp is already full'); return; }
-    world.setBlock(x, y, z, LAMP + fuel + 1);
+    world.setBlock(x, y, z, BLOCKS[world.get(x, y, z)].lampBase + fuel + 1);
     if (!fuel) lamps.set(lampKey(x, y, z), DAY_LENGTH);
     inventory.consumeHeld();
     inventory.add(BUCKET, 1);
@@ -986,7 +1118,7 @@ function tickLamps(dt) {
     if (!isLamp(id) || !BLOCKS[id].fuel) { lamps.delete(key); continue; }
     let left = secs - dt, fuel = BLOCKS[id].fuel;
     while (left <= 0 && fuel > 0) { fuel--; left += DAY_LENGTH; }
-    if (fuel !== BLOCKS[id].fuel) world.setBlock(x, y, z, LAMP + fuel);
+    if (fuel !== BLOCKS[id].fuel) world.setBlock(x, y, z, BLOCKS[id].lampBase + fuel);
     if (fuel > 0) lamps.set(key, left); else lamps.delete(key);
   }
 }
@@ -1010,7 +1142,7 @@ async function sleepUntilMorning() {
   sky.time = 0.001;
   day++;
   caneToday = 0;
-  stations.tick(skipped, world, setStationLit, powerAt);
+  stations.tick(skipped, world, setStationLit, powerAt, boostAt);
   tickLamps(skipped);
   for (let i = 0; i < 6; i++) world.tickPlants(skipped / 6);
   hunger = Math.max(0, hunger - 3); // a night's sleep makes you a bit peckish
@@ -1023,13 +1155,114 @@ async function sleepUntilMorning() {
   paused = false;
 }
 
+// ---------- rails and minecarts ----------
+// A rail you place joins up to two rails beside it (or a block higher or lower, as a slope), preferring
+// ones already pointing at it, and they bend round to meet it.
+function railNeighbour(x, y, z, d) {
+  const [dx, dz] = FACING_DIRS[d];
+  for (const dy of [0, 1, -1]) if (isRail(world.get(x + dx, y + dy, z + dz))) return [x + dx, y + dy, z + dz, dy];
+  return null;
+}
+const joinedEnds = (x, y, z) => BLOCKS[world.get(x, y, z)].rail.ends.filter((d) => railBeyond(world, x, y, z, d));
+function placeRail(x, y, z, powered) {
+  const cands = [];
+  for (let d = 0; d < 4; d++) {
+    const n = railNeighbour(x, y, z, d);
+    if (!n) continue;
+    const nr = BLOCKS[world.get(n[0], n[1], n[2])].rail;
+    const pointsHere = nr.ends.includes((d + 2) % 4);
+    if (pointsHere || joinedEnds(n[0], n[1], n[2]).length < 2) cands.push({ d, n, dy: n[3], pri: pointsHere ? 0 : 1 });
+  }
+  cands.sort((a, b) => a.pri - b.pri);
+  let pick = cands.slice(0, 2);
+  const straight = (a, b) => (a + 2) % 4 === b;
+  if (pick.length === 2 && powered && !straight(pick[0].d, pick[1].d)) pick = pick.slice(0, 1); // powered rails don't bend
+  const up = pick.find((c) => c.dy === 1);
+  if (up) pick = [up, ...pick.filter((c) => c !== up && straight(c.d, up.d))]; // a slope runs straight
+  let ends;
+  if (pick.length === 2) ends = [pick[0].d, pick[1].d];
+  else if (pick.length === 1) ends = [pick[0].d, (pick[0].d + 2) % 4];
+  else { const f = (facingTowardPlayer(x, z) + 2) % 4; ends = [f, (f + 2) % 4]; }
+  world.setBlock(x, y, z, railId(ends, up && !powered ? up.d : -1, powered));
+  for (const c of pick) {
+    const [nx, ny, nz, dy] = c.n;
+    const nr = BLOCKS[world.get(nx, ny, nz)].rail, back = (c.d + 2) % 4;
+    if (nr.ends.includes(back) && (dy !== -1 || nr.slope === back)) continue; // already joined
+    const keep = joinedEnds(nx, ny, nz).find((e) => e !== back);
+    const nends = keep === undefined ? [back, (back + 2) % 4] : [keep, back];
+    if (straight(nends[0], nends[1]) || !nr.powered) {
+      const slope = dy === -1 && straight(nends[0], nends[1]) && !nr.powered ? back : -1; // a lower rail slopes up to meet this one
+      if (dy === -1 && slope < 0) continue;
+      world.setBlock(nx, ny, nz, railId(nends, slope, nr.powered));
+    }
+  }
+}
+
+function getInCart(cart) {
+  riding = cart;
+  player.vel.set(0, 0, 0);
+  sound.place('stone');
+  toast('Hold forward to push off, back to brake. Tap to get out.', 2500);
+}
+function getOutOfCart() {
+  if (!riding) return;
+  player.spawn(riding.pos.x, riding.pos.y + 0.7, riding.pos.z);
+  riding = null;
+}
+// Sit in the cart: you go where it goes.
+function followCart() {
+  if (!carts.carts.includes(riding)) { riding = null; return; }
+  player.pos.set(riding.pos.x, riding.pos.y - 0.32, riding.pos.z);
+  player.vel.set(0, 0, 0);
+  player.onGround = true;
+  player.updateWaterState();
+}
+
+// ---------- signs ----------
+let signAt = null; // the sign being written on
+function editSign(x, y, z) {
+  signAt = { x, y, z };
+  paused = true;
+  controls.reset();
+  document.exitPointerLock?.();
+  $('sign-text').value = signs.get(x, y, z);
+  $('sign-edit').classList.remove('hidden');
+  setTimeout(() => $('sign-text').focus(), 50);
+}
+function closeSign() {
+  if (!signAt) return;
+  const { x, y, z } = signAt;
+  if (isSign(world.get(x, y, z))) signs.set(x, y, z, $('sign-text').value);
+  signAt = null;
+  $('sign-text').blur();
+  $('sign-edit').classList.add('hidden');
+  paused = false;
+  saveGame();
+}
+$('btn-sign-done').addEventListener('click', closeSign);
+$('sign-text').addEventListener('input', (e) => {
+  // keep to 4 lines of 16 letters as you type
+  const lines = e.target.value.split('\n');
+  if (lines.length > 4 || lines.some((l) => l.length > 16)) {
+    const pos = e.target.selectionStart;
+    e.target.value = lines.slice(0, 4).map((l) => l.slice(0, 16)).join('\n');
+    e.target.selectionStart = e.target.selectionEnd = Math.min(pos, e.target.value.length);
+  }
+});
+
 function place() {
   if (paused) return;
   const held = inventory.held();
-  if (held?.id === FISHING_ROD) { useRod(); return; }
+  if (isRod(held?.id)) { useRod(held.id); return; }
   // with the bow in hand a tap always shoots (a quick, short shot), whatever you're looking at
   if (held?.id === BOW) { shootArrow(Math.max(0.25, Math.min(1, bowCharge / FULL_DRAW))); bowCharge = 0; return; }
+  if (riding) { getOutOfCart(); return; }
+  if (targetCart) { getInCart(targetCart.cart); return; }
   if (targetMob) { hitMob(); return; }
+  if (held?.id === MINECART && target && isRail(target.id)) {
+    if (carts.add(world, target.x, target.y, target.z, player.lookDir())) { inventory.consumeHeld(); sound.place('stone'); }
+    return;
+  }
   if (target && (target.id === TABLE || target.id === CHURN)) { sound.click(); openInventory(target.id); return; }
   if (target) {
     const { x: tx, y: ty, z: tz, id: tid } = target;
@@ -1037,7 +1270,16 @@ function place() {
     if (isDoor(tid)) { toggleDoor(tx, ty, tz); return; }
     if (isCurtain(tid)) { toggleCurtain(tx, ty, tz); return; }
     if (isLamp(tid)) { useLamp(tx, ty, tz, held); return; }
+    if (isSign(tid)) { editSign(tx, ty, tz); return; }
+    if (tid === BLAST_CHARGE) { lightFuse(tx, ty, tz); toast('The fuse is lit! Stand back…', 1500); return; }
     if (stationKind(tid)) { sound.click(); openStation(tx, ty, tz); return; }
+    if (BLOCKS[tid].machine || BLOCKS[tid].kinetic) {
+      // tap a machine (or a wheel or windmill) to see how it's running
+      const what = BLOCKS[tid];
+      let msg = kinetics.statusAt(tx, ty, tz);
+      if (tid >= DRILL && tid <= DRILL + 4 && powerAt(tx, ty, tz) > 0) msg = machines.drillStatus(tx, ty, tz);
+      if (!(held && isBlock(held.id))) { toast(`${what.name}: ${msg}`, 2500); return; } // (holding a block, you place it)
+    }
   }
   // sugar cane in hand: plant it if you're aiming at a good spot beside water, otherwise eat it
   if (held?.id === SUGAR_CANE) {
@@ -1047,8 +1289,20 @@ function place() {
     if (!plantable) { eatCane(); return; }
   }
   if (held?.id === BUCKET || held?.id === WATER_BUCKET) { useBucket(held.id); return; }
+  if (held?.id === LEAD_BUCKET || held?.id === LAVA_BUCKET) { useLeadBucket(held.id); return; }
   if (held && (foodValue(held.id) || ITEMS[held.id]?.drink)) { eat(held.id); return; }
+  if (held && ITEMS[held.id]?.armour) { wearHeld(); return; }
   if (!target || !held) return;
+  // ladders and scaffolding tapped with more of the same grow upward from the top of the column
+  if ((held.id === LADDER && BLOCKS[target.id].climb && target.id !== SCAFFOLD) || (held.id === SCAFFOLD && target.id === SCAFFOLD)) {
+    let ty = target.y;
+    while (ty < H - 1 && world.get(target.x, ty + 1, target.z) === target.id) ty++;
+    if (ty >= H - 1 || world.get(target.x, ty + 1, target.z) !== AIR) return;
+    world.setBlock(target.x, ty + 1, target.z, target.id);
+    sound.place('wood');
+    inventory.consumeHeld();
+    return;
+  }
   // what goes into the world: the block itself, or what an item plants (seeds -> young wheat)
   let id = isBlock(held.id) ? held.id : ITEMS[held.id]?.places;
   if (!id) return;
@@ -1092,11 +1346,32 @@ function place() {
     sound.place('wool');
     inventory.consumeHeld();
     return;
-  } else if (id === LAMP || id === CARPET) {
+  } else if (id === RAIL || id === POWERED_RAIL) {
+    // rails lie on top of a block, and bend to join the rails next to them
+    if (there !== AIR || target.ny !== 1 || !BLOCKS[target.id].solid) { toast('Rails go on top of a block'); return; }
+    placeRail(x, y, z, id === POWERED_RAIL);
+    sound.place('stone');
+    inventory.consumeHeld();
+    return;
+  } else if (id === LADDER || id === SIGN) {
+    // fixed to the side of a solid block, facing out of it; a sign can also stand on top of one
+    if (there !== AIR || !BLOCKS[target.id].solid) return;
+    if (id === SIGN && target.ny === 1) id = SIGN_POST + facingTowardPlayer(x, z);
+    else if (target.ny !== 0) { toast(id === LADDER ? 'Ladders go on the side of a block' : 'Signs go on a wall or on top of a block'); return; }
+    else id += FACING_DIRS.findIndex(([dx, dz]) => dx === target.nx && dz === target.nz);
+    world.setBlock(x, y, z, id);
+    sound.place('wood');
+    inventory.consumeHeld();
+    if (isSign(id)) editSign(x, y, z);
+    return;
+  } else if (id === LAMP || id === MIRROR_LAMP || id === CARPET) {
     if (there !== AIR || !world.isSolid(x, y - 1, z)) { toast(`${BLOCKS[id].name}s need something solid underneath`); return; }
   } else {
     // chairs face you; curtains hang across your line of sight
-    if (id === CHAIR || id === OVEN || id === SMELTER || id === BLAST_SMELTER || id === CRUSHER) id += facingTowardPlayer(x, z); // the front faces you
+    if ([CHAIR, OVEN, SMELTER, BLAST_SMELTER, CRUSHER, CHEST, IRON_CHEST, SAW, TRIP_HAMMER].includes(id)) id += facingTowardPlayer(x, z); // the front faces you
+    else if (id === DRILL) id += player.pitch < -0.75 ? 4 : (facingTowardPlayer(x, z) + 2) % 4; // drills the way you're looking
+    else if (id === BELT) id += (facingTowardPlayer(x, z) + 2) % 4; // carries things away from you
+    else if (id === HOPPER) id += target.ny === 1 ? 4 : FACING_DIRS.findIndex(([dx, dz]) => dx === -target.nx && dz === -target.nz); // into the block you tapped
     else if (BLOCKS[id].kinetic) id = kineticVariant(id);
     else if (id === CURTAIN) id += facingTowardPlayer(x, z) % 2; // facing 0/2 -> hangs across x, 1/3 -> across z
     if (BLOCKS[id].solid && player.overlapsBlock(x, y, z)) return;
@@ -1114,9 +1389,9 @@ function kineticVariant(id) {
   let axis = target.nx ? 0 : target.ny ? 1 : 2;
   const other = BLOCKS[target.id].kinetic;
   if (other && other.axis !== axis) axis = other.axis;
-  if (k.part === 'wheel') {
+  if (k.part === 'wheel' || k.part === 'windmill') {
     if (axis === 1) { const look = player.lookDir(); axis = Math.abs(look.x) > Math.abs(look.z) ? 0 : 2; }
-    return WATER_WHEEL + (axis === 2 ? 1 : 0);
+    return (k.part === 'wheel' ? WATER_WHEEL : WINDMILL) + (axis === 2 ? 1 : 0);
   }
   return id + axis;
 }
@@ -1143,6 +1418,121 @@ function useBucket(id) {
   sound.splash(false);
 }
 
+// A lead bucket scoops up lava (a wooden one would burn); a lava bucket pours it out again.
+// Lava poured next to water cools into obsidian at once.
+function useLeadBucket(id) {
+  if (id === LEAD_BUCKET) {
+    const hit = world.raycast(player.eye, player.lookDir(), REACH, false, true);
+    if (!hit || hit.id !== LAVA) { toast(hit?.id === WATER ? 'Use a wooden bucket for water' : 'Tap lava to fill the lead bucket'); return; }
+    world.setBlock(hit.x, hit.y, hit.z, AIR);
+    inventory.consumeHeld();
+    if (inventory.add(LAVA_BUCKET, 1)) toast('Inventory full');
+    sound.pour();
+    return;
+  }
+  if (!target) return;
+  const x = target.x + target.nx, y = target.y + target.ny, z = target.z + target.nz;
+  const there = world.get(x, y, z);
+  if (!world.inBounds(x, y, z) || (there !== AIR && !isFlowing(there))) return;
+  if (player.overlapsBlock(x, y, z)) return;
+  world.setBlock(x, y, z, LAVA);
+  inventory.slots[inventory.selected] = { id: LEAD_BUCKET, count: 1 };
+  inventory.onChange();
+  sound.pour();
+}
+
+// ---------- blasting charges ----------
+// Tap a charge to light its fuse; 3 seconds later it blows a round hole about 5 blocks across. Most of
+// what it breaks is thrown to you (as if dug with an iron pickaxe) if you're within 24 blocks. Charges
+// caught in the blast go off too. Chests, machines, furniture, obsidian and bedrock are blast-proof.
+const fuses = new Map(); // "x,y,z" -> { t, mesh }
+const fuseMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0, depthWrite: false });
+const BLAST_RADIUS = 2.6;
+const IRON_PICK = metalTool(TOOL_MATERIALS.findIndex((m) => m.key === 'iron'), 'pick');
+function lightFuse(x, y, z, t = 3) {
+  const k = `${x},${y},${z}`;
+  if (fuses.has(k)) return;
+  const mesh = new THREE.Mesh(new THREE.BoxGeometry(1.02, 1.02, 1.02), fuseMat.clone());
+  mesh.position.set(x + 0.5, y + 0.5, z + 0.5);
+  scene.add(mesh);
+  fuses.set(k, { t, mesh });
+  sound.fuse();
+}
+function tickFuses(dt) {
+  for (const [k, f] of fuses) {
+    const [x, y, z] = k.split(',').map(Number);
+    if (world.get(x, y, z) !== BLAST_CHARGE) { removeFuse(k, f); continue; }
+    f.t -= dt;
+    f.mesh.material.opacity = (Math.sin(f.t * (f.t < 1 ? 30 : 12)) * 0.5 + 0.5) * 0.55; // flashing faster as it burns down
+    if (f.t <= 0) { removeFuse(k, f); explode(x, y, z); }
+  }
+}
+function removeFuse(k, f) {
+  scene.remove(f.mesh);
+  f.mesh.geometry.dispose();
+  f.mesh.material.dispose();
+  fuses.delete(k);
+}
+const blastable = (def) => def && !def.blastproof && !def.liquid && !def.station && !def.kinetic && def.hardness !== Infinity &&
+  (def.shape === 'cube' || def.shape === 'cross' || def.shape === 'torch' || def.climb || def.sign);
+function explode(x, y, z) {
+  world.setBlock(x, y, z, AIR);
+  const R = BLAST_RADIUS, gathered = new Map();
+  const near = (x + 0.5 - player.pos.x) ** 2 + (y + 0.5 - player.pos.y) ** 2 + (z + 0.5 - player.pos.z) ** 2 < 24 * 24;
+  const cleared = [];
+  for (let dy = -3; dy <= 3; dy++) for (let dz = -3; dz <= 3; dz++) for (let dx = -3; dx <= 3; dx++) {
+    if (dx * dx + dy * dy + dz * dz > R * R) continue;
+    const bx = x + dx, by = y + dy, bz = z + dz;
+    const id = world.get(bx, by, bz);
+    if (id === AIR) continue;
+    if (id === BLAST_CHARGE) { lightFuse(bx, by, bz, 0.25 + Math.random() * 0.2); continue; }
+    const def = BLOCKS[id];
+    if (!blastable(def)) continue;
+    if (isSign(id)) signs.remove(bx, by, bz);
+    world.setBlock(bx, by, bz, AIR);
+    cleared.push([bx, by, bz]);
+    if (near && Math.random() < 0.75) for (const [d, n] of dropsFor(id, IRON_PICK)) gathered.set(d, (gathered.get(d) ?? 0) + n);
+  }
+  for (const [bx, by, bz] of cleared) dropUnsupported(bx, by, bz);
+  if (gathered.size) {
+    let lost = 0;
+    for (const [d, n] of gathered) lost += inventory.add(d, n);
+    toast(`Boom! ${[...gathered].map(([d, n]) => `+${n} ${itemName(d)}`).slice(0, 4).join(', ')}${lost ? ' (inventory full)' : ''}`, 2200);
+  }
+  // the blast: a flash, a bang and a shove
+  const dist = Math.hypot(x + 0.5 - player.pos.x, y + 0.5 - (player.pos.y + 0.9), z + 0.5 - player.pos.z);
+  sound.boom(Math.max(0.15, 1 - dist / 40));
+  flashBlast(x + 0.5, y + 0.5, z + 0.5);
+  if (dist < 5.5 && !dead) {
+    const len = dist || 1;
+    player.kx = ((player.pos.x - x - 0.5) / len) * 10; player.kz = ((player.pos.z - z - 0.5) / len) * 10;
+    player.vel.y = 6;
+    damage(armoured(Math.round((5.5 - dist) * 3)), 'You stood too close to a blasting charge.');
+  }
+  for (const m of mobs.mobs) {
+    const d = Math.hypot(m.pos.x - x - 0.5, m.pos.y - y, m.pos.z - z - 0.5);
+    if (d > 5.5) continue;
+    if (m.spec.hostile) giveDrops(mobs.hurt(m, Math.round((5.5 - d) * 6), { x: x + 0.5, y, z: z + 0.5 }));
+    else mobs.bump(m, { x: x + 0.5, y, z: z + 0.5 });
+  }
+}
+const blasts = [];
+function flashBlast(x, y, z) {
+  const mesh = new THREE.Mesh(new THREE.SphereGeometry(1, 16, 12), new THREE.MeshBasicMaterial({ color: 0xffd27a, transparent: true, opacity: 0.85, depthWrite: false }));
+  mesh.position.set(x, y, z);
+  scene.add(mesh);
+  blasts.push({ mesh, t: 0 });
+}
+function tickBlasts(dt) {
+  for (let i = blasts.length - 1; i >= 0; i--) {
+    const b = blasts[i];
+    b.t += dt;
+    b.mesh.scale.setScalar(1 + b.t * 9);
+    b.mesh.material.opacity = Math.max(0, 0.85 - b.t * 2.4);
+    if (b.t > 0.36) { scene.remove(b.mesh); b.mesh.geometry.dispose(); b.mesh.material.dispose(); blasts.splice(i, 1); }
+  }
+}
+
 function updateBreaking(dt) {
   // holding with the bow draws it; letting go shoots (a quick tap is handled by place())
   if (inventory.heldId() === BOW) {
@@ -1155,9 +1545,22 @@ function updateBreaking(dt) {
   }
   if (bowCharge) { bowCharge = 0; $('charge').classList.remove('show'); }
   // the rod is for fishing, not digging: holding it does nothing
-  if (inventory.heldId() === FISHING_ROD) { crack.visible = false; breakState.key = ''; breakState.progress = 0; return; }
+  if (isRod(inventory.heldId())) { crack.visible = false; breakState.key = ''; breakState.progress = 0; return; }
   // holding on an animal taps it again every half second instead of breaking blocks. The first
   // repeat waits half a second too, so a tap (which acts once, on release) never acts twice.
+  // hold on a minecart to pick it up
+  if (controls.breaking && targetCart) {
+    breakState.cart = (breakState.cart ?? 0) + dt;
+    if (breakState.cart >= 0.5) {
+      carts.remove(targetCart.cart);
+      targetCart = null;
+      breakState.cart = 0;
+      giveDrops([[MINECART, 1]]);
+    }
+    crack.visible = false;
+    return;
+  }
+  breakState.cart = 0;
   if (!controls.breaking) breakState.mobCooldown = 0.5;
   breakState.mobCooldown = Math.max(0, breakState.mobCooldown - dt);
   if (controls.breaking && targetMob) {
@@ -1206,7 +1609,9 @@ function breakBlock(x, y, z) {
     drops = [[DOOR, 1]];
   }
   if (isLamp(id)) lamps.delete(lampKey(x, y, z));
+  if (isSign(id)) signs.remove(x, y, z);
   if (stationKind(id)) giveDrops(stations.remove(x, y, z)); // whatever was inside comes back too
+  if (def.machine) giveDrops(machines.removeAt(x, y, z)); // and whatever was on a belt or in a drill
   if (isBed(id)) {
     // either half takes the whole bed with it
     const [ox, oy, oz] = bedPartner(x, y, z);
@@ -1215,9 +1620,15 @@ function breakBlock(x, y, z) {
     if (used(x, y, z) || used(ox, oy, oz)) bedSpawn = null;
     drops = [[BED, 1]];
   }
+  // scaffolding: the whole tower above comes down with it
+  if (id === SCAFFOLD) {
+    let n = 0;
+    for (let ty = y + 1; ty < H && world.get(x, ty, z) === SCAFFOLD; ty++) { world.setBlock(x, ty, z, AIR); n++; }
+    if (n) drops.push([SCAFFOLD, n]);
+  }
   // cutting a tree's trunk with an axe brings down the whole tree above it
   const felled = id === LOG && ITEMS[inventory.heldId()]?.tool?.type === 'axe' ? treeAbove(x, y, z) : [];
-  world.setBlock(x, y, z, AIR);
+  world.setBlock(x, y, z, id === ICE ? WATER : AIR); // ice melts into water
   dropUnsupported(x, y, z);
   for (const [lx, ly, lz] of felled) {
     world.setBlock(lx, ly, lz, AIR);
@@ -1274,12 +1685,29 @@ function dropUnsupported(x, y, z) {
     world.setBlock(tx, ty, tz, AIR);
     inventory.add(TORCH, 1);
   }
+  // ladders and signs fixed to it (each faces away from the block it hangs on), and a sign post on top
+  FACING_DIRS.forEach(([dx, dz], f) => {
+    const id = world.get(x + dx, y, z + dz);
+    if ((id === LADDER + f || id === SIGN + f)) {
+      world.setBlock(x + dx, y, z + dz, AIR);
+      if (id === SIGN + f) signs.remove(x + dx, y, z + dz);
+      inventory.add(id === SIGN + f ? SIGN : LADDER, 1);
+    }
+  });
+  if (BLOCKS[world.get(x, y + 1, z)]?.post) {
+    world.setBlock(x, y + 1, z, AIR);
+    signs.remove(x, y + 1, z);
+    inventory.add(SIGN, 1);
+  }
   // lamps and carpets resting on it, and a door standing on it
   const above = world.get(x, y + 1, z);
-  if (isLamp(above) || above === CARPET) {
+  if (isRail(above)) {
+    world.setBlock(x, y + 1, z, AIR);
+    inventory.add(BLOCKS[above].drop, 1);
+  } else if (isLamp(above) || above === CARPET) {
     lamps.delete(lampKey(x, y + 1, z));
     world.setBlock(x, y + 1, z, AIR);
-    inventory.add(above === CARPET ? CARPET : LAMP, 1);
+    inventory.add(BLOCKS[above].drop, 1);
   } else if (isDoor(above) && !BLOCKS[above].upper) {
     world.setBlock(x, y + 1, z, AIR);
     if (isDoor(world.get(x, y + 2, z))) world.setBlock(x, y + 2, z, AIR);
@@ -1417,6 +1845,23 @@ function playMovementSounds(dt, wasGround, wasWater, fallSpeed) {
   }
 }
 
+// ---------- clock and compass ----------
+// The gold clock reads the time of day (sunrise is 6:00, sunset 18:00); the compass shows which way you
+// face and which way home is (your bed, or where the world started you).
+function clockTime() {
+  const mins = Math.floor(((sky.time * 24 + 6) % 24) * 60);
+  return `${Math.floor(mins / 60)}:${String(mins % 60).padStart(2, '0')}`;
+}
+const POINTS = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+const pointOf = (dx, dz) => POINTS[(Math.round(Math.atan2(dx, -dz) / (Math.PI / 4)) + 8) % 8]; // -z is north
+function compassText() {
+  const look = player.lookDir();
+  let home = bedSpawn;
+  if (!home) home = (world.spawnCache ??= world.generator.findSpawn());
+  const dx = home.x + 0.5 - player.pos.x, dz = home.z + 0.5 - player.pos.z, d = Math.hypot(dx, dz);
+  return `facing ${pointOf(look.x, look.z)} · ${bedSpawn ? 'bed' : 'start'} ${d < 2 ? 'here' : `${Math.round(d)} ${pointOf(dx, dz)}`}`;
+}
+
 // ---------- main loop ----------
 let last = performance.now();
 let coordsTimer = 0;
@@ -1431,7 +1876,7 @@ function frame(now) {
   // gameplay, streaming and rendering are isolated so an error in one can't stop the others
   try { stepGame(now, dt); } catch (err) { reportError(err); }
   try {
-    if (!dead) stations.tick(dt, world, setStationLit, powerAt);
+    if (!dead) stations.tick(dt, world, setStationLit, powerAt, boostAt);
     if (openStationAt && (stationRefresh -= dt) <= 0) { stationRefresh = 0.15; renderStation(); }
   } catch (err) { reportError(err); }
   try { world.update(player.pos.x, player.pos.z, scene, materials, 6, dt); } catch (err) { reportError(err); }
@@ -1460,25 +1905,29 @@ function stepGame(now, dt) {
   if (!paused && here) {
     controls.update();
     const wasGround = player.onGround, wasWater = player.inWater, fallSpeed = -player.vel.y, prevY = player.pos.y;
-    player.update(dt, { moveX: controls.moveX, moveZ: controls.moveZ, jump: controls.jump });
+    carts.update(dt, world, powerAt, riding && { cart: riding, push: controls.moveZ, look: player.lookDir() },
+      { day: lightUniforms.uDay.value, flicker: lightUniforms.uFlicker.value, ambient: AMBIENT });
+    if (riding) followCart();
+    else player.update(dt, { moveX: controls.moveX, moveZ: controls.moveZ, jump: controls.jump });
     if (player.pos.y < -20) respawn();
     playMovementSounds(dt, wasGround, wasWater, fallSpeed);
     world.tickWater(dt);
     world.tickPlants(dt);
     world.tickLeaves(dt);
     tickLamps(dt);
+    tickFuses(dt);
     updateHunger(dt);
     updateHealth(dt, wasGround, prevY);
     const picked = arrows.update(dt, {
       world, mobs, player, light: { day: lightUniforms.uDay.value, flicker: lightUniforms.uFlicker.value, ambient: AMBIENT },
       // arrows bump animals, and hurt creatures more the further the bow was drawn
       onHitMob: (m, arrow, from) => {
-        if (m.spec.hostile) giveDrops(mobs.hurt(m, Math.round(2 + 6 * arrow.power), from));
+        if (m.spec.hostile) giveDrops(mobs.hurt(m, Math.round(2 + 6 * arrow.power) * (arrow.silver ? 2 : 1), from));
         else mobs.bump(m, from);
       },
-      onHitPlayer: (dmg) => { if (!dead) damage(dmg, 'A thornspitter shot you full of thorns.'); },
+      onHitPlayer: (dmg) => { if (!dead) damage(armoured(dmg), 'A thornspitter shot you full of thorns.'); },
     });
-    if (picked) { inventory.add(ARROW, picked); sound.pop(); }
+    for (const id of picked) { inventory.add(id, 1); sound.pop(); }
     updateFishing(dt);
     mobs.update(dt, player, { day: lightUniforms.uDay.value, flicker: lightUniforms.uFlicker.value, ambient: AMBIENT },
       { difficulty: difficulty(), daylight: sky.light, playerDead: dead });
@@ -1487,10 +1936,18 @@ function stepGame(now, dt) {
   if (world.unsaved.size !== unsavedCount) { unsavedCount = world.unsaved.size; lastEditAt = now; }
   if (unsavedCount && now - lastEditAt > 1500 && worldReady) { world.saveChunks(); unsavedCount = 0; }
   kinetics.update(paused ? 0 : dt, world, { day: lightUniforms.uDay.value, flicker: lightUniforms.uFlicker.value, ambient: AMBIENT });
+  tickBlasts(dt);
+  minimap.show(!paused && inventory.heldId() === MAP);
+  minimap.update(world, player, bedSpawn ?? (world.spawnCache ??= world.generator.findSpawn()));
+  try {
+    machines.tick(paused ? 0 : dt, world, kinetics, stations, { day: lightUniforms.uDay.value, flicker: lightUniforms.uFlicker.value, ambient: AMBIENT });
+  } catch (err) { reportError(err); }
+  signs.update(dt, world, { day: lightUniforms.uDay.value, flicker: lightUniforms.uFlicker.value, ambient: AMBIENT });
   coordsTimer -= dt;
   if (coordsTimer <= 0) {
     coordsTimer = 0.25;
-    $('coords').textContent = `Day ${day}   X ${Math.floor(player.pos.x)}  Y ${Math.floor(player.pos.y)}  Z ${Math.floor(player.pos.z)}`;
+    $('coords').textContent = `Day ${day}   X ${Math.floor(player.pos.x)}  Y ${Math.floor(player.pos.y)}  Z ${Math.floor(player.pos.z)}` +
+      (inventory.count(GOLD_CLOCK) ? `   🕰 ${clockTime()}` : '') + (inventory.count(COMPASS) ? `   🧭 ${compassText()}` : '');
   }
 
   const eye = player.eye;
@@ -1508,6 +1965,9 @@ function stepGame(now, dt) {
   const look = player.lookDir();
   target = paused ? null : world.raycast(eye, look, REACH);
   targetMob = paused ? null : mobs.raycast(eye, look, REACH);
+  targetCart = paused || riding ? null : carts.raycast(eye, look, REACH);
+  if (targetCart && ((target && target.t < targetCart.t) || (targetMob && targetMob.t < targetCart.t))) targetCart = null;
+  if (targetCart) { target = null; targetMob = null; }
   // whichever is closer wins: an animal in front of a block, or a block in front of an animal
   if (targetMob && target && target.t < targetMob.t) targetMob = null;
   if (targetMob) target = null;
@@ -1534,7 +1994,8 @@ window.minicraft = {
   get paused() { return paused; },
   get health() { return health; }, set health(v) { health = v; renderHealth(); },
   get poisoned() { return poisoned; }, get dead() { return dead; }, get air() { return air; }, set air(v) { air = v; },
-  arrows, fishing, kinetics, damage, lamps, tickLamps, sleepUntilMorning, stations, openStation, closeStation,
+  arrows, fishing, kinetics, machines, carts, minimap, signs, armour, damage, placeRail, getInCart, getOutOfCart,
+  get riding() { return riding; }, explode, lightFuse, fuses, clockTime, compassText, place, editSign, closeSign, openInventory, closeInventory, chestMove, lamps, tickLamps, sleepUntilMorning, stations, openStation, closeStation,
   get caneToday() { return caneToday; },
   get bedSpawn() { return bedSpawn; },
 };

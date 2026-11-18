@@ -8,7 +8,8 @@ import {
   FLOUR, SUGAR, BUTTER, MILK_BUCKET, BREAD, COOKIE, CAKE, RAW_FISH, BAKED_FISH, BLOCKS, maxStack, stationKind,
   ORES, COAL_OR_CHARCOAL, IRON_INGOT, COPPER_INGOT, TIN_INGOT, ZINC_INGOT, ALUMINIUM_INGOT, SILVER_INGOT, GOLD_INGOT,
   BRONZE_INGOT, ELECTRUM_INGOT, STAINLESS_INGOT, STEEL_INGOT, AL_BRONZE_INGOT,
-  GRAVEL, FLINT, FLINT_DUST, CLAY_BALL, CLAY_DUST, BRICK, FIRE_CLAY, FIRE_BRICK, oreDust,
+  GRAVEL, FLINT, FLINT_DUST, CLAY_BALL, CLAY_DUST, BRICK, FIRE_CLAY, FIRE_BRICK, oreDust, HIDE, LEATHER,
+  LAVA_BUCKET, LEAD_BUCKET, SALTPETRE, SANDSTONE, WHEAT, SUGAR_CANE, COAL_DUST, PLATE_METALS, PLATES, TUNGSTEN_INGOT, FILAMENT,
 } from './blocks.js';
 
 // A recipe ingredient can be one id or a list of alternatives (coal or charcoal).
@@ -17,7 +18,9 @@ const idsOf = (spec) => (Array.isArray(spec) ? spec : [spec]);
 // How many items (or oven batches) each piece of fuel cooks. Fuel is only used up while something is
 // actually cooking, so what's left of a piece waits in the station for the next job.
 // Slime fuel burns out of its bucket and leaves the empty bucket in the fuel slot.
-export const FUEL_ITEMS = { [LOG]: 1, [PLANKS]: 1, [STICK]: 0.5, [COAL]: 10, [CHARCOAL]: 10, [SLIME_FUEL]: 40 };
+// A lava bucket burns for 100 and leaves its lead bucket behind.
+export const FUEL_ITEMS = { [LOG]: 1, [PLANKS]: 1, [STICK]: 0.5, [COAL]: 10, [CHARCOAL]: 10, [SLIME_FUEL]: 40, [LAVA_BUCKET]: 100 };
+const FUEL_LEAVES = { [SLIME_FUEL]: BUCKET, [LAVA_BUCKET]: LEAD_BUCKET };
 export const isFuel = (id) => id in FUEL_ITEMS;
 
 // Recipes are tried in order, so put the most specific first (cake before cookies before bread).
@@ -32,6 +35,7 @@ export const STATION_KINDS = {
       { out: [BREAD, 1], in: [[FLOUR, 3]], time: 6 },
       { out: [BAKED_FISH, 1], in: [[RAW_FISH, 1]], time: 5 },
       { out: [BRICK, 1], in: [[CLAY_BALL, 1]], time: 5 },
+      { out: [LEATHER, 1], in: [[HIDE, 1]], time: 6 }, // gently cured
     ],
   },
   smelter: {
@@ -61,6 +65,7 @@ export const STATION_KINDS = {
   // Times are at 1x speed.
   crusher: {
     name: 'Rock Crusher',
+    verb: 'Crushing',
     inputs: 1,
     powered: true,
     recipes: [
@@ -69,11 +74,38 @@ export const STATION_KINDS = {
       { out: [SAND, 1], in: [[GRAVEL, 1]], time: 4 },
       { out: [FLINT_DUST, 2], in: [[FLINT, 1]], time: 4 },
       { out: [CLAY_DUST, 2], in: [[BRICK, 1]], time: 4 },
+      { out: [SALTPETRE, 1], in: [[SANDSTONE, 2]], time: 6 }, // desert sandstone holds a little saltpetre
     ],
   },
 };
+// More machines driven by shafts (times at 1x speed).
+STATION_KINDS.mill = {
+  name: 'Millstone', verb: 'Grinding', inputs: 1, powered: true,
+  recipes: [
+    { out: [FLOUR, 1], in: [[WHEAT, 1]], time: 3 },
+    { out: [SUGAR, 2], in: [[SUGAR_CANE, 1]], time: 3 },
+    { out: [COAL_DUST, 2], in: [[COAL_OR_CHARCOAL, 1]], time: 3 },
+  ],
+};
+STATION_KINDS.saw = {
+  name: 'Mechanical Saw', verb: 'Sawing', inputs: 1, powered: true,
+  recipes: [
+    { out: [PLANKS, 6], in: [[LOG, 1]], time: 3 },
+    { out: [STICK, 3], in: [[PLANKS, 1]], time: 2 },
+  ],
+};
+STATION_KINDS.hammer = {
+  name: 'Trip Hammer', verb: 'Hammering', inputs: 1, powered: true,
+  recipes: [
+    ...PLATE_METALS.map((m, i) => ({ out: [PLATES + i, 1], in: [[m.ingot, 1]], time: 6 })),
+    { out: [FILAMENT, 4], in: [[TUNGSTEN_INGOT, 1]], time: 10 }, // drawn out into fine wire
+  ],
+};
 // The blast smelter: lined with fire bricks, it smelts everything the smelter does, twice as fast.
 STATION_KINDS.blast = { ...STATION_KINDS.smelter, name: 'Blast Smelter', speed: 2 };
+// Chests just hold things.
+STATION_KINDS.chest = { name: 'Chest', inputs: 18, storage: true, recipes: [] };
+STATION_KINDS.ironchest = { name: 'Iron-Banded Chest', inputs: 36, storage: true, recipes: [] };
 
 const key = (x, y, z) => `${x},${y},${z}`;
 
@@ -137,15 +169,17 @@ export class Stations {
 
   // Advance every loaded station by dt seconds. setLit(x, y, z, lit) is called when one lights or goes out.
   // powerAt(x, y, z) gives a powered station's speed (0 when it isn't turning).
-  tick(dt, world, setLit, powerAt = () => 0) {
+  // boostAt(x, y, z): how much faster a fuelled station works (1, or 1.5 with bellows blowing into it).
+  tick(dt, world, setLit, powerAt = () => 0, boostAt = () => 1) {
     for (const [k, st] of this.map) {
       const [x, y, z] = k.split(',').map(Number);
       if (!world.chunkAt(x, z)) continue;
       const id = world.get(x, y, z);
       if (stationKind(id) !== st.kind) { this.map.delete(k); continue; }
+      const K = STATION_KINDS[st.kind];
+      if (K.storage) continue;
       const r = this.recipeFor(st);
       if (!r) st.progress = 0;
-      const K = STATION_KINDS[st.kind];
       if (K.powered) {
         const speed = powerAt(x, y, z);
         st.speed = speed;
@@ -155,11 +189,11 @@ export class Stations {
         }
         continue;
       }
-      const sdt = dt * (K.speed ?? 1); // a blast smelter cooks twice as fast, on the same fuel per item
+      const sdt = dt * (K.speed ?? 1) * boostAt(x, y, z); // a blast smelter cooks twice as fast, on the same fuel per item
       // light a new piece of fuel only when there's something to make and the last piece is used up
       if (r && st.burn <= 1e-9 && st.fuel && isFuel(st.fuel.id)) {
         st.burn = st.burnMax = FUEL_ITEMS[st.fuel.id];
-        if (st.fuel.id === SLIME_FUEL) st.fuel = { id: BUCKET, count: 1 }; // the bucket stays behind
+        if (FUEL_LEAVES[st.fuel.id]) st.fuel = { id: FUEL_LEAVES[st.fuel.id], count: 1 }; // the bucket stays behind
         else if (--st.fuel.count <= 0) st.fuel = null;
       }
       // cooking: fuel burns at one "item" per recipe time, so a log cooks exactly one item

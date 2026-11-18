@@ -6,7 +6,7 @@
 // physics as the player (gravity, block collisions, stepping up one block) and float in water.
 // They aren't saved: they're spawned fresh around wherever you are.
 import * as THREE from 'three';
-import { AIR, WATER, LEAVES, LOG, GRASS, SAND, DIRT, WOOL, BUCKET, MILK_BUCKET, SLIME_BUCKET, FEATHER, COAL, COBBLE, ARROW } from './blocks.js';
+import { AIR, WATER, LEAVES, LOG, GRASS, SAND, DIRT, WOOL, BUCKET, MILK_BUCKET, SLIME_BUCKET, FEATHER, COAL, COBBLE, ARROW, HIDE, SNOW_GRASS, SNOW } from './blocks.js';
 import { SEA_LEVEL, H } from './terrain.js';
 import { skyBrightness, lightBrightness } from './world.js';
 import { THORN_SPEED, THORN_GRAVITY } from './arrows.js';
@@ -17,6 +17,7 @@ const SPAWN_MIN_DIST = 24;
 const SHORN_SECONDS = 150; // how long an alpaca's coat takes to grow back
 const FEATHER_SECONDS = 30; // a plucked duck has no feather to spare for a while
 const SLIME_SECONDS = 30; // nor a newt more slime
+const HIDE_SECONDS = 120; // a buffalo sheds a loose patch of its shaggy hide now and then
 
 // face brightness for box faces (+x, -x, +y, -y, +z, -z), matching the world's block shading
 const SHADE = [0.8, 0.8, 1.0, 0.5, 0.65, 0.65].map((v) => Math.pow(v, 2.2));
@@ -439,8 +440,9 @@ export class MobManager {
     const s = this.surface(x, z);
     if (!s) return null;
     if (s.id === WATER) return { kinds: ['duck'], y: s.y + 0.875 - SPECIES.duck.sink, water: true };
-    if (s.id !== GRASS && s.id !== SAND && s.id !== DIRT) return null;
     const y = s.y + 1;
+    if (s.id === SNOW_GRASS || s.id === SNOW) return { kinds: ['alpaca', 'yak'], y }; // the shaggy ones like the cold
+    if (s.id !== GRASS && s.id !== SAND && s.id !== DIRT) return null;
     if (this.nearWater(x, s.y, z)) return { kinds: ['duck', 'newt'], y };
     if (s.id !== GRASS) return null;
     if (s.y >= SEA_LEVEL + 12) return { kinds: ['alpaca', 'yak'], y };
@@ -576,6 +578,7 @@ export class MobManager {
       }
       if (m.shornFor > 0 && (m.shornFor -= dt) <= 0) m.parts.shear?.(false);
       if (m.featherFor > 0) m.featherFor -= dt;
+      if (m.hideFor > 0) m.hideFor -= dt;
       if (m.slimeFor > 0) m.slimeFor -= dt;
     }
   }
@@ -881,6 +884,10 @@ export class MobManager {
     if (m.kind === 'duck' && m.featherFor <= 0) {
       m.featherFor = FEATHER_SECONDS;
       give.push([FEATHER, 1]);
+    }
+    if (m.kind === 'buffalo' && !(m.hideFor > 0)) {
+      m.hideFor = HIDE_SECONDS;
+      give.push([HIDE, 1]);
     }
     return { give, take, said: '' };
   }

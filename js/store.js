@@ -12,6 +12,13 @@ function request(r) {
   });
 }
 
+// Chunks are stored as Uint16Arrays of block ids. Worlds saved before version 17 used one byte per block:
+// those are widened as they load (and saved in the new form the next time they change).
+export function toBlocks(data) {
+  if (data instanceof Uint16Array) return data;
+  return Uint16Array.from(data instanceof Uint8Array ? data : new Uint8Array(data));
+}
+
 export class ChunkStore {
   constructor() {
     this.db = null;
@@ -37,11 +44,11 @@ export class ChunkStore {
   has(key) { return this.keys.has(key); }
 
   async load(key) {
-    if (this.mem.has(key)) return this.mem.get(key).slice();
+    if (this.mem.has(key)) return toBlocks(this.mem.get(key).slice());
     if (!this.db) return null;
     try {
       const data = await request(this.db.transaction(STORE).objectStore(STORE).get(key));
-      return data ? new Uint8Array(data) : null;
+      return data ? toBlocks(data) : null;
     } catch {
       return null;
     }

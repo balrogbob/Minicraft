@@ -8,10 +8,15 @@ import {
   TUNGSTEN_INGOT, BRONZE_INGOT, ELECTRUM_INGOT, STAINLESS_INGOT, STEEL_INGOT, AL_BRONZE_INGOT,
   FLINT, CLAY_BALL, BRICK, FIRE_CLAY, FIRE_BRICK, FLINT_DUST, CLAY_DUST, WATER_BUCKET, oreDust,
   WATER_WHEEL, KINETIC_MATS, kineticId,
+  LADDER, SCAFFOLD, SIGN, WOOD_SWORD, STONE_SWORD, metalSword, HIDE, LEATHER, ARMOUR_MATS, ARMOUR_PIECES, armourId,
+  PLATE_METALS, PLATES,
+  PIPE, SPOUT, BELT, HOPPER, WINDMILL, FILAMENT, DRILL_BIT,
+  RAIL, POWERED_RAIL, CACTUS, MINECART, MAP, PAPER,
+  SALTPETRE, GUNPOWDER, LEAD_SINKER, WEIGHTED_ROD, LEAD_BUCKET, LAVA_BUCKET, GOLD_CLOCK, COMPASS, SILVER_ARROW, MIRROR_LAMP,
 } from './blocks.js';
 
 export const TILE = 16;
-export const ATLAS_COLS = 8;
+export const ATLAS_COLS = 16; // 16 x 16 tiles
 
 function mulberry32(a) {
   return function () {
@@ -375,6 +380,184 @@ Object.assign(P, {
     for (let y = 6; y < 12; y++) for (let x = 4; x < 12; x++) t.set(x, y, y === 6 || x === 4 || x === 11 ? [70, 70, 74] : [24, 22, 22]);
     for (let x = 5; x < 11; x++) t.set(x, 10, t.vary([200, 190, 170], 0.1)); // a little dust in the chute
   },
+});
+
+// Chests: planks bound with dark wood (or iron bands), with a lid line and a latch at the front.
+function chestFace(t, band, kind) {
+  P[T.PLANKS](t);
+  for (let i = 0; i < TILE; i++) {
+    for (const e of [0, 15]) { t.set(i, e, t.vary(band, 0.08)); t.set(e, i, t.vary(band, 0.08)); }
+  }
+  if (kind !== 'top') for (let x = 0; x < TILE; x++) t.set(x, 5, t.vary(shade(band, 0.8), 0.06)); // the lid's edge
+  if (kind === 'front') {
+    for (let y = 4; y < 8; y++) for (let x = 7; x < 9; x++) t.set(x, y, [200, 196, 186]);
+    t.set(7, 6, [60, 60, 64]); t.set(8, 6, [60, 60, 64]);
+  }
+}
+Object.assign(P, {
+  [T.CHEST_SIDE](t) { chestFace(t, [92, 62, 34], 'side'); },
+  [T.CHEST_TOP](t) { chestFace(t, [92, 62, 34], 'top'); },
+  [T.CHEST_FRONT](t) { chestFace(t, [92, 62, 34], 'front'); },
+  [T.IRON_CHEST_SIDE](t) { chestFace(t, [150, 154, 162], 'side'); for (let y = 0; y < TILE; y++) for (const x of [4, 11]) t.set(x, y, t.vary([130, 134, 142], 0.05)); },
+  [T.IRON_CHEST_TOP](t) { chestFace(t, [150, 154, 162], 'top'); for (let y = 0; y < TILE; y++) for (const x of [4, 11]) t.set(x, y, t.vary([130, 134, 142], 0.05)); },
+  [T.IRON_CHEST_FRONT](t) { chestFace(t, [150, 154, 162], 'front'); for (let y = 0; y < TILE; y++) for (const x of [3, 12]) t.set(x, y, t.vary([130, 134, 142], 0.05)); },
+});
+
+Object.assign(P, {
+  // white, fluffy crystals crusting the stone
+  [T.SALTPETRE_ORE](t) {
+    P[T.STONE](t);
+    for (let n = 0; n < 9; n++) {
+      const cx = 1 + t.r() * 13, cy = 1 + t.r() * 13;
+      for (let k = 0; k < 5; k++) {
+        const x = Math.round(cx + (t.r() - 0.5) * 3), y = Math.round(cy + (t.r() - 0.5) * 3);
+        t.set(x, y, t.vary([238, 236, 228], 0.05)); if (t.r() < 0.5) t.set(x + 1, y, t.vary([214, 212, 204], 0.05));
+      }
+    }
+  },
+  [T.ELECTRUM](t) {
+    for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) t.set(x, y, t.vary(shade([236, 218, 140], 0.9 + 0.15 * Math.sin((x + y) * 0.6)), 0.04));
+  },
+  // a bundle of paper-wrapped sticks of gunpowder, tied with string; the fuse sticks out of the top
+  [T.CHARGE_SIDE](t) {
+    for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+      const stick = x % 4 === 0 ? [150, 40, 30] : [196, 62, 44];
+      t.set(x, y, t.vary(y === 4 || y === 11 ? [214, 196, 140] : stick, 0.06));
+    }
+  },
+  [T.CHARGE_TOP](t) {
+    for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+      const d = Math.hypot((x % 4) - 1.5, (y % 4) - 1.5);
+      t.set(x, y, t.vary(d < 1.3 ? [70, 66, 62] : [176, 52, 38], 0.08));
+    }
+    for (let y = 6; y < 10; y++) for (let x = 7; x < 9; x++) t.set(x, y, [226, 214, 170]); // fuse
+  },
+  [T.LAVA](t) {
+    for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+      const w = Math.sin(x * 0.9 + Math.sin(y * 0.7) * 2) + Math.cos(y * 0.8 - x * 0.3);
+      t.set(x, y, t.vary(w > 1.1 ? [255, 236, 120] : w > 0.2 ? [252, 150, 30] : [210, 70, 14], 0.07));
+    }
+  },
+  [T.OBSIDIAN](t) {
+    t.fill([30, 22, 44], 0.2);
+    t.speckle([62, 44, 92], 0.12, 0.1);
+    t.speckle([12, 8, 18], 0.1, 0.1);
+  },
+});
+
+// ----- machines -----
+const IRON_C = [118, 122, 130];
+function frame(t, c, w = 2) {
+  for (let i = 0; i < TILE; i++) for (let k = 0; k < w; k++) {
+    t.set(i, k, t.vary(c, 0.06)); t.set(i, 15 - k, t.vary(c, 0.06)); t.set(k, i, t.vary(c, 0.06)); t.set(15 - k, i, t.vary(c, 0.06));
+  }
+}
+function arrowTile(t, dir) {
+  // a rubber belt with chevrons pointing along it (dir: 0 +z (down the tile), 1 -x, 2 -z, 3 +x)
+  for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+    const [u, v] = dir === 0 ? [x, y] : dir === 2 ? [x, 15 - y] : dir === 1 ? [y, x] : [y, 15 - x]; // (+z is up the tile)
+    const chevron = (v - Math.abs(u - 7.5) * 0.6 + 32) % 6 < 1.4 && u > 1 && u < 14;
+    t.set(x, y, t.vary(u < 1 || u > 14 ? [60, 60, 64] : chevron ? [140, 140, 136] : [44, 42, 40], 0.06));
+  }
+}
+Object.assign(P, {
+  [T.MILL_SIDE](t) { P[T.STONE](t); for (let x = 0; x < TILE; x++) { t.set(x, 7, [96, 96, 98]); t.set(x, 8, [150, 150, 152]); } },
+  [T.MILL_TOP](t) {
+    for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+      const d = Math.hypot(x - 7.5, y - 7.5), a = Math.atan2(y - 7.5, x - 7.5);
+      t.set(x, y, t.vary(d < 1.6 ? [70, 52, 30] : Math.abs(Math.sin(a * 4)) < 0.15 && d < 7 ? [104, 104, 106] : [150, 150, 152], 0.07)); // grooved stone round the spindle
+    }
+  },
+  [T.SAW_SIDE](t) { P[T.PLANKS](t); frame(t, IRON_C, 1); },
+  [T.SAW_TOP](t) {
+    P[T.PLANKS](t); frame(t, IRON_C, 1);
+    for (let y = 2; y < 14; y++) { t.set(7, y, [210, 214, 222]); t.set(8, y, y % 2 ? [150, 154, 160] : [230, 232, 238]); } // the blade through its slot
+  },
+  [T.SAW_FRONT](t) {
+    P[T.SAW_SIDE](t);
+    for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+      const d = Math.hypot(x - 7.5, y - 9);
+      if (d < 5.5) t.set(x, y, d > 4.6 && (Math.atan2(y - 9, x - 7.5) * 8 / Math.PI | 0) % 2 ? [120, 124, 130] : d < 1.2 ? [70, 70, 74] : [206, 210, 218]);
+    }
+  },
+  [T.BELLOWS_SIDE](t) {
+    for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+      const fold = y > 3 && y < 13 && (x + (y % 2)) % 3 === 0;
+      t.set(x, y, t.vary(y < 3 || y > 12 ? [150, 110, 64] : fold ? [96, 62, 34] : [134, 88, 50], 0.07));
+    }
+  },
+  [T.BELLOWS_TOP](t) { P[T.PLANKS](t); for (let y = 6; y < 10; y++) for (let x = 6; x < 10; x++) t.set(x, y, [60, 60, 64]); },
+  [T.HAMMER_SIDE](t) { P[T.COBBLE](t); frame(t, [96, 70, 40], 2); },
+  [T.HAMMER_TOP](t) { P[T.PLANKS](t); frame(t, IRON_C, 1); for (let y = 3; y < 13; y++) for (let x = 5; x < 11; x++) t.set(x, y, t.vary([90, 92, 98], 0.05)); },
+  [T.HAMMER_FRONT](t) {
+    P[T.HAMMER_SIDE](t);
+    for (let y = 2; y < 8; y++) for (let x = 4; x < 12; x++) t.set(x, y, t.vary([84, 86, 92], 0.05)); // the hammer head
+    for (let y = 8; y < 12; y++) for (let x = 7; x < 9; x++) t.set(x, y, [110, 80, 46]);
+    for (let x = 3; x < 13; x++) for (let y = 12; y < 14; y++) t.set(x, y, [60, 60, 66]); // the anvil
+  },
+  [T.PUMP_SIDE](t) {
+    for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) t.set(x, y, t.vary([104, 110, 134], 0.06));
+    frame(t, [70, 76, 98], 1);
+    for (let y = 4; y < 12; y++) for (let x = 4; x < 12; x++) t.set(x, y, t.vary(Math.hypot(x - 7.5, y - 7.5) < 3 ? [60, 64, 84] : [128, 134, 158], 0.05));
+  },
+  [T.PUMP_TOP](t) { P[T.PUMP_SIDE](t); for (let y = 6; y < 10; y++) for (let x = 6; x < 10; x++) t.set(x, y, [40, 44, 60]); },
+  [T.LEAD](t) { for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) t.set(x, y, t.vary(shade([110, 116, 140], 0.88 + 0.12 * Math.sin(y * 0.8)), 0.04)); },
+  [T.DRILL_SIDE](t) {
+    for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) t.set(x, y, t.vary([146, 154, 166], 0.05));
+    frame(t, [96, 100, 110], 1);
+    for (const [x, y] of [[3, 3], [12, 3], [3, 12], [12, 12]]) t.set(x, y, [70, 72, 80]);
+  },
+  [T.DRILL_FRONT](t) {
+    P[T.DRILL_SIDE](t);
+    for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+      const d = Math.hypot(x - 7.5, y - 7.5), a = Math.atan2(y - 7.5, x - 7.5);
+      if (d < 6) t.set(x, y, (a * 3 / Math.PI + d * 0.5 + 6) % 2 < 1 ? [124, 120, 152] : [84, 80, 110]); // a spiral tungsten bit
+    }
+  },
+  [T.IRON](t) { for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) t.set(x, y, t.vary(shade(IRON_C, 0.9 + 0.1 * ((x + y) % 4 === 0)), 0.05)); frame(t, [84, 86, 94], 1); },
+  [T.FILAMENT_OFF](t) {
+    for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) t.set(x, y, [0, 0, 0], 0);
+    frame(t, [200, 120, 70], 1);
+    for (let y = 3; y < 13; y++) for (let x = 3; x < 13; x++) t.set(x, y, [210, 228, 236], 90); // glass
+    for (let x = 4; x < 12; x++) t.set(x, 7 + ((x % 2)), [90, 86, 100]); // the coiled filament
+  },
+  [T.FILAMENT_ON](t) {
+    for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) t.set(x, y, t.vary([255, 236, 170], 0.05));
+    frame(t, [200, 120, 70], 1);
+    for (let x = 4; x < 12; x++) t.set(x, 7 + ((x % 2)), [255, 255, 240]);
+  },
+});
+for (let f = 0; f < 4; f++) P[T.BELT0 + f] = (t) => arrowTile(t, f);
+
+// ----- tundra and desert -----
+Object.assign(P, {
+  [T.SNOW](t) { t.fill([240, 244, 250], 0.04); t.speckle([214, 224, 240], 0.1, 0.04); },
+  [T.SNOW_GRASS_SIDE](t) {
+    P[T.DIRT](t);
+    for (let x = 0; x < TILE; x++) {
+      const depth = 3 + (t.r() < 0.5 ? 1 : 0) + (t.r() < 0.25 ? 1 : 0);
+      for (let y = 0; y < depth; y++) t.set(x, y, t.vary([238, 242, 248], 0.04));
+    }
+  },
+  [T.ICE](t) {
+    for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) t.set(x, y, t.vary([150, 196, 240], 0.05), 200);
+    for (let i = 0; i < 3; i++) { let x = t.r() * 16, y = t.r() * 16; for (let k = 0; k < 6; k++) { t.set(x | 0, y | 0, [220, 238, 255], 220); x += 1; y += t.r() < 0.5 ? 1 : 0; } } // cracks
+  },
+  [T.SANDSTONE_TOP](t) { P[T.SAND](t); for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) if (x === 0 || y === 0) t.set(x, y, t.vary([196, 176, 120], 0.05)); },
+  [T.SANDSTONE_SIDE](t) {
+    for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+      const band = y < 3 ? [226, 210, 158] : y % 5 === 4 ? [190, 168, 112] : [214, 196, 140];
+      t.set(x, y, t.vary(band, 0.05));
+    }
+  },
+  [T.CACTUS_SIDE](t) {
+    for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) t.set(x, y, t.vary(x % 4 === 1 ? [64, 120, 50] : [86, 150, 64], 0.08));
+    for (let y = 1; y < TILE; y += 3) for (const x of [3, 11]) t.set(x, y, [236, 230, 190]); // spines
+  },
+  [T.CACTUS_TOP](t) {
+    for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) t.set(x, y, t.vary(Math.hypot(x - 7.5, y - 7.5) < 4 ? [120, 176, 90] : [86, 150, 64], 0.06));
+  },
+  [T.GOLD](t) { for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) t.set(x, y, t.vary(shade([250, 210, 70], 0.88 + 0.12 * Math.sin((x - y) * 0.7)), 0.04)); },
 });
 
 // A plank door: a frame with a centre board; the upper half has a four-pane window you can see through,
@@ -907,11 +1090,193 @@ KINETIC_MATS.forEach((m, i) => {
   ITEM_PAINTERS[kineticId('large', i)] = (ctx) => gearIcon(ctx, PART_COLORS[i], 7.9, 14, 1.8);
 });
 
+// ----- stage A: ladders, scaffolding, signs, swords, armour -----
+const PLANK = [[176, 132, 80], [128, 92, 52]];
+Object.assign(ITEM_PAINTERS, {
+  [LADDER](ctx) {
+    rect(ctx, 3, 0, 2, 16, PLANK[1]); rect(ctx, 11, 0, 2, 16, PLANK[1]);
+    for (const y of [2, 6, 10, 14]) rect(ctx, 5, y, 6, 1, PLANK[0]);
+  },
+  [SCAFFOLD](ctx) {
+    for (const x of [1, 13]) rect(ctx, x, 1, 2, 15, PLANK[1]);
+    rect(ctx, 1, 1, 14, 2, PLANK[0]); rect(ctx, 1, 8, 14, 1, PLANK[0]);
+    for (let i = 0; i < 10; i++) px(ctx, 3 + i, 3 + Math.floor(i * 0.5), PLANK[0]); // a brace
+  },
+  [SIGN](ctx) {
+    rect(ctx, 7, 9, 2, 7, [110, 80, 46]); // post
+    rect(ctx, 1, 2, 14, 8, PLANK[0]); rect(ctx, 1, 9, 14, 1, PLANK[1]);
+    for (const [y, w] of [[4, 10], [6, 8]]) rect(ctx, 3, y, w, 1, [70, 46, 24]); // writing
+  },
+});
+// sword: blade along the diagonal, a crossguard and a short grip
+function swordPainter(mat) {
+  const [m, md] = MAT[mat];
+  return (ctx) => {
+    for (let i = 0; i < 9; i++) { px(ctx, 6 + i, 9 - i, m); px(ctx, 6 + i, 10 - i, md); px(ctx, 5 + i, 9 - i, m); }
+    px(ctx, 15, 0, m);
+    for (const [x, y] of [[3, 9], [4, 10], [5, 11], [6, 12], [7, 13]]) px(ctx, x, y, [90, 70, 40]); // crossguard
+    for (let i = 0; i < 4; i++) { px(ctx, 1 + i, 14 - i, HANDLE[0]); px(ctx, 2 + i, 14 - i, HANDLE[1]); }
+  };
+}
+ITEM_PAINTERS[WOOD_SWORD] = swordPainter('wood');
+ITEM_PAINTERS[STONE_SWORD] = swordPainter('stone');
+TOOL_MATERIALS.forEach((m, i) => { ITEM_PAINTERS[metalSword(i)] = swordPainter(m.key); });
+const ARMOUR_COLORS = {
+  leather: [148, 96, 56], bronze: METAL_COLORS[BRONZE_INGOT], iron: METAL_COLORS[IRON_INGOT],
+  steel: METAL_COLORS[STEEL_INGOT], stainless: METAL_COLORS[STAINLESS_INGOT],
+};
+const ARMOUR_ART = [
+  ['................', '................', '....XXXXXXXX....', '...XHHHHHHHHX...', '..XHHHHHHHHHHX..', '..XHHHHHHHHHHX..', '..XHHXXXXXXHHX..',
+    '..XHX......XHX..', '..XHX......XHX..', '..XXX......XXX..', '................', '................', '................', '................', '................', '................'],
+  ['................', '..XXX......XXX..', '.XHHHX....XHHHX.', 'XHHHHHXXXXHHHHHX', 'XHHHHHHHHHHHHHHX', 'XXXHHHHHHHHHHXXX', '..XHHHHHHHHHHX..',
+    '..XHHHHHHHHHHX..', '..XHHHHHHHHHHX..', '..XHHHHHHHHHHX..', '..XHHHHHHHHHHX..', '..XHHHHHHHHHHX..', '..XXXXXXXXXXXX..', '................', '................', '................'],
+  ['................', '................', '...XXXXXXXXXX...', '...XHHHHHHHHX...', '...XHHHHHHHHX...', '...XHHHXXHHHX...', '...XHHHXXHHHX...',
+    '...XHHHXXHHHX...', '...XHHHXXHHHX...', '...XHHHXXHHHX...', '...XHHHXXHHHX...', '...XHHHXXHHHX...', '...XXXXXXXXXX...', '................', '................', '................'],
+  ['................', '................', '................', '................', '................', '..XXXX....XXXX..', '..XHHX....XHHX..',
+    '..XHHX....XHHX..', '..XHHX....XHHX..', '..XHHX....XHHX..', 'XXXHHX....XHHXXX', 'XHHHHX....XHHHHX', 'XHHHHX....XHHHHX', 'XXXXXX....XXXXXX', '................', '................'],
+];
+function armourPainter(c, piece) {
+  return (ctx) => ARMOUR_ART[piece].forEach((row, y) => [...row].forEach((ch, x) => {
+    if (ch === 'X') px(ctx, x, y, dim(c, 0.6));
+    else if (ch === 'H') px(ctx, x, y, (x + y) % 5 === 0 ? dim(c, 1.15).map((v) => Math.min(255, v)) : c);
+  }));
+}
+ARMOUR_MATS.forEach((m, mi) => ARMOUR_PIECES.forEach((p, pi) => { ITEM_PAINTERS[armourId(mi, pi)] = armourPainter(ARMOUR_COLORS[m.key], pi); }));
+// a flat metal plate seen at an angle, with rivets
+function platePainter(c) {
+  return (ctx) => {
+    for (let y = 3; y < 13; y++) for (let x = 2; x < 14; x++) {
+      if (x + (12 - y) * 0.3 > 14 || x < 2 + (12 - y) * 0.3) continue;
+      px(ctx, x, y, y === 3 ? dim(c, 1.15).map((v) => Math.min(255, v)) : y > 11 ? dim(c, 0.65) : c);
+    }
+    for (const [x, y] of [[4, 5], [11, 5], [4, 10], [11, 10]]) px(ctx, x, y, dim(c, 0.55));
+  };
+}
+PLATE_METALS.forEach((m, i) => { ITEM_PAINTERS[PLATES + i] = platePainter(METAL_COLORS[m.ingot]); });
+ITEM_PAINTERS[HIDE] = (ctx) => {
+  for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) {
+    const d = Math.hypot((x - 7.5) / 6.5, (y - 8) / 5.8) + Math.sin(x * 1.3) * 0.06 + Math.cos(y * 1.7) * 0.06;
+    if (d < 1) px(ctx, x, y, (x * 3 + y * 5) % 7 === 0 ? [58, 38, 22] : d > 0.82 ? [62, 42, 26] : [86, 58, 36]);
+  }
+};
+ITEM_PAINTERS[LEATHER] = (ctx) => {
+  for (let y = 2; y < 14; y++) for (let x = 2; x < 14; x++) {
+    if ((x === 2 || x === 13) && (y === 2 || y === 13)) continue;
+    px(ctx, x, y, y === 2 || x === 2 ? [176, 118, 70] : (x + y) % 6 === 0 ? [128, 80, 44] : [150, 98, 56]);
+  }
+  for (let x = 4; x < 12; x += 2) px(ctx, x, 12, [100, 64, 34]); // stitching
+};
+
+// ----- stage B -----
+Object.assign(ITEM_PAINTERS, {
+  [SALTPETRE]: dustPainter([236, 234, 226]),
+  [GUNPOWDER]: dustPainter([70, 70, 74]),
+  [LEAD_SINKER](ctx) {
+    for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) {
+      const d = Math.hypot((x - 7.5) / 3.6, (y - 9) / 4.5);
+      if (d < 1) px(ctx, x, y, d > 0.75 ? [70, 76, 98] : x < 7 ? [130, 138, 160] : [104, 110, 134]);
+    }
+    rect(ctx, 7, 2, 2, 3, [104, 110, 134]); px(ctx, 7, 1, [70, 76, 98]); px(ctx, 8, 1, [70, 76, 98]); // eye for the line
+  },
+  [WEIGHTED_ROD](ctx) {
+    ITEM_PAINTERS[FISHING_ROD](ctx);
+    rect(ctx, 13, 12, 3, 3, [104, 110, 134]); px(ctx, 13, 12, [140, 146, 170]);
+  },
+  [LEAD_BUCKET]: (ctx) => { bucketPainter(null)(ctx); for (let y = 4; y <= 14; y++) for (let x = 3; x <= 12; x++) { const d = ctx.getImageData(x, y, 1, 1).data; if (d[3]) px(ctx, x, y, d[0] > 140 ? [130, 136, 158] : [96, 102, 124]); } },
+  [LAVA_BUCKET]: (ctx) => { ITEM_PAINTERS[LEAD_BUCKET](ctx); rect(ctx, 4, 4, 8, 2, [252, 140, 30]); px(ctx, 6, 4, [255, 230, 120]); },
+  [GOLD_CLOCK](ctx) {
+    for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) {
+      const d = Math.hypot(x - 7.5, y - 8.5);
+      if (d < 7) px(ctx, x, y, d > 5.6 ? [200, 150, 30] : d > 4.8 ? [250, 210, 70] : [248, 242, 222]);
+    }
+    rect(ctx, 7, 0, 2, 2, [200, 150, 30]); // crown
+    for (let i = 0; i < 4; i++) px(ctx, 7, 8 - i, [40, 36, 30]); // hands at ten to twelve
+    for (let i = 0; i < 3; i++) px(ctx, 8 + i, 8, [40, 36, 30]);
+  },
+  [COMPASS](ctx) {
+    for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) {
+      const d = Math.hypot(x - 7.5, y - 7.5);
+      if (d < 7) px(ctx, x, y, d > 5.6 ? [150, 146, 140] : [236, 232, 220]);
+    }
+    for (let i = 0; i < 5; i++) { px(ctx, 7 + (i > 2 ? 0 : 0), 3 + i, [200, 40, 34]); px(ctx, 8, 7 + i, [60, 60, 70]); }
+    px(ctx, 8, 3, [200, 40, 34]); px(ctx, 7, 12, [60, 60, 70]);
+  },
+  [SILVER_ARROW](ctx) {
+    ITEM_PAINTERS[ARROW](ctx);
+    for (const [x, y] of [[12, 3], [13, 2], [12, 2], [13, 3], [11, 2], [13, 4], [14, 1]]) px(ctx, x, y, [236, 240, 250]);
+    px(ctx, 14, 1, [255, 255, 255]);
+  },
+  [MIRROR_LAMP](ctx) {
+    ITEM_PAINTERS[LAMP](ctx);
+    rect(ctx, 5, 4, 1, 8, [236, 218, 140]); rect(ctx, 10, 4, 1, 8, [236, 218, 140]);
+    rect(ctx, 6, 4, 4, 1, [250, 236, 170]);
+  },
+});
+
+// ----- machines -----
+Object.assign(ITEM_PAINTERS, {
+  [PIPE](ctx) { rect(ctx, 1, 6, 14, 4, [110, 116, 140]); rect(ctx, 1, 6, 14, 1, [150, 156, 180]); rect(ctx, 1, 9, 14, 1, [80, 86, 108]); rect(ctx, 0, 5, 2, 6, [90, 96, 118]); rect(ctx, 14, 5, 2, 6, [90, 96, 118]); },
+  [SPOUT](ctx) { rect(ctx, 6, 0, 4, 8, [110, 116, 140]); rect(ctx, 4, 8, 8, 3, [90, 96, 118]); rect(ctx, 6, 11, 4, 1, [80, 86, 108]); for (const y of [13, 15]) px(ctx, 7 + (y % 3 ? 0 : 1), y, [80, 140, 230]); },
+  [BELT](ctx) {
+    rect(ctx, 0, 6, 16, 6, [44, 42, 40]);
+    for (const x of [3, 8, 13]) { px(ctx, x, 8, [140, 140, 136]); px(ctx, x + 1, 9, [140, 140, 136]); px(ctx, x, 10, [140, 140, 136]); }
+    rect(ctx, 0, 12, 16, 2, [120, 86, 50]);
+  },
+  [HOPPER](ctx) {
+    for (let y = 2; y < 8; y++) rect(ctx, 1 + (y - 2) * 0.5, y, 14 - (y - 2), 1, y === 2 ? [150, 154, 162] : IRON_C);
+    rect(ctx, 5, 8, 6, 3, IRON_C); rect(ctx, 7, 11, 2, 4, [90, 92, 100]);
+  },
+  [WINDMILL](ctx) {
+    for (let i = 0; i < 4; i++) {
+      const a = (i * Math.PI) / 2 + Math.PI / 4;
+      for (let r = 1; r < 8; r++) px(ctx, Math.round(7.5 + Math.cos(a) * r), Math.round(7.5 + Math.sin(a) * r), [120, 86, 50]);
+      for (let r = 3; r < 8; r++) for (let w = 1; w < 3; w++) px(ctx, Math.round(7.5 + Math.cos(a) * r - Math.sin(a) * w), Math.round(7.5 + Math.sin(a) * r + Math.cos(a) * w), [236, 229, 214]);
+    }
+    rect(ctx, 6, 6, 3, 3, [80, 56, 30]);
+  },
+  [FILAMENT](ctx) { for (let x = 1; x < 15; x++) { px(ctx, x, 7 + Math.round(Math.sin(x * 1.6) * 2), [150, 146, 176]); px(ctx, x, 8 + Math.round(Math.sin(x * 1.6) * 2), [100, 96, 126]); } },
+  [DRILL_BIT](ctx) {
+    for (let y = 1; y < 15; y++) { const w = Math.max(1, Math.round((15 - y) * 0.3)); for (let x = 8 - w; x < 8 + w; x++) px(ctx, x, y, (x + y) % 3 ? [124, 120, 152] : [84, 80, 110]); }
+    rect(ctx, 6, 13, 4, 3, [146, 154, 166]);
+  },
+});
+
+// ----- rails, minecarts and maps -----
+function railIcon(c) {
+  return (ctx) => {
+    for (const y of [2, 6, 10, 14]) rect(ctx, 1, y, 14, 2, [128, 92, 52]);
+    rect(ctx, 3, 0, 2, 16, c); rect(ctx, 11, 0, 2, 16, c);
+  };
+}
+Object.assign(ITEM_PAINTERS, {
+  [RAIL]: railIcon([150, 154, 162]),
+  [POWERED_RAIL]: railIcon([240, 196, 60]),
+  [CACTUS](ctx) {
+    rect(ctx, 5, 2, 6, 14, [86, 150, 64]); rect(ctx, 5, 2, 2, 14, [64, 120, 50]);
+    rect(ctx, 1, 6, 4, 3, [86, 150, 64]); rect(ctx, 1, 3, 2, 4, [86, 150, 64]); // arm
+    rect(ctx, 11, 8, 3, 3, [86, 150, 64]); rect(ctx, 13, 5, 2, 4, [86, 150, 64]);
+    for (const [x, y] of [[8, 4], [9, 8], [8, 12], [2, 4], [14, 6]]) px(ctx, x, y, [236, 230, 190]);
+  },
+  [MINECART](ctx) {
+    rect(ctx, 1, 4, 14, 8, [110, 114, 122]); rect(ctx, 2, 5, 12, 6, [70, 72, 80]); rect(ctx, 1, 4, 14, 1, [150, 154, 162]);
+    for (const x of [3, 10]) { rect(ctx, x, 12, 3, 3, [40, 40, 44]); px(ctx, x + 1, 13, [120, 120, 126]); }
+  },
+  [PAPER](ctx) { rect(ctx, 3, 1, 10, 14, [246, 242, 228]); rect(ctx, 12, 1, 1, 14, [214, 208, 190]); for (const y of [4, 7, 10]) rect(ctx, 5, y, 6, 1, [200, 196, 184]); },
+  [MAP](ctx) {
+    rect(ctx, 1, 2, 14, 12, [226, 214, 172]);
+    for (let y = 3; y < 13; y++) for (let x = 2; x < 14; x++) {
+      const land = Math.sin(x * 0.7) + Math.cos(y * 0.6) > 0.2;
+      px(ctx, x, y, land ? ((x + y) % 5 ? [120, 168, 84] : [90, 130, 60]) : [90, 140, 210]);
+    }
+    px(ctx, 8, 7, [200, 40, 34]); px(ctx, 7, 8, [200, 40, 34]); px(ctx, 9, 8, [200, 40, 34]);
+  },
+});
+
 // Returns { id: dataURL } for every block and item.
 export function createIcons(atlas) {
   const icons = {};
   for (const def of BLOCKS) {
-    if (!def || !isBlock(def.id) || def.shape === 'torch' || def.shape === 'model' || def.shape === 'kinetic') continue; // (those have painted icons)
+    if (!def || !isBlock(def.id) || def.shape === 'torch' || def.shape === 'model' || def.shape === 'kinetic' || def.shape === 'pipe') continue; // (those have painted icons)
     const c = document.createElement('canvas');
     c.width = c.height = 64;
     const ctx = c.getContext('2d');

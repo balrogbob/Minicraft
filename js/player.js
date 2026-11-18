@@ -1,5 +1,6 @@
 // First-person player: AABB physics against the voxel grid.
 import * as THREE from 'three';
+import { isClimbable, LAVA } from './blocks.js';
 
 const HALF = 0.3; // half width
 const HEIGHT = 1.8;
@@ -21,6 +22,7 @@ export class Player {
     this.kx = 0; this.kz = 0; // knockback from being hit, fades quickly
     this.inWater = false; // any part of the body in water
     this.eyeInWater = false;
+    this.climbing = false; // on a ladder or in scaffolding
   }
 
   updateWaterState() {
@@ -28,6 +30,8 @@ export class Player {
     const x = Math.floor(p.x), z = Math.floor(p.z);
     this.inWater = w.isWater(x, Math.floor(p.y + 0.1), z) || w.isWater(x, Math.floor(p.y + 0.9), z);
     this.eyeInWater = w.isWater(x, Math.floor(p.y + EYE), z);
+    this.inLava = w.get(x, Math.floor(p.y + 0.1), z) === LAVA || w.get(x, Math.floor(p.y + 0.9), z) === LAVA;
+    this.climbing = isClimbable(w.get(x, Math.floor(p.y + 0.1), z)) || isClimbable(w.get(x, Math.floor(p.y + 1), z));
   }
 
   get eye() { return new THREE.Vector3(this.pos.x, this.pos.y + EYE, this.pos.z); }
@@ -78,12 +82,17 @@ export class Player {
     const len = Math.hypot(wx, wz);
     if (len > 1) { wx /= len; wz /= len; }
     this.updateWaterState();
-    const control = this.inWater ? 0.55 : this.onGround ? 1 : 0.85;
+    const control = this.inLava ? 0.3 : this.inWater ? 0.55 : this.onGround ? 1 : 0.85;
     this.vel.x = wx * WALK * control * this.speedMul + this.kx;
     this.vel.z = wz * WALK * control * this.speedMul + this.kz;
     const fade = Math.exp(-6 * dt);
     this.kx *= fade; this.kz *= fade;
-    if (this.inWater) {
+    if (this.climbing && !this.inWater) {
+      // ladders: walk into them (or jump) to climb, back away to climb down, stand still to slide down slowly
+      if (input.jump || input.moveZ > 0.3) this.vel.y = 3.2;
+      else if (input.moveZ < -0.3) this.vel.y = -3.2;
+      else this.vel.y = Math.max(this.vel.y - GRAVITY * dt, -1.2);
+    } else if (this.inWater || this.inLava) {
       // swimming: slow sinking, jump swims upward
       this.vel.y -= 9 * dt;
       if (input.jump) this.vel.y = Math.min(this.vel.y + 30 * dt, 3.6);
