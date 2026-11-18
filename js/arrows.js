@@ -1,5 +1,6 @@
-// Arrows shot from the bow: they fly in an arc, bump animals they hit, and stick in blocks,
-// where the player can pick them back up by walking over them.
+// Arrows shot from the bow fly in an arc, hit animals and night creatures, and stick in blocks,
+// where the player can pick them back up by walking over them. Thornspitters' thorns use the
+// same flight, but hit the player instead (and can't be picked up).
 import * as THREE from 'three';
 import { ARROW } from './blocks.js';
 import { H } from './terrain.js';
@@ -10,6 +11,22 @@ const MIN_SPEED = 8, MAX_SPEED = 40; // blocks per second, from a quick tap to a
 const STUCK_SECONDS = 60; // stuck arrows vanish after this long
 const FLY_SECONDS = 10;
 const PICKUP_RANGE = 1.6;
+const THORN_STUCK_SECONDS = 3;
+export const THORN_SPEED = 16;
+export const THORN_GRAVITY = 6; // thorns are light: they arc less than arrows
+
+// Where along a ray (origin o, unit dir d, up to len) it enters an axis-aligned box, or null.
+function rayBox(o, d, len, min, max) {
+  let t0 = 0, t1 = len;
+  for (const a of ['x', 'y', 'z']) {
+    if (Math.abs(d[a]) < 1e-9) { if (o[a] < min[a] || o[a] > max[a]) return null; continue; }
+    let ta = (min[a] - o[a]) / d[a], tb = (max[a] - o[a]) / d[a];
+    if (ta > tb) [ta, tb] = [tb, ta];
+    t0 = Math.max(t0, ta); t1 = Math.min(t1, tb);
+    if (t0 > t1) return null;
+  }
+  return t0;
+}
 
 const SHADE = [0.8, 0.8, 1.0, 0.5, 0.65, 0.65].map((v) => Math.pow(v, 2.2));
 function shadedBox([w, h, d], color, [x, y, z]) {
@@ -34,6 +51,10 @@ export class ArrowManager {
       shadedBox([0.12, 0.02, 0.14], 0xf2f2ee, [0, 0, -0.26]),
       shadedBox([0.02, 0.12, 0.14], 0xf2f2ee, [0, 0, -0.26]),
     ];
+    this.thornParts = [
+      shadedBox([0.05, 0.05, 0.34], 0x6b8f2e, [0, 0, 0]),
+      shadedBox([0.03, 0.03, 0.14], 0xd9d2a8, [0, 0, 0.23]),
+    ];
   }
 
   reset() {
@@ -49,20 +70,30 @@ export class ArrowManager {
   // Fire from `origin` along unit vector `dir`; power 0..1 is how far the bow was drawn.
   shoot(origin, dir, power) {
     const speed = MIN_SPEED + (MAX_SPEED - MIN_SPEED) * Math.max(0, Math.min(1, power));
+    this.sound?.bow(power);
+    return this.launch(origin, dir, speed, { power, thorn: false });
+  }
+
+  // A thornspitter's thorn: slower, and it hurts the player for `damage` if it hits.
+  shootThorn(origin, dir, damage) {
+    return this.launch(origin, dir, THORN_SPEED, { damage, thorn: true, gravity: THORN_GRAVITY });
+  }
+
+  launch(origin, dir, speed, extra) {
     const material = new THREE.MeshBasicMaterial({ vertexColors: true });
     const group = new THREE.Group();
-    for (const g of this.parts) group.add(new THREE.Mesh(g, material));
+    for (const g of extra.thorn ? this.thornParts : this.parts) group.add(new THREE.Mesh(g, material));
     const a = {
-      pos: origin.clone().addScaledVector(dir, 0.6),
+      pos: origin.clone().addScaledVector(dir, extra.thorn ? 0.5 : 0.6),
       vel: dir.clone().multiplyScalar(speed),
       stuck: false,
       age: 0,
       group,
       material,
+      ...extra,
     };
     this.arrows.push(a);
     this.scene.add(group);
-    this.sound?.bow(power);
     this.place(a);
     return a;
   }
@@ -73,13 +104,16 @@ export class ArrowManager {
   }
 
   // Returns how many stuck arrows the player picked up this frame.
-  update(dt, { world, mobs, player, light }) {
+  // onHitMob(mob, arrow, fromPos): an arrow hit an animal or creature. onHitPlayer(damage): a thorn hit.
+  update(dt, { world, mobs, player, light, onHitMob, onHitPlayer }) {
     let picked = 0;
     const tmp = new THREE.Vector3();
     for (let i = this.arrows.length - 1; i >= 0; i--) {
       const a = this.arrows[i];
       a.age += dt;
-      if (a.stuck) {
+      if (a.stuck && a.thorn) {
+        if (a.age > THORN_STUCK_SECONDS) { this.remove(a); this.arrows.splice(i, 1); continue; }
+      } else if (a.stuck) {
         // walk over a stuck arrow to pick it up
         const d = tmp.copy(a.pos).sub(player.pos).setY(a.pos.y - (player.pos.y + 0.9)).length();
         if (d < PICKUP_RANGE) { picked++; this.remove(a); this.arrows.splice(i, 1); continue; }
@@ -88,24 +122,35 @@ export class ArrowManager {
         if (a.age > FLY_SECONDS) { this.remove(a); this.arrows.splice(i, 1); continue; }
         // water slows arrows down a lot
         if (world.isWater(Math.floor(a.pos.x), Math.floor(a.pos.y), Math.floor(a.pos.z))) a.vel.multiplyScalar(Math.max(0, 1 - 4 * dt));
-        a.vel.y -= GRAVITY * dt;
+        a.vel.y -= (a.gravity ?? GRAVITY) * dt;
         const step = a.vel.length() * dt;
         if (step > 0) {
           const dir = tmp.copy(a.vel).normalize();
           const block = world.raycast(a.pos, dir, step, true);
-          const mob = mobs.raycast(a.pos, dir, step);
-          if (mob && (!block || mob.t < block.t)) {
-            // hit an animal: it gets bumped away from the arrow, and the arrow breaks
-            mobs.bump(mob.mob, a.pos.clone().addScaledVector(dir, -2));
-            this.remove(a); this.arrows.splice(i, 1);
-            continue;
+          if (a.thorn) {
+            // thorns fly past animals and creatures, and hurt the player
+            const p = player.pos;
+            const t = rayBox(a.pos, dir, step, { x: p.x - 0.35, y: p.y, z: p.z - 0.35 }, { x: p.x + 0.35, y: p.y + 1.8, z: p.z + 0.35 });
+            if (t !== null && (!block || t < block.t)) {
+              onHitPlayer?.(a.damage);
+              this.remove(a); this.arrows.splice(i, 1);
+              continue;
+            }
+          } else {
+            const mob = mobs.raycast(a.pos, dir, step);
+            if (mob && (!block || mob.t < block.t)) {
+              // hit an animal or creature: the game decides what happens; the arrow breaks
+              onHitMob?.(mob.mob, a, a.pos.clone().addScaledVector(dir, -2));
+              this.remove(a); this.arrows.splice(i, 1);
+              continue;
+            }
           }
           if (block) {
             a.pos.addScaledVector(dir, Math.max(0, block.t - 0.02)); // the tip lodges at the surface
             a.group.lookAt(a.pos.x + dir.x, a.pos.y + dir.y, a.pos.z + dir.z);
             a.stuck = true;
             a.age = 0;
-            this.sound?.arrowHit();
+            if (!a.thorn) this.sound?.arrowHit();
           } else {
             a.pos.addScaledVector(dir, step);
           }

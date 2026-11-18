@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import {
   BLOCKS, RECIPES, TABLE, AIR, WATER, TORCH, TORCH_WALL_W, WALL_TORCH_DIRS,
   GRASS, DIRT, SAND, CHURN, SUGAR_CANE, BREAD, ITEMS, BOW, ARROW, BUCKET,
+  WOOD_PICK, STONE_PICK, WOOD_AXE, STONE_AXE, WOOD_SHOVEL, STONE_SHOVEL,
   isBlock, isTorch, isWheat, itemName, breakTime, dropsFor, foodValue,
 } from './blocks.js';
 import { createAtlas, createIcons, createCrackCanvases, createWaterCanvas, createHudIcons } from './textures.js';
@@ -14,12 +15,12 @@ import { Sound } from './sound.js';
 import { Player } from './player.js';
 import { Inventory, SLOTS } from './inventory.js';
 import { Controls } from './controls.js';
-import { MobManager } from './mobs.js';
+import { MobManager, DIFFICULTY, DIFFICULTY_ORDER } from './mobs.js';
 import { ArrowManager } from './arrows.js';
 
 // v2 = the 16k x 16k streaming world (player state here, edited chunks in IndexedDB).
 // v1 = the old 128 x 128 world, migrated into the middle of the big world on first launch.
-const GAME_VERSION = '9'; // shown in the menu; bump with each release
+const GAME_VERSION = '10'; // shown in the menu; bump with each release
 const SAVE_KEY = 'minicraft-save-v2';
 const LEGACY_SAVE_KEY = 'minicraft-save-v1';
 const SETTINGS_KEY = 'minicraft-settings-v1';
@@ -35,7 +36,7 @@ function writeSave(obj) {
 }
 // Settings live apart from the world so they survive "New world".
 const settings = (() => {
-  const defaults = { sens: 6, volume: 70, viewDistance: 6, perf: false };
+  const defaults = { sens: 6, volume: 70, viewDistance: 6, perf: false, difficulty: 'worrying' };
   try { return { ...defaults, ...JSON.parse(localStorage.getItem(SETTINGS_KEY)) }; } catch { return defaults; }
 })();
 function saveSettings() {
@@ -105,6 +106,29 @@ for (const ev of ['touchstart', 'pointerdown', 'keydown']) {
 const icons = createIcons(atlasCanvas);
 const mobs = new MobManager(scene, sound);
 const arrows = new ArrowManager(scene, sound);
+
+// ---------- night creatures ----------
+const difficulty = () => DIFFICULTY[settings.difficulty] ?? DIFFICULTY.worrying;
+// How hard each thing in your hand hits a creature (bare hand: 2). Creatures have 10-30 health.
+const WEAPON_DAMAGE = { [WOOD_SHOVEL]: 3, [STONE_SHOVEL]: 4, [WOOD_PICK]: 3, [STONE_PICK]: 4, [WOOD_AXE]: 4, [STONE_AXE]: 6 };
+let lastSwing = 0; // time of the last swing at a creature (a short pause between swings, in real time)
+
+// A creature's hit knocks you back away from it.
+mobs.onHurtPlayer = (amount, cause, from) => {
+  if (dead) return;
+  const dx = player.pos.x - from.x, dz = player.pos.z - from.z, len = Math.hypot(dx, dz) || 1;
+  player.kx = (dx / len) * 7; player.kz = (dz / len) * 7;
+  if (player.onGround) player.vel.y = 4.5;
+  damage(amount, cause);
+};
+mobs.onShoot = (origin, dir, dmg) => arrows.shootThorn(origin, dir, dmg);
+
+function giveDrops(drops) {
+  for (const [id, n] of drops) {
+    if (inventory.add(id, n) > 0) toast('Inventory full');
+    else { toast(`+${n} ${itemName(id)}`, 1200); sound.pop(); }
+  }
+}
 const hudIcons = createHudIcons();
 
 // block highlight + break cracks
@@ -217,6 +241,7 @@ async function startWorld(save) {
   world.onError = reportError;
   mobs.reset(world);
   arrows.reset();
+  lastSwing = 0;
   applyViewDistance();
   $('load-text').textContent = 'Generating terrain…';
   setProgress(0);
@@ -455,6 +480,8 @@ function respawnPlayer() {
   health = MAX_HEALTH; hunger = MAX_HUNGER; air = MAX_AIR; poisoned = 0;
   fallTop = null; dead = false;
   player.vel.set(0, 0, 0);
+  player.kx = player.kz = 0;
+  mobs.calm();
   $('death').classList.add('hidden');
   paused = false;
   renderHealth(); renderHunger(); renderAir();
@@ -625,6 +652,14 @@ function toggleInventory() {
 // shear an alpaca, fill a bucket with newt slime, or just bump it.
 function hitMob() {
   if (!targetMob) return;
+  if (targetMob.mob.spec.hostile) {
+    // fight a night creature: damage depends on what's in your hand
+    const now = performance.now();
+    if (now - lastSwing < 450) return;
+    lastSwing = now;
+    giveDrops(mobs.hurt(targetMob.mob, WEAPON_DAMAGE[inventory.heldId()] ?? 2, player.pos));
+    return;
+  }
   const r = mobs.interact(targetMob.mob, player.pos, inventory.heldId());
   for (const [id, n] of r.take) inventory.remove(id, n);
   for (const [id, n] of r.give) {
@@ -801,6 +836,17 @@ $('btn-perf').addEventListener('click', () => {
   updatePerfLabel();
   saveSettings();
 });
+function updateDifficultyLabel() {
+  $('btn-difficulty').textContent = `Difficulty: ${difficulty().name}`;
+  $('difficulty-about').textContent = difficulty().about;
+}
+updateDifficultyLabel();
+$('btn-difficulty').addEventListener('click', () => {
+  const i = DIFFICULTY_ORDER.indexOf(settings.difficulty);
+  settings.difficulty = DIFFICULTY_ORDER[(i + 1) % DIFFICULTY_ORDER.length];
+  updateDifficultyLabel();
+  saveSettings();
+});
 $('view').value = settings.viewDistance;
 $('view').addEventListener('input', (e) => {
   settings.viewDistance = +e.target.value;
@@ -913,7 +959,7 @@ function updatePerf(now) {
   $('perf').textContent = `${perf.fps} fps · view ${settings.viewDistance * CHUNK} blocks\n` +
     `chunks: ${st.loaded} loaded, ${st.drawn} drawn, ${st.waiting} waiting` +
     (st.pending ? `, ${st.pending} reading` : '') + (st.failed ? `, ${st.failed} failed` : '') +
-    `\nanimals: ${mobs.mobs.length}` +
+    `\nanimals: ${mobs.animals} · creatures: ${mobs.creatures} (${difficulty().name})` +
     (lastError ? `\nlast error: ${lastError}` : '');
 }
 
@@ -930,9 +976,18 @@ function stepGame(now, dt) {
     world.tickPlants(dt);
     updateHunger(dt);
     updateHealth(dt, wasGround, prevY);
-    const picked = arrows.update(dt, { world, mobs, player, light: { day: lightUniforms.uDay.value, flicker: lightUniforms.uFlicker.value, ambient: AMBIENT } });
+    const picked = arrows.update(dt, {
+      world, mobs, player, light: { day: lightUniforms.uDay.value, flicker: lightUniforms.uFlicker.value, ambient: AMBIENT },
+      // arrows bump animals, and hurt creatures more the further the bow was drawn
+      onHitMob: (m, arrow, from) => {
+        if (m.spec.hostile) giveDrops(mobs.hurt(m, Math.round(2 + 6 * arrow.power), from));
+        else mobs.bump(m, from);
+      },
+      onHitPlayer: (dmg) => { if (!dead) damage(dmg, 'A thornspitter shot you full of thorns.'); },
+    });
     if (picked) { inventory.add(ARROW, picked); sound.pop(); }
-    mobs.update(dt, player, { day: lightUniforms.uDay.value, flicker: lightUniforms.uFlicker.value, ambient: AMBIENT });
+    mobs.update(dt, player, { day: lightUniforms.uDay.value, flicker: lightUniforms.uFlicker.value, ambient: AMBIENT },
+      { difficulty: difficulty(), daylight: sky.light, playerDead: dead });
   }
   // write edited chunks to storage shortly (1.5 s) after the player stops changing them
   if (world.unsaved.size !== unsavedCount) { unsavedCount = world.unsaved.size; lastEditAt = now; }

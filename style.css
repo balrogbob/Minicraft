@@ -204,7 +204,8 @@ html, body {
 #table-status { font-size: 13px; font-weight: normal; color: #555; }
 
 .menu-panel { width: min(420px, 100%); }
-.menu-items { display: flex; flex-direction: column; gap: 10px; padding: 0 14px 14px; }
+.menu-items { display: flex; flex-direction: column; gap: 10px; padding: 0 14px 14px; overflow: auto; }
+#difficulty-about { margin: -4px 0 0; }
 .slider { display: flex; align-items: center; gap: 12px; font-size: 16px; }
 .slider input { flex: 1; height: 36px; }
 

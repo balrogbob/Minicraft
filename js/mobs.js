@@ -1,13 +1,15 @@
-// Animals: ducks, buffalo, alpacas, yaks and newts that spawn around the player and wander the world.
+// Animals (ducks, buffalo, alpacas, yaks, newts) that wander the world, and the night creatures
+// (gloomlings, mossbacks, thornspitters) that come out in the dark and, depending on difficulty, hunt you.
 //
 // Each animal is a small hierarchy of shaded boxes (legs and heads on pivots so they can move),
 // with simple behaviour: stand, wander, graze, and run away when bumped. They follow the same
 // physics as the player (gravity, block collisions, stepping up one block) and float in water.
 // They aren't saved: they're spawned fresh around wherever you are.
 import * as THREE from 'three';
-import { AIR, WATER, LEAVES, LOG, GRASS, SAND, DIRT, WOOL, BUCKET, MILK_BUCKET, SLIME_BUCKET, FEATHER } from './blocks.js';
+import { AIR, WATER, LEAVES, LOG, GRASS, SAND, DIRT, WOOL, BUCKET, MILK_BUCKET, SLIME_BUCKET, FEATHER, COAL, COBBLE, ARROW } from './blocks.js';
 import { SEA_LEVEL, H } from './terrain.js';
 import { skyBrightness, lightBrightness } from './world.js';
+import { THORN_SPEED, THORN_GRAVITY } from './arrows.js';
 
 const GRAVITY = 28;
 const MAX_MOBS = 26;
@@ -24,12 +26,13 @@ const pick = (list) => list[Math.floor(Math.random() * list.length)];
 // Builds a model from coloured boxes. All boxes of one animal share its material, whose colour
 // is set every frame from the light where the animal stands.
 class Builder {
-  constructor(material) {
+  constructor(material, glowMaterial) {
     this.material = material;
+    this.glowMaterial = glowMaterial; // for eyes that shine in the dark: never darkened by lighting
     this.geometries = [];
   }
 
-  box(parent, [w, h, d], color, [x, y, z] = [0, 0, 0]) {
+  box(parent, [w, h, d], color, [x, y, z] = [0, 0, 0], glow = false) {
     const g = new THREE.BoxGeometry(w, h, d);
     const c = new THREE.Color(color);
     const col = new Float32Array(24 * 3);
@@ -38,7 +41,7 @@ class Builder {
       col[i * 3] = c.r * s; col[i * 3 + 1] = c.g * s; col[i * 3 + 2] = c.b * s;
     }
     g.setAttribute('color', new THREE.BufferAttribute(col, 3));
-    const m = new THREE.Mesh(g, this.material);
+    const m = new THREE.Mesh(g, glow ? this.glowMaterial : this.material);
     m.position.set(x, y, z);
     parent.add(m);
     this.geometries.push(g);
@@ -191,6 +194,100 @@ const SPECIES = {
     },
   },
 
+  // ---------- night creatures ----------
+  // hostile: hp, damage (before the difficulty multiplier), reach and attackEvery for melee,
+  // or ranged { min, max, every } for keeping a distance and spitting; weight: how often it spawns.
+
+  gloomling: {
+    w: 0.6, h: 1.1, speed: 1.2, chaseSpeed: 3.4, fleeSpeed: 3.4, sink: 0.7, stride: 12, legSwing: 0.8,
+    avoidWater: true, hostile: true, hp: 10, damage: 3, reach: 1.4, attackEvery: 0.8, weight: 50,
+    cause: 'A gloomling got you.',
+    drops: () => (Math.random() < 0.5 ? [[COAL, 1]] : []),
+    build(b, root) {
+      // a small hunched shadow imp with long arms, pointed ears and glowing green eyes
+      const skin = 0x2b2342, dark = 0x1a1528, eye = 0xb8ff6a;
+      const parts = { legs: [], arms: [] };
+      const torso = parts.torso = b.pivot(root, [0, 0.45, 0]);
+      b.box(torso, [0.42, 0.42, 0.3], skin, [0, 0.12, -0.02]);
+      const head = parts.head = b.pivot(torso, [0, 0.36, 0.08]);
+      b.box(head, [0.46, 0.38, 0.4], skin, [0, 0.12, 0.06]);
+      b.box(head, [0.22, 0.03, 0.02], 0x0b0910, [0, 0.01, 0.265]); // mouth
+      for (const s of [-1, 1]) {
+        b.box(head, [0.08, 0.26, 0.06], dark, [s * 0.2, 0.36, 0]); // pointed ears
+        b.box(head, [0.1, 0.07, 0.03], eye, [s * 0.11, 0.15, 0.27], true);
+        const arm = b.pivot(torso, [s * 0.26, 0.28, 0.02]);
+        b.box(arm, [0.09, 0.5, 0.09], skin, [0, -0.25, 0.04]);
+        b.box(arm, [0.12, 0.06, 0.12], dark, [0, -0.52, 0.06]); // claws
+        parts.arms.push(arm);
+        const leg = b.pivot(root, [s * 0.11, 0.42, 0]);
+        b.box(leg, [0.12, 0.42, 0.12], dark, [0, -0.21, 0]);
+        parts.legs.push(leg);
+      }
+      return parts;
+    },
+  },
+
+  mossback: {
+    w: 1.25, h: 2.2, speed: 0.8, chaseSpeed: 1.9, fleeSpeed: 1.9, sink: 1.4, stride: 4, legSwing: 0.45,
+    avoidWater: true, hostile: true, hp: 30, damage: 7, reach: 1.9, attackEvery: 1.6, weight: 25, heavy: true,
+    cause: 'A mossback flattened you.',
+    drops: () => [[COBBLE, Math.random() < 0.5 ? 3 : 2]],
+    build(b, root) {
+      // a hulking golem of mossy stone with a sunken head, huge fists and amber eyes
+      const stone = 0x6f6f69, dark = 0x55554f, moss = 0x4c7a2e, eye = 0xffb02e;
+      const parts = { legs: [], arms: [] };
+      const torso = parts.torso = b.pivot(root, [0, 1.0, 0]);
+      b.box(torso, [1.15, 0.95, 0.8], stone, [0, 0.45, 0]);
+      b.box(torso, [1.2, 0.22, 0.85], moss, [0, 0.98, -0.02]); // mossy shoulders
+      b.box(torso, [0.5, 0.2, 0.06], moss, [0.25, 0.62, 0.41]);
+      const head = parts.head = b.pivot(torso, [0, 0.95, 0.28]);
+      b.box(head, [0.48, 0.4, 0.42], dark, [0, 0.1, 0.1]);
+      b.box(head, [0.52, 0.1, 0.12], moss, [0, 0.3, 0.27]); // mossy brow
+      for (const s of [-1, 1]) {
+        b.box(head, [0.1, 0.06, 0.03], eye, [s * 0.12, 0.17, 0.32], true);
+        const arm = b.pivot(torso, [s * 0.74, 0.85, 0]);
+        b.box(arm, [0.36, 1.1, 0.4], stone, [0, -0.5, 0.05]);
+        b.box(arm, [0.38, 0.12, 0.42], moss, [0, 0.02, 0.05]);
+        b.box(arm, [0.44, 0.34, 0.46], dark, [0, -1.1, 0.08]); // fist
+        parts.arms.push(arm);
+        const leg = b.pivot(root, [s * 0.3, 1.0, 0]);
+        b.box(leg, [0.42, 1.0, 0.46], dark, [0, -0.5, 0]);
+        parts.legs.push(leg);
+      }
+      return parts;
+    },
+  },
+
+  thornspitter: {
+    w: 0.8, h: 1.4, speed: 0.9, chaseSpeed: 2.0, fleeSpeed: 2.0, sink: 0.9, stride: 10, legSwing: 0.6,
+    avoidWater: true, hostile: true, hp: 12, damage: 4, ranged: { min: 5, max: 11, every: 2.4 }, weight: 25,
+    cause: 'A thornspitter shot you full of thorns.',
+    drops: () => [[ARROW, Math.random() < 0.5 ? 2 : 1]], // its thorns make good arrows
+    build(b, root) {
+      // a scuttling plant on four roots, with a bulbous pod head, a spitting mouth and red eyes
+      const stem = 0x3b6a2a, pod = 0x6e9a32, dark = 0x24401a, eye = 0xff4a3a, thorn = 0xd9d2a8;
+      const parts = { legs: [] };
+      for (const [x, z] of [[-0.28, 0.28], [0.28, 0.28], [-0.28, -0.28], [0.28, -0.28]]) {
+        const leg = b.pivot(root, [x, 0.4, z]);
+        b.box(leg, [0.12, 0.42, 0.12], dark, [0, -0.2, 0]);
+        parts.legs.push(leg);
+      }
+      b.box(root, [0.32, 0.55, 0.32], stem, [0, 0.62, 0]);
+      for (const s of [-1, 1]) b.box(root, [0.42, 0.04, 0.18], stem, [s * 0.3, 0.6, 0]); // leaves
+      const head = parts.head = b.pivot(root, [0, 0.9, 0]);
+      b.box(head, [0.62, 0.5, 0.62], pod, [0, 0.2, 0]);
+      b.box(head, [0.3, 0.22, 0.06], dark, [0, 0.16, 0.31]); // mouth
+      for (const s of [-1, 1]) {
+        b.box(head, [0.1, 0.07, 0.03], eye, [s * 0.18, 0.37, 0.31], true);
+        b.box(head, [0.18, 0.06, 0.06], thorn, [s * 0.38, 0.22, 0]);
+        b.box(head, [0.06, 0.06, 0.18], thorn, [0, 0.22 + s * 0.12, -0.38]);
+      }
+      b.box(head, [0.06, 0.18, 0.06], thorn, [0.1, 0.52, 0.05]);
+      b.box(head, [0.06, 0.16, 0.06], thorn, [-0.12, 0.5, -0.08]);
+      return parts;
+    },
+  },
+
   newt: {
     w: 0.3, h: 0.15, speed: 0.9, fleeSpeed: 2.6, sink: 0.08, stride: 16, legSwing: 0.6,
     group: [1, 2], cap: 5, avoidWater: false, grazes: false,
@@ -221,6 +318,23 @@ const SPECIES = {
 };
 
 export const MOB_KINDS = Object.keys(SPECIES);
+const HOSTILE_KINDS = MOB_KINDS.filter((k) => SPECIES[k].hostile);
+const ANIMAL_CAP = MAX_MOBS;
+
+// How night creatures behave at each difficulty:
+//   cap: most at once; dmg: damage multiplier; sight: how far they notice you (0 = only if you
+//   attack them); speed: movement and attack-rate multiplier; minDist: closest they can appear.
+export const DIFFICULTY = {
+  peaceful: { name: 'Peaceful', cap: 6, dmg: 0.5, sight: 0, speed: 0.9, minDist: 20,
+    about: 'Night creatures still roam, but leave you alone unless you attack them.' },
+  worrying: { name: 'Worrying', cap: 6, dmg: 0.6, sight: 14, speed: 0.9, minDist: 20,
+    about: 'Easy: a few creatures come out at night and only notice you up close.' },
+  scary: { name: 'Scary', cap: 12, dmg: 1.2, sight: 22, speed: 1.05, minDist: 16,
+    about: 'Hard: more creatures, sharper eyes, harder hits.' },
+  terrifying: { name: 'Terrifying', cap: 18, dmg: 1.8, sight: 30, speed: 1.2, minDist: 12,
+    about: 'Nightmare: they swarm the dark and hunt you from far away.' },
+};
+export const DIFFICULTY_ORDER = ['peaceful', 'worrying', 'scary', 'terrifying'];
 
 class Mob {
   constructor(kind, x, y, z) {
@@ -243,8 +357,19 @@ class Mob {
     this.shornFor = 0;
     this.featherFor = 0;
     this.slimeFor = 0;
+    // night creatures
+    this.hp = this.spec.hp ?? 0;
+    this.angry = 0; // seconds left of hunting the player after being attacked
+    this.attackCD = rand(0.5, 1.5);
+    this.swingT = 0; // attack animation
+    this.sees = false;
+    this.seeTimer = 0;
+    this.hunting = false;
+    this.burn = 0; // dissolving in daylight
+    this.dying = 0;
     this.material = new THREE.MeshBasicMaterial({ vertexColors: true });
-    const b = new Builder(this.material);
+    this.glowMaterial = new THREE.MeshBasicMaterial({ vertexColors: true });
+    const b = new Builder(this.material, this.glowMaterial);
     this.root = new THREE.Group();
     this.parts = this.spec.build(b, this.root);
     this.geometries = b.geometries;
@@ -254,6 +379,7 @@ class Mob {
     scene.remove(this.root);
     for (const g of this.geometries) g.dispose();
     this.material.dispose();
+    this.glowMaterial.dispose();
   }
 }
 
@@ -264,7 +390,16 @@ export class MobManager {
     this.mobs = [];
     this.world = null;
     this.spawnTimer = 0;
+    this.hostileTimer = 0;
+    this.onHurtPlayer = null; // (amount, cause, fromPos) when a creature hits the player
+    this.onShoot = null; // (origin, dir, damage) when a thornspitter spits
   }
+
+  get animals() { return this.mobs.filter((m) => !m.spec.hostile).length; }
+  get creatures() { return this.mobs.filter((m) => m.spec.hostile).length; }
+
+  // After the player respawns, creatures forget the grudge.
+  calm() { for (const m of this.mobs) { m.angry = 0; m.hunting = false; } }
 
   reset(world) {
     for (const m of this.mobs) m.dispose(this.scene);
@@ -325,7 +460,7 @@ export class MobManager {
   }
 
   trySpawn(player) {
-    if (this.mobs.length >= MAX_MOBS) return;
+    if (this.animals >= ANIMAL_CAP) return;
     const w = this.world;
     const far = Math.max(SPAWN_MIN_DIST + 8, w.renderDistance * 16 - 8);
     const a = rand(0, Math.PI * 2), d = rand(SPAWN_MIN_DIST, far);
@@ -337,7 +472,7 @@ export class MobManager {
     const spec = SPECIES[kind];
     if (this.count(kind) >= spec.cap) return;
     const n = Math.round(rand(spec.group[0], spec.group[1]));
-    for (let i = 0; i < n && this.mobs.length < MAX_MOBS && this.count(kind) < spec.cap; i++) {
+    for (let i = 0; i < n && this.animals < ANIMAL_CAP && this.count(kind) < spec.cap; i++) {
       const gx = i ? x + Math.round(rand(-3, 3)) : x, gz = i ? z + Math.round(rand(-3, 3)) : z;
       if (!w.chunkAt(gx, gz)) continue;
       const h = i ? this.habitat(gx, gz) : hab;
@@ -356,16 +491,50 @@ export class MobManager {
     return m;
   }
 
+  // Night creatures appear in the dark: on the surface at night, or in caves at any time,
+  // and never where a torch lights the ground well enough (light level 7 or more).
+  trySpawnHostile(player, ctx) {
+    const diff = ctx.difficulty, w = this.world;
+    if (!diff || this.creatures >= diff.cap) return;
+    const far = Math.max(diff.minDist + 8, w.renderDistance * 16 - 8);
+    const a = rand(0, Math.PI * 2), d = rand(diff.minDist, far);
+    const x = Math.floor(player.pos.x + Math.cos(a) * d), z = Math.floor(player.pos.z + Math.sin(a) * d);
+    if (!w.chunkAt(x, z)) return;
+    const s = this.surface(x, z);
+    let y = -1;
+    if (s && s.id !== WATER && Math.random() < 0.5) {
+      y = s.y + 1;
+    } else {
+      // somewhere in a cave below: a floor with two open blocks above it
+      for (let yy = 2 + Math.floor(Math.random() * Math.max(4, (s ? s.y : 40) - 4)); yy > 1; yy--) {
+        if (w.isSolid(x, yy - 1, z) && !w.isSolid(x, yy, z) && !w.isSolid(x, yy + 1, z) && !w.isWater(x, yy, z)) { y = yy; break; }
+      }
+    }
+    if (y < 1 || y >= H - 2 || !w.isSolid(x, y - 1, z) || w.isWater(x, y, z) || w.isWater(x, y - 1, z)) return;
+    const light = Math.max(w.skyAt(x, y, z) * ctx.daylight, w.lightAt(x, y, z));
+    if (light >= 7) return;
+    let r = Math.random() * HOSTILE_KINDS.reduce((t, k) => t + SPECIES[k].weight, 0), kind = HOSTILE_KINDS[0];
+    for (const k of HOSTILE_KINDS) { r -= SPECIES[k].weight; if (r <= 0) { kind = k; break; } }
+    if (!this.hasRoom(kind, x + 0.5, y, z + 0.5)) return;
+    this.spawn(kind, x + 0.5, y, z + 0.5);
+  }
+
   // ---------- per-frame update ----------
 
-  // light: { day, flicker, ambient } from the renderer, so animals are lit like the blocks around them
-  update(dt, player, light) {
+  // light: { day, flicker, ambient } from the renderer, so animals are lit like the blocks around them.
+  // ctx: { difficulty (a DIFFICULTY entry), daylight (0.22 at night .. 1 at noon), playerDead }
+  update(dt, player, light, ctx = {}) {
     const w = this.world;
     if (!w) return;
     this.spawnTimer -= dt;
     if (this.spawnTimer <= 0) {
       this.spawnTimer = 0.4;
       this.trySpawn(player);
+    }
+    this.hostileTimer -= dt;
+    if (this.hostileTimer <= 0) {
+      this.hostileTimer = 0.5;
+      if (ctx.difficulty) this.trySpawnHostile(player, ctx);
     }
     const despawn = w.renderDistance * 16 + 24;
     for (let i = this.mobs.length - 1; i >= 0; i--) {
@@ -377,9 +546,28 @@ export class MobManager {
         this.mobs.splice(i, 1);
         continue;
       }
-      this.think(m, dt, player);
+      if (m.dying) {
+        // defeated: shrink away
+        m.dying -= dt;
+        const k = Math.max(0.01, m.dying / 0.4);
+        m.root.scale.setScalar(k);
+        m.root.rotation.z = (1 - k) * 1.2;
+        if (m.dying <= 0) { m.dispose(this.scene); this.mobs.splice(i, 1); }
+        continue;
+      }
+      if (m.spec.hostile) {
+        // caught in daylight: dissolve back into shadow
+        const head = Math.min(H - 1, Math.floor(m.pos.y + m.spec.h * 0.8));
+        if (ctx.daylight > 0.55 && w.skyAt(Math.floor(m.pos.x), head, Math.floor(m.pos.z)) >= 12) m.burn += dt;
+        else m.burn = Math.max(0, m.burn - dt);
+        if (m.burn > 1.5) { this.sound?.poof(); m.dispose(this.scene); this.mobs.splice(i, 1); continue; }
+        this.thinkHostile(m, dt, player, ctx);
+      } else {
+        this.think(m, dt, player);
+      }
       this.move(m, dt);
       this.animate(m, dt);
+      if (m.burn > 0) m.root.scale.setScalar(1 - m.burn * 0.4);
       this.light(m, light, dt);
       m.soundTimer -= dt;
       if (m.soundTimer <= 0) {
@@ -415,9 +603,70 @@ export class MobManager {
     }
   }
 
+  // Can the creature see the player (nothing solid between its eyes and theirs)?
+  canSee(m, player) {
+    const o = new THREE.Vector3(m.pos.x, m.pos.y + m.spec.h * 0.8, m.pos.z);
+    const to = new THREE.Vector3(player.pos.x, player.pos.y + 1.5, player.pos.z).sub(o);
+    const dist = to.length();
+    if (dist < 0.01) return true;
+    const hit = this.world.raycast(o, to.divideScalar(dist), dist, true);
+    return !hit || hit.t >= dist - 0.3;
+  }
+
+  // Night creatures hunt the player when they notice them (or after being attacked);
+  // otherwise they wander like animals.
+  thinkHostile(m, dt, player, ctx) {
+    const spec = m.spec, diff = ctx.difficulty ?? DIFFICULTY.worrying;
+    m.speedMul = diff.speed;
+    m.attackCD = Math.max(0, m.attackCD - dt);
+    m.angry = Math.max(0, m.angry - dt);
+    m.swingT = Math.max(0, m.swingT - dt);
+    const ex = player.pos.x - m.pos.x, ez = player.pos.z - m.pos.z;
+    const ey = (player.pos.y + 0.9) - (m.pos.y + spec.h * 0.5);
+    const d = Math.hypot(ex, ez);
+    if ((m.seeTimer -= dt) <= 0) { m.seeTimer = 0.4; m.sees = d < 40 && this.canSee(m, player); }
+    const range = m.angry > 0 ? 28 : diff.sight;
+    const hunting = !ctx.playerDead && range > 0 && d < range && (m.sees || m.angry > 0);
+    if (!hunting) {
+      if (m.hunting) { m.hunting = false; m.state = 'idle'; m.timer = rand(1, 3); }
+      this.think(m, dt, player);
+      return;
+    }
+    if (!m.hunting) { m.hunting = true; this.sound?.mob(m.kind, Math.max(0.3, 1 - d / 30)); } // a warning noise
+    const toward = Math.atan2(ex, ez);
+    if (spec.ranged) {
+      const r = spec.ranged;
+      if (d > r.max) { m.state = 'chase'; m.heading = toward; }
+      else if (d < r.min) { m.state = 'retreat'; m.heading = toward + Math.PI; }
+      else { m.state = 'aim'; m.heading = toward; }
+      if (m.sees && d <= r.max + 3 && m.attackCD <= 0) {
+        m.attackCD = r.every / diff.speed;
+        m.swingT = 0.3;
+        const origin = new THREE.Vector3(m.pos.x, m.pos.y + spec.h * 0.75, m.pos.z);
+        // aim above the player by how far the thorn will drop on the way (a simple ballistic lead)
+        const flight = d / THORN_SPEED;
+        const drop = 0.5 * THORN_GRAVITY * flight * flight;
+        const aim = new THREE.Vector3(player.pos.x, player.pos.y + 1.2 + drop, player.pos.z).sub(origin).normalize();
+        this.sound?.spit();
+        this.onShoot?.(origin, aim, spec.damage * diff.dmg);
+      }
+    } else {
+      m.state = 'chase';
+      m.heading = toward;
+      if (d < spec.reach && Math.abs(ey) < 1.6 && m.attackCD <= 0) {
+        m.attackCD = spec.attackEvery / diff.speed;
+        m.swingT = 0.3;
+        this.onHurtPlayer?.(spec.damage * diff.dmg, spec.cause, m.pos.clone());
+      }
+    }
+    m.closeEnough = !spec.ranged && d < spec.reach * 0.6;
+  }
+
   speedOf(m) {
     if (m.state === 'flee') return m.spec.fleeSpeed;
     if (m.state === 'walk') return m.spec.speed * (m.inWater ? 0.6 : 1);
+    if (m.state === 'chase') return m.closeEnough ? 0 : m.spec.chaseSpeed * (m.speedMul ?? 1);
+    if (m.state === 'retreat') return m.spec.chaseSpeed * 0.7 * (m.speedMul ?? 1);
     return 0;
   }
 
@@ -478,7 +727,10 @@ export class MobManager {
     const w = this.world, spec = m.spec;
     let speed = this.speedOf(m);
     let dx = Math.sin(m.heading), dz = Math.cos(m.heading);
-    if (speed && (m.onGround || m.inWater) && this.badAhead(m, dx, dz)) {
+    const hunting = m.state === 'chase' || m.state === 'retreat' || m.state === 'aim';
+    if (speed && hunting && (m.onGround || m.inWater) && this.badAhead(m, dx, dz)) {
+      speed = 0; // a hunter waits at the edge rather than wandering off
+    } else if (speed && (m.onGround || m.inWater) && this.badAhead(m, dx, dz)) {
       m.heading += m.state === 'flee' ? Math.PI / 2 : rand(Math.PI * 0.6, Math.PI * 1.4);
       dx = Math.sin(m.heading); dz = Math.cos(m.heading);
       speed *= 0.3;
@@ -512,13 +764,13 @@ export class MobManager {
       if (this.moveAxis(m, 'y', m.vel.y * h)) m.vel.y = 0;
       if ((bx || bz) && speed) {
         if ((wasGround || m.inWater) && this.canStepUp(m, dx, dz)) m.vel.y = m.inWater ? 6 : 7.5;
-        else if (wasGround) m.heading += rand(Math.PI * 0.5, Math.PI * 1.5); // a wall: turn away
+        else if (wasGround && !hunting) m.heading += rand(Math.PI * 0.5, Math.PI * 1.5); // a wall: turn away
       }
     }
     // turn smoothly toward the heading
     let diff = m.heading - m.yaw;
     diff = Math.atan2(Math.sin(diff), Math.cos(diff));
-    m.yaw += diff * Math.min(1, dt * (m.state === 'flee' ? 10 : 5));
+    m.yaw += diff * Math.min(1, dt * (m.state === 'flee' || hunting ? 10 : 5));
     m.moving = speed > 0;
   }
 
@@ -533,17 +785,25 @@ export class MobManager {
       p.torso.rotation.y = Math.sin(m.phase * 0.5) * 0.25 * m.swing;
       p.tailSegments[0].rotation.y = -Math.sin(m.phase * 0.5) * 0.5 * (0.3 + m.swing);
       p.tailSegments[1].rotation.y = -Math.sin(m.phase * 0.5 - 1) * 0.6 * (0.3 + m.swing);
-    } else if (p.legs.length === 2) {
+    } else if (p.legs.length === 2 && !p.arms) {
       p.legs[0].rotation.x = s; p.legs[1].rotation.x = -s;
       // ducks waddle on land and bob on water
       p.torso.rotation.z = m.inWater ? Math.sin(m.phase * 0.3) * 0.05 : Math.sin(m.phase) * 0.12 * m.swing;
+    } else if (p.arms) {
+      // two-legged creatures: legs and arms swing opposite; arms lash out when attacking
+      p.legs[0].rotation.x = s; p.legs[1].rotation.x = -s;
+      const lash = m.swingT > 0 ? -1.4 * Math.sin((m.swingT / 0.3) * Math.PI) : 0;
+      p.arms[0].rotation.x = -s * 0.8 + lash - (m.hunting ? 0.5 : 0);
+      p.arms[1].rotation.x = s * 0.8 + lash - (m.hunting ? 0.5 : 0);
     } else {
       p.legs.forEach((leg, i) => { leg.rotation.x = (i === 0 || i === 3 ? s : -s); });
     }
+    // a thornspitter rears its head back to spit
+    if (m.spec.ranged && p.head) p.head.rotation.x = m.swingT > 0 ? -0.6 * Math.sin((m.swingT / 0.3) * Math.PI) : 0;
     // grazing animals lower their heads to eat
     const tilt = m.state === 'graze' ? 0.95 : m.moving ? Math.sin(m.phase * 2) * 0.05 : 0;
     m.headTilt += (tilt - m.headTilt) * Math.min(1, dt * 4);
-    if (p.head) p.head.rotation.x = m.headTilt;
+    if (p.head && !m.spec.ranged) p.head.rotation.x = m.headTilt;
     if (p.tail) p.tail.rotation.z = Math.sin(m.phase * 0.7 + 1) * 0.15;
     m.root.position.copy(m.pos);
     m.root.rotation.y = m.yaw;
@@ -569,6 +829,7 @@ export class MobManager {
   raycast(o, d, maxDist) {
     let best = null;
     for (const m of this.mobs) {
+      if (m.dying) continue;
       const hw = m.spec.w / 2;
       const min = [m.pos.x - hw, m.pos.y, m.pos.z - hw], max = [m.pos.x + hw, m.pos.y + m.spec.h, m.pos.z + hw];
       const oo = [o.x, o.y, o.z], dd = [d.x, d.y, d.z];
@@ -622,6 +883,28 @@ export class MobManager {
       give.push([FEATHER, 1]);
     }
     return { give, take, said: '' };
+  }
+
+  // The player hits a night creature for `amount`. It gets knocked back, flashes, and hunts the
+  // player for a while (even on Peaceful). Returns its drops if that hit defeated it.
+  hurt(m, amount, from) {
+    if (m.dying || !m.spec.hostile) return [];
+    m.hp -= amount;
+    m.angry = 30;
+    m.seeTimer = 0;
+    m.flash = 0.25;
+    let dx = m.pos.x - from.x, dz = m.pos.z - from.z;
+    const len = Math.hypot(dx, dz) || 1;
+    const push = m.spec.heavy ? 2 : 6;
+    m.kx = (dx / len) * push; m.kz = (dz / len) * push;
+    if (m.onGround && !m.spec.heavy) m.vel.y = 4;
+    this.sound?.mob(m.kind, 1, true);
+    if (m.hp <= 0) {
+      m.dying = 0.4;
+      this.sound?.poof();
+      return m.spec.drops();
+    }
+    return [];
   }
 
   // Knock an animal back: it flashes red, hops away and runs off for a few seconds.
