@@ -146,6 +146,8 @@ The version number is shown at the bottom of the ☰ menu; bump `GAME_VERSION` i
 | Jump / swim up | ⤒ button (auto-jump also steps up 1-block ledges) | Space |
 | Select item | Tap a hotbar slot | 1–9 / mouse wheel |
 | Inventory & crafting | 🎒 button | E |
+| Throw an item (one / the whole stack) | Hold its hotbar slot (keeps throwing while held) | Q / Shift + Q |
+| Put an item on a belt or into a hopper | Tap it with the item in hand | Right click |
 | World map | ☰ → World map, or tap the corner map | M |
 | Fly on / off (creative) | 🕊 button | F |
 | Fly up / down (creative) | ⤒ / ⤓ buttons | Space / Left Shift |
@@ -630,6 +632,13 @@ Search recipes by name (of what they make, or what goes in) at the top of the cr
 favourite a recipe (favourites come first), and use ★ and ✓ to show only favourites or only what you can
 make right now. **Sort backpack** (and **Sort** in a chest) stacks things up and puts them in order.
 
+**Throwing things.** Press Q (Shift + Q for the whole stack), or hold a hotbar slot, to throw what you're
+holding. It lies on the ground until you walk over it (things you've just thrown wait a moment first) and
+vanishes after five minutes. A thrown item that lands on a running **conveyor belt** rides off along it, and
+one that lands on a **hopper** drops in (sorting hoppers still only take what matches their frames). You can
+also tap a belt or hopper holding an item to put it straight in. Breaking a chest, oven or machine **spills**
+what was inside onto the ground, with enchantments and wear kept.
+
 Tooltips (on by default, ☰ → Tooltips) name what the crosshair is on, and in 🎒 show the name and details of
 the item under the mouse or the one you tap.
 
@@ -736,6 +745,7 @@ guide to how everything works.
 | `js/frames.js` | Item frames: what each holds, the pictures in them, and hopper filters |
 | `js/weather.js` | Rain, snow and sandstorms: when they come, and the falling particles |
 | `js/minimap.js` | The map you hold: the land drawn from above |
+| `js/drops.js` | Loose items on the ground: throwing, bouncing, pick-up, and riding belts or dropping into hoppers |
 | `js/worldmap.js` | The full-screen world map: explored chunks, panning, zoom and waypoints |
 | `js/achievements.js` | The list of achievements |
 | `js/bees.js` | Bees buzzing around their hives |

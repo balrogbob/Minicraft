@@ -34,6 +34,7 @@ import { Player } from './player.js';
 import { Inventory, SLOTS } from './inventory.js';
 import { Controls, KEY_ACTIONS, DEFAULT_KEYS, keyLabel } from './controls.js';
 import { WorldMap } from './worldmap.js';
+import { ItemDrops } from './drops.js';
 import { ACHIEVEMENTS, ACHIEVEMENT_IDS } from './achievements.js';
 import { MobManager, DIFFICULTY, DIFFICULTY_ORDER, SPECIES } from './mobs.js';
 import { ArrowManager } from './arrows.js';
@@ -227,6 +228,7 @@ const kinetics = new Kinetics(scene, atlas); // water wheels, shafts and gears, 
 const powerAt = (x, y, z) => kinetics.powerAt(x, y, z);
 const signs = new Signs(scene); // what's written on each sign
 const machines = new Machines(scene, icons); // pumps, drills, hoppers and belts
+const loose = new ItemDrops(scene, (id) => machines.makeSprite(id)); // items lying on the ground
 const carts = new Carts(scene); // minecarts on rails
 let riding = null; // the minecart you're sitting in
 const minimap = new MiniMap($('map'), atlasCanvas);
@@ -331,6 +333,7 @@ async function startWorld(save, opts = {}) {
   for (const [k, f] of fuses) removeFuse(k, f);
   signs.load(save?.signs);
   frames.load(save?.frames);
+  loose.load(save?.loose);
   pressedButtons.clear(); pressedPlates.clear();
   machines.load(save?.machines);
   carts.load(save?.carts);
@@ -469,6 +472,7 @@ function saveGame() {
     flying: player.flying,
     achievements: [...achieved],
     explored: worldMap.serialize(),
+    loose: loose.serialize(),
     start: startPos,
   });
 }
@@ -523,9 +527,57 @@ const hotbarEls = [];
 for (let i = 0; i < 9; i++) {
   const el = document.createElement('div');
   el.className = 'slot';
-  el.addEventListener('pointerdown', (e) => { e.preventDefault(); selectSlot(i); });
+  el.addEventListener('pointerdown', (e) => { e.preventDefault(); selectSlot(i); startHotbarThrow(i); });
+  for (const ev of ['pointerup', 'pointerleave', 'pointercancel']) el.addEventListener(ev, stopHotbarThrow);
   $('hotbar').appendChild(el);
   hotbarEls.push(el);
+}
+
+// Hold a hotbar slot to throw what's in it, one at a time (the touch version of Q).
+let hotbarThrow = null;
+function startHotbarThrow(i) {
+  stopHotbarThrow();
+  hotbarThrow = setTimeout(function again() {
+    if (inventory.selected !== i || !inventory.held() || !throwHeld(false)) { hotbarThrow = null; return; }
+    hotbarThrow = setTimeout(again, 180);
+  }, 450);
+}
+function stopHotbarThrow() { clearTimeout(hotbarThrow); hotbarThrow = null; }
+
+// Take n from the stack in hand (in creative, nothing in hand is ever used up).
+function takeFromHeld(n) {
+  const s = inventory.held();
+  if (!s || creative) return;
+  s.count -= n;
+  if (s.count <= 0) inventory.slots[inventory.selected] = null;
+  inventory.onChange();
+}
+
+// Throw one of what's in your hand (or the whole stack) out in front of you. Returns whether it threw.
+function throwHeld(all) {
+  const s = inventory.held();
+  if (!s || paused || dead || !worldReady) return false;
+  const n = all ? s.count : 1;
+  const dir = player.lookDir();
+  const from = player.eye.clone().addScaledVector(dir, 0.4);
+  from.y -= 0.35;
+  loose.spawn({ ...s, count: n }, from, { x: dir.x * 5.5 + player.vel.x * 0.5, y: dir.y * 5.5 + 2, z: dir.z * 5.5 + player.vel.z * 0.5 }, 1.5);
+  takeFromHeld(n);
+  sound.click?.() ?? sound.pop();
+  return true;
+}
+
+// Walking over a loose item picks it up: returns how many you took.
+let pickToastAt = 0;
+function pickUpLoose(s) {
+  const left = s.wear || s.ench?.length ? inventory.addItem(s) : inventory.add(s.id, s.count);
+  const took = s.count - left;
+  if (took > 0) {
+    sound.pop();
+    const now = performance.now();
+    if (now - pickToastAt > 300) { pickToastAt = now; toast(`+${took} ${itemName(s.id)}`, 1000); }
+  }
+  return took;
 }
 
 function renderHotbar() {
@@ -2092,6 +2144,12 @@ function place() {
     return;
   }
   if (held?.id === COPY_WAND) { useWand(); return; }
+  // tap a belt or hopper with an item (not a block, or a tool) to put it in: one on a belt, the lot into a hopper
+  if (target && held && !isBlock(held.id) && !ITEMS[held.id]?.tool && !held.wear && !held.ench?.length && (BLOCKS[target.id].belt || BLOCKS[target.id].hopper)) {
+    const n = machines.insert(world, stations, target.x, target.y, target.z, held.id, BLOCKS[target.id].belt ? 1 : held.count, false);
+    if (n) { takeFromHeld(n); sound.place('wool'); } else toast(BLOCKS[target.id].belt ? 'The belt is full there' : 'That hopper has nowhere to put it', 1500);
+    return;
+  }
   if (target && (target.id === TABLE || target.id === CHURN)) { sound.click(); openInventory(target.id); return; }
   if (target) {
     const { x: tx, y: ty, z: tz, id: tid } = target;
@@ -2580,8 +2638,8 @@ function breakBlock(x, y, z) {
   if (isSign(id)) signs.remove(x, y, z);
   if (isSign(id) || isBed(id)) { dropWaypoint(x, y, z); dropWaypoint(...bedPartnerOr(x, y, z, id)); }
   if (isFrame(id)) { const item = frames.remove(x, y, z); if (item) drops.push([item, 1]); }
-  if (stationKind(id)) giveDrops(stations.remove(x, y, z)); // whatever was inside comes back too
-  if (def.machine || def.engine || def.sensor) giveDrops(machines.removeAt(x, y, z)); // and whatever was on a belt or in a drill
+  if (stationKind(id)) loose.spill(stations.removeStacks(x, y, z), x, y, z); // whatever was inside spills out
+  if (def.machine || def.engine || def.sensor) loose.spill(machines.removeAt(x, y, z).map(([i, n]) => ({ id: i, count: n })), x, y, z); // and whatever was on a belt or in a drill
   if (isBed(id)) {
     // either half takes the whole bed with it
     const [ox, oy, oz] = bedPartner(x, y, z);
@@ -2822,6 +2880,7 @@ controls = null;
     toggleInventory,
     toggleMap: () => (worldMap.open ? closeMap() : !paused && !dead && openMap()),
     toggleFly,
+    throwItem: (all) => throwHeld(all),
     isPaused: () => paused,
   });
   controls.lookSens = settings.sens / 1000;
@@ -3342,6 +3401,10 @@ function stepGame(now, dt) {
   worldMap.draw();
   try {
     machines.tick(paused ? 0 : dt, world, kinetics, stations, { day: lightUniforms.uDay.value, flicker: lightUniforms.uFlicker.value, ambient: lightUniforms.uAmbient.value });
+    loose.update(paused || dead ? 0 : dt, world, {
+      player, pickup: pickUpLoose, insert: (x, y, z, id, n) => machines.insert(world, stations, x, y, z, id, n, false),
+      light: { day: lightUniforms.uDay.value, flicker: lightUniforms.uFlicker.value, ambient: lightUniforms.uAmbient.value },
+    });
   } catch (err) { reportError(err); }
   frames.update(dt, world, { day: lightUniforms.uDay.value, flicker: lightUniforms.uFlicker.value, ambient: lightUniforms.uAmbient.value });
   paintings.update(dt, world, { day: lightUniforms.uDay.value, flicker: lightUniforms.uFlicker.value, ambient: lightUniforms.uAmbient.value });
@@ -3413,6 +3476,6 @@ window.minicraft = {
   get poisoned() { return poisoned; }, get dead() { return dead; }, get air() { return air; }, set air(v) { air = v; },
   arrows, fishing, kinetics, bees, catchAt, seasonOf, applySeason, set day(v) { day = v; applySeason(); }, frames, signalAt, setSwitch, machines, carts, minimap, signs, armour, damage, placeRail, getInCart, getOutOfCart,
   get riding() { return riding; }, explode, lightFuse, fuses, clockTime, compassText, place, editSign, closeSign, openInventory, closeInventory, chestMove, lamps, tickLamps, sleepUntilMorning, stations, openStation, closeStation,
-  get caneToday() { return caneToday; }, get creative() { return creative; }, set creative(v) { creative = v; applyCreative(); }, toggleFly, wand, useWand, get achieved() { return achieved; }, achieve, worldMap, openMap, closeMap, openGuide, switchSlot, store, saveGame, renderWorlds, openWorlds, exportSlot, get target() { return target; }, set target(v) { target = v; }, applyKeys, renderKeys, camera, get controls() { return controls; }, get waypoints() { return waypoints; }, toggleWaypoint, sortSlots, weather, openTrade, closeTrade, mountMob, dismount, get ridingMob() { return ridingMob; }, effects, armourWear, useAnvil, rollLoot, settings,
+  get caneToday() { return caneToday; }, get creative() { return creative; }, set creative(v) { creative = v; applyCreative(); }, toggleFly, wand, useWand, get achieved() { return achieved; }, achieve, worldMap, openMap, closeMap, openGuide, switchSlot, store, saveGame, renderWorlds, openWorlds, exportSlot, get target() { return target; }, set target(v) { target = v; }, applyKeys, renderKeys, camera, get controls() { return controls; }, loose, throwHeld, get waypoints() { return waypoints; }, toggleWaypoint, sortSlots, weather, openTrade, closeTrade, mountMob, dismount, get ridingMob() { return ridingMob; }, effects, armourWear, useAnvil, rollLoot, settings,
   get bedSpawn() { return bedSpawn; }, paintings, placeSwitchRail, signalAt, ailments, armourEnch, openAltar, lairNear, useBed, eat, drinkTea,
 };
