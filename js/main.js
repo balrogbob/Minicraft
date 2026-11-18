@@ -1,7 +1,8 @@
 import * as THREE from 'three';
 import {
   BLOCKS, RECIPES, TABLE, AIR, WATER, TORCH, TORCH_WALL_W, WALL_TORCH_DIRS,
-  isBlock, isTorch, itemName, breakTime, dropFor,
+  GRASS, DIRT, SAND, CHURN, SUGAR_CANE, BREAD, ITEMS,
+  isBlock, isTorch, isWheat, itemName, breakTime, dropsFor, foodValue,
 } from './blocks.js';
 import { createAtlas, createIcons, createCrackCanvases, createWaterCanvas } from './textures.js';
 import { World, CHUNK, WORLD_SIZE, chunkKey } from './world.js';
@@ -17,7 +18,7 @@ import { MobManager } from './mobs.js';
 
 // v2 = the 16k x 16k streaming world (player state here, edited chunks in IndexedDB).
 // v1 = the old 128 x 128 world, migrated into the middle of the big world on first launch.
-const GAME_VERSION = '7'; // shown in the menu; bump with each release
+const GAME_VERSION = '8'; // shown in the menu; bump with each release
 const SAVE_KEY = 'minicraft-save-v2';
 const LEGACY_SAVE_KEY = 'minicraft-save-v1';
 const SETTINGS_KEY = 'minicraft-settings-v1';
@@ -131,7 +132,10 @@ let paused = true;
 let target = null; // raycast hit
 let targetMob = null; // { mob, t } when the crosshair is on an animal (closer than any block)
 const breakState = { key: '', progress: 0 };
-let tableOpen = false;
+let openedAt = null; // the station block (crafting table or churn) tapped to open crafting
+const MAX_HUNGER = 20;
+let hunger = MAX_HUNGER; // 0..20; each bread-loaf icon on the bar is 2 points
+let day = 1; // days survived; goes up at each sunrise
 const store = new ChunkStore();
 let worldReady = false; // false while a world is loading: nothing gets saved until the player is placed
 
@@ -221,6 +225,9 @@ async function startWorld(save) {
   }
   if (save && typeof save.autoJump === 'boolean') player.autoJump = save.autoJump;
   sky.time = Number.isFinite(save?.time) ? save.time : 0.02;
+  hunger = Number.isFinite(save?.hunger) ? Math.max(0, Math.min(MAX_HUNGER, save.hunger)) : MAX_HUNGER;
+  day = Number.isFinite(save?.day) ? Math.max(1, save.day | 0) : 1;
+  renderHunger();
   updateAutoJumpLabel();
 
   // build the area around the player before starting; the rest streams in while playing
@@ -257,6 +264,8 @@ function saveGame() {
     inv: inventory.serialize(),
     player: { x: player.pos.x, y: player.pos.y, z: player.pos.z, yaw: player.yaw, pitch: player.pitch },
     autoJump: player.autoJump,
+    hunger,
+    day,
     time: sky.time,
   });
 }
@@ -328,6 +337,43 @@ inventory.onChange = () => {
   if (!$('inventory').classList.contains('hidden')) renderInventory();
 };
 
+// ---------- hunger bar ----------
+// Ten bread loaves above the hotbar, each worth 2 points: full, half or empty.
+const hungerEls = [];
+for (let i = 0; i < MAX_HUNGER / 2; i++) {
+  const el = document.createElement('span');
+  el.className = 'food';
+  el.innerHTML = '<img class="bg" alt=""><img class="fg" alt="">';
+  $('hunger').appendChild(el);
+  hungerEls.push(el);
+}
+let shownHunger = -1;
+function renderHunger() {
+  const h = Math.ceil(hunger);
+  if (h === shownHunger) return;
+  shownHunger = h;
+  hungerEls.forEach((el, i) => {
+    const fill = Math.max(0, Math.min(2, h - i * 2)); // 0, 1 or 2 points in this loaf
+    if (!el.firstChild.src) { el.firstChild.src = icons[BREAD]; el.lastChild.src = icons[BREAD]; }
+    el.lastChild.style.clipPath = `inset(0 ${100 - fill * 50}% 0 0)`;
+  });
+  $('hunger').classList.toggle('low', h <= 6);
+}
+
+// Hunger drains slowly over time, faster while walking or breaking blocks.
+// A full bar lasts about 27 minutes standing still, or about 9 minutes of busy play.
+let starvingWarned = false;
+function updateHunger(dt) {
+  const moving = Math.hypot(player.vel.x, player.vel.z) > 0.5;
+  const rate = 1 / 80 + (moving ? 1 / 40 : 0) + (controls.breaking ? 1 / 50 : 0);
+  hunger = Math.max(0, hunger - rate * dt);
+  // starving: you can only stagger along until you eat something
+  player.speedMul = hunger <= 0 ? 0.45 : 1;
+  if (hunger <= 0 && !starvingWarned) { starvingWarned = true; toast('You\'re starving! Eat something to get your strength back.', 4000); }
+  if (hunger > 2) starvingWarned = false;
+  renderHunger();
+}
+
 // ---------- inventory / crafting UI ----------
 let picked = -1;
 const invEls = [];
@@ -354,11 +400,12 @@ function onInvSlot(i) {
   renderInventory();
 }
 
-function nearTable() {
+// Is a block of this kind (a crafting table or butter churn) within reach?
+function nearBlock(id) {
   const p = player.pos;
   const bx = Math.floor(p.x), by = Math.floor(p.y), bz = Math.floor(p.z);
   for (let y = by - 2; y <= by + 3; y++) for (let z = bz - 4; z <= bz + 4; z++) for (let x = bx - 4; x <= bx + 4; x++) {
-    if (world.get(x, y, z) === TABLE) return true;
+    if (world.get(x, y, z) === id) return true;
   }
   return false;
 }
@@ -368,29 +415,40 @@ function renderInventory() {
     invEls[i].innerHTML = slotHTML(inventory.slots[i]);
     invEls[i].classList.toggle('picked', i === picked);
   }
-  const hasTable = tableOpen || nearTable();
-  $('table-status').textContent = hasTable ? '— crafting table nearby' : '— place a crafting table to unlock more';
+  const hasTable = openedAt === TABLE || nearBlock(TABLE);
+  const hasChurn = openedAt === CHURN || nearBlock(CHURN);
+  $('table-status').textContent = `— crafting table ${hasTable ? '✓' : '✗'} · butter churn ${hasChurn ? '✓' : '✗'}`;
   const list = $('recipes');
   list.innerHTML = '';
   RECIPES.forEach((r) => {
-    const haveAll = r.in.every(([id, n]) => inventory.count(id) >= n);
-    const canMake = haveAll && (!r.table || hasTable) && inventory.room(r.out[0]) >= r.out[1];
+    const stationOk = (!r.table || hasTable) && (!r.churn || hasChurn);
+    const haveAll = r.in.every(([id, n]) => inventory.count(id) >= n) && (r.tools ?? []).every((id) => inventory.count(id) > 0);
+    const canMake = haveAll && stationOk && inventory.room(r.out[0]) >= r.out[1];
     const row = document.createElement('div');
-    row.className = 'recipe' + (!r.table || hasTable ? '' : ' locked');
+    row.className = 'recipe' + (stationOk ? '' : ' locked');
     const ings = r.in.map(([id, n]) => {
       const miss = inventory.count(id) < n ? ' missing' : '';
       return `<span class="ing${miss}" title="${itemName(id)}"><img src="${icons[id]}" alt="">${n}</span>`;
     }).join('');
-    row.innerHTML = `${ings}<span class="arrow">→</span><img class="outimg" src="${icons[r.out[0]]}" alt="">` +
-      `<span class="name">${r.out[1] > 1 ? r.out[1] + ' × ' : ''}${itemName(r.out[0])}${r.table ? ' 🛠' : ''}</span>`;
+    // tools are needed but not used up
+    const tools = (r.tools ?? []).map((id) => {
+      const miss = inventory.count(id) > 0 ? '' : ' missing';
+      return `<span class="ing tool${miss}" title="${itemName(id)} (not used up)"><img src="${icons[id]}" alt="">kept</span>`;
+    }).join('');
+    const also = (r.also ?? []).map(([id]) => ` + ${itemName(id)} back`).join('');
+    const where = r.churn ? ' (churn)' : r.table ? ' 🛠' : '';
+    row.innerHTML = `${ings}${tools}<span class="arrow">→</span><img class="outimg" src="${icons[r.out[0]]}" alt="">` +
+      `<span class="name">${r.out[1] > 1 ? r.out[1] + ' × ' : ''}${itemName(r.out[0])}${also}${where}</span>`;
     const btn = document.createElement('button');
     btn.className = 'btn';
     btn.textContent = 'Craft';
     btn.disabled = !canMake;
     btn.addEventListener('click', () => {
-      if (!(r.in.every(([id, n]) => inventory.count(id) >= n))) return;
+      if (!r.in.every(([id, n]) => inventory.count(id) >= n)) return;
       for (const [id, n] of r.in) inventory.remove(id, n);
-      inventory.add(r.out[0], r.out[1]);
+      let lost = inventory.add(r.out[0], r.out[1]);
+      for (const [id, n] of r.also ?? []) lost += inventory.add(id, n);
+      if (lost) toast('Inventory full');
       sound.pop();
     });
     row.appendChild(btn);
@@ -398,10 +456,10 @@ function renderInventory() {
   });
 }
 
-function openInventory(atTable = false) {
+function openInventory(station = null) {
   const loading = !$('loading').classList.contains('hidden');
   if (!world || loading) return;
-  tableOpen = atTable;
+  openedAt = station;
   picked = -1;
   paused = true;
   controls.reset();
@@ -412,7 +470,7 @@ function openInventory(atTable = false) {
 function closeInventory() {
   $('inventory').classList.add('hidden');
   paused = false;
-  tableOpen = false;
+  openedAt = null;
 }
 function toggleInventory() {
   if ($('inventory').classList.contains('hidden')) {
@@ -421,40 +479,69 @@ function toggleInventory() {
 }
 
 // ---------- actions ----------
-// Bump the animal under the crosshair (and collect anything it gives, like an alpaca's wool).
+// Tap the animal under the crosshair with whatever is in hand: milk a yak, pluck a duck,
+// shear an alpaca, fill a bucket with newt slime, or just bump it.
 function hitMob() {
   if (!targetMob) return;
-  const drops = mobs.hit(targetMob.mob, player.pos);
-  for (const [id, n] of drops) {
+  const r = mobs.interact(targetMob.mob, player.pos, inventory.heldId());
+  for (const [id, n] of r.take) inventory.remove(id, n);
+  for (const [id, n] of r.give) {
     if (inventory.add(id, n) > 0) toast('Inventory full');
     else { toast(`+${n} ${itemName(id)}`, 1200); sound.pop(); }
   }
+  if (r.said) toast(r.said);
 }
+
+function eat(id) {
+  if (hunger > MAX_HUNGER - 1) { toast('You\'re not hungry'); return; } // (hunger drains constantly, so never exactly full)
+  hunger = Math.min(MAX_HUNGER, hunger + foodValue(id));
+  inventory.consumeHeld();
+  sound.eat();
+  toast(`Ate ${itemName(id).toLowerCase()}`, 1000);
+  renderHunger();
+}
+
+// Is there water beside (not above or below) this block?
+const waterBeside = (x, y, z) => world.isWater(x + 1, y, z) || world.isWater(x - 1, y, z) ||
+  world.isWater(x, y, z + 1) || world.isWater(x, y, z - 1);
 
 function place() {
   if (paused) return;
   if (targetMob) { hitMob(); return; }
-  if (!target) return;
-  if (target.id === TABLE) { sound.click(); openInventory(true); return; }
+  if (target && (target.id === TABLE || target.id === CHURN)) { sound.click(); openInventory(target.id); return; }
   const held = inventory.held();
-  if (!held || !isBlock(held.id)) return;
+  if (held && foodValue(held.id)) { eat(held.id); return; }
+  if (!target || !held) return;
+  // what goes into the world: the block itself, or what an item plants (seeds -> young wheat)
+  let id = isBlock(held.id) ? held.id : ITEMS[held.id]?.places;
+  if (!id) return;
   const x = target.x + target.nx, y = target.y + target.ny, z = target.z + target.nz;
   const there = world.get(x, y, z);
   if (!world.inBounds(x, y, z) || (there !== AIR && there !== WATER)) return;
-  let id = held.id;
   if (id === TORCH) {
     // torches need a solid block to stand on or hang from, and can't go underwater or on ceilings
     if (there !== AIR || target.ny < 0 || !BLOCKS[target.id].solid || isTorch(target.id)) return;
     if (target.ny === 0) id = TORCH_WALL_W + WALL_TORCH_DIRS.findIndex(([dx, dz]) => dx === -target.nx && dz === -target.nz);
-  } else if (player.overlapsBlock(x, y, z)) return;
+  } else if (isWheat(id)) {
+    // seeds go on top of grass or dirt
+    if (there !== AIR || target.ny !== 1 || (target.id !== GRASS && target.id !== DIRT)) { toast('Plant seeds on top of grass or dirt'); return; }
+  } else if (id === SUGAR_CANE) {
+    // sugar cane goes on top of more cane, or on sand, grass or dirt right beside water
+    const ground = target.id === SAND || target.id === GRASS || target.id === DIRT;
+    if (there !== AIR || target.ny !== 1 || !(target.id === SUGAR_CANE || (ground && waterBeside(target.x, target.y, target.z)))) {
+      toast('Sugar cane needs sand, grass or dirt right next to water'); return;
+    }
+  } else if (BLOCKS[id].solid && player.overlapsBlock(x, y, z)) return;
   world.setBlock(x, y, z, id);
   sound.place(BLOCKS[id].sound);
   inventory.consumeHeld();
 }
 
 function updateBreaking(dt) {
-  // holding on an animal bumps it every half second instead of breaking blocks
-  breakState.mobCooldown = Math.max(0, (breakState.mobCooldown || 0) - dt);
+  // holding on an animal taps it again every half second instead of breaking blocks. The first
+  // repeat waits half a second too, so a tap (which acts once, on release) never acts twice.
+  if (!controls.breaking) breakState.mobCooldown = 0.5;
+  breakState.mobCooldown = Math.max(0, breakState.mobCooldown - dt);
   if (controls.breaking && targetMob) {
     if (!breakState.mobCooldown) { hitMob(); breakState.mobCooldown = 0.5; }
     breakState.key = ''; breakState.progress = 0;
@@ -493,24 +580,34 @@ function breakBlock(x, y, z) {
   const def = BLOCKS[id];
   if (!def || id === AIR) return;
   sound.breakBlock(def.sound);
-  const drop = dropFor(id, inventory.heldId());
+  const drops = dropsFor(id, inventory.heldId());
   world.setBlock(x, y, z, AIR);
-  dropUnsupportedTorches(x, y, z);
-  if (drop) {
-    if (inventory.add(drop, 1) > 0) toast('Inventory full');
+  dropUnsupported(x, y, z);
+  if (drops.length) {
+    let lost = 0;
+    for (const [d, n] of drops) lost += inventory.add(d, n);
+    if (lost) toast('Inventory full');
   } else if (def.needsTool) {
     toast(`You need a ${def.tool === 'pick' ? 'pickaxe' : def.tool} to collect ${def.name}`);
   }
 }
 
-// Torches standing on, or hanging from, a block that was just removed pop off into the inventory.
-function dropUnsupportedTorches(x, y, z) {
+// Things resting on a block that was just removed pop off into the inventory: torches standing on
+// it or hanging from it, wheat growing on it, and a whole column of sugar cane above it.
+function dropUnsupported(x, y, z) {
   const check = [[x, y + 1, z, TORCH]];
   WALL_TORCH_DIRS.forEach(([dx, dz], i) => check.push([x - dx, y, z - dz, TORCH_WALL_W + i]));
   for (const [tx, ty, tz, id] of check) {
     if (world.get(tx, ty, tz) !== id) continue;
     world.setBlock(tx, ty, tz, AIR);
     inventory.add(TORCH, 1);
+  }
+  for (let ty = y + 1; ty < H; ty++) {
+    const id = world.get(x, ty, z);
+    if (!isWheat(id) && id !== SUGAR_CANE) break;
+    for (const [d, n] of dropsFor(id, 0)) inventory.add(d, n);
+    world.setBlock(x, ty, z, AIR);
+    if (id !== SUGAR_CANE) break;
   }
 }
 
@@ -665,6 +762,8 @@ function stepGame(now, dt) {
     if (player.pos.y < -20) respawn();
     playMovementSounds(dt, wasGround, wasWater, fallSpeed);
     world.tickWater(dt);
+    world.tickPlants(dt);
+    updateHunger(dt);
     mobs.update(dt, player, { day: lightUniforms.uDay.value, flicker: lightUniforms.uFlicker.value, ambient: AMBIENT });
   }
   // write edited chunks to storage shortly (1.5 s) after the player stops changing them
@@ -673,14 +772,16 @@ function stepGame(now, dt) {
   coordsTimer -= dt;
   if (coordsTimer <= 0) {
     coordsTimer = 0.25;
-    $('coords').textContent = `X ${Math.floor(player.pos.x)}  Y ${Math.floor(player.pos.y)}  Z ${Math.floor(player.pos.z)}`;
+    $('coords').textContent = `Day ${day}   X ${Math.floor(player.pos.x)}  Y ${Math.floor(player.pos.y)}  Z ${Math.floor(player.pos.z)}`;
   }
 
   const eye = player.eye;
   camera.position.copy(eye);
   camera.rotation.set(player.pitch, player.yaw, 0);
 
+  const before = sky.time;
   sky.update(paused ? 0 : dt, eye, lightUniforms.uDay, player.eyeInWater);
+  if (sky.time < before) { day++; toast(`Day ${day}`, 2500); } // the clock wrapped round to sunrise
   lightUniforms.uFlicker.value = 0.93 + 0.04 * Math.sin(now * 0.011) + 0.03 * Math.sin(now * 0.029);
   $('underwater').classList.toggle('show', player.eyeInWater);
   waterTex.offset.x = (waterTex.offset.x + dt * 0.06) % 1;
@@ -708,4 +809,9 @@ boot().catch(reportError);
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').catch(() => {});
 
 // expose for debugging in the console
-window.minicraft = { get world() { return world; }, player, inventory, saveGame, sky, sound, breakBlock, mobs };
+window.minicraft = {
+  get world() { return world; }, player, inventory, saveGame, sky, sound, breakBlock, mobs,
+  get hunger() { return hunger; }, set hunger(v) { hunger = v; renderHunger(); },
+  get day() { return day; },
+  get paused() { return paused; },
+};

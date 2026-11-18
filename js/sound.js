@@ -106,6 +106,14 @@ export class Sound {
 
   click() { if (this.ready) this.tone(800, 0.04, 0.08, 'square'); }
 
+  // Three quick crunches.
+  eat() {
+    if (!this.ready) return;
+    for (let i = 0; i < 3; i++) {
+      setTimeout(() => this.ready && this.noiseBurst({ type: 'bandpass', freq: 1800, q: 1.2, dur: 0.07, vol: 0.5 }, 1, 0.8 + i * 0.15), i * 110);
+    }
+  }
+
   // A filtered oscillator with a pitch glide and an attack/decay envelope.
   voice({ type = 'sawtooth', from, to, dur, vol, filter = 'lowpass', freq = 2000, q = 1, attack = 0.01, delay = 0, vibrato = 0 }) {
     const c = this.ctx, t = c.currentTime + delay;
@@ -147,6 +155,10 @@ export class Sound {
     } else if (kind === 'buffalo') {
       const f = hurt ? p(115, 130) : p(85, 100);
       this.voice({ from: f, to: f * 0.8, dur: hurt ? 0.3 : 0.8, vol: 0.55 * gain, freq: 420, q: 2, attack: 0.08 });
+    } else if (kind === 'yak') {
+      // yaks grunt rather than moo
+      const f = hurt ? p(92, 102) : p(66, 76);
+      this.voice({ from: f, to: f * 0.75, dur: hurt ? 0.25 : 0.5, vol: 0.6 * gain, freq: 340, q: 2.5, attack: 0.04 });
     } else if (kind === 'alpaca') {
       // alpacas hum; a bumped one gives a short high squeak
       if (hurt) this.voice({ type: 'triangle', from: p(900, 1000), to: 620, dur: 0.22, vol: 0.3 * gain, freq: 3000 });

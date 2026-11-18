@@ -10,9 +10,16 @@ It is designed for Android tablets (touch controls) but also plays with keyboard
 - Day/night cycle (12 minutes) with sunrise and sunset skies, sun, moon and stars
 - Sunlight: open ground is fully lit, while overhangs, tunnels and caves fade into darkness even at noon.
   Leaves and water dim the light a little, so it's shadier under trees and deeper in lakes
-- Animals: ducks paddle on lakes and waddle along shores, buffalo graze the plains in herds, alpacas
-  roam the hills, and little newts scurry around near water. Tap one to bump it and it runs off;
-  bumping an alpaca shears it for **wool** (its coat grows back after a couple of minutes)
+- Animals: ducks paddle on lakes and waddle along shores, buffalo graze the plains in herds, alpacas and
+  yaks roam the hills, and little newts scurry around near water. Tap one to bump it and it runs off.
+  Tapping also gathers from them: **wool** from alpacas, **feathers** from ducks, **milk** from yaks and
+  **slime** from newts (the last two with an empty wooden bucket in hand)
+- A day counter and a hunger bar. Hunger drains as you play (faster when walking and digging);
+  tap with food in hand to eat. If it runs out you're too weak to do more than stagger along
+- Farming: wild wheat grows on the plains and sugar cane on shores. Ripe wheat gives seeds to replant on
+  grass or dirt; sugar cane can be replanted next to water. Both grow over time
+- Cooking: grind wheat into flour and sugar cane into sugar with a mortar and pestle, churn yak milk into
+  butter, then bake bread, cookies and cake
 - Torches that light up the area around them with a warm, flickering glow. They stand on floors or hang on walls
 - Synthesised sound effects for digging, breaking, placing, footsteps and splashing, with no audio files
 - Break and place blocks, with break times that depend on the tool you hold
@@ -50,7 +57,8 @@ The version number is shown at the bottom of the ☰ menu; bump `GAME_VERSION` i
 | Look | Drag on the right side | Mouse (click to capture) |
 | Break | Hold your finger still on the right side | Hold left button |
 | Place / use crafting table | Tap on the right side | Right click |
-| Bump an animal (shear an alpaca) | Tap it | Left or right click |
+| Tap an animal (bump, shear, pluck, milk…) | Tap it | Left or right click |
+| Eat | Tap with food in hand | Right click |
 | Jump / swim up | ⤒ button (auto-jump also steps up 1-block ledges) | Space |
 | Select item | Tap a hotbar slot | 1–9 / mouse wheel |
 | Inventory & crafting | 🎒 button | E |
@@ -66,6 +74,23 @@ You aim with the crosshair in the middle of the screen. Volume, look speed and a
 5. Mine **coal ore** for coal. Combine it with sand at a table to make **glass**.
 6. Craft **torches** from 1 coal + 1 stick (no table needed). Tap the top of a block to stand one up,
    or the side of a block to hang it on the wall. If the block a torch sits on is broken, the torch goes back to your inventory.
+
+### Food
+
+| Make | From | Where |
+| --- | --- | --- |
+| Wooden Bucket | 3 planks | crafting table |
+| Mortar and Pestle | 3 cobblestone + 1 stick | crafting table |
+| Butter Churn (placeable) | 7 planks | crafting table |
+| Flour | 1 wheat, with the mortar (not used up) | anywhere |
+| Sugar | 1 sugar cane, with the mortar (not used up) | anywhere |
+| Milk Bucket | tap a yak holding an empty bucket | — |
+| Butter | 1 milk bucket (you get the bucket back) | next to a butter churn |
+| Bread (5 food) | 3 flour | crafting table |
+| 9 Cookies (2 food each) | 3 flour + 3 sugar + 1 butter, with a milk bucket (not used up) | crafting table |
+| Cake (12 food) | 3 flour + 3 sugar + 3 butter | crafting table |
+
+Tap a crafting table or butter churn to open crafting there. The hunger bar holds 20 points (ten loaves).
 
 ## Code layout
 

@@ -1,11 +1,11 @@
-// Animals: ducks, buffalo, alpacas and newts that spawn around the player and wander the world.
+// Animals: ducks, buffalo, alpacas, yaks and newts that spawn around the player and wander the world.
 //
 // Each animal is a small hierarchy of shaded boxes (legs and heads on pivots so they can move),
 // with simple behaviour: stand, wander, graze, and run away when bumped. They follow the same
 // physics as the player (gravity, block collisions, stepping up one block) and float in water.
 // They aren't saved: they're spawned fresh around wherever you are.
 import * as THREE from 'three';
-import { AIR, WATER, LEAVES, LOG, GRASS, SAND, DIRT, WOOL } from './blocks.js';
+import { AIR, WATER, LEAVES, LOG, GRASS, SAND, DIRT, WOOL, BUCKET, MILK_BUCKET, SLIME_BUCKET, FEATHER } from './blocks.js';
 import { SEA_LEVEL, H } from './terrain.js';
 import { skyBrightness, lightBrightness } from './world.js';
 
@@ -13,6 +13,8 @@ const GRAVITY = 28;
 const MAX_MOBS = 26;
 const SPAWN_MIN_DIST = 24;
 const SHORN_SECONDS = 150; // how long an alpaca's coat takes to grow back
+const FEATHER_SECONDS = 30; // a plucked duck has no feather to spare for a while
+const SLIME_SECONDS = 30; // nor a newt more slime
 
 // face brightness for box faces (+x, -x, +y, -y, +z, -z), matching the world's block shading
 const SHADE = [0.8, 0.8, 1.0, 0.5, 0.65, 0.65].map((v) => Math.pow(v, 2.2));
@@ -154,6 +156,41 @@ const SPECIES = {
     },
   },
 
+  yak: {
+    w: 1.1, h: 1.75, speed: 1.0, fleeSpeed: 4.0, sink: 1.05, stride: 5.5, legSwing: 0.4,
+    group: [2, 3], cap: 5, avoidWater: true, grazes: true, milk: true,
+    build(b, root) {
+      const coat = pick([0x2e2722, 0x2e2722, 0x4a3628, 0xe6e0d4]);
+      const shag = new THREE.Color(coat).multiplyScalar(0.78).getHex();
+      const white = coat === 0xe6e0d4;
+      const horn = 0xe9e2cf;
+      const parts = { legs: [] };
+      b.box(root, [1.0, 0.8, 1.5], coat, [0, 1.05, 0]); // body
+      b.box(root, [1.12, 0.42, 1.58], shag, [0, 0.62, 0]); // long hair hanging down like a skirt
+      b.box(root, [0.9, 0.35, 0.6], coat, [0, 1.58, 0.35]); // shoulder hump
+      const head = parts.head = b.pivot(root, [0, 1.15, 0.8]);
+      b.box(head, [0.55, 0.5, 0.55], coat, [0, -0.1, 0.25]);
+      b.box(head, [0.5, 0.18, 0.3], shag, [0, 0.2, 0.2]); // shaggy forelock
+      b.box(head, [0.4, 0.25, 0.15], white ? 0x8a7a6a : 0x1f1a17, [0, -0.22, 0.56]); // muzzle
+      for (const s of [-1, 1]) {
+        // horns sweep out, up, then back
+        b.box(head, [0.3, 0.1, 0.1], horn, [s * 0.38, 0.12, 0.25]);
+        b.box(head, [0.1, 0.25, 0.1], horn, [s * 0.52, 0.28, 0.25]);
+        b.box(head, [0.1, 0.1, 0.16], horn, [s * 0.52, 0.42, 0.17]);
+        b.box(head, [0.04, 0.05, 0.04], 0x0a0a0a, [s * 0.28, -0.02, 0.48]);
+      }
+      for (const [x, z] of [[-0.32, 0.5], [0.32, 0.5], [-0.32, -0.5], [0.32, -0.5]]) {
+        const leg = b.pivot(root, [x, 0.65, z]);
+        b.box(leg, [0.24, 0.6, 0.24], shag, [0, -0.3, 0]);
+        b.box(leg, [0.26, 0.07, 0.26], 0x161210, [0, -0.6, 0]);
+        parts.legs.push(leg);
+      }
+      const tail = parts.tail = b.pivot(root, [0, 1.3, -0.76]);
+      b.box(tail, [0.22, 0.5, 0.18], shag, [0, -0.25, -0.04]); // bushy tail
+      return parts;
+    },
+  },
+
   newt: {
     w: 0.3, h: 0.15, speed: 0.9, fleeSpeed: 2.6, sink: 0.08, stride: 16, legSwing: 0.6,
     group: [1, 2], cap: 5, avoidWater: false, grazes: false,
@@ -204,6 +241,8 @@ class Mob {
     this.flash = 0;
     this.soundTimer = rand(4, 20);
     this.shornFor = 0;
+    this.featherFor = 0;
+    this.slimeFor = 0;
     this.material = new THREE.MeshBasicMaterial({ vertexColors: true });
     const b = new Builder(this.material);
     this.root = new THREE.Group();
@@ -269,7 +308,7 @@ export class MobManager {
     const y = s.y + 1;
     if (this.nearWater(x, s.y, z)) return { kinds: ['duck', 'newt'], y };
     if (s.id !== GRASS) return null;
-    if (s.y >= SEA_LEVEL + 12) return { kinds: ['alpaca'], y };
+    if (s.y >= SEA_LEVEL + 12) return { kinds: ['alpaca', 'yak'], y };
     if (s.y >= SEA_LEVEL + 2) return { kinds: ['buffalo'], y };
     return null;
   }
@@ -309,6 +348,14 @@ export class MobManager {
     }
   }
 
+  // Put a specific animal at (x, y, z), feet at y. Handy for testing from the console.
+  spawn(kind, x, y, z) {
+    const m = new Mob(kind, x, y, z);
+    this.mobs.push(m);
+    this.scene.add(m.root);
+    return m;
+  }
+
   // ---------- per-frame update ----------
 
   // light: { day, flicker, ambient } from the renderer, so animals are lit like the blocks around them
@@ -340,6 +387,8 @@ export class MobManager {
         if (dist < 22) this.sound?.mob(m.kind, 1 - dist / 22);
       }
       if (m.shornFor > 0 && (m.shornFor -= dt) <= 0) m.parts.shear?.(false);
+      if (m.featherFor > 0) m.featherFor -= dt;
+      if (m.slimeFor > 0) m.slimeFor -= dt;
     }
   }
 
@@ -539,9 +588,44 @@ export class MobManager {
     return best;
   }
 
-  // The player bumps an animal: it hops away and flees. Alpacas give wool (then need time to regrow it).
-  // Returns items to give the player, as [[id, count], ...].
-  hit(m, from) {
+  // The player taps an animal while holding `held`. Returns { give, take, said }: items to give the
+  // player and to take from them (as [[id, count], ...]), and a short message (or '').
+  //   yak + empty bucket  -> milk bucket (the yak stays calm)
+  //   newt + empty bucket -> slime bucket
+  //   duck                -> a feather (one every so often)
+  //   alpaca              -> wool (then its coat needs time to regrow)
+  //   anything else just bumps the animal, which hops away and runs off
+  interact(m, from, held) {
+    const give = [], take = [];
+    if (held === BUCKET && m.spec.milk) {
+      take.push([BUCKET, 1]); give.push([MILK_BUCKET, 1]);
+      this.sound?.mob(m.kind, 0.8);
+      this.sound?.splash(false);
+      return { give, take, said: '' };
+    }
+    if (held === BUCKET && m.kind === 'newt') {
+      if (m.slimeFor > 0) return { give, take, said: 'This newt needs time to make more slime' };
+      m.slimeFor = SLIME_SECONDS;
+      take.push([BUCKET, 1]); give.push([SLIME_BUCKET, 1]);
+      m.state = 'flee'; m.timer = rand(1.5, 2.5);
+      this.sound?.mob(m.kind, 1, true);
+      return { give, take, said: '' };
+    }
+    this.bump(m, from);
+    if (m.spec.wool && m.shornFor <= 0) {
+      m.shornFor = SHORN_SECONDS;
+      m.parts.shear(true);
+      give.push([WOOL, Math.random() < 0.5 ? 2 : 1]);
+    }
+    if (m.kind === 'duck' && m.featherFor <= 0) {
+      m.featherFor = FEATHER_SECONDS;
+      give.push([FEATHER, 1]);
+    }
+    return { give, take, said: '' };
+  }
+
+  // Knock an animal back: it flashes red, hops away and runs off for a few seconds.
+  bump(m, from) {
     let dx = m.pos.x - from.x, dz = m.pos.z - from.z;
     const len = Math.hypot(dx, dz) || 1;
     dx /= len; dz /= len;
@@ -551,11 +635,5 @@ export class MobManager {
     m.timer = rand(3, 4.5);
     m.flash = 0.25;
     this.sound?.mob(m.kind, 1, true);
-    if (m.spec.wool && m.shornFor <= 0) {
-      m.shornFor = SHORN_SECONDS;
-      m.parts.shear(true);
-      return [[WOOL, Math.random() < 0.5 ? 2 : 1]];
-    }
-    return [];
   }
 }

@@ -99,8 +99,18 @@ html, body {
 #hotbar .slot { border-color: rgba(255,255,255,0.12); }
 #hotbar .slot.selected { border-color: #fff; background: rgba(255,255,255,0.18); }
 
+#hunger {
+  position: absolute; left: 50%; bottom: calc(max(8px, env(safe-area-inset-bottom)) + var(--slot) + 14px);
+  transform: translateX(calc(-50% - 28px)); display: flex; gap: 1px; pointer-events: none;
+}
+#hunger .food { position: relative; width: 20px; height: 20px; }
+#hunger .food img { position: absolute; inset: 0; width: 100%; height: 100%; image-rendering: pixelated; }
+#hunger .food .bg { filter: grayscale(1) brightness(0.35); opacity: 0.8; }
+#hunger.low .food { animation: hungry 0.8s ease-in-out infinite alternate; }
+@keyframes hungry { from { transform: translateY(0); } to { transform: translateY(-2px); } }
+
 #item-name {
-  position: absolute; left: 50%; bottom: calc(var(--slot) + 30px); transform: translateX(-50%);
+  position: absolute; left: 50%; bottom: calc(var(--slot) + 44px); transform: translateX(-50%);
   font-weight: 600; text-shadow: 1px 1px 2px #000; opacity: 0; transition: opacity 0.4s; pointer-events: none;
   white-space: nowrap;
 }
@@ -160,6 +170,7 @@ html, body {
 .recipe .ing { display: flex; align-items: center; gap: 2px; font-size: 13px; font-weight: 600; }
 .recipe .ing img, .recipe .outimg { width: 30px; height: 30px; image-rendering: pixelated; }
 .recipe .ing.missing { color: #a00; }
+.recipe .ing.tool { border: 1px dashed #666; border-radius: 4px; padding: 0 3px; font-size: 11px; font-weight: 500; }
 .recipe .arrow { font-size: 18px; }
 .recipe .name { flex: 1; font-size: 14px; }
 .recipe .btn { min-height: 40px; font-size: 15px; }
