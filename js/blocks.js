@@ -2,7 +2,13 @@
 
 // Block ids (< 100). Stored in the world Uint8Array.
 export const AIR = 0, GRASS = 1, DIRT = 2, STONE = 3, COBBLE = 4, LOG = 5, PLANKS = 6,
-  LEAVES = 7, SAND = 8, GLASS = 9, TABLE = 10, BRICKS = 11, COAL_ORE = 12, BEDROCK = 13, WATER = 14;
+  LEAVES = 7, SAND = 8, GLASS = 9, TABLE = 10, BRICKS = 11, COAL_ORE = 12, BEDROCK = 13, WATER = 14,
+  TORCH = 15, // standing torch; the only torch id that lives in the inventory
+  TORCH_WALL_W = 16, TORCH_WALL_E = 17, TORCH_WALL_N = 18, TORCH_WALL_S = 19; // mounted on a wall at -x/+x/-z/+z
+
+// Wall direction [dx, dz] for each wall-torch variant, in id order.
+export const WALL_TORCH_DIRS = [[-1, 0], [1, 0], [0, -1], [0, 1]];
+export const MAX_LIGHT = 15;
 
 // Item-only ids (>= 100). Only ever live in the inventory.
 export const STICK = 100, COAL = 101,
@@ -14,7 +20,7 @@ export const STICK = 100, COAL = 101,
 export const T = {
   GRASS_TOP: 0, GRASS_SIDE: 1, DIRT: 2, STONE: 3, COBBLE: 4, LOG_SIDE: 5, LOG_TOP: 6,
   PLANKS: 7, LEAVES: 8, SAND: 9, GLASS: 10, TABLE_TOP: 11, TABLE_SIDE: 12, BRICKS: 13,
-  COAL_ORE: 14, BEDROCK: 15,
+  COAL_ORE: 14, BEDROCK: 15, TORCH: 16,
 };
 
 export const BLOCKS = [];
@@ -34,6 +40,11 @@ function block(id, o) {
     drop: o.drop ?? id, // id, or function returning id (0 = nothing)
     sound: o.sound ?? 'stone', // material for dig / step / place sounds
     liquid: !!o.liquid, // not solid, not targetable, never in the inventory
+    light: o.light ?? 0, // light level this block emits (0-15)
+    shape: o.shape ?? 'cube', // 'cube' | 'torch'
+    solid: o.solid ?? !o.liquid, // blocks player movement
+    wall: o.wall ?? null, // [dx, dz] of the wall a wall torch hangs on
+    variantOf: o.variantOf ?? 0, // placed form of another item; never held in the inventory
   };
 }
 
@@ -51,6 +62,11 @@ block(BRICKS, { name: 'Stone Bricks', tex: T.BRICKS, hardness: 2.5, tool: 'pick'
 block(COAL_ORE, { name: 'Coal Ore', tex: T.COAL_ORE, hardness: 3, tool: 'pick', needsTool: true, drop: COAL });
 block(BEDROCK, { name: 'Bedrock', tex: T.BEDROCK, hardness: Infinity });
 block(WATER, { name: 'Water', transparent: true, liquid: true, hardness: Infinity, drop: 0, sound: 'water' });
+const torch = { name: 'Torch', sound: 'wood', tex: T.TORCH, transparent: true, solid: false, shape: 'torch', hardness: 0, light: 14, drop: TORCH };
+block(TORCH, torch);
+WALL_TORCH_DIRS.forEach((wall, i) => block(TORCH_WALL_W + i, { ...torch, wall, variantOf: TORCH }));
+
+export const isTorch = (id) => id >= TORCH && id <= TORCH_WALL_S;
 
 // Non-block items.
 export const ITEMS = {
@@ -66,7 +82,7 @@ export const ITEMS = {
 
 // Placeable block that can live in the inventory.
 export function isBlock(id) {
-  return id > 0 && id < 100 && !!BLOCKS[id] && !BLOCKS[id].liquid;
+  return id > 0 && id < 100 && !!BLOCKS[id] && !BLOCKS[id].liquid && !BLOCKS[id].variantOf;
 }
 
 export function itemName(id) {
@@ -99,6 +115,7 @@ export const RECIPES = [
   { out: [PLANKS, 4], in: [[LOG, 1]] },
   { out: [STICK, 4], in: [[PLANKS, 2]] },
   { out: [TABLE, 1], in: [[PLANKS, 4]] },
+  { out: [TORCH, 4], in: [[COAL, 1], [STICK, 1]] },
   { out: [WOOD_PICK, 1], in: [[PLANKS, 3], [STICK, 2]], table: true },
   { out: [WOOD_AXE, 1], in: [[PLANKS, 3], [STICK, 2]], table: true },
   { out: [WOOD_SHOVEL, 1], in: [[PLANKS, 1], [STICK, 2]], table: true },

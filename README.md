@@ -6,6 +6,7 @@ It is designed for Android tablets (touch controls) but also plays with keyboard
 - Procedurally generated 128×128×64 world with hills, lakes and seas, beaches, trees and coal ore
 - Water you can swim in. It flows into holes you dig next to it, as long as they're at or below sea level
 - Day/night cycle (12 minutes) with sunrise and sunset skies, sun, moon and stars
+- Torches that light up the area around them with a warm, flickering glow. They stand on floors or hang on walls
 - Synthesised sound effects for digging, breaking, placing, footsteps and splashing, with no audio files
 - Break and place blocks, with break times that depend on the tool you hold
 - Recipe-based crafting: some recipes need a crafting table nearby
@@ -48,6 +49,8 @@ You aim with the crosshair in the middle of the screen. Volume, look speed and a
 3. Place the table. With a table nearby (or after tapping one), you can craft wooden tools.
 4. Stone needs a **pickaxe** to drop cobblestone. Use cobblestone to craft stone tools and stone bricks.
 5. Mine **coal ore** for coal. Combine it with sand at a table to make **glass**.
+6. Craft **torches** from 1 coal + 1 stick (no table needed). Tap the top of a block to stand one up,
+   or the side of a block to hang it on the wall. If the block a torch sits on is broken, the torch goes back to your inventory.
 
 ## Code layout
 
@@ -55,7 +58,7 @@ You aim with the crosshair in the middle of the screen. Volume, look speed and a
 | --- | --- |
 | `js/blocks.js` | Block & item definitions, break times, drops, recipes |
 | `js/textures.js` | Procedural texture atlas, item icons, break cracks |
-| `js/world.js` | Terrain generation, chunk meshing (face culling + AO, separate water mesh), water flow, raycasting |
+| `js/world.js` | Terrain generation, torch light propagation, chunk meshing (face culling + AO + smooth light, separate water mesh), water flow, raycasting |
 | `js/player.js` | Player physics, collision and swimming |
 | `js/sky.js` | Day/night cycle: sky colour, fog, sun, moon, stars, world brightness |
 | `js/sound.js` | Web Audio sound effects |

@@ -1,5 +1,8 @@
 import * as THREE from 'three';
-import { BLOCKS, RECIPES, TABLE, AIR, GRASS, SAND, WATER, isBlock, itemName, breakTime, dropFor } from './blocks.js';
+import {
+  BLOCKS, RECIPES, TABLE, AIR, GRASS, SAND, WATER, TORCH, TORCH_WALL_W, WALL_TORCH_DIRS,
+  isBlock, isTorch, itemName, breakTime, dropFor,
+} from './blocks.js';
 import { createAtlas, createIcons, createCrackCanvases, createWaterCanvas } from './textures.js';
 import { World, W } from './world.js';
 import { Sky } from './sky.js';
@@ -50,6 +53,21 @@ atlas.generateMipmaps = false;
 atlas.colorSpace = THREE.SRGBColorSpace;
 const material = new THREE.MeshBasicMaterial({ map: atlas, vertexColors: true, alphaTest: 0.5 });
 
+// World lighting: each pixel gets max(daylight, torch light), so torches glow at night and
+// barely matter at noon. Daylight is a uniform (set by the sky); torch light is a vertex attribute.
+const lightUniforms = { uDay: { value: 1 }, uFlicker: { value: 1 } };
+function addTorchLight(mat) {
+  mat.onBeforeCompile = (shader) => {
+    Object.assign(shader.uniforms, lightUniforms);
+    shader.vertexShader = 'attribute float torch;\nvarying float vTorch;\n' + shader.vertexShader
+      .replace('#include <color_vertex>', '#include <color_vertex>\nvTorch = torch;');
+    shader.fragmentShader = 'uniform float uDay;\nuniform float uFlicker;\nvarying float vTorch;\n' + shader.fragmentShader
+      .replace('#include <color_fragment>',
+        '#include <color_fragment>\ndiffuseColor.rgb *= max(vec3(uDay), vTorch * uFlicker * vec3(1.0, 0.86, 0.66));');
+  };
+}
+addTorchLight(material);
+
 const waterTex = new THREE.CanvasTexture(createWaterCanvas());
 waterTex.wrapS = waterTex.wrapT = THREE.RepeatWrapping;
 waterTex.magFilter = THREE.NearestFilter;
@@ -59,6 +77,7 @@ waterTex.colorSpace = THREE.SRGBColorSpace;
 const waterMat = new THREE.MeshBasicMaterial({
   map: waterTex, vertexColors: true, transparent: true, opacity: 0.72, side: THREE.DoubleSide, depthWrite: false,
 });
+addTorchLight(waterMat);
 const materials = { solid: material, water: waterMat };
 
 const sky = new Sky(scene);
@@ -113,6 +132,7 @@ async function startWorld(save) {
   await nextFrame();
   world.generate();
   if (save?.mods) world.applyMods(save.mods);
+  world.computeAllLight();
 
   if (!player) player = new Player(world);
   player.world = world;
@@ -337,9 +357,14 @@ function place() {
   const x = target.x + target.nx, y = target.y + target.ny, z = target.z + target.nz;
   const there = world.get(x, y, z);
   if (!world.inBounds(x, y, z) || (there !== AIR && there !== WATER)) return;
-  if (player.overlapsBlock(x, y, z)) return;
-  world.setBlock(x, y, z, held.id);
-  sound.place(BLOCKS[held.id].sound);
+  let id = held.id;
+  if (id === TORCH) {
+    // torches need a solid block to stand on or hang from, and can't go underwater or on ceilings
+    if (there !== AIR || target.ny < 0 || !BLOCKS[target.id].solid || isTorch(target.id)) return;
+    if (target.ny === 0) id = TORCH_WALL_W + WALL_TORCH_DIRS.findIndex(([dx, dz]) => dx === -target.nx && dz === -target.nz);
+  } else if (player.overlapsBlock(x, y, z)) return;
+  world.setBlock(x, y, z, id);
+  sound.place(BLOCKS[id].sound);
   inventory.consumeHeld();
 }
 
@@ -358,14 +383,7 @@ function updateBreaking(dt) {
   breakState.tick = (breakState.tick || 0) - dt;
   if (breakState.tick <= 0) { sound.dig(BLOCKS[target.id].sound); breakState.tick = 0.24; }
   if (breakState.progress >= 1) {
-    sound.breakBlock(BLOCKS[target.id].sound);
-    const drop = dropFor(target.id, held);
-    world.setBlock(target.x, target.y, target.z, AIR);
-    if (drop) {
-      if (inventory.add(drop, 1) > 0) toast('Inventory full');
-    } else if (BLOCKS[target.id]?.needsTool) {
-      toast(`You need a ${BLOCKS[target.id].tool === 'pick' ? 'pickaxe' : BLOCKS[target.id].tool} to collect ${BLOCKS[target.id].name}`);
-    }
+    breakBlock(target.x, target.y, target.z);
     breakState.key = ''; breakState.progress = 0;
     crack.visible = false;
     target = null;
@@ -375,6 +393,33 @@ function updateBreaking(dt) {
   crack.position.set(target.x + 0.5, target.y + 0.5, target.z + 0.5);
   const stage = Math.min(crackTextures.length - 1, Math.floor(breakState.progress * crackTextures.length));
   if (crackMat.map !== crackTextures[stage]) { crackMat.map = crackTextures[stage]; crackMat.needsUpdate = true; }
+}
+
+// Remove a block, collecting what it drops with the held item.
+function breakBlock(x, y, z) {
+  const id = world.get(x, y, z);
+  const def = BLOCKS[id];
+  if (!def || id === AIR) return;
+  sound.breakBlock(def.sound);
+  const drop = dropFor(id, inventory.heldId());
+  world.setBlock(x, y, z, AIR);
+  dropUnsupportedTorches(x, y, z);
+  if (drop) {
+    if (inventory.add(drop, 1) > 0) toast('Inventory full');
+  } else if (def.needsTool) {
+    toast(`You need a ${def.tool === 'pick' ? 'pickaxe' : def.tool} to collect ${def.name}`);
+  }
+}
+
+// Torches standing on, or hanging from, a block that was just removed pop off into the inventory.
+function dropUnsupportedTorches(x, y, z) {
+  const check = [[x, y + 1, z, TORCH]];
+  WALL_TORCH_DIRS.forEach(([dx, dz], i) => check.push([x - dx, y, z - dz, TORCH_WALL_W + i]));
+  for (const [tx, ty, tz, id] of check) {
+    if (world.get(tx, ty, tz) !== id) continue;
+    world.setBlock(tx, ty, tz, AIR);
+    inventory.add(TORCH, 1);
+  }
 }
 
 // ---------- menu ----------
@@ -491,7 +536,8 @@ function frame(now) {
   camera.position.copy(eye);
   camera.rotation.set(player.pitch, player.yaw, 0);
 
-  sky.update(paused ? 0 : dt, eye, [material, waterMat], player.eyeInWater);
+  sky.update(paused ? 0 : dt, eye, lightUniforms.uDay, player.eyeInWater);
+  lightUniforms.uFlicker.value = 0.93 + 0.04 * Math.sin(now * 0.011) + 0.03 * Math.sin(now * 0.029);
   $('underwater').classList.toggle('show', player.eyeInWater);
   waterTex.offset.x = (waterTex.offset.x + dt * 0.06) % 1;
   waterTex.offset.y = (waterTex.offset.y + dt * 0.025) % 1;
@@ -513,4 +559,4 @@ requestAnimationFrame(frame);
 startWorld(loadSave());
 
 // expose for debugging in the console
-window.minicraft = { get world() { return world; }, player, inventory, saveGame, sky, sound };
+window.minicraft = { get world() { return world; }, player, inventory, saveGame, sky, sound, breakBlock };

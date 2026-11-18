@@ -1,6 +1,6 @@
-// Voxel world: storage, terrain generation, chunk meshing, raycasting.
+// Voxel world: storage, terrain generation, block light, chunk meshing, raycasting.
 import * as THREE from 'three';
-import { BLOCKS, AIR, GRASS, DIRT, STONE, LOG, LEAVES, SAND, COAL_ORE, BEDROCK, WATER } from './blocks.js';
+import { BLOCKS, AIR, GRASS, DIRT, STONE, LOG, LEAVES, SAND, COAL_ORE, BEDROCK, WATER, MAX_LIGHT } from './blocks.js';
 import { TILE, ATLAS_COLS } from './textures.js';
 
 export const CHUNK = 16;
@@ -77,10 +77,20 @@ const AO_LEVELS = [0.45, 0.62, 0.8, 1.0];
 // vertex colours are linear in three.js; convert perceptual brightness to linear
 const toLinear = (v) => Math.pow(v, 2.2);
 
+// Torch light level (0-15) -> linear brightness, falling off ~17% per block.
+const LIGHT_CURVE = Array.from({ length: 16 * 4 + 1 }, (_, i) => {
+  const level = i / 4;
+  return level <= 0 ? 0 : toLinear(Math.pow(0.83, 14 - Math.min(14, level)));
+});
+const lightBrightness = (level) => LIGHT_CURVE[Math.round(level * 4)];
+
+const NEIGHBOURS = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]];
+
 export class World {
   constructor(seed) {
     this.seed = seed;
     this.data = new Uint8Array(W * W * H);
+    this.light = new Uint8Array(W * W * H); // block light from torches, 0-15
     this.mods = new Map(); // index -> id, player edits (for saving)
     this.chunkMeshes = new Map();
     this.dirty = new Set();
@@ -101,18 +111,24 @@ export class World {
   isSolid(x, y, z) {
     if (y < 0 || x < 0 || z < 0 || x >= W || z >= W) return true;
     if (y >= H) return false;
-    const id = this.data[x + z * W + y * W * W];
-    return id !== AIR && id !== WATER;
+    return BLOCKS[this.data[x + z * W + y * W * W]]?.solid ?? false;
   }
 
   isWater(x, y, z) { return this.get(x, y, z) === WATER; }
 
-  // Player edit: records the change and marks chunks for remeshing.
+  // Player edit: records the change, updates light and marks chunks for remeshing.
   setBlock(x, y, z, id) {
     if (!this.inBounds(x, y, z)) return;
     const i = this.idx(x, y, z);
     this.data[i] = id;
     this.mods.set(i, id);
+    this.markCellDirty(x, z);
+    this.updateLight(i);
+    if (id === AIR) this.flow.push([x, y, z]);
+  }
+
+  // A cell's mesh (and AO/light sampling) can affect the chunk next door when it's on the border.
+  markCellDirty(x, z) {
     const cx = Math.floor(x / CHUNK), cz = Math.floor(z / CHUNK);
     this.markDirty(cx, cz);
     const lx = x - cx * CHUNK, lz = z - cz * CHUNK;
@@ -120,7 +136,96 @@ export class World {
     if (lx === CHUNK - 1) this.markDirty(cx + 1, cz);
     if (lz === 0) this.markDirty(cx, cz - 1);
     if (lz === CHUNK - 1) this.markDirty(cx, cz + 1);
-    if (id === AIR) this.flow.push([x, y, z]);
+  }
+
+  // ---------- block light ----------
+  // Light floods out from emitters (torches), losing one level per block, through any non-opaque cell.
+
+  lightPasses(i) {
+    const id = this.data[i];
+    return id === AIR || BLOCKS[id].transparent;
+  }
+
+  // Calls fn(j) for each in-bounds neighbour index of cell i.
+  eachNeighbour(i, fn) {
+    const x = i % W, z = Math.floor(i / W) % W, y = Math.floor(i / (W * W));
+    for (const [dx, dy, dz] of NEIGHBOURS) {
+      const nx = x + dx, ny = y + dy, nz = z + dz;
+      if (nx >= 0 && nz >= 0 && ny >= 0 && nx < W && nz < W && ny < H) fn(nx + nz * W + ny * W * W);
+    }
+  }
+
+  spreadLight(queue, changed) {
+    const L = this.light;
+    for (let h = 0; h < queue.length; h++) {
+      const i = queue[h];
+      const next = L[i] - 1;
+      if (next <= 0) continue;
+      this.eachNeighbour(i, (j) => {
+        if (L[j] < next && this.lightPasses(j)) {
+          L[j] = next;
+          changed?.add(j);
+          queue.push(j);
+        }
+      });
+    }
+  }
+
+  // Darken everything lit by cell i, then re-spread from any brighter light at the edge of the dark area.
+  removeLight(i, changed) {
+    const L = this.light;
+    const dark = [[i, L[i]]];
+    const relight = [];
+    L[i] = 0;
+    changed.add(i);
+    for (let h = 0; h < dark.length; h++) {
+      const [c, level] = dark[h];
+      this.eachNeighbour(c, (j) => {
+        const nl = L[j];
+        if (nl && nl < level) {
+          L[j] = 0;
+          changed.add(j);
+          dark.push([j, nl]);
+        } else if (nl >= level) {
+          relight.push(j);
+        }
+      });
+    }
+    this.spreadLight(relight, changed);
+  }
+
+  // Recompute light after the block at index i changed.
+  updateLight(i) {
+    const changed = new Set();
+    if (this.light[i] > 0) this.removeLight(i, changed);
+    const emit = BLOCKS[this.data[i]]?.light ?? 0;
+    if (emit) {
+      this.light[i] = emit;
+      changed.add(i);
+      this.spreadLight([i], changed);
+    } else if (this.lightPasses(i)) {
+      // an opening: let neighbouring light flow in
+      const q = [];
+      this.eachNeighbour(i, (j) => { if (this.light[j] > 1) q.push(j); });
+      this.spreadLight(q, changed);
+    }
+    for (const j of changed) this.markCellDirty(j % W, Math.floor(j / W) % W);
+  }
+
+  // Full rebuild, used after loading a world.
+  computeAllLight() {
+    this.light.fill(0);
+    const q = [];
+    for (let i = 0; i < this.data.length; i++) {
+      const e = BLOCKS[this.data[i]]?.light;
+      if (e) { this.light[i] = Math.min(e, MAX_LIGHT); q.push(i); }
+    }
+    this.spreadLight(q, null);
+  }
+
+  lightAt(x, y, z) {
+    if (!this.inBounds(x, y, z)) return 0;
+    return this.light[x + z * W + y * W * W];
   }
 
   // Water spreads into open cells at or below sea level that touch water from the side or above.
@@ -210,8 +315,8 @@ export class World {
 
   // ---------- meshing ----------
   buildChunkGeometry(cx, cz) {
-    const pos = [], uv = [], col = [], index = [];
-    const wpos = [], wuv = [], wcol = [], windex = [];
+    const pos = [], uv = [], col = [], tl = [], index = [];
+    const wpos = [], wuv = [], wcol = [], wtl = [], windex = [];
     let wcount = 0;
     const data = this.data;
     const tileUV = 1 / ATLAS_COLS;
@@ -240,10 +345,15 @@ export class World {
             if (f.d === 1) wuv.push(px, pz); else if (f.d === 0) wuv.push(pz, py); else wuv.push(px, py);
             const b = toLinear(f.shade);
             wcol.push(b, b, b);
+            wtl.push(lightBrightness(Math.max(this.lightAt(x, y, z), this.lightAt(x + f.n[0], y + f.n[1], z + f.n[2]))));
           }
           windex.push(wcount, wcount + 1, wcount + 2, wcount, wcount + 2, wcount + 3);
           wcount += 4;
         }
+        continue;
+      }
+      if (def.shape === 'torch') {
+        vcount = this.addTorch(x, y, z, def, pos, uv, col, tl, index, vcount);
         continue;
       }
       for (const f of FACES) {
@@ -273,6 +383,12 @@ export class World {
           ao[k] = a;
           const b = toLinear(f.shade * AO_LEVELS[a]);
           col.push(b, b, b);
+          // smooth torch light: average the open cells around this corner, in front of the face
+          let sum = this.lightAt(nx, ny, nz), n = 1;
+          if (!s1) { sum += this.lightAt(x + c.a[0], y + c.a[1], z + c.a[2]); n++; }
+          if (!s2) { sum += this.lightAt(x + c.b[0], y + c.b[1], z + c.b[2]); n++; }
+          if (!cc && !(s1 && s2)) { sum += this.lightAt(x + c.c[0], y + c.c[1], z + c.c[2]); n++; }
+          tl.push(lightBrightness(sum / n));
         }
         // flip the quad diagonal so AO interpolates without artifacts
         if (ao[0] + ao[2] < ao[1] + ao[3]) {
@@ -283,16 +399,46 @@ export class World {
         vcount += 4;
       }
     }
-    const geo = (p, u, c, i) => {
+    const geo = (p, u, c, t, i) => {
       const g = new THREE.BufferGeometry();
       g.setAttribute('position', new THREE.Float32BufferAttribute(p, 3));
       g.setAttribute('uv', new THREE.Float32BufferAttribute(u, 2));
       g.setAttribute('color', new THREE.Float32BufferAttribute(c, 3));
+      g.setAttribute('torch', new THREE.Float32BufferAttribute(t, 1));
       g.setIndex(i);
       g.computeBoundingSphere();
       return g;
     };
-    return { solid: geo(pos, uv, col, index), water: wcount ? geo(wpos, wuv, wcol, windex) : null };
+    return { solid: geo(pos, uv, col, tl, index), water: wcount ? geo(wpos, wuv, wcol, wtl, windex) : null };
+  }
+
+  // A torch is a 2x10-pixel stick. Wall torches sit low against the wall and lean out of it.
+  addTorch(x, y, z, def, pos, uv, col, tl, index, vcount) {
+    const tileUV = 1 / ATLAS_COLS;
+    const tu = (def.top % ATLAS_COLS) * tileUV;
+    const tv0 = 1 - Math.floor(def.top / ATLAS_COLS) * tileUV - tileUV;
+    const [wx, wz] = def.wall ?? [0, 0];
+    const lift = def.wall ? 0.22 : 0;
+    for (const f of FACES) {
+      // texture rows: sides show the whole stick, the top shows the flame, the bottom the stick end
+      const [v0, vlen] = f.d !== 1 ? [0, 10] : f.s > 0 ? [8, 2] : [0, 2];
+      for (const c of f.corners) {
+        const o = c.o;
+        const lean = 0.42 - 0.27 * o[1]; // distance from the centre toward the wall: more at the base
+        pos.push(
+          x + (7 + 2 * o[0]) / 16 + wx * lean,
+          y + lift + (o[1] * 10) / 16,
+          z + (7 + 2 * o[2]) / 16 + wz * lean,
+        );
+        uv.push(tu + ((7 + 2 * c.uv[0]) / 16) * tileUV, tv0 + ((v0 + vlen * c.uv[1]) / 16) * tileUV);
+        const b = toLinear(f.shade);
+        col.push(b, b, b);
+        tl.push(1); // torches are always fully lit
+      }
+      index.push(vcount, vcount + 1, vcount + 2, vcount, vcount + 2, vcount + 3);
+      vcount += 4;
+    }
+    return vcount;
   }
 
   // Rebuild up to `max` dirty chunks, nearest to (px, pz) first.

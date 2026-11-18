@@ -1,5 +1,5 @@
 // Procedurally painted pixel-art textures: the block atlas, UI icons and break cracks.
-import { T, BLOCKS, isBlock, STICK, COAL, WOOD_PICK, STONE_PICK, WOOD_AXE, STONE_AXE, WOOD_SHOVEL, STONE_SHOVEL } from './blocks.js';
+import { T, BLOCKS, isBlock, TORCH, STICK, COAL, WOOD_PICK, STONE_PICK, WOOD_AXE, STONE_AXE, WOOD_SHOVEL, STONE_SHOVEL } from './blocks.js';
 
 export const TILE = 16;
 export const ATLAS_COLS = 8;
@@ -160,6 +160,13 @@ const P = {
       }
     }
   },
+  // Only columns 7-8 are used: the torch mesh is a 2px-wide stick, 10px tall, flame on top.
+  [T.TORCH](t) {
+    for (let y = 6; y < 16; y++) for (let x = 7; x < 9; x++) {
+      if (y < 8) t.set(x, y, y === 6 ? [255, 236, 140] : [255, 170, 50]);
+      else t.set(x, y, t.vary(x === 7 ? [128, 92, 50] : [100, 70, 38], 0.1));
+    }
+  },
   [T.BEDROCK](t) {
     for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
       const g = 30 + t.r() * 100;
@@ -266,6 +273,13 @@ function drawHandle(ctx, from = 2, to = 10) {
 
 const ITEM_PAINTERS = {
   [STICK](ctx) { drawHandle(ctx, 3, 12); },
+  [TORCH](ctx) {
+    ctx.fillStyle = 'rgba(255,200,80,0.35)';
+    ctx.fillRect(5, 1, 6, 6);
+    for (let y = 6; y < 16; y++) { px(ctx, 7, y, [128, 92, 50]); px(ctx, 8, y, [100, 70, 38]); }
+    for (const [x, y, c] of [[7, 3, [255, 236, 140]], [8, 3, [255, 236, 140]], [7, 4, [255, 200, 80]], [8, 4, [255, 200, 80]],
+      [7, 5, [255, 150, 40]], [8, 5, [255, 150, 40]], [6, 4, [255, 150, 40]], [9, 4, [255, 150, 40]], [7, 2, [255, 245, 200]]]) px(ctx, x, y, c);
+  },
   [COAL](ctx) {
     for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) {
       const d = Math.hypot((x - 7.5) / 5, (y - 8) / 4.3);
@@ -306,7 +320,7 @@ ITEM_PAINTERS[STONE_SHOVEL] = toolPainter('shovel', 'stone');
 export function createIcons(atlas) {
   const icons = {};
   for (const def of BLOCKS) {
-    if (!def || !isBlock(def.id)) continue;
+    if (!def || !isBlock(def.id) || def.shape !== 'cube') continue;
     const c = document.createElement('canvas');
     c.width = c.height = 64;
     const ctx = c.getContext('2d');
