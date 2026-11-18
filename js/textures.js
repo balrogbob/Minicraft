@@ -12,7 +12,7 @@ import {
   PLATE_METALS, PLATES,
   PIPE, SPOUT, BELT, HOPPER, WINDMILL, FILAMENT, DRILL_BIT,
   RAIL, POWERED_RAIL, CACTUS, MINECART, MAP, PAPER,
-  COLORS, DYE, CLUTCH, STORAGE_CART, LOADER_RAIL, SWITCH_RAIL,
+  COLORS, DYE, CLUTCH, STORAGE_CART, LOADER_RAIL, SWITCH_RAIL, PAINTED_DOOR, PAINTING,
   BERRIES, GLASS_BOTTLE, NIGHT_TEA, HASTE_TEA, FIRE_TEA, HEAL_TEA, WOOD_SHIELD, IRON_SHIELD, KING_CROWN,
   SUN_SCARAB, FROST_HEART, EMBER_CORE, SUN_MASK, FROST_CIRCLET, EMBER_CROWN, HONEY_TEA, MUSHROOM_STEW, FISH_PIE,
   CRYSTAL_SHARD, HONEY_BOTTLE, HONEYCOMB, SALMON, BAKED_SALMON, ICEFISH, BAKED_ICEFISH, PUFFERFISH, OLD_BOOT,
@@ -577,6 +577,17 @@ function tinted(base, rgb, ref) {
   };
 }
 COLORS.forEach((c, i) => {
+  // painted doors: the plank door, painted (the window glass and its bars stay as they are)
+  for (const upper of [0, 1]) P[T.PAINTED_DOOR + i * 2 + upper] = tinted(upper ? T.DOOR_UPPER : T.DOOR_LOWER, i === 1 ? [70, 70, 80] : c.rgb, 140);
+  // glow lamps: a frosted block glowing in its colour, brightest in the middle
+  P[T.GLOW_LAMP + i] = (t) => {
+    const glow = i === 1 ? [150, 90, 230] : c.rgb.map((v) => Math.min(255, v * 0.6 + 110));
+    for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+      const edge = x === 0 || y === 0 || x === 15 || y === 15, d = Math.hypot(x - 7.5, y - 7.5);
+      t.set(x, y, edge ? [70, 66, 60] : t.vary(glow.map((v) => Math.min(255, v + (6 - d) * 10)), 0.04));
+    }
+    for (const k of [5, 10]) for (let j = 1; j < 15; j++) { t.set(k, j, shade(glow, 0.85)); t.set(j, k, shade(glow, 0.85)); }
+  };
   if (i) P[T.DYED_WOOL + i] = tinted(T.WOOL, c.rgb, 228);
   P[T.PAINTED + i] = tinted(T.PLANKS, c.rgb, 150);
   // stained glass: a coloured frame and a fine coloured mesh you can see through
@@ -808,6 +819,25 @@ const engineFront = (on) => (t) => {
 };
 P[T.ENGINE_FRONT] = engineFront(false);
 P[T.ENGINE_FRONT_ON] = engineFront(true);
+
+// pillars: fluted columns, with a rim on top
+const pillarSide = (c) => (t) => {
+  for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+    const groove = x % 4 === 1, rim = y < 1 || y > 14;
+    t.set(x, y, t.vary(shade(c, rim ? 0.82 : groove ? 0.78 : 1 - Math.abs(x % 4 - 2.5) * 0.04), 0.03));
+  }
+};
+const pillarTop = (c) => (t) => {
+  for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+    const d = Math.max(Math.abs(x - 7.5), Math.abs(y - 7.5));
+    t.set(x, y, t.vary(shade(c, d > 6 ? 0.8 : d > 4.5 ? 0.92 : 1), 0.03));
+  }
+};
+P[T.PILLAR_SIDE] = pillarSide([196, 194, 190]);
+P[T.PILLAR_TOP] = pillarTop([196, 194, 190]);
+P[T.SAND_PILLAR_SIDE] = pillarSide([226, 208, 152]);
+P[T.SAND_PILLAR_TOP] = pillarTop([226, 208, 152]);
+P[T.CANDLE] = (t) => { for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) t.set(x, y, t.vary([240, 232, 206], 0.03)); };
 
 // A plank door: a frame with a centre board; the upper half has a four-pane window you can see through,
 // the lower half has the handle.
@@ -1651,6 +1681,21 @@ ITEM_PAINTERS[CLUTCH] = (ctx) => {
 ITEM_PAINTERS[STORAGE_CART] = (ctx) => {
   ITEM_PAINTERS[MINECART](ctx);
   rect(ctx, 3, 1, 10, 6, [122, 82, 48]); rect(ctx, 3, 1, 10, 1, [92, 60, 34]); rect(ctx, 7, 3, 2, 2, [160, 164, 172]);
+};
+COLORS.forEach((c, i) => {
+  const rgb = i === 1 ? [70, 70, 80] : c.rgb;
+  ITEM_PAINTERS[PAINTED_DOOR + i * 16] = (ctx) => {
+    rect(ctx, 4, 0, 8, 16, shade(rgb, 0.7));
+    rect(ctx, 5, 1, 6, 14, rgb);
+    rect(ctx, 6, 2, 4, 4, [170, 210, 230]); rect(ctx, 7, 2, 1, 4, shade(rgb, 0.7));
+    px(ctx, 10, 9, [60, 60, 64]);
+  };
+});
+ITEM_PAINTERS[PAINTING] = (ctx) => {
+  rect(ctx, 1, 2, 14, 12, [120, 84, 48]);
+  rect(ctx, 2, 3, 12, 10, [120, 180, 230]);
+  rect(ctx, 2, 9, 12, 4, [90, 150, 70]); rect(ctx, 5, 7, 4, 3, [70, 130, 60]);
+  rect(ctx, 10, 4, 2, 2, [255, 220, 90]);
 };
 ITEM_PAINTERS[SWITCH_RAIL] = (ctx) => {
   railIcon([150, 154, 162])(ctx);

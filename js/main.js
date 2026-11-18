@@ -19,6 +19,7 @@ import {
   IRON_INGOT, GOLD_INGOT, SILVER_INGOT, ELECTRUM_INGOT, TUNGSTEN_INGOT, GUNPOWDER, NIGHT_TEA, HASTE_TEA, FIRE_TEA, HEAL_TEA, IRON_SHIELD, BAKED_FISH,
   GLOW_MUSHROOM, CRYSTAL_SHARD, HONEY_BOTTLE, HONEYCOMB, BEE_HIVE, MAX_HONEY, VILLAGE_BELL, SALMON, BAKED_SALMON, ICEFISH, PUFFERFISH, OLD_BOOT,
   OBSERVER, GAUGE, HARVESTER, STEAM_ENGINE, SWITCH_RAIL, switchRailId,
+  TINTS, WALL, LANTERN, HANGING_LANTERN, CHANDELIER, PAINTING, ART, isWall,
   ENCHANT_ALTAR, LAIRS, ENCHANTS, hasEnch, HONEY_TEA, CRYSTAL_BLOCK, SUN_SCARAB, FROST_HEART, EMBER_CORE, OBSIDIAN, SANDSTONE,
   STICK, STRING, PAPER, CAKE, COOKIE, LEATHER, FISHING_ROD as ROD, WEIGHTED_ROD as WROD, SEEDS, FLOUR, BUTTER,
 } from './blocks.js';
@@ -44,6 +45,7 @@ import { MiniMap } from './minimap.js';
 import { Frames } from './frames.js';
 import { Weather } from './weather.js';
 import { Bees } from './bees.js';
+import { Paintings, paintingCells } from './paintings.js';
 
 // v2 = the 16k x 16k streaming world (player state here, edited chunks in IndexedDB).
 // v1 = the old 128 x 128 world, migrated into the middle of the big world on first launch.
@@ -97,15 +99,16 @@ const material = new THREE.MeshBasicMaterial({ map: atlas, vertexColors: true, a
 // daylight is a uniform set by the sky, so nights darken everything the sun reaches,
 // caves stay dark all day, and torches glow wherever they are.
 const AMBIENT = 0.03; // linear; just enough to make out cave walls without a torch
-const lightUniforms = { uDay: { value: 1 }, uFlicker: { value: 1 }, uAmbient: { value: AMBIENT } };
+const lightUniforms = { uDay: { value: 1 }, uFlicker: { value: 1 }, uAmbient: { value: AMBIENT }, uTints: { value: TINTS.map((c) => new THREE.Vector3(...c)) } };
 function addTorchLight(mat) {
   mat.onBeforeCompile = (shader) => {
     Object.assign(shader.uniforms, lightUniforms);
-    shader.vertexShader = 'attribute float torch;\nattribute float sky;\nvarying float vTorch;\nvarying float vSky;\n' + shader.vertexShader
-      .replace('#include <color_vertex>', '#include <color_vertex>\nvTorch = torch;\nvSky = sky;');
-    shader.fragmentShader = 'uniform float uDay;\nuniform float uFlicker;\nuniform float uAmbient;\nvarying float vTorch;\nvarying float vSky;\n' + shader.fragmentShader
+    // torch light comes in as brightness + 2 x its colour (see TINTS): decoded here, per vertex
+    shader.vertexShader = `attribute float torch;\nattribute float sky;\nvarying vec3 vTorchC;\nvarying float vSky;\nuniform vec3 uTints[${TINTS.length}];\n` + shader.vertexShader
+      .replace('#include <color_vertex>', '#include <color_vertex>\nfloat tintI = floor(torch * 0.5);\nvTorchC = (torch - tintI * 2.0) * uTints[int(tintI)];\nvSky = sky;');
+    shader.fragmentShader = 'uniform float uDay;\nuniform float uFlicker;\nuniform float uAmbient;\nvarying vec3 vTorchC;\nvarying float vSky;\n' + shader.fragmentShader
       .replace('#include <color_fragment>',
-        '#include <color_fragment>\ndiffuseColor.rgb *= max(vec3(max(uDay * vSky, uAmbient)), vTorch * uFlicker * vec3(1.0, 0.86, 0.66));');
+        '#include <color_fragment>\ndiffuseColor.rgb *= max(vec3(max(uDay * vSky, uAmbient)), vTorchC * uFlicker);');
   };
 }
 addTorchLight(material);
@@ -218,6 +221,7 @@ const carts = new Carts(scene); // minecarts on rails
 let riding = null; // the minecart you're sitting in
 const minimap = new MiniMap($('map'), atlasCanvas);
 const frames = new Frames(scene, icons); // what's shown in each item frame
+const paintings = new Paintings(scene); // the pictures in paintings
 const weather = new Weather(scene);
 const bees = new Bees(scene, sound);
 let ridingMob = null; // the camel you're riding
@@ -1222,8 +1226,8 @@ function toggleDoor(x, y, z, force = false) {
   const d = BLOCKS[world.get(x, y, z)];
   const by = d.upper ? y - 1 : y; // the bottom half
   if (!force && !d.open && (player.overlapsBlock(x, by, z) || player.overlapsBlock(x, by + 1, z))) return; // don't shut it on yourself
-  world.setBlock(x, by, z, doorId(d.facing, !d.open, false));
-  if (isDoor(world.get(x, by + 1, z))) world.setBlock(x, by + 1, z, doorId(d.facing, !d.open, true));
+  world.setBlock(x, by, z, doorId(d.facing, !d.open, false, d.doorBase));
+  if (isDoor(world.get(x, by + 1, z))) world.setBlock(x, by + 1, z, doorId(d.facing, !d.open, true, d.doorBase));
   sound.door(!d.open);
 }
 
@@ -2139,13 +2143,13 @@ function place() {
     if (there !== AIR || target.ny !== 1 || !(target.id === SUGAR_CANE || (ground && waterBeside(target.x, target.y, target.z)))) {
       toast('Sugar cane needs sand, grass or dirt right next to water'); return;
     }
-  } else if (id === DOOR) {
+  } else if (isDoor(id)) {
     // a door stands on a block and takes two spaces; it faces you
     if (there !== AIR || target.ny !== 1 || world.get(x, y + 1, z) !== AIR) { toast('A door needs two free spaces on top of a block'); return; }
     if (player.overlapsBlock(x, y, z) || player.overlapsBlock(x, y + 1, z)) return;
     const f = facingTowardPlayer(x, z);
-    world.setBlock(x, y, z, doorId(f, false, false));
-    world.setBlock(x, y + 1, z, doorId(f, false, true));
+    world.setBlock(x, y, z, doorId(f, false, false, id));
+    world.setBlock(x, y + 1, z, doorId(f, false, true, id));
     sound.place('wood');
     inventory.consumeHeld();
     return;
@@ -2160,6 +2164,30 @@ function place() {
     world.setBlock(hx, y, hz, BED + f);
     sound.place('wool');
     inventory.consumeHeld();
+    return;
+  } else if (id === LANTERN || id === CHANDELIER) {
+    // a lantern stands on a block or hangs under one; a chandelier hangs from a ceiling
+    if (there !== AIR || !BLOCKS[target.id].solid || target.ny === 0 || (id === CHANDELIER && target.ny !== -1)) {
+      toast(id === CHANDELIER ? 'A chandelier hangs from the underside of a block' : 'A lantern stands on a block or hangs under one'); return;
+    }
+    world.setBlock(x, y, z, id === LANTERN && target.ny === -1 ? HANGING_LANTERN : id);
+    sound.place('stone');
+    inventory.consumeHeld();
+    return;
+  } else if (id === PAINTING) {
+    // hung on the side of a block: the biggest picture that fits there (a random one of those)
+    if (there !== AIR || !BLOCKS[target.id].solid || target.ny !== 0) { toast('Paintings hang on the side of a block'); return; }
+    const f = FACING_DIRS.findIndex(([dx, dz]) => dx === target.nx && dz === target.nz);
+    const fits = (a) => paintingCells(x, y, z, f, ART[a].w, ART[a].h).every(([cx, cy, cz]) => (cx === x && cy === y && cz === z) ||
+      (world.get(cx, cy, cz) === AIR && world.isSolid(cx - target.nx, cy, cz - target.nz)));
+    const ok = ART.map((a, i) => i).filter(fits);
+    const big = Math.max(...ok.map((a) => ART[a].w * ART[a].h));
+    const pick = ok.filter((a) => ART[a].w * ART[a].h === big);
+    const art = pick[Math.floor(Math.random() * pick.length)];
+    world.setBlock(x, y, z, PAINTING + art * 4 + f);
+    sound.place('wood');
+    inventory.consumeHeld();
+    toast(`"${ART[art].name}"`, 1500);
     return;
   } else if (id === SWITCH_RAIL) {
     if (there !== AIR || target.ny !== 1 || !BLOCKS[target.id].solid) { toast('Rails go on top of a block'); return; }
@@ -2314,7 +2342,7 @@ function removeFuse(k, f) {
   fuses.delete(k);
 }
 const blastable = (def) => def && !def.blastproof && !def.liquid && !def.station && !def.kinetic && def.hardness !== Infinity &&
-  (def.shape === 'cube' || def.shape === 'cross' || def.shape === 'torch' || def.climb || def.sign || def.slab || def.stair || def.shape === 'fence' || def.shape === 'pane');
+  (def.shape === 'cube' || def.shape === 'cross' || def.shape === 'torch' || def.climb || def.sign || def.slab || def.stair || def.shape === 'fence' || def.shape === 'pane' || def.shape === 'wall');
 function explode(x, y, z) {
   world.setBlock(x, y, z, AIR);
   const R = BLAST_RADIUS, gathered = new Map();
@@ -2450,7 +2478,7 @@ function breakBlock(x, y, z) {
     // either half takes the whole door with it
     const oy = def.upper ? y - 1 : y + 1;
     if (isDoor(world.get(x, oy, z))) world.setBlock(x, oy, z, AIR);
-    drops = [[DOOR, 1]];
+    drops = [[def.doorBase, 1]];
   }
   if (isLamp(id)) lamps.delete(lampKey(x, y, z));
   if (isSign(id)) signs.remove(x, y, z);
@@ -2567,7 +2595,7 @@ function dropUnsupported(x, y, z) {
   } else if (isDoor(above) && !BLOCKS[above].upper) {
     world.setBlock(x, y + 1, z, AIR);
     if (isDoor(world.get(x, y + 2, z))) world.setBlock(x, y + 2, z, AIR);
-    inventory.add(DOOR, 1);
+    inventory.add(BLOCKS[above].doorBase, 1);
   }
   for (let ty = y + 1; ty < H; ty++) {
     const id = world.get(x, ty, z);
@@ -2853,6 +2881,7 @@ function stepGame(now, dt) {
     machines.tick(paused ? 0 : dt, world, kinetics, stations, { day: lightUniforms.uDay.value, flicker: lightUniforms.uFlicker.value, ambient: lightUniforms.uAmbient.value });
   } catch (err) { reportError(err); }
   frames.update(dt, world, { day: lightUniforms.uDay.value, flicker: lightUniforms.uFlicker.value, ambient: lightUniforms.uAmbient.value });
+  paintings.update(dt, world, { day: lightUniforms.uDay.value, flicker: lightUniforms.uFlicker.value, ambient: lightUniforms.uAmbient.value });
   signs.update(dt, world, { day: lightUniforms.uDay.value, flicker: lightUniforms.uFlicker.value, ambient: lightUniforms.uAmbient.value });
   coordsTimer -= dt;
   if (coordsTimer <= 0) {
@@ -2921,5 +2950,5 @@ window.minicraft = {
   arrows, fishing, kinetics, bees, catchAt, seasonOf, applySeason, set day(v) { day = v; applySeason(); }, frames, signalAt, setSwitch, machines, carts, minimap, signs, armour, damage, placeRail, getInCart, getOutOfCart,
   get riding() { return riding; }, explode, lightFuse, fuses, clockTime, compassText, place, editSign, closeSign, openInventory, closeInventory, chestMove, lamps, tickLamps, sleepUntilMorning, stations, openStation, closeStation,
   get caneToday() { return caneToday; }, get waypoints() { return waypoints; }, toggleWaypoint, sortSlots, weather, openTrade, closeTrade, mountMob, dismount, get ridingMob() { return ridingMob; }, effects, armourWear, useAnvil, rollLoot, settings,
-  get bedSpawn() { return bedSpawn; }, placeSwitchRail, signalAt, ailments, armourEnch, openAltar, lairNear, useBed, eat, drinkTea,
+  get bedSpawn() { return bedSpawn; }, paintings, placeSwitchRail, signalAt, ailments, armourEnch, openAltar, lairNear, useBed, eat, drinkTea,
 };
