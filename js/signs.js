@@ -2,7 +2,7 @@
 // Texts are kept here by position (and saved with the world); a panel is made for every sign
 // in the loaded part of the world, and lit like the blocks around it.
 import * as THREE from 'three';
-import { BLOCKS, FACING_DIRS, isSign } from './blocks.js';
+import { BLOCKS, FACING_DIRS, isSign, COLORS } from './blocks.js';
 import { skyBrightness, lightBrightness } from './world.js';
 
 export const SIGN_LINES = 4, SIGN_CHARS = 16;
@@ -17,7 +17,8 @@ export class Signs {
   constructor(scene) {
     this.scene = scene;
     this.texts = new Map(); // "x,y,z" -> text
-    this.panels = new Map(); // "x,y,z" -> { mesh, text, id }
+    this.colors = new Map(); // "x,y,z" -> COLORS index of the writing (dyed signs)
+    this.panels = new Map(); // "x,y,z" -> { mesh, text, id, color }
     this.timer = 0;
   }
 
@@ -28,7 +29,10 @@ export class Signs {
     if (t) this.texts.set(key(x, y, z), t); else this.texts.delete(key(x, y, z));
   }
 
-  remove(x, y, z) { this.texts.delete(key(x, y, z)); }
+  remove(x, y, z) { this.texts.delete(key(x, y, z)); this.colors.delete(key(x, y, z)); }
+
+  // Dye the writing on a sign.
+  setColor(x, y, z, c) { if (c === 1) this.colors.delete(key(x, y, z)); else this.colors.set(key(x, y, z), c); }
 
   // Keep a panel for every sign with text in the loaded world, lit like its block.
   update(dt, world, light) {
@@ -37,7 +41,7 @@ export class Signs {
       this.timer = 0.25;
       for (const [k, p] of this.panels) {
         const [x, y, z] = k.split(',').map(Number);
-        if (this.texts.get(k) !== p.text || world.get(x, y, z) !== p.id || !world.chunkAt(x, z)) this.drop(k, p);
+        if (this.texts.get(k) !== p.text || (this.colors.get(k) ?? 1) !== p.color || world.get(x, y, z) !== p.id || !world.chunkAt(x, z)) this.drop(k, p);
       }
       for (const [k, text] of this.texts) {
         if (this.panels.has(k)) continue;
@@ -45,7 +49,7 @@ export class Signs {
         if (!world.chunkAt(x, z)) continue;
         const id = world.get(x, y, z);
         if (!isSign(id)) { this.texts.delete(k); continue; }
-        this.panels.set(k, this.make(x, y, z, id, text));
+        this.panels.set(k, this.make(x, y, z, id, text, this.colors.get(k) ?? 1));
       }
     }
     for (const [k, p] of this.panels) {
@@ -56,12 +60,13 @@ export class Signs {
     }
   }
 
-  make(x, y, z, id, text) {
+  make(x, y, z, id, text, color = 1) {
     const def = BLOCKS[id];
     const c = document.createElement('canvas');
     c.width = 256; c.height = 128;
     const ctx = c.getContext('2d');
-    ctx.fillStyle = '#2b1a0c';
+    const rgb = color === 1 ? [43, 26, 12] : COLORS[color].rgb;
+    ctx.fillStyle = `rgb(${rgb.join(',')})`;
     ctx.font = 'bold 26px sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
@@ -77,7 +82,7 @@ export class Signs {
     mesh.position.set(x + 0.5 + fx * out, y + (def.post ? 12 / 16 : 0.5), z + 0.5 + fz * out);
     mesh.rotation.y = Math.atan2(fx, fz);
     this.scene.add(mesh);
-    return { mesh, text, id };
+    return { mesh, text, id, color };
   }
 
   drop(k, p) {
@@ -91,12 +96,17 @@ export class Signs {
   clear() {
     for (const [k, p] of this.panels) this.drop(k, p);
     this.texts.clear();
+    this.colors.clear();
   }
 
-  serialize() { return [...this.texts]; }
+  serialize() { return [...this.texts].map(([k, t]) => (this.colors.has(k) ? [k, t, this.colors.get(k)] : [k, t])); }
 
   load(list) {
     this.clear();
-    for (const [k, t] of list ?? []) if (typeof k === 'string' && typeof t === 'string') this.texts.set(k, cleanSignText(t));
+    for (const [k, t, c] of list ?? []) {
+      if (typeof k !== 'string' || typeof t !== 'string') continue;
+      this.texts.set(k, cleanSignText(t));
+      if (Number.isInteger(c) && COLORS[c]) this.colors.set(k, c);
+    }
   }
 }

@@ -723,7 +723,7 @@ export class MobManager {
     const ax = Math.floor(m.pos.x + Math.sign(dx) * (hw + 0.3)), az = Math.floor(m.pos.z + Math.sign(dz) * (hw + 0.3));
     const fy = Math.floor(m.pos.y + 0.01);
     for (let k = 1; k <= Math.ceil(m.spec.h); k++) if (w.isSolid(ax, fy + k, az)) return false;
-    return w.isSolid(ax, fy, az);
+    return w.isSolid(ax, fy, az) && !w.isTall(ax, fy, az); // nothing hops a fence
   }
 
   move(m, dt) {

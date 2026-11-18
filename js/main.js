@@ -12,6 +12,8 @@ import {
   RAIL, POWERED_RAIL, MINECART, MAP, ICE, isRail, railId,
   LAVA, BLAST_CHARGE, LEAD_BUCKET, LAVA_BUCKET, GOLD_CLOCK, COMPASS, SILVER_ARROW, MIRROR_LAMP, WEIGHTED_ROD, isRod, metalTool, TOOL_MATERIALS,
   isBlock, isTorch, isWheat, itemName, breakTime, dropsFor, foodValue,
+  COLORS, DYE, WOOL, dyedWool, dyedCarpet, DYED_WOOL, DYED_CARPET, STAINED_GLASS, PAINTED_PLANKS, GLASS, PLANKS,
+  isFlower, isSlab, slabId, SHAPE_MATS, FENCE_GATE, TRAPDOOR, isGate, isTrapdoor,
 } from './blocks.js';
 import { createAtlas, createIcons, createCrackCanvases, createWaterCanvas, createHudIcons } from './textures.js';
 import { World, CHUNK, WORLD_SIZE, chunkKey } from './world.js';
@@ -1085,6 +1087,40 @@ function toggleCurtain(x, y, z) {
   sound.swish();
 }
 
+// Fence gates and trapdoors swing open and shut when tapped (or switched: see signals).
+function toggleHatch(x, y, z, open) {
+  const d = BLOCKS[world.get(x, y, z)];
+  const want = open ?? !d.open;
+  if (want === d.open) return;
+  const base = d.gate ? FENCE_GATE + d.axis : TRAPDOOR + d.facing;
+  world.setBlock(x, y, z, base + (want ? (d.gate ? 2 : 4) : 0));
+  sound.door(want);
+}
+
+const isCarpet = (id) => id === CARPET || (id > DYED_CARPET && id <= DYED_CARPET + 9);
+// Tap a block holding a dye to colour it: wool, carpet, glass and planks (plain or already coloured),
+// or the writing on a sign. Returns true if it took the dye.
+function dyeBlock(x, y, z, c) {
+  const id = world.get(x, y, z), def = BLOCKS[id];
+  let to = 0;
+  if (isSign(id)) {
+    signs.setColor(x, y, z, c);
+    inventory.consumeHeld();
+    sound.pop();
+    toast(`The writing is ${COLORS[c].name.toLowerCase()} now`, 1500);
+    return true;
+  }
+  if (id === WOOL || (id > DYED_WOOL && id <= DYED_WOOL + 9)) to = dyedWool(c);
+  else if (isCarpet(id)) to = dyedCarpet(c);
+  else if (id === GLASS || (id >= STAINED_GLASS && id < STAINED_GLASS + 10)) to = STAINED_GLASS + c;
+  else if (id === PLANKS || (id >= PAINTED_PLANKS && id < PAINTED_PLANKS + 10)) to = PAINTED_PLANKS + c;
+  if (!to || to === id) return false;
+  world.setBlock(x, y, z, to);
+  inventory.consumeHeld();
+  sound.place(def.sound);
+  return true;
+}
+
 const lampKey = (x, y, z) => `${x},${y},${z}`;
 function lampDaysLeft(x, y, z) {
   const fuel = BLOCKS[world.get(x, y, z)].fuel;
@@ -1269,6 +1305,8 @@ function place() {
     if (isBed(tid)) { useBed(tx, ty, tz); return; }
     if (isDoor(tid)) { toggleDoor(tx, ty, tz); return; }
     if (isCurtain(tid)) { toggleCurtain(tx, ty, tz); return; }
+    if (isGate(tid) || isTrapdoor(tid)) { toggleHatch(tx, ty, tz); return; }
+    if (held && ITEMS[held.id]?.dye !== undefined && dyeBlock(tx, ty, tz, ITEMS[held.id].dye)) return;
     if (isLamp(tid)) { useLamp(tx, ty, tz, held); return; }
     if (isSign(tid)) { editSign(tx, ty, tz); return; }
     if (tid === BLAST_CHARGE) { lightFuse(tx, ty, tz); toast('The fuse is lit! Stand back…', 1500); return; }
@@ -1316,6 +1354,25 @@ function place() {
   } else if (isWheat(id)) {
     // seeds go on top of grass or dirt
     if (there !== AIR || target.ny !== 1 || (target.id !== GRASS && target.id !== DIRT)) { toast('Plant seeds on top of grass or dirt'); return; }
+  } else if (isFlower(id)) {
+    if (there !== AIR || target.ny !== 1 || (target.id !== GRASS && target.id !== DIRT)) { toast('Plant flowers on top of grass or dirt'); return; }
+  } else if (isSlab(id)) {
+    // a slab onto a slab of the same kind makes the full block; otherwise it goes in the top or bottom
+    // half of the space, by where on the block you tap
+    const s = BLOCKS[id].slab;
+    const tslab = BLOCKS[target.id].slab;
+    if (tslab && tslab.mat === s.mat && ((target.ny === 1 && !tslab.top) || (target.ny === -1 && tslab.top))) {
+      world.setBlock(target.x, target.y, target.z, SHAPE_MATS[s.mat].full);
+      sound.place(BLOCKS[id].sound);
+      inventory.consumeHeld();
+      return;
+    }
+    const hitY = player.eye.y + player.lookDir().y * target.t - target.y;
+    const top = target.ny === -1 || (target.ny === 0 && hitY > 0.5);
+    if (there !== AIR && !isWaterId(there)) return;
+    const half = BLOCKS[slabId(s.mat, top)].boxes[0];
+    if (player.overlapsBlock(x, y + half[1] / 16, z) && player.pos.y < y + half[4] / 16 && player.pos.y + 1.8 > y + half[1] / 16) return;
+    id = slabId(s.mat, top);
   } else if (id === SAPLING) {
     if (there !== AIR || target.ny !== 1 || (target.id !== GRASS && target.id !== DIRT)) { toast('Plant saplings on top of grass or dirt'); return; }
   } else if (id === SUGAR_CANE) {
@@ -1364,7 +1421,7 @@ function place() {
     inventory.consumeHeld();
     if (isSign(id)) editSign(x, y, z);
     return;
-  } else if (id === LAMP || id === MIRROR_LAMP || id === CARPET) {
+  } else if (id === LAMP || id === MIRROR_LAMP || isCarpet(id)) {
     if (there !== AIR || !world.isSolid(x, y - 1, z)) { toast(`${BLOCKS[id].name}s need something solid underneath`); return; }
   } else {
     // chairs face you; curtains hang across your line of sight
@@ -1374,6 +1431,9 @@ function place() {
     else if (id === HOPPER) id += target.ny === 1 ? 4 : FACING_DIRS.findIndex(([dx, dz]) => dx === -target.nx && dz === -target.nz); // into the block you tapped
     else if (BLOCKS[id].kinetic) id = kineticVariant(id);
     else if (id === CURTAIN) id += facingTowardPlayer(x, z) % 2; // facing 0/2 -> hangs across x, 1/3 -> across z
+    else if (BLOCKS[id].stair) id += facingTowardPlayer(x, z); // you walk up them away from you
+    else if (id === FENCE_GATE) id += facingTowardPlayer(x, z) % 2; // across your way
+    else if (id === TRAPDOOR) id += target.ny === 0 ? FACING_DIRS.findIndex(([dx, dz]) => dx === -target.nx && dz === -target.nz) : (facingTowardPlayer(x, z) + 2) % 4; // hinged on the block you tap
     if (BLOCKS[id].solid && player.overlapsBlock(x, y, z)) return;
   }
   world.setBlock(x, y, z, id);
@@ -1474,7 +1534,7 @@ function removeFuse(k, f) {
   fuses.delete(k);
 }
 const blastable = (def) => def && !def.blastproof && !def.liquid && !def.station && !def.kinetic && def.hardness !== Infinity &&
-  (def.shape === 'cube' || def.shape === 'cross' || def.shape === 'torch' || def.climb || def.sign);
+  (def.shape === 'cube' || def.shape === 'cross' || def.shape === 'torch' || def.climb || def.sign || def.slab || def.stair || def.shape === 'fence' || def.shape === 'pane');
 function explode(x, y, z) {
   world.setBlock(x, y, z, AIR);
   const R = BLAST_RADIUS, gathered = new Map();
@@ -1704,7 +1764,7 @@ function dropUnsupported(x, y, z) {
   if (isRail(above)) {
     world.setBlock(x, y + 1, z, AIR);
     inventory.add(BLOCKS[above].drop, 1);
-  } else if (isLamp(above) || above === CARPET) {
+  } else if (isLamp(above) || isCarpet(above)) {
     lamps.delete(lampKey(x, y + 1, z));
     world.setBlock(x, y + 1, z, AIR);
     inventory.add(BLOCKS[above].drop, 1);
@@ -1715,7 +1775,7 @@ function dropUnsupported(x, y, z) {
   }
   for (let ty = y + 1; ty < H; ty++) {
     const id = world.get(x, ty, z);
-    if (!isWheat(id) && id !== SUGAR_CANE && id !== SAPLING) break;
+    if (!isWheat(id) && id !== SUGAR_CANE && id !== SAPLING && !isFlower(id)) break;
     for (const [d, n] of dropsFor(id, 0)) inventory.add(d, n);
     world.setBlock(x, ty, z, AIR);
     if (id !== SUGAR_CANE) break;

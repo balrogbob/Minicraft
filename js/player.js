@@ -53,21 +53,43 @@ export class Player {
       by + 1 > p.y && by < p.y + HEIGHT;
   }
 
-  // Move along one axis and resolve collisions. Returns true if blocked.
-  moveAxis(axis, delta) {
+  // The collision boxes of every block cell around the player's box (fences poke up into the cell above).
+  nearbyBoxes() {
+    const p = this.pos, out = [];
+    const x0 = Math.floor(p.x - HALF - 0.5), x1 = Math.floor(p.x + HALF + 0.5);
+    const z0 = Math.floor(p.z - HALF - 0.5), z1 = Math.floor(p.z + HALF + 0.5);
+    const y0 = Math.floor(p.y) - 1, y1 = Math.floor(p.y + HEIGHT + 0.6);
+    for (let y = y0; y <= y1; y++) for (let z = z0; z <= z1; z++) for (let x = x0; x <= x1; x++) {
+      const b = this.world.collisionBoxes(x, y, z);
+      if (b) out.push(...b);
+    }
+    return out;
+  }
+
+  // Does the player's box (feet at y) overlap any of these boxes?
+  hits(boxes, y = this.pos.y) {
+    const p = this.pos;
+    return boxes.some((b) => b[3] > p.x - HALF && b[0] < p.x + HALF && b[5] > p.z - HALF && b[2] < p.z + HALF && b[4] > y && b[1] < y + HEIGHT);
+  }
+
+  // Move along one axis and resolve collisions. Returns true if blocked. Walking on the ground into
+  // something no more than half a block high (a slab or a stair) steps up onto it.
+  moveAxis(axis, delta, canStep = false) {
     if (!delta) return false;
     const p = this.pos;
     p[axis] += delta;
-    const x0 = Math.floor(p.x - HALF), x1 = Math.floor(p.x + HALF - 1e-6);
-    const y0 = Math.floor(p.y), y1 = Math.floor(p.y + HEIGHT - 1e-6);
-    const z0 = Math.floor(p.z - HALF), z1 = Math.floor(p.z + HALF - 1e-6);
-    for (let y = y0; y <= y1; y++) for (let z = z0; z <= z1; z++) for (let x = x0; x <= x1; x++) {
-      if (!this.world.isSolid(x, y, z)) continue;
-      if (axis === 'x') p.x = delta > 0 ? x - HALF - 1e-4 : x + 1 + HALF + 1e-4;
-      else if (axis === 'z') p.z = delta > 0 ? z - HALF - 1e-4 : z + 1 + HALF + 1e-4;
-      else {
-        if (delta < 0) { p.y = y + 1; this.onGround = true; } else p.y = y - HEIGHT - 1e-4;
+    const boxes = this.nearbyBoxes();
+    const eps = 1e-4;
+    for (const b of boxes) {
+      if (!(b[3] > p.x - HALF && b[0] < p.x + HALF && b[5] > p.z - HALF && b[2] < p.z + HALF && b[4] > p.y && b[1] < p.y + HEIGHT)) continue;
+      if (axis === 'y') {
+        if (delta < 0) { p.y = b[4]; this.onGround = true; } else p.y = b[1] - HEIGHT - eps;
+        return true;
       }
+      const rise = b[4] - p.y;
+      if (canStep && rise > 0 && rise <= 0.55 && !this.hits(boxes, b[4] + eps)) { p.y = b[4] + eps; continue; }
+      if (axis === 'x') p.x = delta > 0 ? b[0] - HALF - eps : b[3] + HALF + eps;
+      else p.z = delta > 0 ? b[2] - HALF - eps : b[5] + HALF + eps;
       return true;
     }
     return false;
@@ -107,8 +129,8 @@ export class Player {
     const h = dt / steps;
     for (let i = 0; i < steps; i++) {
       const wasGround = this.onGround;
-      const bx = this.moveAxis('x', this.vel.x * h);
-      const bz = this.moveAxis('z', this.vel.z * h);
+      const bx = this.moveAxis('x', this.vel.x * h, wasGround);
+      const bz = this.moveAxis('z', this.vel.z * h, wasGround);
       this.onGround = false;
       if (this.moveAxis('y', this.vel.y * h)) this.vel.y = 0;
       // auto-jump: walked into a 1-high step with headroom above it
@@ -129,7 +151,7 @@ export class Player {
     if (Math.abs(wx) > 0.2) cells.push([ax, Math.floor(this.pos.z)]);
     if (Math.abs(wz) > 0.2) cells.push([Math.floor(this.pos.x), az]);
     return cells.some(([x, z]) =>
-      w.isSolid(x, fy, z) && !w.isSolid(x, fy + 1, z) && !w.isSolid(x, fy + 2, z) &&
+      w.isSolid(x, fy, z) && w.collisionBoxes(x, fy, z)?.every((b) => b[4] <= fy + 1) && !w.isSolid(x, fy + 1, z) && !w.isSolid(x, fy + 2, z) &&
       !w.isSolid(Math.floor(this.pos.x), fy + 2, Math.floor(this.pos.z)));
   }
 }

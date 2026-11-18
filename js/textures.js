@@ -12,6 +12,7 @@ import {
   PLATE_METALS, PLATES,
   PIPE, SPOUT, BELT, HOPPER, WINDMILL, FILAMENT, DRILL_BIT,
   RAIL, POWERED_RAIL, CACTUS, MINECART, MAP, PAPER,
+  COLORS, DYE,
   SALTPETRE, GUNPOWDER, LEAD_SINKER, WEIGHTED_ROD, LEAD_BUCKET, LAVA_BUCKET, GOLD_CLOCK, COMPASS, SILVER_ARROW, MIRROR_LAMP,
 } from './blocks.js';
 
@@ -559,6 +560,71 @@ Object.assign(P, {
   },
   [T.GOLD](t) { for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) t.set(x, y, t.vary(shade([250, 210, 70], 0.88 + 0.12 * Math.sin((x - y) * 0.7)), 0.04)); },
 });
+
+// ----- colour, flowers and building -----
+// Paint a base tile, then tint every pixel toward a dye colour by its brightness.
+function tinted(base, rgb, ref) {
+  return (t) => {
+    P[base](t);
+    for (let i = 0; i < t.d.length; i += 4) {
+      if (!t.d[i + 3]) continue;
+      const k = (t.d[i] + t.d[i + 1] + t.d[i + 2]) / 3 / ref;
+      t.d[i] = clamp(rgb[0] * k); t.d[i + 1] = clamp(rgb[1] * k); t.d[i + 2] = clamp(rgb[2] * k);
+    }
+  };
+}
+COLORS.forEach((c, i) => {
+  if (i) P[T.DYED_WOOL + i] = tinted(T.WOOL, c.rgb, 228);
+  P[T.PAINTED + i] = tinted(T.PLANKS, c.rgb, 150);
+  // stained glass: a coloured frame and a fine coloured mesh you can see through
+  P[T.STAINED + i] = (t) => {
+    for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+      const edge = x === 0 || y === 0 || x === 15 || y === 15;
+      if (edge) t.set(x, y, t.vary(shade(c.rgb, 0.8), 0.06));
+      else if ((x + y) % 2 === 0 && (y % 4 !== 2)) t.set(x, y, t.vary(c.rgb, 0.08));
+      else if (x + y === 8 && x > 2 && x < 6) t.set(x, y, [240, 248, 255]);
+      else t.set(x, y, [0, 0, 0], 0);
+    }
+  };
+});
+// flowers: a green stem and leaves under a bloom
+const BLOOMS = [
+  { petal: [206, 40, 36], eye: [30, 24, 20], shape: 'cup' }, // poppy
+  { petal: [246, 206, 40], eye: [226, 150, 30], shape: 'round' }, // dandelion
+  { petal: [70, 110, 222], eye: [40, 50, 120], shape: 'star' }, // cornflower
+  { petal: [150, 104, 206], eye: [120, 76, 176], shape: 'spike' }, // lavender
+  { petal: [248, 248, 244], eye: [240, 200, 50], shape: 'star' }, // daisy
+];
+BLOOMS.forEach((b, i) => {
+  P[T.FLOWER0 + i] = (t) => {
+    for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) t.set(x, y, [0, 0, 0], 0);
+    const top = b.shape === 'spike' ? 3 : 6;
+    for (let y = top + 2; y < TILE; y++) t.set(7, y, t.vary([70, 140, 50], 0.1));
+    t.set(6, 11, [80, 156, 56]); t.set(5, 10, [80, 156, 56]); t.set(8, 12, [80, 156, 56]); t.set(9, 11, [80, 156, 56]);
+    if (b.shape === 'spike') {
+      for (let y = 1; y < 9; y++) { t.set(7, y, t.vary(b.petal, 0.15)); if (y % 2) { t.set(6, y, t.vary(b.petal, 0.15)); t.set(8, y + 1, t.vary(b.eye, 0.1)); } }
+      return;
+    }
+    const cx = 7.5, cy = top;
+    for (let y = cy - 4; y <= cy + 3; y++) for (let x = 3; x <= 12; x++) {
+      const dx = x - cx, dy = y - cy, d = Math.hypot(dx, dy);
+      let on = d < 3.4;
+      if (b.shape === 'star') on = d < 3.6 && (Math.abs(dx) < 1 || Math.abs(dy) < 1 || Math.abs(Math.abs(dx) - Math.abs(dy)) < 1);
+      if (b.shape === 'cup') on = d < 3.5 && dy > -3;
+      if (on) t.set(x, y, d < 1.2 ? b.eye : t.vary(b.petal, 0.1));
+    }
+  };
+});
+P[T.TRAPDOOR] = (t) => {
+  P[T.PLANKS](t);
+  for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+    const frame = x < 2 || y < 2 || x > 13 || y > 13;
+    const hole = !frame && (x === 5 || x === 10) && y > 3 && y < 12;
+    if (frame) t.set(x, y, t.vary([126, 92, 54], 0.06));
+    else if (hole) t.set(x, y, [0, 0, 0], 0);
+  }
+  for (const x of [3, 12]) for (const y of [3, 12]) t.set(x, y, [70, 70, 76]); // nails
+};
 
 // A plank door: a frame with a centre board; the upper half has a four-pane window you can see through,
 // the lower half has the handle.
@@ -1272,16 +1338,53 @@ Object.assign(ITEM_PAINTERS, {
   },
 });
 
+COLORS.forEach((c, i) => { ITEM_PAINTERS[DYE + i] = dustPainter(c.rgb); });
+
+// An isometric drawing of a model block (furniture, stairs, fences...) for blocks with no painted icon,
+// matching drawIsoBlock: +z faces to the left, +x faces to the right.
+function drawIsoModel(ctx, atlas, model) {
+  const S = (x, y, z) => [4 + 28 * x + 28 * (1 - z), 18 + 14 * x - 14 * (1 - z) + 28 * (1 - y)];
+  const boxes = [...model].sort((a, b) => (a[0] + a[3] + a[1] + a[4] + a[2] + a[5]) - (b[0] + b[3] + b[1] + b[4] + b[2] + b[5]));
+  const k = 1 / 16;
+  for (const [x0, y0, z0, x1, y1, z1, tiles] of boxes) {
+    const tileOf = (f) => (typeof tiles === 'number' ? tiles : tiles[f]);
+    const face = (tile, m, sx, sy, sw, sh, shadeAmt) => {
+      if (sw <= 0 || sh <= 0) return;
+      const c = document.createElement('canvas');
+      c.width = c.height = 64;
+      const l = c.getContext('2d');
+      l.imageSmoothingEnabled = false;
+      l.setTransform(...m);
+      const tx = (tile % ATLAS_COLS) * TILE, ty = Math.floor(tile / ATLAS_COLS) * TILE;
+      l.drawImage(atlas, tx + sx, ty + sy, sw, sh, sx, sy, sw, sh);
+      if (shadeAmt) { l.globalCompositeOperation = 'source-atop'; l.fillStyle = `rgba(0,0,0,${shadeAmt})`; l.fillRect(sx, sy, sw, sh); }
+      ctx.drawImage(c, 0, 0);
+    };
+    // top (y = y1): tile u = x, v = z
+    let o = S(0, y1 * k, 0);
+    face(tileOf('top'), [28 * k, 14 * k, -28 * k, 14 * k, o[0], o[1]], x0, z0, x1 - x0, z1 - z0, 0);
+    // front (+z, z = z1): tile u = x, v = 16 - y
+    o = S(0, 1, z1 * k);
+    face(tileOf('side'), [28 * k, 14 * k, 0, 28 * k, o[0], o[1]], x0, 16 - y1, x1 - x0, y1 - y0, 0.25);
+    // right (+x, x = x1): tile u = 16 - z, v = 16 - y
+    o = S(x1 * k, 1, 1);
+    face(tileOf('side'), [28 * k, -14 * k, 0, 28 * k, o[0], o[1]], 16 - z1, 16 - y1, z1 - z0, y1 - y0, 0.45);
+  }
+}
+
 // Returns { id: dataURL } for every block and item.
 export function createIcons(atlas) {
   const icons = {};
   for (const def of BLOCKS) {
-    if (!def || !isBlock(def.id) || def.shape === 'torch' || def.shape === 'model' || def.shape === 'kinetic' || def.shape === 'pipe') continue; // (those have painted icons)
+    if (!def || !isBlock(def.id) || def.shape === 'torch' || def.shape === 'kinetic' || def.shape === 'pipe') continue; // (those have painted icons)
+    if (def.model && ITEM_PAINTERS[def.id]) continue;
     const c = document.createElement('canvas');
     c.width = c.height = 64;
     const ctx = c.getContext('2d');
     ctx.imageSmoothingEnabled = false;
-    if (def.shape === 'cross') {
+    if (def.model) {
+      drawIsoModel(ctx, atlas, def.model);
+    } else if (def.shape === 'cross') {
       // plants show their flat sprite, like an item
       ctx.drawImage(atlas, (def.side % ATLAS_COLS) * TILE, Math.floor(def.side / ATLAS_COLS) * TILE, TILE, TILE, 0, 0, 64, 64);
     } else {
