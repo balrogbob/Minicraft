@@ -33,6 +33,8 @@ It is designed for Android tablets (touch controls) but also plays with keyboard
   tap with food in hand to eat. If it runs out you're too weak to do more than stagger along
 - Farming: wild wheat grows on the plains and sugar cane on shores. Ripe wheat gives seeds to replant on
   grass or dirt; sugar cane can be replanted next to water. Both grow over time
+- Fishing: cast a fishing rod onto a lake or the sea and wait. When the bobber plunges and splashes,
+  tap quickly to reel in a fish. Raw fish is a small snack; bake it in the oven for a proper meal
 - Cooking: grind wheat into flour and sugar cane into sugar with a mortar and pestle, churn yak milk into
   butter, then bake bread, cookies and cake
 - Torches that light up the area around them with a warm, flickering glow. They stand on floors or hang on walls
@@ -76,6 +78,7 @@ The version number is shown at the bottom of the ☰ menu; bump `GAME_VERSION` i
 | Hit a night creature | Tap it (hold to keep swinging) | Left or right click |
 | Eat (or drink a slime bucket) | Tap with food in hand | Right click |
 | Sleep / open a door or curtain / fuel a lamp | Tap it | Right click |
+| Fish (cast / reel in) | Tap with the fishing rod in hand | Right click |
 | Shoot the bow | Hold to draw, release to shoot (tap: quick shot) | Hold and release left button (right click: quick shot) |
 | Jump / swim up | ⤒ button (auto-jump also steps up 1-block ledges) | Space |
 | Select item | Tap a hotbar slot | 1–9 / mouse wheel |
@@ -114,6 +117,9 @@ You aim with the crosshair in the middle of the screen. Volume, look speed and a
 | Wheat String | 1 slime bucket + 3 wheat (you get the bucket back) | anywhere |
 | Arrow | 1 feather + 1 cobblestone + 1 stick | crafting table |
 | Bow | 3 sticks + 3 wheat string | crafting table |
+| Fishing Rod | 3 sticks + 2 wheat string | crafting table |
+| Raw Fish (2 food) | catch with the fishing rod | — |
+| Baked Fish (6 food) | 1 raw fish | oven |
 | Coal Dust | 1 coal or charcoal, with the mortar (not used up) | anywhere |
 | Slime Fuel | 3 coal dust + 1 slime bucket (the fuel stays in the bucket) | anywhere |
 
@@ -139,6 +145,13 @@ night to sleep until morning (not while a creature is lurking nearby); any tap s
 
 Tap a crafting table or butter churn to open crafting there.
 
+### Fishing
+
+Hold a fishing rod and tap while looking at water to cast the bobber (it flies in an arc, so aim a little
+high to reach further). After a while a fish bites: the bobber dips under and splashes. Tap within about a
+second to reel it in; too slow and it gets away, and you wait for the next one. Tap at any other time to reel
+in empty. The line reels itself in if you put the rod away or walk too far off.
+
 ### Oven and smelter
 
 Tap one to open it, then move ingredients and fuel in from your inventory (tap a slot, then another).
@@ -149,7 +162,7 @@ something is cooking, so whatever's left of a piece waits for the next job.
 
 | Station | Makes |
 | --- | --- |
-| Oven (6 cobblestone + 2 sand) | bread, cookies, cake (see Food above) |
+| Oven (6 cobblestone + 2 sand) | bread, cookies, cake, baked fish (see Food above) |
 | Smelter (8 cobblestone) | cobblestone → stone, sand → glass, log → charcoal |
  The hunger bar holds 20 points (ten loaves).
 
@@ -166,6 +179,7 @@ something is cooking, so whatever's left of a piece waits for the next job.
 | `js/player.js` | Player physics, collision and swimming |
 | `js/mobs.js` | Animals and night creatures: box models, behaviour and hunting, physics, spawning, difficulty |
 | `js/arrows.js` | Arrows and thorns: flight, hits, sticking in blocks, pick-up |
+| `js/fishing.js` | Fishing: the bobber's cast, bites and the line |
 | `js/stations.js` | Ovens and smelters: their contents, fuel, recipes and cooking |
 | `js/sky.js` | Day/night cycle: sky colour, fog, sun, moon, stars, world brightness |
 | `js/sound.js` | Web Audio sound effects |

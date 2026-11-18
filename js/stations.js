@@ -5,7 +5,7 @@
 // Like crops and lamps, a station only works while its part of the world is loaded.
 import {
   COAL, CHARCOAL, LOG, PLANKS, STICK, COBBLE, STONE, SAND, GLASS, SLIME_FUEL, BUCKET,
-  FLOUR, SUGAR, BUTTER, MILK_BUCKET, BREAD, COOKIE, CAKE, BLOCKS, maxStack, stationKind,
+  FLOUR, SUGAR, BUTTER, MILK_BUCKET, BREAD, COOKIE, CAKE, RAW_FISH, BAKED_FISH, BLOCKS, maxStack, stationKind,
 } from './blocks.js';
 
 // How many items (or oven batches) each piece of fuel cooks. Fuel is only used up while something is
@@ -24,6 +24,7 @@ export const STATION_KINDS = {
       { out: [CAKE, 1], in: [[FLOUR, 3], [SUGAR, 3], [BUTTER, 3]], time: 10 },
       { out: [COOKIE, 9], in: [[FLOUR, 3], [SUGAR, 3], [BUTTER, 1]], tools: [MILK_BUCKET], time: 8 },
       { out: [BREAD, 1], in: [[FLOUR, 3]], time: 6 },
+      { out: [BAKED_FISH, 1], in: [[RAW_FISH, 1]], time: 5 },
     ],
   },
   smelter: {
