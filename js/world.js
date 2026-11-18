@@ -3,14 +3,18 @@
 import * as THREE from 'three';
 import {
   BLOCKS, AIR, LEAVES, LOG, DIRT, GRASS, WATER, MAX_LIGHT, SUGAR_CANE, MAX_CANE_HEIGHT,
-  WATER_FLOW, WATER_FALL, isWaterId, isFlowing, waterLevel,
+  WATER_FLOW, WATER_FALL, WATER_WHEEL, isWaterId, isFlowing, waterLevel,
 } from './blocks.js';
+
+// Water wheels let water run through their cell (and over them); see waterAt().
+const isWheel = (id) => id === WATER_WHEEL || id === WATER_WHEEL + 1;
 import { TILE, ATLAS_COLS } from './textures.js';
 import { Generator, CHUNK, H, SEA_LEVEL, WORLD_SIZE, WORLD_CHUNKS, CHUNK_VOLUME, localIndex } from './terrain.js';
 
 export { CHUNK, H, SEA_LEVEL, WORLD_SIZE, WORLD_CHUNKS };
 
 const WATER_TOP = 0.875; // surface sits a little below the block top
+const WHEEL_STREAM = 0.3; // water running through a water wheel's cell is drawn as a shallow stream under it
 
 export const chunkKey = (cx, cz) => cx * WORLD_CHUNKS + cz;
 
@@ -102,6 +106,7 @@ export class World {
     this.pending = new Set(); // chunk keys being loaded from storage
     this.unsaved = new Set(); // chunk keys edited since the last save
     this.flow = []; // cells to re-check for water spreading into them
+    this.wheelWater = new Map(); // packed position -> water id running through a water wheel there
     this.flowTimer = 0;
     this.renderDistance = 6; // in chunks
     this.lastChunk = null;
@@ -147,7 +152,14 @@ export class World {
     return BLOCKS[c.data[localIndex(x, y, z)]]?.solid ?? false;
   }
 
-  isWater(x, y, z) { return isWaterId(this.get(x, y, z)); }
+  isWater(x, y, z) { return isWaterId(this.waterAt(x, y, z)); }
+
+  // The water in a cell: the block itself, except that a water wheel's cell can hold flowing water too
+  // (kept in wheelWater rather than in the block data).
+  waterAt(x, y, z) {
+    const id = this.get(x, y, z);
+    return isWheel(id) ? this.wheelWater.get(pack(x, y, z)) ?? AIR : id;
+  }
 
   lightAt(x, y, z) {
     if (y < 0 || y >= H) return 0;
@@ -174,6 +186,7 @@ export class World {
     if (!c) return;
     const li = localIndex(x, y, z), old = c.data[li];
     c.data[li] = id;
+    if (isWheel(old) && !isWheel(id)) this.wheelWater.delete(pack(x, y, z));
     // losing a log (or a leaf) may leave nearby leaves with nothing holding them up
     if (old === LOG && id !== LOG) this.checkLeavesAround(x, y, z, LEAF_REACH);
     else if (old === LEAVES && id !== LEAVES) this.checkLeavesAround(x, y, z, 1);
@@ -338,31 +351,33 @@ export class World {
   }
 
   updateWater(x, y, z) {
-    let id = this.get(x, y, z);
+    const wheel = isWheel(this.get(x, y, z));
+    let id = this.waterAt(x, y, z);
     const open = id === AIR || isFlowing(id);
     if (!open && id !== WATER) return;
-    // the sea fills in
+    // the sea fills in (a wheel by the sea just sits in still water)
     if (open && y <= SEA_LEVEL && (this.get(x + 1, y, z) === WATER || this.get(x - 1, y, z) === WATER ||
       this.get(x, y, z + 1) === WATER || this.get(x, y, z - 1) === WATER || this.get(x, y + 1, z) === WATER)) {
-      this.setBlock(x, y, z, WATER);
+      this.setWater(x, y, z, WATER, wheel);
       return;
     }
     // what a flowing cell should be, from the water around it
     if (open) {
       let want = AIR;
-      if (isWaterId(this.get(x, y + 1, z))) want = WATER_FALL;
+      if (isWaterId(this.waterAt(x, y + 1, z))) want = WATER_FALL;
       else {
         let m = 0;
         for (const [dx, dz] of SIDES) {
-          const nid = this.get(x + dx, y, z + dz);
+          const nid = this.waterAt(x + dx, y, z + dz);
           if (isWaterId(nid) && this.isFloor(x + dx, y - 1, z + dz)) m = Math.max(m, waterLevel(nid));
         }
         if (m >= 2) want = WATER_FLOW + m - 2;
       }
-      if (want !== id) { this.setBlock(x, y, z, want); id = want; }
+      if (want !== id) { this.setWater(x, y, z, want, wheel); id = want; }
       if (id === AIR) return;
     }
-    // and where it runs from here: down if it can, otherwise out to the sides
+    // and where it runs from here: down if it can, otherwise out to the sides.
+    // (Water wheels in the way work out their own water when their neighbours change.)
     const below = y > 0 ? this.get(x, y - 1, z) : -1;
     if (below === AIR || (isFlowing(below) && below !== WATER_FALL)) {
       this.setBlock(x, y - 1, z, WATER_FALL);
@@ -377,12 +392,23 @@ export class World {
     }
   }
 
-  // Can water rest on this cell and spread sideways over it? Anything but air and water (the bottom of
-  // the world counts too). Water running onto still water just joins it.
+  // Set the water in a cell: a block, or for a water wheel, the water running through it.
+  setWater(x, y, z, id, wheel) {
+    if (!wheel) { this.setBlock(x, y, z, id); return; }
+    const k = pack(x, y, z);
+    if ((this.wheelWater.get(k) ?? AIR) === id) return;
+    if (id === AIR) this.wheelWater.delete(k); else this.wheelWater.set(k, id);
+    this.markCellDirty(x, z);
+    this.flow.push([x + 1, y, z], [x - 1, y, z], [x, y + 1, z], [x, y - 1, z], [x, y, z + 1], [x, y, z - 1]);
+  }
+
+  // Can water rest on this cell and spread sideways over it? Anything but air, water and water wheels
+  // (water runs on through those; the bottom of the world counts as a floor). Water running onto still
+  // water just joins it.
   isFloor(x, y, z) {
     if (y < 0) return true;
     const id = this.get(x, y, z);
-    return id !== AIR && !isWaterId(id);
+    return id !== AIR && !isWaterId(id) && !isWheel(id);
   }
 
   // Height of the water surface at one corner of a cell: the average of the water cells sharing that
@@ -390,7 +416,7 @@ export class World {
   waterCorner(x, y, z, cx, cz) {
     let sum = 0, n = 0;
     for (let dz = cz - 1; dz <= cz; dz++) for (let dx = cx - 1; dx <= cx; dx++) {
-      const id = this.get(x + dx, y, z + dz);
+      const id = this.waterAt(x + dx, y, z + dz);
       if (!isWaterId(id)) continue;
       const h = this.waterHeight(x + dx, y, z + dz, id);
       if (h === 1) return 1;
@@ -402,7 +428,7 @@ export class World {
   // Surface height of the water in a cell, for drawing: still water sits a little below the top,
   // flowing water is lower the further it has run, and water with water above fills the cell.
   waterHeight(x, y, z, id) {
-    if (isWaterId(this.get(x, y + 1, z))) return 1;
+    if (isWaterId(this.waterAt(x, y + 1, z))) return 1;
     if (id === WATER || id === WATER_FALL) return WATER_TOP;
     return Math.max(0.12, (WATER_TOP * waterLevel(id)) / 8);
   }
@@ -757,21 +783,28 @@ export class World {
     const x0 = c.cx * CHUNK, z0 = c.cz * CHUNK;
     const waterU = x0 % 64, waterV = z0 % 64; // keeps water UVs small but seamless across chunks
     for (let y = 0; y < H; y++) for (let lz = 0; lz < CHUNK; lz++) for (let lx = 0; lx < CHUNK; lx++) {
-      const id = data[localIndex(lx, y, lz)];
+      let id = data[localIndex(lx, y, lz)];
       if (id === AIR) continue;
       const x = x0 + lx, z = z0 + lz;
+      const wheel = isWheel(id);
+      if (wheel) {
+        id = this.waterAt(x, y, z); // a water wheel is drawn by kinetics.js; the stream it dips into is drawn here
+        if (id === AIR) continue;
+      }
       const def = BLOCKS[id];
       if (isWaterId(id)) {
-        const height = this.waterHeight(x, y, z, id);
+        const height = wheel ? WHEEL_STREAM : this.waterHeight(x, y, z, id);
         for (const f of FACES) {
           if (f.n[1] < 0 && y === 0) continue;
           const nx = x + f.n[0], ny = y + f.n[1], nz = z + f.n[2];
-          const nid = this.get(nx, ny, nz);
+          // (a wheel's shallow stream counts as open, so water around and above it shows its faces)
+          const nid = isWheel(this.get(nx, ny, nz)) ? AIR : this.get(nx, ny, nz);
           if (nid !== AIR && !isWaterId(nid) && !BLOCKS[nid].transparent) continue;
           // between two water cells, only where this one stands higher than its neighbour
-          if (isWaterId(nid) && (f.d === 1 || this.waterHeight(nx, ny, nz, nid) >= height)) continue;
+          if (!wheel && isWaterId(nid) && (f.d === 1 || this.waterHeight(nx, ny, nz, nid) >= height)) continue;
+          if (wheel && isWaterId(nid) && f.d !== 1) continue;
           for (const cr of f.corners) {
-            const top = cr.o[1] === 1 ? (height === 1 ? 1 : this.waterCorner(x, y, z, cr.o[0], cr.o[2])) : cr.o[1];
+            const top = cr.o[1] === 1 ? (height === 1 || wheel ? height : this.waterCorner(x, y, z, cr.o[0], cr.o[2])) : cr.o[1];
             const px = lx + cr.o[0], py = y + top, pz = lz + cr.o[2];
             wpos.push(px, py, pz);
             // world-space UVs (wrapped every 64 blocks) so the texture tiles seamlessly and can scroll

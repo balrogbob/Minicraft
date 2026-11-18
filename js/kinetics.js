@@ -70,22 +70,23 @@ export class Kinetics {
       const a = UNIT[n.axis];
       for (const s of [1, -1]) {
         const m = at(n.x + a[0] * s, n.y + a[1] * s, n.z + a[2] * s);
-        if (m && m.part !== 'crusher' && m.axis === n.axis) out.push([m, 1]);
+        if (m && m.part !== 'crusher' && m.axis === n.axis) out.push([m, 1, null]);
       }
       if (n.part === 'gear' || n.part === 'large') {
         const [u, v] = [UNIT[(n.axis + 1) % 3], UNIT[(n.axis + 2) % 3]];
-        const side = (du, dv) => at(n.x + u[0] * du + v[0] * dv, n.y + u[1] * du + v[1] * dv, n.z + u[2] * du + v[2] * dv);
+        const off = (du, dv) => [u[0] * du + v[0] * dv, u[1] * du + v[1] * dv, u[2] * du + v[2] * dv];
+        const side = (d) => at(n.x + d[0], n.y + d[1], n.z + d[2]);
         if (n.part === 'gear') {
           for (const [du, dv] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
-            const m = side(du, dv);
-            if (m?.part === 'gear' && m.axis === n.axis) out.push([m, -1]);
+            const d = off(du, dv), m = side(d);
+            if (m?.part === 'gear' && m.axis === n.axis) out.push([m, -1, d]);
           }
         }
         for (const [du, dv] of [[1, 1], [1, -1], [-1, 1], [-1, -1]]) {
-          const m = side(du, dv);
+          const d = off(du, dv), m = side(d);
           if (!m || m.axis !== n.axis) continue;
-          if (n.part === 'large' && m.part === 'gear') out.push([m, -2]);
-          if (n.part === 'gear' && m.part === 'large') out.push([m, -0.5]);
+          if (n.part === 'large' && m.part === 'gear') out.push([m, -2, d]);
+          if (n.part === 'gear' && m.part === 'large') out.push([m, -0.5, d]);
         }
       }
       return out;
@@ -95,14 +96,25 @@ export class Kinetics {
       if (start.part === 'crusher' || start.rel !== null) continue;
       const net = { parts: [], wheels: [], crushers: [], jammed: false, load: 0, power: 0, limit: Infinity, weakest: null, status: '' };
       start.rel = 1;
+      start.phase = 0;
+      net.root = start;
       const queue = [start];
       while (queue.length) {
         const n = queue.shift();
         n.net = nets.length;
         net.parts.push(n);
-        for (const [m, r] of links(n)) {
+        for (const [m, r, d] of links(n)) {
           const want = n.rel * r;
-          if (m.rel === null) { m.rel = want; queue.push(m); } else if (Math.abs(m.rel - want) > 1e-6) net.jammed = true;
+          if (m.rel === null) {
+            m.rel = want;
+            // line the teeth up: when one of n's teeth points at m, one of m's gaps points back at n
+            if (!d) m.phase = n.phase;
+            else {
+              const tn = localAngle(d, n.axis), t0 = (tn - n.phase) / n.rel;
+              m.phase = tn + Math.PI + Math.PI / teeth(m) - m.rel * t0;
+            }
+            queue.push(m);
+          } else if (Math.abs(m.rel - want) > 1e-6) net.jammed = true;
         }
       }
       nets.push(net);
@@ -121,8 +133,9 @@ export class Kinetics {
       for (const n of net.parts) {
         if (n.part === 'wheel') {
           const a = n.axis;
-          const turning = [[0, 1, 0], [0, -1, 0], a === 0 ? [0, 0, 1] : [1, 0, 0], a === 0 ? [0, 0, -1] : [-1, 0, 0]]
-            .some(([dx, dy, dz]) => isFlowing(world.get(n.x + dx, n.y + dy, n.z + dz)));
+          // water running through the wheel's own cell, or past its rim
+          const turning = [[0, 0, 0], [0, 1, 0], [0, -1, 0], a === 0 ? [0, 0, 1] : [1, 0, 0], a === 0 ? [0, 0, -1] : [-1, 0, 0]]
+            .some(([dx, dy, dz]) => isFlowing(world.waterAt(n.x + dx, n.y + dy, n.z + dz)));
           if (turning) net.wheels.push(n);
         } else {
           const cap = KINETIC_MATS[n.mat].cap;
@@ -149,6 +162,14 @@ export class Kinetics {
       }
       for (const n of net.parts) n.speed = n.rel * scale;
       for (const c of net.crushers) c.speed = Math.abs(c.drive.rel * scale);
+      // every part's turn is rel x the network's turn + its phase; carry on from where the first part was
+      const rootMesh = this.meshes.get(key(net.root.x, net.root.y, net.root.z));
+      const theta = rootMesh && rootMesh.id === net.root.id ? rootMesh.angle - net.root.phase : 0;
+      for (const n of net.parts) {
+        n.angle = n.rel * theta + n.phase;
+        const m = this.meshes.get(key(n.x, n.y, n.z));
+        if (m && m.id === n.id) m.angle = n.angle;
+      }
     }
     this.nodes = nodes;
     this.nets = nets;
@@ -168,7 +189,7 @@ export class Kinetics {
       if (n.part === 'crusher') continue;
       let m = this.meshes.get(k);
       if (!m) m = this.addMesh(k, n);
-      m.angle = (m.angle + n.speed * TURN_RATE * dt) % (Math.PI * 2);
+      m.angle += n.speed * TURN_RATE * dt;
       m.spin.rotation.x = m.angle;
       const sun = light.day * skyBrightness(world.skyAt(n.x, n.y, n.z));
       const t = lightBrightness(world.lightAt(n.x, n.y, n.z)) * light.flicker;
@@ -183,8 +204,12 @@ export class Kinetics {
     if (n.axis === 1) group.rotation.z = Math.PI / 2;
     else if (n.axis === 2) group.rotation.y = -Math.PI / 2;
     const spin = new THREE.Mesh(this.geometry(n.part, n.part === 'wheel' ? -1 : n.mat), material);
-    // offset alternate small gears by half a tooth so neighbours look meshed
-    const m = { id: n.id, group, spin, material, angle: (n.x + n.y + n.z) % 2 ? Math.PI / 8 : 0 };
+    if (n.part === 'wheel') {
+      // drawn after the (see-through) water, so a wheel standing in a stream still shows its paddles
+      material.transparent = true;
+      spin.renderOrder = 2;
+    }
+    const m = { id: n.id, group, spin, material, angle: n.angle ?? 0 };
     group.add(spin);
     this.scene.add(group);
     this.meshes.set(k, m);
@@ -221,14 +246,20 @@ export class Kinetics {
       for (const cx of [-0.42, 0.42]) ring(8, 0.44, [0.06, 0.06, 0.38], T.LOG_SIDE, 0, cx); // a rim at each side
     } else if (part === 'shaft') {
       boxes.push([1, 0.22, 0.22, 0, 0, 0, tile]);
-    } else if (part === 'gear') {
-      boxes.push([1, 0.2, 0.2, 0, 0, 0, tile]);
-      boxes.push([0.24, 0.66, 0.66, 0, 0, 0, tile], [0.24, 0.66, 0.66, 0, 0, Math.PI / 4, tile]);
-      ring(8, 0.42, [0.24, 0.16, 0.14]);
-    } else {
-      boxes.push([1, 0.2, 0.2, 0, 0, 0, tile]);
-      for (let i = 0; i < 3; i++) boxes.push([0.2, 1.36, 1.36, 0, 0, (i * Math.PI) / 6, tile]);
-      ring(16, 0.82, [0.2, 0.2, 0.14]);
+    } else if (part === 'gear' || part === 'large') {
+      // hub, spokes, a rim, and teeth around it. Pitch radii add up to the distance between meshing
+      // gears (1 block side by side; a diagonal for large + small) and the teeth are the same size on both.
+      const big = part === 'large', n = teeth({ part });
+      const rim = big ? 0.775 : 0.32, rimW = big ? 0.15 : 0.12, pitch = big ? 0.943 : 0.471;
+      boxes.push([1, 0.2, 0.2, 0, 0, 0, tile]); // axle
+      boxes.push([0.3, big ? 0.34 : 0.28, big ? 0.34 : 0.28, 0, 0, 0, T.LOG_SIDE]); // hub (thicker, so it covers where spokes cross)
+      for (let i = 0; i < (big ? 4 : 2); i++) boxes.push([0.16 + i * 0.01, rim * 2, 0.09, 0, 0, (i * Math.PI) / (big ? 4 : 2), tile]);
+      for (let i = 0; i < n; i++) {
+        const ang = (i + 0.5) * (Math.PI * 2) / n; // rim segments sit between the teeth
+        const len = 2 * (rim + rimW / 2) * Math.tan(Math.PI / n) + 0.02;
+        boxes.push([i % 2 ? 0.2 : 0.21, rimW, len, Math.cos(ang) * rim, Math.sin(ang) * rim, ang, tile]);
+      }
+      ring(n, pitch, [0.18, 0.2, big ? 0.17 : 0.16]);
     }
     const geo = mergeBoxes(boxes);
     this.geoCache.set(ck, geo);
@@ -237,6 +268,13 @@ export class Kinetics {
 }
 
 const fmt = (v) => (Math.round(v * 100) / 100).toString();
+const teeth = (n) => (n.part === 'large' ? 16 : 8);
+// The angle, in a part's own spinning frame, of the direction d (across its axle): see addMesh's rotations.
+function localAngle(d, axis) {
+  if (axis === 0) return Math.atan2(d[2], d[1]);
+  if (axis === 1) return Math.atan2(d[2], -d[0]);
+  return Math.atan2(-d[0], d[1]);
+}
 
 // face brightness (+x, -x, +y, -y, +z, -z), matching the world's block shading
 const SHADE = [0.8, 0.8, 1.0, 0.5, 0.65, 0.65].map((v) => Math.pow(v, 2.2));
