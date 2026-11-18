@@ -5,6 +5,7 @@
 // Like crops and lamps, a station only works while its part of the world is loaded.
 import {
   COAL, CHARCOAL, LOG, PLANKS, STICK, COBBLE, STONE, SAND, GLASS, SLIME_FUEL, BUCKET,
+  SALMON, BAKED_SALMON, ICEFISH, BAKED_ICEFISH,
   FLOUR, SUGAR, BUTTER, MILK_BUCKET, BREAD, COOKIE, CAKE, RAW_FISH, BAKED_FISH, BLOCKS, maxStack, stationKind,
   ORES, COAL_OR_CHARCOAL, IRON_INGOT, COPPER_INGOT, TIN_INGOT, ZINC_INGOT, ALUMINIUM_INGOT, SILVER_INGOT, GOLD_INGOT,
   BRONZE_INGOT, ELECTRUM_INGOT, STAINLESS_INGOT, STEEL_INGOT, AL_BRONZE_INGOT,
@@ -35,6 +36,8 @@ export const STATION_KINDS = {
       { out: [COOKIE, 9], in: [[FLOUR, 3], [SUGAR, 3], [BUTTER, 1]], tools: [MILK_BUCKET], time: 8 },
       { out: [BREAD, 1], in: [[FLOUR, 3]], time: 6 },
       { out: [BAKED_FISH, 1], in: [[RAW_FISH, 1]], time: 5 },
+      { out: [BAKED_SALMON, 1], in: [[SALMON, 1]], time: 5 },
+      { out: [BAKED_ICEFISH, 1], in: [[ICEFISH, 1]], time: 5 },
       { out: [BRICK, 1], in: [[CLAY_BALL, 1]], time: 5 },
       { out: [LEATHER, 1], in: [[HIDE, 1]], time: 6 }, // gently cured
     ],

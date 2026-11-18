@@ -119,6 +119,8 @@ export const T = {
   GEARBOX: 136, FRAME_BACK: 137,
   MOSSY_BRICKS: 138, SHRINE_SIDE: 139, SHRINE_TOP: 140, SHRINE_SPENT: 141, CAULDRON: 142, CAULDRON_WATER: 143,
   BUSH: 144, BUSH_RIPE: 145,
+  GLOW_MUSHROOM: 146, CRYSTAL: 147, CRYSTAL_CLUSTER: 148, GEODE_SHELL: 149,
+  HIVE_SIDE: 150, HIVE_TOP: 151, HIVE_FRONT: 152, HIVE_FULL: 153, BELL: 154,
 };
 
 // Ores, deepest-reaching last. tier: the pickaxe tier needed to mine it (see TOOL_TIERS);
@@ -208,6 +210,7 @@ function block(id, o) {
     switch: o.switch ?? null, on: !!o.on, floor: !!o.floor, // levers, buttons and pressure plates
     frame: !!o.frame,
     water: o.water ?? 0, // a cauldron's water level (0..3)
+    hive: o.hive ?? -1, bell: !!o.bell, // a bee hive's honey level; the bell in the middle of a village
   };
 }
 
@@ -1201,3 +1204,55 @@ for (let k = 0; k < 2; k++) {
   });
 }
 ITEMS[BERRIES] = { name: 'Berries', food: 2 };
+
+// ---------- caves, bees and villages ----------
+export const GLOW_MUSHROOM = 621, CRYSTAL_BLOCK = 622, CRYSTAL_CLUSTER = 623, GEODE_SHELL = 624,
+  BEE_HIVE = 625, // 625..628: + honey level 0..3 (3 is full)
+  VILLAGE_BELL = 629;
+export const CRYSTAL_SHARD = 1009, HONEY_BOTTLE = 1010, HONEYCOMB = 1011,
+  SALMON = 1012, BAKED_SALMON = 1013, ICEFISH = 1014, BAKED_ICEFISH = 1015, PUFFERFISH = 1016, OLD_BOOT = 1017;
+export const MAX_HONEY = 3;
+
+// glowing mushrooms carpet the floors of some caverns; they light the dark and can be picked and replanted
+block(GLOW_MUSHROOM, { name: 'Glowcap Mushroom', sound: 'leaves', tex: T.GLOW_MUSHROOM, transparent: true, solid: false, shape: 'cross', hardness: 0, light: 10 });
+// crystal geodes: a pale shell around a lining of glowing crystal
+block(GEODE_SHELL, { name: 'Calcite', tex: T.GEODE_SHELL, hardness: 2, tool: 'pick', needsTool: true });
+block(CRYSTAL_BLOCK, {
+  name: 'Crystal', sound: 'glass', tex: T.CRYSTAL, hardness: 1.5, tool: 'pick', needsTool: true, light: 9,
+  drop: () => [[CRYSTAL_SHARD, 3 + (Math.random() < 0.5 ? 1 : 0)]],
+});
+block(CRYSTAL_CLUSTER, {
+  name: 'Crystal Cluster', sound: 'glass', tex: T.CRYSTAL_CLUSTER, transparent: true, solid: false, shape: 'cross', hardness: 0.5, light: 11,
+  drop: () => [[CRYSTAL_SHARD, 2]],
+});
+// a bee hive, hung under the leaves of a tree: it slowly fills with honey (faster with flowers nearby)
+for (let k = 0; k <= MAX_HONEY; k++) {
+  block(BEE_HIVE + k, {
+    name: 'Bee Hive', sound: 'wood', top: T.HIVE_TOP, bottom: T.HIVE_TOP, side: T.HIVE_SIDE, front: k === MAX_HONEY ? T.HIVE_FULL : T.HIVE_FRONT,
+    hardness: 1, tool: 'axe', variantOf: k ? BEE_HIVE : 0, grows: k < MAX_HONEY ? 'honey' : null, hive: k,
+    drop: () => [[BEE_HIVE, 1], [HONEYCOMB, k]],
+  });
+}
+block(VILLAGE_BELL, {
+  name: 'Village Bell', sound: 'stone', transparent: true, hardness: 3, tool: 'pick', bell: true,
+  model: [[7, 13, 7, 9, 16, 9, T.LOG_SIDE], [4, 3, 4, 12, 13, 12, T.BELL], [3, 2, 3, 13, 4, 13, T.BELL], [7, 0, 7, 9, 2, 9, T.BELL]],
+  boxes: [[3, 0, 3, 13, 16, 13]],
+});
+
+ITEMS[CRYSTAL_SHARD] = { name: 'Crystal Shard' };
+ITEMS[HONEYCOMB] = { name: 'Honeycomb' };
+ITEMS[HONEY_BOTTLE] = { name: 'Honey Bottle', stack: 8, food: 6, about: 'you keep the bottle' };
+ITEMS[SALMON] = { name: 'Raw Salmon', food: 2, fish: true };
+ITEMS[BAKED_SALMON] = { name: 'Baked Salmon', food: 7, fish: true };
+ITEMS[ICEFISH] = { name: 'Raw Icefish', food: 2, fish: true };
+ITEMS[BAKED_ICEFISH] = { name: 'Baked Icefish', food: 6, fish: true };
+ITEMS[PUFFERFISH] = { name: 'Pufferfish', food: 1, about: 'poisonous to eat' };
+ITEMS[OLD_BOOT] = { name: 'Old Boot' };
+ITEMS[RAW_FISH].fish = true; ITEMS[BAKED_FISH].fish = true;
+export const isFish = (id) => !!ITEMS[id]?.fish;
+
+RECIPES.push(
+  { out: [BEE_HIVE, 1], in: [[PLANKS, 6], [HONEYCOMB, 2]], table: true },
+  { out: [LEATHER, 1], in: [[OLD_BOOT, 1]] },
+  { out: [GLASS, 1], in: [[CRYSTAL_SHARD, 2], [SAND, 1]] },
+);

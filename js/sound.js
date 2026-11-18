@@ -113,6 +113,12 @@ export class Sound {
     this.noiseBurst({ type: 'bandpass', freq: 1800, q: 0.7, dur: 0.35, vol: 0.6 }, gain, 1);
   }
 
+  // a village bell: a bright strike with a long ring
+  ding() {
+    if (!this.ready) return;
+    for (const [f, v] of [[880, 0.25], [1320, 0.12], [2210, 0.06]]) this.voice({ type: 'sine', from: f, to: f * 0.998, dur: 2.2, vol: v, freq: 6000, attack: 0.005 });
+  }
+
   pop() { if (this.ready) this.tone(520 + Math.random() * 80, 0.09, 0.2, 'square', 900); }
 
   click() { if (this.ready) this.tone(800, 0.04, 0.08, 'square'); }
@@ -274,6 +280,11 @@ export class Sound {
       // a cheerful hum
       this.voice({ type: 'triangle', from: p(240, 270), to: p(320, 350), dur: 0.35, vol: 0.18 * gain, freq: 1600 });
       this.voice({ type: 'triangle', from: p(320, 350), to: p(260, 280), dur: 0.3, vol: 0.18 * gain, freq: 1600, delay: 0.32 });
+    } else if (kind === 'villager') {
+      // a thoughtful "hmm"
+      this.voice({ type: 'triangle', from: p(170, 200), to: p(140, 160), dur: 0.4, vol: 0.2 * gain, freq: 1200, attack: 0.05 });
+    } else if (kind === 'bee') {
+      this.voice({ type: 'sawtooth', from: p(210, 240), to: p(200, 250), dur: 0.5, vol: 0.05 * gain, freq: 900, vibrato: 40, attack: 0.08 });
     } else if (kind === 'newt') {
       this.voice({ type: 'sine', from: p(2400, 2700), to: p(3100, 3400), dur: hurt ? 0.1 : 0.06, vol: 0.12 * gain, freq: 6000 });
     }

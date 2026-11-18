@@ -3,7 +3,7 @@
 import * as THREE from 'three';
 import {
   BLOCKS, AIR, LEAVES, LOG, DIRT, GRASS, WATER, MAX_LIGHT, SUGAR_CANE, MAX_CANE_HEIGHT,
-  WATER_FLOW, WATER_FALL, WATER_WHEEL, isWaterId, isFlowing, waterLevel, LAVA, OBSIDIAN, PIPE, PUMP, SPOUT, T,
+  WATER_FLOW, WATER_FALL, WATER_WHEEL, isWaterId, isFlowing, waterLevel, LAVA, OBSIDIAN, PIPE, PUMP, SPOUT, T, FLOWERS, isFlower,
 } from './blocks.js';
 
 // Water wheels let water run through their cell (and over them); see waterAt().
@@ -111,6 +111,7 @@ class Chunk {
     this.water = null;
     this.growing = new Set(); // local indices of plants that can still grow
     this.machines = new Set(); // local indices of water wheels, shafts, gears and crushers
+    this.hives = new Set(); // local indices of bee hives
   }
 }
 
@@ -230,6 +231,7 @@ export class World {
     const isMachine = (d) => !!(d?.kinetic || d?.machine || d?.hopper);
     if (isMachine(def)) c.machines.add(li); else c.machines.delete(li);
     if (isMachine(BLOCKS[old]) || isMachine(def)) this.machinesChanged = true;
+    if (def?.hive >= 0) c.hives.add(li); else c.hives.delete(li);
     // this cell, and the one below (a sugar cane that's no longer, or now is, the top), may start or stop growing
     this.refreshGrowth(c, x, y, z);
     if (y > 0) this.refreshGrowth(c, x, y - 1, z);
@@ -318,6 +320,10 @@ export class World {
     if (this.growTimer < 1) return;
     const elapsed = this.growTimer;
     this.growTimer = 0;
+    // bees: crops near a hive grow faster
+    const hives = this.hiveList();
+    const nearHive = (x, y, z) => hives.some(([hx, hy, hz]) => Math.abs(hx - x) + Math.abs(hz - z) <= 10 && Math.abs(hy - y) <= 6);
+    const season = this.growthRate ?? 1;
     for (const c of this.chunks.values()) {
       if (!c.growing.size) continue;
       for (const li of [...c.growing]) {
@@ -329,12 +335,50 @@ export class World {
           if (this.raining && this.skyAt(x, y + 1, z) >= MAX_LIGHT && Math.random() < elapsed / 25) this.setBlock(x, y, z, id + 1);
           continue;
         }
-        // plants grow twice as fast in the rain
-        const chance = elapsed * (this.raining ? 2 : 1) / (def.grows === 'up' ? GROW_SECONDS.cane : GROW_SECONDS.wheat);
+        if (def.grows === 'honey') { this.tickHive(x, y, z, id, elapsed); continue; }
+        // plants grow twice as fast in the rain, faster near bees, and with the seasons
+        let chance = elapsed * (this.raining ? 2 : 1) * season / (def.grows === 'up' ? GROW_SECONDS.cane : GROW_SECONDS.wheat);
+        if (hives.length && nearHive(x, y, z)) chance *= 1.5;
         if (Math.random() >= chance) continue;
         if (def.grows === 'up') this.setBlock(x, y + 1, z, SUGAR_CANE);
         else if (def.grows === 'tree') this.growTree(x, y, z);
         else this.setBlock(x, y, z, def.grows);
+      }
+    }
+  }
+
+  isFlowerAt(x, y, z) { return isFlower(this.get(x, y, z)); }
+
+  // Every loaded bee hive, as [x, y, z].
+  hiveList() {
+    const out = [];
+    for (const c of this.chunks.values()) for (const li of c.hives) out.push([c.cx * CHUNK + (li & 15), li >> 8, c.cz * CHUNK + ((li >> 4) & 15)]);
+    return out;
+  }
+
+  // A hive slowly fills with honey: faster with flowers around it (and slower in winter). As the bees
+  // work, now and then a new flower springs up on the grass nearby.
+  tickHive(x, y, z, id, elapsed) {
+    const key = `${x},${y},${z}`;
+    this.hiveFlowers ??= new Map();
+    let f = this.hiveFlowers.get(key);
+    if (!f || f.t < performance.now() - 30000) {
+      let n = 0;
+      for (let dy = -4; dy <= 2; dy++) for (let dz = -5; dz <= 5; dz++) for (let dx = -5; dx <= 5; dx++) if (isFlower(this.get(x + dx, y + dy, z + dz))) n++;
+      f = { n, t: performance.now() };
+      this.hiveFlowers.set(key, f);
+    }
+    const chance = elapsed * (1 + Math.min(8, f.n) / 2) * Math.max(0.3, this.growthRate ?? 1) / 240;
+    if (Math.random() >= chance) return;
+    this.setBlock(x, y, z, id + 1);
+    if (Math.random() < 0.5) {
+      const fx = x + Math.round((Math.random() - 0.5) * 8), fz = z + Math.round((Math.random() - 0.5) * 8);
+      for (let fy = y + 2; fy >= y - 6; fy--) {
+        if (this.get(fx, fy, fz) === GRASS) {
+          if (this.get(fx, fy + 1, fz) === AIR) this.setBlock(fx, fy + 1, fz, FLOWERS[Math.floor(Math.random() * FLOWERS.length)].id);
+          break;
+        }
+        if (this.get(fx, fy, fz) !== AIR) break;
       }
     }
   }
@@ -694,6 +738,7 @@ export class World {
       const id = data[li];
       if (id < 15) continue; // (quick skip for the common blocks: none of these grow, flow or turn)
       const def = BLOCKS[id];
+      if (def?.hive >= 0) c.hives.add(li);
       if (def?.grows && this.canGrow(c, li & 15, li >> 8, (li >> 4) & 15)) c.growing.add(li);
       else if (def?.kinetic || def?.machine || def?.hopper) { c.machines.add(li); this.machinesChanged = true; }
       else if (isFlowing(id)) this.flow.push([x0 + (li & 15), li >> 8, z0 + ((li >> 4) & 15)]); // water left running

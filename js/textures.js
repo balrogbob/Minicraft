@@ -14,6 +14,7 @@ import {
   RAIL, POWERED_RAIL, CACTUS, MINECART, MAP, PAPER,
   COLORS, DYE, CLUTCH, STORAGE_CART, LOADER_RAIL,
   BERRIES, GLASS_BOTTLE, NIGHT_TEA, HASTE_TEA, FIRE_TEA, HEAL_TEA, WOOD_SHIELD, IRON_SHIELD, KING_CROWN,
+  CRYSTAL_SHARD, HONEY_BOTTLE, HONEYCOMB, SALMON, BAKED_SALMON, ICEFISH, BAKED_ICEFISH, PUFFERFISH, OLD_BOOT,
   SALTPETRE, GUNPOWDER, LEAD_SINKER, WEIGHTED_ROD, LEAD_BUCKET, LAVA_BUCKET, GOLD_CLOCK, COMPASS, SILVER_ARROW, MIRROR_LAMP,
 } from './blocks.js';
 
@@ -669,6 +670,48 @@ P[T.TRAPDOOR] = (t) => {
   }
   for (const x of [3, 12]) for (const y of [3, 12]) t.set(x, y, [70, 70, 76]); // nails
 };
+
+// ----- caves, bees and villages -----
+P[T.GLOW_MUSHROOM] = (t) => {
+  for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) t.set(x, y, [0, 0, 0], 0);
+  for (const [cx, cy, r, h] of [[5, 7, 3.2, 6], [11, 9, 2.4, 5], [8, 12, 1.8, 3]]) {
+    for (let y = cy; y < Math.min(16, cy + h); y++) { t.set(Math.round(cx), y, t.vary([200, 220, 196], 0.08)); }
+    for (let y = cy - r; y <= cy; y++) for (let x = cx - r - 1; x <= cx + r + 1; x++) {
+      const d = Math.hypot((x - cx) / (r + 1), (y - cy) / r);
+      if (d < 1 && y <= cy) t.set(Math.round(x), Math.round(y), d > 0.7 ? [40, 150, 170] : t.r() < 0.25 ? [200, 255, 250] : t.vary([90, 220, 220], 0.1));
+    }
+  }
+};
+P[T.GEODE_SHELL] = (t) => { t.fill([214, 210, 200], 0.08); t.speckle([186, 182, 172], 0.2, 0.05); t.speckle([240, 238, 232], 0.08, 0.03); };
+P[T.CRYSTAL] = (t) => {
+  for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+    const facet = ((x * 3 + y * 5) >> 3) % 3;
+    t.set(x, y, t.vary([[150, 96, 214], [178, 128, 236], [122, 74, 186]][facet], 0.08));
+  }
+  for (let i = 0; i < 6; i++) { const x = (t.r() * 15) | 0, y = (t.r() * 15) | 0; t.set(x, y, [236, 210, 255]); t.set(x + 1, y + 1, [210, 170, 250]); }
+};
+P[T.CRYSTAL_CLUSTER] = (t) => {
+  for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) t.set(x, y, [0, 0, 0], 0);
+  for (const [cx, top, w] of [[7.5, 2, 1.6], [4, 7, 1.2], [11.5, 6, 1.3], [9.5, 9, 1]]) {
+    for (let y = top; y < 16; y++) for (let x = Math.floor(cx - w); x <= Math.ceil(cx + w); x++) {
+      const k = Math.min(1, (y - top + 1) / 3);
+      if (Math.abs(x - cx) <= w * k) t.set(x, y, x < cx ? [214, 176, 252] : t.vary([156, 100, 222], 0.08));
+    }
+  }
+};
+const hiveRings = (t) => {
+  for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) t.set(x, y, t.vary(y % 4 === 3 ? [176, 130, 52] : [222, 178, 82], 0.06));
+};
+P[T.HIVE_SIDE] = hiveRings;
+P[T.HIVE_TOP] = (t) => { t.fill([200, 156, 70], 0.06); for (let i = 0; i < 16; i++) { t.set(i, 0, [150, 110, 44]); t.set(i, 15, [150, 110, 44]); t.set(0, i, [150, 110, 44]); t.set(15, i, [150, 110, 44]); } };
+const hiveFront = (full) => (t) => {
+  hiveRings(t);
+  for (let y = 7; y < 11; y++) for (let x = 5; x < 11; x++) t.set(x, y, [44, 30, 14]); // the way in
+  if (full) for (const [x, y0, n] of [[3, 0, 6], [6, 3, 4], [12, 1, 7], [9, 11, 4], [2, 9, 5]]) for (let y = y0; y < y0 + n; y++) t.set(x, y, y === y0 + n - 1 ? [255, 200, 60] : [240, 170, 30]);
+};
+P[T.HIVE_FRONT] = hiveFront(false);
+P[T.HIVE_FULL] = hiveFront(true);
+P[T.BELL] = (t) => { for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) t.set(x, y, t.vary(shade([236, 196, 76], 0.8 + 0.25 * Math.sin(x * 0.5)), 0.05)); };
 
 // A plank door: a frame with a centre board; the upper half has a four-pane window you can see through,
 // the lower half has the handle.
@@ -1426,6 +1469,36 @@ ITEM_PAINTERS[KING_CROWN] = (ctx) => {
   for (const x of [4, 10]) rect(ctx, x, 6, 2, 2, [246, 206, 64]);
   px(ctx, 7, 10, [210, 40, 40]); px(ctx, 8, 10, [210, 40, 40]); px(ctx, 4, 10, [70, 140, 220]); px(ctx, 11, 10, [70, 140, 220]);
 };
+ITEM_PAINTERS[CRYSTAL_SHARD] = (ctx) => {
+  for (let y = 2; y < 15; y++) for (let x = 4; x < 12; x++) {
+    const w = y < 6 ? (y - 2) * 0.9 : (15 - y) * 0.45 + 0.6;
+    if (Math.abs(x - 7.5) > w) continue;
+    px(ctx, x, y, x < 7.5 ? [216, 180, 252] : y > 10 ? [120, 70, 182] : [160, 106, 226]);
+  }
+};
+ITEM_PAINTERS[HONEYCOMB] = (ctx) => {
+  for (let y = 3; y < 14; y++) for (let x = 2; x < 14; x++) {
+    const cell = ((x + (Math.floor(y / 3) % 2) * 2) % 4 === 0) || y % 3 === 0;
+    px(ctx, x, y, cell ? [190, 130, 30] : [246, 196, 64]);
+  }
+};
+ITEM_PAINTERS[HONEY_BOTTLE] = bottlePainter([236, 166, 30]);
+ITEM_PAINTERS[SALMON] = fishPainter([[196, 92, 80], [236, 150, 120], [150, 60, 56]]);
+ITEM_PAINTERS[BAKED_SALMON] = fishPainter([[200, 112, 60], [230, 160, 110], [150, 80, 40]], true);
+ITEM_PAINTERS[ICEFISH] = fishPainter([[170, 206, 226], [226, 240, 248], [110, 160, 196]]);
+ITEM_PAINTERS[BAKED_ICEFISH] = fishPainter([[190, 150, 100], [226, 200, 160], [150, 110, 70]], true);
+ITEM_PAINTERS[PUFFERFISH] = (ctx) => {
+  for (let y = 3; y < 14; y++) for (let x = 3; x < 13; x++) {
+    const d = Math.hypot(x - 8, y - 8.5);
+    if (d < 5) px(ctx, x, y, y > 9 ? [240, 232, 180] : [222, 196, 70]);
+  }
+  for (const [x, y] of [[2, 8], [8, 2], [13, 8], [8, 14], [4, 4], [12, 4], [4, 13], [12, 13]]) px(ctx, x, y, [150, 120, 40]);
+  px(ctx, 6, 7, [20, 20, 20]); px(ctx, 10, 7, [20, 20, 20]);
+};
+ITEM_PAINTERS[OLD_BOOT] = (ctx) => {
+  rect(ctx, 4, 2, 6, 9, [100, 70, 44]); rect(ctx, 4, 10, 10, 4, [100, 70, 44]); rect(ctx, 4, 14, 11, 1, [50, 36, 24]);
+  rect(ctx, 5, 3, 1, 6, [76, 52, 30]); px(ctx, 9, 6, [140, 104, 70]); px(ctx, 12, 11, [70, 120, 60]); px(ctx, 13, 11, [70, 120, 60]);
+};
 ITEM_PAINTERS[CLUTCH] = (ctx) => {
   rect(ctx, 0, 7, 16, 3, [150, 150, 150]); rect(ctx, 0, 7, 16, 1, [180, 180, 180]);
   rect(ctx, 5, 3, 6, 11, IRON_C); rect(ctx, 7, 2, 2, 13, [104, 110, 134]); rect(ctx, 5, 3, 6, 1, [160, 164, 172]);
@@ -1500,4 +1573,41 @@ export function createIcons(atlas) {
     icons[id] = c.toDataURL();
   }
   return icons;
+}
+
+// ----- seasons -----
+// Repaint the leaves and grass tiles of the atlas for a season (0 spring, 1 summer, 2 autumn, 3 winter).
+const AUTUMN = [[206, 96, 36], [226, 150, 40], [170, 60, 34], [196, 170, 60]];
+export function paintSeason(canvas, season) {
+  const ctx = canvas.getContext('2d');
+  const put = (tile, recolour) => {
+    const t = new Tile(mulberry32(1000 + tile * 7919));
+    P[tile](t);
+    for (let i = 0; i < t.d.length; i += 4) {
+      if (!t.d[i + 3]) continue;
+      const c = recolour([t.d[i], t.d[i + 1], t.d[i + 2]], i / 4);
+      if (!c) { t.d[i + 3] = 0; continue; }
+      t.d[i] = clamp(c[0]); t.d[i + 1] = clamp(c[1]); t.d[i + 2] = clamp(c[2]);
+    }
+    ctx.putImageData(new ImageData(t.d, TILE, TILE), (tile % ATLAS_COLS) * TILE, Math.floor(tile / ATLAS_COLS) * TILE);
+  };
+  const greenish = (c) => c[1] > c[0] + 12 && c[1] > c[2];
+  const hash = (i) => ((i * 2654435761) >>> 0) / 4294967296;
+  const mix = (a, b, k) => [a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k, a[2] + (b[2] - a[2]) * k];
+  put(T.LEAVES, (c, i) => {
+    const lum = (c[0] + c[1] + c[2]) / 3 / 80;
+    if (season === 0) return mix(c, [120, 190, 70], 0.35);
+    if (season === 2) return shade(AUTUMN[Math.floor(hash(i) * 4)], 0.7 + lum * 0.4);
+    if (season === 3) return hash(i) < 0.35 ? null : mix(c, [110, 96, 70], 0.6);
+    return c;
+  });
+  const grass = (c, i) => {
+    if (!greenish(c)) return c;
+    if (season === 0) return mix(c, [120, 190, 70], 0.25);
+    if (season === 2) return mix(c, [176, 160, 70], 0.45);
+    if (season === 3) return mix(c, [226, 232, 236], 0.55 + hash(i) * 0.25);
+    return c;
+  };
+  put(T.GRASS_TOP, grass);
+  put(T.GRASS_SIDE, grass);
 }

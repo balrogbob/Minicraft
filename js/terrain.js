@@ -8,6 +8,8 @@ import {
   AIR, GRASS, DIRT, STONE, LOG, LEAVES, SAND, COAL_ORE, BEDROCK, WATER, WHEAT_3, SUGAR_CANE, MAX_CANE_HEIGHT, ORES, GRAVEL, CLAY,
   LAVA, SALTPETRE_ORE, SNOW_GRASS, SNOW, ICE, SANDSTONE, CACTUS, FLOWERS,
   BRICKS, MOSSY_BRICKS, COBBLE, BOSS_SHRINE, LOOT_CHEST, BERRY_BUSH,
+  GLOW_MUSHROOM, CRYSTAL_BLOCK, CRYSTAL_CLUSTER, GEODE_SHELL, BEE_HIVE, MAX_HONEY, VILLAGE_BELL,
+  PLANKS, GLASS_PANE, FURN_TABLE, CHEST, TORCH_WALL_W, doorId, slabId, WHEAT_0, BLOCKS,
 } from './blocks.js';
 
 export const CHUNK = 16;
@@ -105,7 +107,17 @@ const VEIN_KINDS = [...ORES, { id: GRAVEL, y: [4, 52], chance: 0.02, big: true }
 const SNOW_LINE = 46; // mountain tops this high are capped with snow
 const LAVA_LEVEL = 6; // deep cave floors at or below this height are flooded with lava
 const DUNGEON_CHANCE = 0.025; // chunks with a dungeon room deep underground
+const GEODE_CHANCE = 0.045; // chunks with a crystal geode in the rock
+const CAVE_LAKE_LEVEL = 13; // in some cave systems, everything up to here is flooded with water
+const HIVE_CHANCE = 0.08; // temperate trees with a bee hive under their leaves
+const VILLAGE_REGION = 64; // villages: at most one in each 64 x 64 block region...
+const VILLAGE_CHANCE = 0.09; // ...in about this share of them
+const smoothstep = (t) => { t = Math.max(0, Math.min(1, t)); return t * t * (3 - 2 * t); };
 const VEIN_CELL = 4; // metal ore veins: at most one small blob per 4x4x4 cell of stone // columns of height data kept around a chunk for trees and water checks
+
+const VILLAGE_NAMES = ['Ashford', 'Brindle', 'Cobblewick', 'Dunmere', 'Elderby', 'Fallowmead', 'Greyhollow', 'Hearthstead',
+  'Ivybridge', 'Juniper Cross', 'Kettlebrook', 'Larkfield', 'Millhaven', 'Nettlecombe', 'Oakhurst', 'Pebbleford', 'Quillmoor',
+  'Rushdale', 'Saltmarsh', 'Thistlewood', 'Underhill', 'Wheatley', 'Yarrowby'];
 
 export class Generator {
   constructor(seed) {
@@ -118,7 +130,14 @@ export class Generator {
     this.plants = makePerlin(mulberry32(seed ^ 0x6a09e667));
     this.beds = makePerlin(mulberry32(seed ^ 0x3c6ef372)); // patches of gravel and clay on lake and sea beds
     this.temp = makePerlin(mulberry32(seed ^ 0x510e527f)); // broad warm and cold regions: deserts and tundra
+    this.rivers = makePerlin(mulberry32(seed ^ 0x1f83d9ab)); // rivers wind along where this is near zero
+    this.cavern = makePerlin(mulberry32(seed ^ 0x9b05688c)); // flooded caves and glowing mushroom caverns
+    this.villages = new Map(); // region key -> village plan (or null)
   }
+
+  // How far (0 = right in the middle) a column is from the centre line of a river.
+  riverAt(x, z) { return Math.abs(this.rivers(x / 300, z / 300, 3)); }
+  isRiver(x, z) { return this.riverAt(x, z) < 0.016; }
 
   // 'tundra' (snowy grass, frozen water, few trees), 'desert' (sand over sandstone, cactus, no trees)
   // or 'temperate' (everything else).
@@ -134,7 +153,15 @@ export class Generator {
     const land = cont * 34;
     const detail = this.n2(x / 18, z / 18, 2) * 3;
     const mountain = Math.max(0, this.n3(x / 80, z / 80, 3)) * 30 * Math.min(1, Math.max(0, cont * 5));
-    const h = Math.round(SEA_LEVEL + 4 + land + detail + mountain);
+    let h = Math.round(SEA_LEVEL + 4 + land + detail + mountain);
+    // rivers carve a valley down to just below sea level, with sloping banks
+    if (h > SEA_LEVEL - 3) {
+      const r = this.riverAt(x, z);
+      if (r < 0.045) {
+        const bed = SEA_LEVEL - 3;
+        h = Math.round(bed + (h - bed) * smoothstep((r - 0.009) / 0.036));
+      }
+    }
     return Math.max(6, Math.min(H - 14, h));
   }
 
@@ -221,6 +248,7 @@ export class Generator {
       const x = x0 + lx, z = z0 + lz, h = hAt(x, z);
       const sandy = h <= SEA_LEVEL + 1;
       const biome = this.biomeAt(x, z);
+      const lake = this.cavern(x / 90, z / 90, 2) > 0.3;
       for (let y = 0; y <= h; y++) {
         let id;
         if (y === 0) id = BEDROCK;
@@ -233,7 +261,7 @@ export class Generator {
         else if (biome === 'desert') id = y === h - 3 ? SANDSTONE : SAND;
         else if (y < h) id = DIRT;
         else id = h >= SNOW_LINE ? SNOW : biome === 'tundra' ? SNOW_GRASS : GRASS;
-        if (y > 0 && this.caveAt(x, y, z, hAt)) id = y <= LAVA_LEVEL ? LAVA : AIR;
+        if (y > 0 && this.caveAt(x, y, z, hAt)) id = lake && y <= CAVE_LAKE_LEVEL ? WATER : y <= LAVA_LEVEL ? LAVA : AIR;
         data[localIndex(lx, y, lz)] = id;
       }
       for (let y = h + 1; y <= SEA_LEVEL; y++) data[localIndex(lx, y, lz)] = biome === 'tundra' && y === SEA_LEVEL ? ICE : WATER;
@@ -279,6 +307,16 @@ export class Generator {
       }
     }
 
+    // bee hives, hung beside the trunk just under the leaves of some temperate trees
+    for (const [x, z, h, trunk] of trees) {
+      if (hash3(this.seed ^ 0x4b1d3c2a, x, 5, z) >= HIVE_CHANCE || this.biomeAt(x, z) !== 'temperate') continue;
+      const [dx, dz] = [[1, 0], [-1, 0], [0, 1], [0, -1]][Math.floor(hash3(this.seed ^ 0x4b1d3c2a, x, 6, z) * 4)];
+      const hx = x + dx, hz = z + dz, hy = h + trunk - 3;
+      if (!inside(hx, hz)) continue;
+      const i = localIndex(hx, hy, hz);
+      if (data[i] === AIR) data[i] = BEE_HIVE + (hash3(this.seed ^ 0x4b1d3c2a, x, 7, z) < 0.5 ? MAX_HONEY : 1);
+    }
+
     // wild plants: patches of ripe wheat on lowland grass, sugar cane on shores right next to water
     for (let lz = 0; lz < CHUNK; lz++) for (let lx = 0; lx < CHUNK; lx++) {
       const x = x0 + lx, z = z0 + lz, h = hAt(x, z);
@@ -308,8 +346,188 @@ export class Generator {
         }
       }
     }
+    this.caverns(data, cx, cz, hAt);
+    if (hash3(this.seed ^ 0x7a3b9c1d, cx, 91, cz) < GEODE_CHANCE) this.geode(data, cx, cz, hAt);
     if (hash3(this.seed ^ 0x1d2c3b4a, cx, 77, cz) < DUNGEON_CHANCE) this.dungeon(data, cx, cz, hAt);
+    this.village(data, cx, cz, hAt);
     return data;
+  }
+
+  // Glowing mushrooms on the floors of some cave systems.
+  caverns(data, cx, cz, hAt) {
+    const x0 = cx * CHUNK, z0 = cz * CHUNK;
+    for (let lz = 0; lz < CHUNK; lz++) for (let lx = 0; lx < CHUNK; lx++) {
+      const x = x0 + lx, z = z0 + lz;
+      if (this.cavern(x / 70 + 300, z / 70, 2) <= 0.3) continue;
+      const top = hAt(x, z) - 5;
+      for (let y = 2; y < top; y++) {
+        const i = localIndex(lx, y, lz);
+        if (data[i] !== AIR) continue;
+        const below = data[localIndex(lx, y - 1, lz)];
+        if (below === STONE || below === COBBLE || below === GRAVEL || below === COAL_ORE) {
+          if (hash3(this.seed ^ 0x2f1e3d4c, x, y, z) < 0.16) data[i] = GLOW_MUSHROOM;
+        }
+      }
+    }
+  }
+
+  // A crystal geode: a hollow ball of calcite lined with glowing crystal, with clusters growing inside.
+  geode(data, cx, cz, hAt) {
+    const r = (k) => hash3(this.seed ^ 0x7a3b9c1d, cx, k, cz);
+    const lx = 6 + Math.floor(r(92) * 4), lz = 6 + Math.floor(r(93) * 4);
+    const R = 3.6 + r(94);
+    const x0 = cx * CHUNK, z0 = cz * CHUNK;
+    const ground = Math.min(hAt(x0 + lx, z0 + lz), hAt(x0 + lx - 4, z0 + lz), hAt(x0 + lx + 4, z0 + lz), hAt(x0 + lx, z0 + lz - 4), hAt(x0 + lx, z0 + lz + 4));
+    const top = Math.min(30, ground - R - 3);
+    if (top < 8) return;
+    const cy = 7 + Math.floor(r(95) * (top - 7));
+    const span = Math.ceil(R);
+    for (let dy = -span; dy <= span; dy++) for (let dz = -span; dz <= span; dz++) for (let dx = -span; dx <= span; dx++) {
+      const d = Math.hypot(dx, dy * 1.1, dz);
+      if (d >= R) continue;
+      const i = localIndex(lx + dx, cy + dy, lz + dz);
+      if (data[i] === BEDROCK) continue;
+      data[i] = d > R - 1 ? GEODE_SHELL : d > R - 2 ? CRYSTAL_BLOCK : AIR;
+    }
+    for (let dy = -span; dy <= span; dy++) for (let dz = -span; dz <= span; dz++) for (let dx = -span; dx <= span; dx++) {
+      const i = localIndex(lx + dx, cy + dy, lz + dz);
+      if (Math.hypot(dx, dy * 1.1, dz) >= R - 2 || data[i] !== AIR) continue;
+      if (data[localIndex(lx + dx, cy + dy - 1, lz + dz)] === CRYSTAL_BLOCK && hash3(this.seed ^ 0x5c4d3e2f, x0 + lx + dx, cy + dy, z0 + lz + dz) < 0.35) data[i] = CRYSTAL_CLUSTER;
+    }
+  }
+
+  // ---------- villages ----------
+
+  // The village in a 64 x 64 region, if there is one: its centre (with a well and a bell), houses and a
+  // field of wheat. Worked out from the seed alone, so every chunk agrees on where everything goes.
+  villageAt(rx, rz) {
+    const key = rx * 4096 + rz;
+    if (this.villages.has(key)) return this.villages.get(key);
+    let v = null;
+    const r = (k) => hash3(this.seed ^ 0x3e5a7c91, rx, k, rz);
+    if (rx >= 1 && rz >= 1 && rx < WORLD_SIZE / VILLAGE_REGION - 1 && rz < WORLD_SIZE / VILLAGE_REGION - 1 && r(1) < VILLAGE_CHANCE) {
+      const x = rx * VILLAGE_REGION + 20 + Math.floor(r(2) * 24), z = rz * VILLAGE_REGION + 20 + Math.floor(r(3) * 24);
+      const y = this.height(x, z), biome = this.biomeAt(x, z);
+      if (biome !== 'tundra' && y > SEA_LEVEL + 1 && y < 44) {
+        v = { x, y, z, biome, houses: [], farm: null, name: VILLAGE_NAMES[Math.floor(r(9) * VILLAGE_NAMES.length)] };
+        const n = 3 + Math.floor(r(4) * 3), base = r(5) * Math.PI * 2;
+        const flat = (hx, hz, rx2, rz2, hy) => {
+          for (const [dx, dz] of [[-rx2, -rz2], [rx2, -rz2], [-rx2, rz2], [rx2, rz2], [0, 0]]) {
+            const g = this.height(hx + dx, hz + dz);
+            if (g <= SEA_LEVEL || Math.abs(g - hy) > 3) return false;
+          }
+          return true;
+        };
+        for (let i = 0; i < n; i++) {
+          const a = base + (i / n) * Math.PI * 2, d = 11 + Math.floor(r(10 + i) * 4);
+          const hx = Math.round(x + Math.cos(a) * d), hz = Math.round(z + Math.sin(a) * d), hy = this.height(hx, hz);
+          if (Math.abs(hy - y) > 6 || !flat(hx, hz, 2, 2, hy)) continue;
+          const ddx = x - hx, ddz = z - hz;
+          // the door is in the wall that faces the middle of the village
+          const door = Math.abs(ddx) > Math.abs(ddz) ? [Math.sign(ddx) * 2, 0] : [0, Math.sign(ddz) * 2];
+          v.houses.push({ x: hx, y: hy, z: hz, door });
+        }
+        const fa = base + Math.PI / n;
+        const fx = Math.round(x + Math.cos(fa) * 12), fz = Math.round(z + Math.sin(fa) * 12), fy = this.height(fx, fz);
+        if (Math.abs(fy - y) <= 5 && flat(fx, fz, 2, 3, fy)) v.farm = { x: fx, y: fy, z: fz };
+        if (!v.houses.length) v = null;
+      }
+    }
+    this.villages.set(key, v);
+    return v;
+  }
+
+  // The village nearest to (x, z) within `regions` regions, or null.
+  nearestVillage(x, z, regions = 1) {
+    const rx0 = Math.floor(x / VILLAGE_REGION), rz0 = Math.floor(z / VILLAGE_REGION);
+    let best = null, bd = Infinity;
+    for (let rz = rz0 - regions; rz <= rz0 + regions; rz++) for (let rx = rx0 - regions; rx <= rx0 + regions; rx++) {
+      const v = this.villageAt(rx, rz);
+      if (!v) continue;
+      const d = Math.hypot(v.x - x, v.z - z);
+      if (d < bd) { bd = d; best = v; }
+    }
+    return best;
+  }
+
+  village(data, cx, cz, hAt) {
+    const v = this.villageAt(Math.floor(cx * CHUNK / VILLAGE_REGION), Math.floor(cz * CHUNK / VILLAGE_REGION));
+    if (!v) return;
+    const x0 = cx * CHUNK, z0 = cz * CHUNK;
+    if (v.x + 26 < x0 || v.z + 26 < z0 || v.x - 26 >= x0 + CHUNK || v.z - 26 >= z0 + CHUNK) return;
+    const inside = (x, z) => x >= x0 && z >= z0 && x < x0 + CHUNK && z < z0 + CHUNK;
+    const set = (x, y, z, id) => { if (inside(x, z) && y > 0 && y < H) data[localIndex(x, y, z)] = id; };
+    const get = (x, y, z) => data[localIndex(x, y, z)];
+    const soft = (id) => id === AIR || id === WATER || id === LEAVES || id === LOG || !BLOCKS[id] || !BLOCKS[id].solid || BLOCKS[id].transparent;
+    // fill under a footprint down to solid ground, and clear the space above it
+    const pad = (x, y, z, fill, clear = 6) => {
+      if (!inside(x, z)) return;
+      for (let yy = y - 1; yy > y - 8 && yy > 0; yy--) { if (!soft(get(x, yy, z))) break; set(x, yy, z, fill); }
+      for (let yy = y + 1; yy <= Math.min(H - 1, y + clear); yy++) set(x, yy, z, AIR);
+    };
+    // gravel paths from the well to each door
+    const path = (ax, az, bx, bz) => {
+      let x = ax, z = az;
+      while (x !== bx || z !== bz) {
+        if (x !== bx) x += Math.sign(bx - x); else z += Math.sign(bz - z);
+        if (!inside(x, z)) continue;
+        const h = hAt(x, z), top = get(x, h, z);
+        if (top === GRASS || top === DIRT || top === SAND || top === SNOW_GRASS) {
+          set(x, h, z, GRAVEL);
+          const above = get(x, h + 1, z);
+          if (above && BLOCKS[above] && !BLOCKS[above].solid) set(x, h + 1, z, AIR);
+        }
+      }
+    };
+    for (const hs of v.houses) path(v.x, v.z, hs.x + hs.door[0] + Math.sign(hs.door[0]), hs.z + hs.door[1] + Math.sign(hs.door[1]));
+    if (v.farm) path(v.x, v.z, v.farm.x, v.farm.z - 4);
+    // the well, with the village bell beside it
+    for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) {
+      const x = v.x + dx, z = v.z + dz;
+      pad(x, v.y, z, COBBLE);
+      if (dx || dz) { set(x, v.y, z, COBBLE); set(x, v.y + 1, z, COBBLE); } else { set(x, v.y, z, WATER); set(x, v.y - 1, z, WATER); set(x, v.y - 2, z, COBBLE); }
+    }
+    pad(v.x + 2, v.y, v.z, COBBLE);
+    set(v.x + 2, v.y, v.z, COBBLE); set(v.x + 2, v.y + 1, v.z, VILLAGE_BELL);
+    // houses: 5 x 5, plank walls on log corners, a cobblestone footing, a door, windows, a torch and a table
+    for (const hs of v.houses) {
+      const { x, y, z, door } = hs;
+      for (let dz = -2; dz <= 2; dz++) for (let dx = -2; dx <= 2; dx++) {
+        const wx = x + dx, wz = z + dz, edge = Math.abs(dx) === 2 || Math.abs(dz) === 2, corner = Math.abs(dx) === 2 && Math.abs(dz) === 2;
+        pad(wx, y, wz, COBBLE, 9);
+        set(wx, y, wz, edge ? COBBLE : PLANKS);
+        for (let k = 1; k <= 3; k++) {
+          let id = AIR;
+          if (corner) id = LOG;
+          else if (edge) id = k === 2 && (dx === 0 || dz === 0) ? GLASS_PANE : PLANKS;
+          set(wx, y + k, wz, id);
+        }
+        set(wx, y + 4, wz, PLANKS);
+        if (!edge) set(wx, y + 5, wz, slabId(0));
+      }
+      // the door, in the middle of the wall facing the well
+      const dx = x + door[0], dz = z + door[1], facing = door[1] ? 0 : 1;
+      set(dx, y + 1, dz, doorId(facing, false, false));
+      set(dx, y + 2, dz, doorId(facing, false, true));
+      // a torch on the wall opposite the door, a table and a chest in the corners
+      const bx = x - Math.sign(door[0]), bz = z - Math.sign(door[1]);
+      const tw = door[0] > 0 ? 0 : door[0] < 0 ? 1 : door[1] > 0 ? 2 : 3; // the wall it hangs on: -x, +x, -z, +z
+      set(bx, y + 2, bz, TORCH_WALL_W + tw);
+      const side = door[0] ? [0, 1] : [1, 0];
+      set(x + side[0], y + 1, z + side[1], FURN_TABLE);
+      set(x - side[0], y + 1, z - side[1], CHEST);
+    }
+    // a field of wheat with a channel of water down the middle
+    if (v.farm) {
+      const { x, y, z } = v.farm;
+      for (let dz = -3; dz <= 3; dz++) for (let dx = -2; dx <= 2; dx++) {
+        const wx = x + dx, wz = z + dz, edge = Math.abs(dx) === 2 || Math.abs(dz) === 3;
+        pad(wx, y, wz, DIRT, 3);
+        if (edge) set(wx, y, wz, LOG);
+        else if (dx === 0) set(wx, y, wz, WATER);
+        else { set(wx, y, wz, DIRT); set(wx, y + 1, wz, WHEAT_0 + Math.floor(hash3(this.seed, wx, 3011, wz) * 4)); }
+      }
+    }
   }
 
   // Is there a dungeon in this chunk, and where is its shrine? { x, y, z } or null.

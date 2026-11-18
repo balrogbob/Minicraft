@@ -17,8 +17,10 @@ import {
   LEVER, BUTTON, PRESSURE_PLATE, ITEM_FRAME, LOADER_RAIL, STORAGE_CART, isFrame,
   ANVIL, LOOT_CHEST, BOSS_SHRINE, SPENT_SHRINE, CAULDRON, GLASS_BOTTLE, maxWear,   BERRY_BUSH, BERRIES, STAINLESS_INGOT, STEEL_INGOT, COPPER_INGOT, WHEAT, COBBLE, FEATHER, COAL, CORNFLOWER,
   IRON_INGOT, GOLD_INGOT, SILVER_INGOT, ELECTRUM_INGOT, TUNGSTEN_INGOT, GUNPOWDER, NIGHT_TEA, HASTE_TEA, FIRE_TEA, HEAL_TEA, IRON_SHIELD, BAKED_FISH,
+  GLOW_MUSHROOM, CRYSTAL_SHARD, HONEY_BOTTLE, HONEYCOMB, BEE_HIVE, MAX_HONEY, VILLAGE_BELL, SALMON, BAKED_SALMON, ICEFISH, PUFFERFISH, OLD_BOOT,
+  STICK, STRING, PAPER, CAKE, COOKIE, LEATHER, FISHING_ROD as ROD, WEIGHTED_ROD as WROD, SEEDS, FLOUR, BUTTER,
 } from './blocks.js';
-import { createAtlas, createIcons, createCrackCanvases, createWaterCanvas, createHudIcons } from './textures.js';
+import { createAtlas, createIcons, createCrackCanvases, createWaterCanvas, createHudIcons, paintSeason } from './textures.js';
 import { World, CHUNK, WORLD_SIZE, chunkKey } from './world.js';
 import { localIndex, CHUNK_VOLUME, H } from './terrain.js';
 import { ChunkStore } from './store.js';
@@ -39,6 +41,7 @@ import { Carts, railBeyond } from './carts.js';
 import { MiniMap } from './minimap.js';
 import { Frames } from './frames.js';
 import { Weather } from './weather.js';
+import { Bees } from './bees.js';
 
 // v2 = the 16k x 16k streaming world (player state here, edited chunks in IndexedDB).
 // v1 = the old 128 x 128 world, migrated into the middle of the big world on first launch.
@@ -209,6 +212,7 @@ let riding = null; // the minecart you're sitting in
 const minimap = new MiniMap($('map'), atlasCanvas);
 const frames = new Frames(scene, icons); // what's shown in each item frame
 const weather = new Weather(scene);
+const bees = new Bees(scene, sound);
 let ridingMob = null; // the camel you're riding
 machines.frames = frames; machines.carts = carts;
 // Bellows blowing into an oven or smelter (while they're turned) make it work half as fast again.
@@ -297,7 +301,7 @@ async function startWorld(save) {
     const drops = dropsFor(LEAVES, 0);
     if (drops.length) giveDrops(drops);
   };
-  mobs.reset(world);
+  mobs.reset(world); bees.clear(); shownSeason = -1;
   kinetics.clear();
   for (const [k, f] of fuses) removeFuse(k, f);
   signs.load(save?.signs);
@@ -686,10 +690,29 @@ function shootArrow(power) {
 // Tap with the rod to cast; tap again to reel in. Reel in while the bobber is bobbing under (a bite) to catch a fish.
 function useRod(id) {
   if (!fishing.active) { fishing.cast(player.eye, player.lookDir(), id === WEIGHTED_ROD); return; }
+  const at = fishing.state?.pos?.clone();
   if (!fishing.reel()) return;
-  if (inventory.add(RAW_FISH, 1) > 0) { toast('Inventory full: the fish got away'); return; }
-  toast('You caught a fish!', 1500);
+  const [what, n, msg] = catchAt(at ?? player.pos);
+  if (inventory.add(what, n) > 0) { toast('Inventory full: it got away'); return; }
+  toast(msg, 1800);
   sound.pop();
+}
+
+// What's on the hook depends on where you fish: salmon in rivers, icefish in the cold, pufferfish in warm
+// water, and now and then some junk, or treasure.
+const TREASURE = [[GOLD_INGOT, 1], [SILVER_INGOT, 2], [CRYSTAL_SHARD, 3], [IRON_INGOT, 2], [NIGHT_TEA, 1], [SILVER_ARROW, 4]];
+function catchAt(pos) {
+  const x = Math.floor(pos.x), z = Math.floor(pos.z), r = Math.random();
+  const gen = world.generator, biome = gen.biomeAt(x, z);
+  if (r < 0.05) { const [id, n] = TREASURE[Math.floor(Math.random() * TREASURE.length)]; return [id, n, `Treasure! You fished up ${n > 1 ? n + ' × ' : ''}${itemName(id).toLowerCase()}`]; }
+  if (r < 0.12) { const id = Math.random() < 0.6 ? OLD_BOOT : STICK; return [id, 1, `You fished up ${id === OLD_BOOT ? 'an old boot' : 'a soggy stick'}`]; }
+  let id = RAW_FISH;
+  const f = Math.random();
+  if (biome === 'tundra' && f < 0.6) id = ICEFISH;
+  else if (gen.isRiver(x, z) && f < 0.6) id = SALMON;
+  else if (biome === 'desert' && f < 0.3) id = PUFFERFISH;
+  else if (biome !== 'desert' && f < 0.06) id = PUFFERFISH;
+  return [id, 1, `You caught ${id === RAW_FISH ? 'a fish' : id === PUFFERFISH ? 'a pufferfish' : 'a ' + itemName(id).replace('Raw ', '').toLowerCase()}!`];
 }
 
 // Where the line leaves the rod: a little to the right of and below your eye.
@@ -1143,6 +1166,8 @@ function eat(id) {
   if (hunger > MAX_HUNGER - 1) { toast('You\'re not hungry'); return; } // (hunger drains constantly, so never exactly full)
   hunger = Math.min(MAX_HUNGER, hunger + foodValue(id));
   inventory.consumeHeld();
+  if (id === HONEY_BOTTLE) { inventory.add(GLASS_BOTTLE, 1); health = Math.min(MAX_HEALTH, health + 2); renderHealth(); }
+  if (id === PUFFERFISH) { poisoned = Math.max(poisoned, 15); toast('Ugh! The pufferfish was poisonous.', 2500); renderHealth(); }
   sound.eat();
   toast(`Ate ${itemName(id).toLowerCase()}`, 1000);
   renderHunger();
@@ -1443,14 +1468,43 @@ mobs.onTraderSpawn = (m) => {
   for (let i = 0; i < 4 && pool.length; i++) m.trades.push(pool.splice(Math.floor(Math.random() * pool.length), 1)[0]);
   toast('A wandering trader has turned up nearby', 3000);
 };
+// Villagers each have a trade, and offer three swaps from its list.
+const VILLAGER_TRADES = {
+  farmer: [[[LOG, 8], [BREAD, 4]], [[COBBLE, 24], [CAKE, 1]], [[STICK, 16], [WHEAT, 12]], [[FEATHER, 6], [BUTTER, 2]], [[BERRIES, 10], [COOKIE, 6]], [[COAL, 6], [FLOUR, 6]]],
+  smith: [[[COAL, 12], [IRON_INGOT, 3]], [[LOG, 16], [STEEL_INGOT, 1]], [[GOLD_INGOT, 1], [STAINLESS_INGOT, 1]], [[COBBLE, 32], [COPPER_INGOT, 4]], [[LEATHER, 4], [IRON_SHIELD, 1]], [[CRYSTAL_SHARD, 4], [TUNGSTEN_INGOT, 1]]],
+  fisher: [[[STICK, 12], [BAKED_FISH, 3]], [[STRING, 4], [WROD, 1]], [[WHEAT, 16], [SALMON, 4]], [[COAL, 8], [BAKED_SALMON, 3]], [[BREAD, 4], [ROD, 1]], [[OLD_BOOT, 2], [LEATHER, 3]]],
+  cleric: [[[GOLD_INGOT, 1], [HEAL_TEA, 2]], [[BERRIES, 8], [NIGHT_TEA, 1]], [[HONEYCOMB, 3], [HASTE_TEA, 1]], [[SILVER_INGOT, 2], [CRYSTAL_SHARD, 4]], [[PAPER, 6], [FIRE_TEA, 1]], [[GLOW_MUSHROOM, 4], [NIGHT_TEA, 1]]],
+};
+const PROFESSION_NAMES = { farmer: 'Farmer', smith: 'Smith', fisher: 'Fisher', cleric: 'Cleric' };
+mobs.onVillagerSpawn = (m) => {
+  const pool = [...VILLAGER_TRADES[m.profession]];
+  m.trades = [];
+  for (let i = 0; i < 3; i++) m.trades.push(pool.splice(Math.floor(Math.random() * pool.length), 1)[0]);
+};
+// The way to the nearest village, as the trader tells it ("about 300 blocks north-east"), or ''.
+function villageHint() {
+  const v = world.generator.nearestVillage(player.pos.x, player.pos.z, 8);
+  if (!v) return '';
+  const dx = v.x - player.pos.x, dz = v.z - player.pos.z, d = Math.hypot(dx, dz);
+  if (d < 48) return ` You're right by ${v.name}.`;
+  return ` There's a village called ${v.name} about ${Math.round(d / 50) * 50} blocks ${POINT_NAMES[pointOf(dx, dz)]} of here.`;
+}
+const POINT_NAMES = { N: 'north', NE: 'north-east', E: 'east', SE: 'south-east', S: 'south', SW: 'south-west', W: 'west', NW: 'north-west' };
 let tradingWith = null;
 function openTrade(m) {
-  if (!m.trades) mobs.onTraderSpawn(m);
+  if (!m.trades) (m.spec.villager ? mobs.onVillagerSpawn : mobs.onTraderSpawn)(m);
+  if (m.spec.villager) {
+    $('trade-title').textContent = `${PROFESSION_NAMES[m.profession] ?? 'Villager'} of ${m.home?.name ?? 'the village'}`;
+    $('trade-hint').textContent = '"Welcome, friend! Have a look at what I can offer."';
+  } else {
+    $('trade-title').textContent = 'Wandering Trader';
+    $('trade-hint').textContent = `"Rare things from far away! I'll take what you have plenty of.${villageHint()}" The trader moves on after a while.`;
+  }
   tradingWith = m;
   paused = true;
   controls.reset();
   document.exitPointerLock?.();
-  sound.mob('trader', 1);
+  sound.mob(m.kind, 1);
   $('trade').classList.remove('hidden');
   renderTrades();
 }
@@ -1705,6 +1759,23 @@ function place() {
     if (BLOCKS[tid].switch === 'lever') { setSwitch(tx, ty, tz, !BLOCKS[tid].on); return; }
     if (BLOCKS[tid].switch === 'button') { setSwitch(tx, ty, tz, true); pressedButtons.set(lampKey(tx, ty, tz), 1.5); return; }
     if (isFrame(tid)) { useFrame(tx, ty, tz, held); return; }
+    if (BLOCKS[tid].hive >= 0 && (held?.id === GLASS_BOTTLE || !held || !isBlock(held.id))) {
+      const lv = BLOCKS[tid].hive;
+      if (held?.id === GLASS_BOTTLE && lv >= MAX_HONEY) {
+        world.setBlock(tx, ty, tz, BEE_HIVE);
+        inventory.consumeHeld();
+        giveDrops([[HONEY_BOTTLE, 1]]);
+        sound.splash(false);
+        toast('You fill a bottle with honey', 1500);
+      } else toast(lv >= MAX_HONEY ? 'The hive is full of honey: tap it holding a glass bottle' : `The bees are making honey (${lv}/${MAX_HONEY})`, 2000);
+      return;
+    }
+    if (BLOCKS[tid].bell) {
+      const v = world.generator.nearestVillage(tx, tz, 1);
+      sound.ding?.() ?? sound.pop();
+      toast(v ? `Welcome to ${v.name}` : 'Ding!', 2200);
+      return;
+    }
     if (tid === BERRY_BUSH + 1) {
       world.setBlock(tx, ty, tz, BERRY_BUSH);
       sound.breakBlock('leaves');
@@ -1795,6 +1866,8 @@ function place() {
     const half = BLOCKS[slabId(s.mat, top)].boxes[0];
     if (player.overlapsBlock(x, y + half[1] / 16, z) && player.pos.y < y + half[4] / 16 && player.pos.y + 1.8 > y + half[1] / 16) return;
     id = slabId(s.mat, top);
+  } else if (id === GLOW_MUSHROOM) {
+    if (there !== AIR || target.ny !== 1 || !BLOCKS[target.id].solid || BLOCKS[target.id].transparent) { toast('Mushrooms grow on top of a solid block'); return; }
   } else if (id === SAPLING) {
     if (there !== AIR || target.ny !== 1 || (target.id !== GRASS && target.id !== DIRT)) { toast('Plant saplings on top of grass or dirt'); return; }
   } else if (id === SUGAR_CANE) {
@@ -2376,6 +2449,28 @@ function toggleWaypoint(x, y, z, id) {
 }
 const dropWaypoint = (x, y, z) => { waypoints = waypoints.filter((w) => !(w.x === x && w.y === y && w.z === z)); };
 
+// ---------- seasons ----------
+// The year turns through four seasons of SEASON_DAYS days each. Crops grow fastest in summer and
+// barely at all in winter; leaves turn in autumn and fall in winter, and winter frosts the grass and
+// brings snow instead of rain.
+const SEASON_DAYS = 6;
+const SEASONS = [
+  { name: 'Spring', grow: 1.25, arrives: 'spring is here: fresh leaves and quick-growing crops' },
+  { name: 'Summer', grow: 1.5, arrives: 'summer: crops grow fastest now' },
+  { name: 'Autumn', grow: 1, arrives: 'autumn: the leaves are turning' },
+  { name: 'Winter', grow: 0.35, arrives: 'winter: frost, snow, and crops that barely grow' },
+];
+const seasonOf = (d) => Math.floor((d - 1) / SEASON_DAYS) % 4;
+let shownSeason = -1;
+function applySeason() {
+  const s = seasonOf(day);
+  if (s === shownSeason || !world) return;
+  shownSeason = s;
+  world.growthRate = SEASONS[s].grow;
+  paintSeason(atlasCanvas, s);
+  atlas.needsUpdate = true;
+}
+
 // ---------- clock and compass ----------
 // The gold clock reads the time of day (sunrise is 6:00, sunset 18:00); the compass shows which way you
 // face and which way home is (your bed, or where the world started you).
@@ -2465,6 +2560,7 @@ function stepGame(now, dt) {
     });
     for (const id of picked) { inventory.add(id, 1); sound.pop(); }
     updateFishing(dt);
+    bees.update(dt, world, player, { day: lightUniforms.uDay.value, flicker: lightUniforms.uFlicker.value, ambient: lightUniforms.uAmbient.value }, sky.light);
     mobs.update(dt, player, { day: lightUniforms.uDay.value, flicker: lightUniforms.uFlicker.value, ambient: lightUniforms.uAmbient.value },
       { difficulty: difficulty(), daylight: sky.light, playerDead: dead, ride: ridingMob && { moveX: controls.moveX, moveZ: controls.moveZ, yaw: player.yaw } });
     if (ridingMob) followMount();
@@ -2484,7 +2580,8 @@ function stepGame(now, dt) {
   coordsTimer -= dt;
   if (coordsTimer <= 0) {
     coordsTimer = 0.25;
-    $('coords').textContent = `Day ${day}   X ${Math.floor(player.pos.x)}  Y ${Math.floor(player.pos.y)}  Z ${Math.floor(player.pos.z)}` +
+    applySeason();
+    $('coords').textContent = `Day ${day} · ${SEASONS[seasonOf(day)].name}   X ${Math.floor(player.pos.x)}  Y ${Math.floor(player.pos.y)}  Z ${Math.floor(player.pos.z)}` +
       (inventory.count(GOLD_CLOCK) ? `   🕰 ${clockTime()}` : '') + (inventory.count(COMPASS) ? `   🧭 ${compassText()}` : '') +
       (effectsText() ? `   ${effectsText()}` : '');
   }
@@ -2494,13 +2591,19 @@ function stepGame(now, dt) {
   camera.rotation.set(player.pitch, player.yaw, 0);
 
   const biome = world.generator.biomeAt(Math.floor(player.pos.x), Math.floor(player.pos.z));
-  weather.update(paused ? 0 : dt, eye, biome, world.skyAt(Math.floor(eye.x), Math.min(H - 1, Math.floor(eye.y) + 1), Math.floor(eye.z)));
+  // in winter it snows rather than rains in temperate land
+  weather.update(paused ? 0 : dt, eye, biome === 'temperate' && seasonOf(day) === 3 ? 'tundra' : biome, world.skyAt(Math.floor(eye.x), Math.min(H - 1, Math.floor(eye.y) + 1), Math.floor(eye.z)));
   sky.weather = { overcast: weather.overcast, level: weather.level, kind: weather.kind };
   world.raining = weather.raining && biome !== 'desert';
   sound.weather(paused ? 0 : weather.level, weather.kind);
   const before = sky.time;
   sky.update(paused ? 0 : dt, eye, lightUniforms.uDay, player.eyeInWater);
-  if (sky.time < before) { day++; caneToday = 0; toast(`Day ${day}`, 2500); } // the clock wrapped round to sunrise
+  if (sky.time < before) { // the clock wrapped round to sunrise
+    day++; caneToday = 0;
+    const turned = seasonOf(day) !== seasonOf(day - 1);
+    toast(turned ? `Day ${day}: ${SEASONS[seasonOf(day)].arrives}` : `Day ${day}`, turned ? 4000 : 2500);
+    applySeason();
+  }
   lightUniforms.uFlicker.value = 0.93 + 0.04 * Math.sin(now * 0.011) + 0.03 * Math.sin(now * 0.029);
   $('underwater').classList.toggle('show', player.eyeInWater);
   waterTex.offset.x = (waterTex.offset.x + dt * 0.06) % 1;
@@ -2538,7 +2641,7 @@ window.minicraft = {
   get paused() { return paused; },
   get health() { return health; }, set health(v) { health = v; renderHealth(); },
   get poisoned() { return poisoned; }, get dead() { return dead; }, get air() { return air; }, set air(v) { air = v; },
-  arrows, fishing, kinetics, frames, signalAt, setSwitch, machines, carts, minimap, signs, armour, damage, placeRail, getInCart, getOutOfCart,
+  arrows, fishing, kinetics, bees, catchAt, seasonOf, applySeason, set day(v) { day = v; applySeason(); }, frames, signalAt, setSwitch, machines, carts, minimap, signs, armour, damage, placeRail, getInCart, getOutOfCart,
   get riding() { return riding; }, explode, lightFuse, fuses, clockTime, compassText, place, editSign, closeSign, openInventory, closeInventory, chestMove, lamps, tickLamps, sleepUntilMorning, stations, openStation, closeStation,
   get caneToday() { return caneToday; }, get waypoints() { return waypoints; }, toggleWaypoint, sortSlots, weather, openTrade, closeTrade, mountMob, dismount, get ridingMob() { return ridingMob; }, effects, armourWear, useAnvil, rollLoot, settings,
   get bedSpawn() { return bedSpawn; },

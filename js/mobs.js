@@ -6,7 +6,7 @@
 // physics as the player (gravity, block collisions, stepping up one block) and float in water.
 // They aren't saved: they're spawned fresh around wherever you are.
 import * as THREE from 'three';
-import { AIR, WATER, LEAVES, LOG, GRASS, SAND, DIRT, WOOL, BUCKET, MILK_BUCKET, SLIME_BUCKET, FEATHER, COAL, COBBLE, ARROW, HIDE, SNOW_GRASS, SNOW, KING_CROWN, GOLD_INGOT, MOSSY_BRICKS, RAW_FISH, BAKED_FISH, WHEAT } from './blocks.js';
+import { AIR, WATER, LEAVES, LOG, GRASS, SAND, DIRT, WOOL, BUCKET, MILK_BUCKET, SLIME_BUCKET, FEATHER, COAL, COBBLE, ARROW, HIDE, SNOW_GRASS, SNOW, KING_CROWN, GOLD_INGOT, MOSSY_BRICKS, RAW_FISH, BAKED_FISH, WHEAT, SALMON, BAKED_SALMON, ICEFISH, BAKED_ICEFISH } from './blocks.js';
 import { SEA_LEVEL, H } from './terrain.js';
 import { skyBrightness, lightBrightness } from './world.js';
 import { THORN_SPEED, THORN_GRAVITY } from './arrows.js';
@@ -56,6 +56,14 @@ class Builder {
     return p;
   }
 }
+
+const shade = (c) => { const k = 0.85; return (((c >> 16) & 255) * k) << 16 | (((c >> 8) & 255) * k) << 8 | ((c & 255) * k); };
+const VILLAGER_LOOKS = {
+  farmer: { robe: 0x7a6a3a, apron: 0x9a7a4a, legs: 0x4a3a2a, hat: 'straw' },
+  smith: { robe: 0x5a5a62, apron: 0x2a2a2e, legs: 0x3a3a40, hat: 'cap' },
+  fisher: { robe: 0x3a6a8a, apron: 0xc8b88a, legs: 0x2a3a4a, hat: 'cap' },
+  cleric: { robe: 0x7a3a8a, apron: 0xd8c050, legs: 0x5a2a6a, hat: 'hood' },
+};
 
 // ---------- species ----------
 // Models face +z with their feet at y = 0. Sizes are in blocks.
@@ -309,7 +317,7 @@ const SPECIES = {
   // tundra wolves: tame one with fish and it follows you and fights night creatures
   wolf: {
     w: 0.6, h: 0.85, speed: 1.4, chaseSpeed: 5.2, followSpeed: 5, fleeSpeed: 4.5, sink: 0.6, stride: 11, legSwing: 0.6,
-    group: [1, 3], cap: 4, avoidWater: true, grazes: false, fights: true, tames: [RAW_FISH, BAKED_FISH],
+    group: [1, 3], cap: 4, avoidWater: true, grazes: false, fights: true, tames: [RAW_FISH, BAKED_FISH, SALMON, BAKED_SALMON, ICEFISH, BAKED_ICEFISH],
     build(b, root) {
       const fur = pick([0x8a8a8e, 0x9c9a96, 0x6e6c6a, 0xd8d6d2]), pale = 0xd2d0cc, dark = 0x3a3a3c;
       const parts = { legs: [] };
@@ -397,6 +405,38 @@ const SPECIES = {
     },
   },
 
+  // villagers live in the villages: each has a trade (farmer, smith, fisher or cleric) and swaps its goods
+  villager: {
+    w: 0.6, h: 1.8, speed: 0.8, fleeSpeed: 2.2, sink: 1, stride: 7, legSwing: 0.5,
+    avoidWater: true, grazes: false, trader: true, villager: true,
+    build(b, root, opts = {}) {
+      const look = VILLAGER_LOOKS[opts.profession] ?? VILLAGER_LOOKS.farmer;
+      const skin = pick([0xd8a878, 0xb07a50, 0x8a5a38, 0xe8c09a]);
+      const parts = { legs: [], arms: [] };
+      const torso = parts.torso = b.pivot(root, [0, 0.78, 0]);
+      b.box(torso, [0.48, 0.68, 0.3], look.robe, [0, 0.34, 0]);
+      b.box(torso, [0.5, 0.42, 0.04], look.apron, [0, 0.22, 0.16]); // apron
+      const head = parts.head = b.pivot(torso, [0, 0.7, 0]);
+      b.box(head, [0.36, 0.38, 0.36], skin, [0, 0.19, 0]);
+      b.box(head, [0.08, 0.14, 0.08], shade(skin), [0, 0.13, 0.21]); // nose
+      for (const sx of [-1, 1]) b.box(head, [0.05, 0.05, 0.03], 0x222222, [sx * 0.09, 0.24, 0.18]);
+      if (look.hat === 'straw') { b.box(head, [0.62, 0.05, 0.62], 0xd8c070, [0, 0.4, 0]); b.box(head, [0.36, 0.14, 0.36], 0xd8c070, [0, 0.48, 0]); }
+      else if (look.hat === 'cap') b.box(head, [0.4, 0.1, 0.44], look.apron, [0, 0.42, 0.03]);
+      else if (look.hat === 'hood') { b.box(head, [0.42, 0.14, 0.42], look.robe, [0, 0.42, 0]); b.box(head, [0.42, 0.3, 0.06], look.robe, [0, 0.24, -0.2]); }
+      else b.box(head, [0.38, 0.1, 0.38], 0x4a3a2a, [0, 0.42, 0]); // hair
+      for (const sx of [-1, 1]) {
+        const arm = b.pivot(torso, [sx * 0.31, 0.64, 0]);
+        b.box(arm, [0.14, 0.58, 0.14], look.robe, [0, -0.29, 0]);
+        b.box(arm, [0.12, 0.1, 0.12], skin, [0, -0.62, 0]);
+        parts.arms.push(arm);
+        const leg = b.pivot(root, [sx * 0.12, 0.78, 0]);
+        b.box(leg, [0.18, 0.78, 0.2], look.legs, [0, -0.39, 0]);
+        parts.legs.push(leg);
+      }
+      return parts;
+    },
+  },
+
   newt: {
     w: 0.3, h: 0.15, speed: 0.9, fleeSpeed: 2.6, sink: 0.08, stride: 16, legSwing: 0.6,
     group: [1, 2], cap: 5, avoidWater: false, grazes: false,
@@ -427,6 +467,7 @@ const SPECIES = {
 };
 
 export const MOB_KINDS = Object.keys(SPECIES);
+export const PROFESSIONS = ['farmer', 'smith', 'fisher', 'cleric'];
 const HOSTILE_KINDS = MOB_KINDS.filter((k) => SPECIES[k].hostile && !SPECIES[k].boss);
 const ANIMAL_CAP = MAX_MOBS;
 
@@ -446,7 +487,8 @@ export const DIFFICULTY = {
 export const DIFFICULTY_ORDER = ['peaceful', 'worrying', 'scary', 'terrifying'];
 
 class Mob {
-  constructor(kind, x, y, z) {
+  constructor(kind, x, y, z, opts = {}) {
+    this.profession = opts.profession;
     this.kind = kind;
     this.spec = SPECIES[kind];
     this.pos = new THREE.Vector3(x, y, z);
@@ -480,7 +522,7 @@ class Mob {
     this.glowMaterial = new THREE.MeshBasicMaterial({ vertexColors: true });
     const b = new Builder(this.material, this.glowMaterial);
     this.root = new THREE.Group();
-    this.parts = this.spec.build(b, this.root);
+    this.parts = this.spec.build(b, this.root, opts);
     this.baseScale = this.root.scale.x;
     this.geometries = b.geometries;
   }
@@ -611,9 +653,29 @@ export class MobManager {
     return null;
   }
 
+  // Villagers turn up around a village as you come near it, and stay close to home.
+  spawnVillagers(player) {
+    const w = this.world;
+    const v = w.generator.nearestVillage(player.pos.x, player.pos.z, 1);
+    if (!v || Math.hypot(v.x - player.pos.x, v.z - player.pos.z) > 80) return;
+    const here = this.mobs.filter((m) => m.home === v).length;
+    if (here >= Math.min(5, v.houses.length + 1)) return;
+    const hs = pick(v.houses);
+    const x = hs.x + hs.door[0] * 2 + Math.round(rand(-1, 1)), z = hs.z + hs.door[1] * 2 + Math.round(rand(-1, 1));
+    if (!w.chunkAt(x, z)) return;
+    const s = this.surface(x, z);
+    if (!s || w.isWater(x, s.y, z) || !this.hasRoom('villager', x + 0.5, s.y + 1, z + 0.5)) return;
+    const used = this.mobs.filter((m) => m.home === v).map((m) => m.profession);
+    const profession = PROFESSIONS.find((p) => !used.includes(p)) ?? pick(PROFESSIONS);
+    const m = this.spawn('villager', x + 0.5, s.y + 1, z + 0.5, { profession });
+    m.home = v;
+    this.onVillagerSpawn?.(m);
+    return m;
+  }
+
   // Put a specific animal at (x, y, z), feet at y. Handy for testing from the console.
-  spawn(kind, x, y, z) {
-    const m = new Mob(kind, x, y, z);
+  spawn(kind, x, y, z, opts) {
+    const m = new Mob(kind, x, y, z, opts);
     this.mobs.push(m);
     this.scene.add(m.root);
     return m;
@@ -665,6 +727,8 @@ export class MobManager {
       this.traderTimer = 30;
       if ((ctx.daylight ?? 0) > 0.8 && !this.mobs.some((m) => m.spec.trader) && Math.random() < (ctx.traderChance ?? 0.12)) this.spawnTrader(player);
     }
+    this.villageTimer = (this.villageTimer ?? 0) - dt;
+    if (this.villageTimer <= 0) { this.villageTimer = 3; this.spawnVillagers(player); }
     this.hostileTimer -= dt;
     if (this.hostileTimer <= 0) {
       this.hostileTimer = 0.5;
@@ -737,6 +801,8 @@ export class MobManager {
   think(m, dt, player) {
     const spec = m.spec;
     m.timer -= dt;
+    // villagers wander back toward the well if they stray too far
+    if (m.home && m.state === 'walk' && Math.hypot(m.pos.x - m.home.x, m.pos.z - m.home.z) > 16) m.heading = Math.atan2(m.home.x - m.pos.x, m.home.z - m.pos.z);
     if (m.state === 'flee') {
       m.heading = Math.atan2(m.pos.x - player.pos.x, m.pos.z - player.pos.z) + Math.sin(m.timer * 3) * 0.3;
       if (m.timer <= 0) { m.state = 'idle'; m.timer = rand(1, 3); }
