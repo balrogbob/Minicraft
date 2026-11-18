@@ -36,7 +36,9 @@ for (const [d, s] of [[0, 1], [0, -1], [1, 1], [1, -1], [2, 1], [2, -1]]) {
   });
   // brightness per face direction (top brightest, bottom darkest)
   const shade = d === 1 ? (s > 0 ? 1.0 : 0.5) : d === 0 ? 0.8 : 0.65;
-  FACES.push({ d, s, n, corners, shade });
+  // which of the four facings (0..3 = +z, -x, -z, +x) a side face points toward
+  const dir = d === 2 ? (s > 0 ? 0 : 2) : d === 0 ? (s > 0 ? 3 : 1) : -1;
+  FACES.push({ d, s, n, corners, shade, dir });
 }
 const AO_LEVELS = [0.45, 0.62, 0.8, 1.0];
 // vertex colours are linear in three.js; convert perceptual brightness to linear
@@ -642,7 +644,8 @@ export class World {
           if (!ndef.transparent) continue;
           if (nid === id && id !== LEAVES) continue; // glass-to-glass faces are hidden
         }
-        const tile = f.d === 1 ? (f.s > 0 ? def.top : def.bottom) : def.side;
+        // (blocks with a front, like ovens, show it on the side that faces their `facing` direction)
+        const tile = f.d === 1 ? (f.s > 0 ? def.top : def.bottom) : def.front !== null && f.dir === def.facing ? def.front : def.side;
         const tu = (tile % ATLAS_COLS) * tileUV;
         const tvTop = 1 - Math.floor(tile / ATLAS_COLS) * tileUV;
         const ao = [0, 0, 0, 0];

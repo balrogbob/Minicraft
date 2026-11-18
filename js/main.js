@@ -5,6 +5,7 @@ import {
   WOOD_PICK, STONE_PICK, WOOD_AXE, STONE_AXE, WOOD_SHOVEL, STONE_SHOVEL,
   BED, BED_FOOT, CHAIR, LAMP, CARPET, CURTAIN, DOOR, SLIME_FUEL, FACING_DIRS, MAX_LAMP_FUEL,
   isBed, isChair, isLamp, isCurtain, isDoor, doorId,
+  OVEN, SMELTER, stationKind, maxStack,
   isBlock, isTorch, isWheat, itemName, breakTime, dropsFor, foodValue,
 } from './blocks.js';
 import { createAtlas, createIcons, createCrackCanvases, createWaterCanvas, createHudIcons } from './textures.js';
@@ -19,10 +20,11 @@ import { Inventory, SLOTS } from './inventory.js';
 import { Controls } from './controls.js';
 import { MobManager, DIFFICULTY, DIFFICULTY_ORDER } from './mobs.js';
 import { ArrowManager } from './arrows.js';
+import { Stations, STATION_KINDS, isFuel } from './stations.js';
 
 // v2 = the 16k x 16k streaming world (player state here, edited chunks in IndexedDB).
 // v1 = the old 128 x 128 world, migrated into the middle of the big world on first launch.
-const GAME_VERSION = '11'; // shown in the menu; bump with each release
+const GAME_VERSION = '12'; // shown in the menu; bump with each release
 const SAVE_KEY = 'minicraft-save-v2';
 const LEGACY_SAVE_KEY = 'minicraft-save-v1';
 const SETTINGS_KEY = 'minicraft-settings-v1';
@@ -176,6 +178,8 @@ let bowCharge = 0; // seconds the bow has been drawn (holding)
 let bedSpawn = null; // { x, y, z } of the bed you last used: where you respawn
 // Lit lamps: "x,y,z" -> seconds left in the fuel unit now burning (each unit lasts one in-game day).
 const lamps = new Map();
+const stations = new Stations(); // what's inside each oven and smelter
+let caneToday = 0; // raw sugar cane eaten since sunrise: the 5th gives you food poisoning
 const store = new ChunkStore();
 let worldReady = false; // false while a world is loading: nothing gets saved until the player is placed
 
@@ -274,6 +278,8 @@ async function startWorld(save) {
   bedSpawn = save?.bed && Number.isFinite(save.bed.x) ? save.bed : null;
   lamps.clear();
   for (const [key, secs] of save?.lamps ?? []) if (typeof key === 'string' && Number.isFinite(secs)) lamps.set(key, secs);
+  stations.load(save?.stations);
+  caneToday = Number.isFinite(save?.caneToday) ? save.caneToday : 0;
   air = MAX_AIR;
   dead = false;
   fallTop = null;
@@ -333,6 +339,8 @@ function saveGame() {
     poisoned,
     bed: bedSpawn,
     lamps: [...lamps],
+    stations: stations.serialize(),
+    caneToday,
     time: sky.time,
   });
 }
@@ -401,6 +409,7 @@ function selectSlot(i) {
 
 inventory.onChange = () => {
   renderHotbar();
+  if (openStationAt) renderStation();
   if (!$('inventory').classList.contains('hidden')) renderInventory();
 };
 
@@ -612,13 +621,14 @@ function renderInventory() {
   list.innerHTML = '';
   RECIPES.forEach((r) => {
     const stationOk = (!r.table || hasTable) && (!r.churn || hasChurn);
-    const haveAll = r.in.every(([id, n]) => inventory.count(id) >= n) && (r.tools ?? []).every((id) => inventory.count(id) > 0);
+    const haveAll = r.in.every(([id, n]) => countOf(id) >= n) && (r.tools ?? []).every((id) => inventory.count(id) > 0);
     const canMake = haveAll && stationOk && inventory.room(r.out[0]) >= r.out[1];
     const row = document.createElement('div');
     row.className = 'recipe' + (stationOk ? '' : ' locked');
     const ings = r.in.map(([id, n]) => {
-      const miss = inventory.count(id) < n ? ' missing' : '';
-      return `<span class="ing${miss}" title="${itemName(id)}"><img src="${icons[id]}" alt="">${n}</span>`;
+      const miss = countOf(id) < n ? ' missing' : '';
+      const first = idsOf(id)[0];
+      return `<span class="ing${miss}" title="${idsOf(id).map(itemName).join(' or ')}"><img src="${icons[first]}" alt="">${n}</span>`;
     }).join('');
     // tools are needed but not used up
     const tools = (r.tools ?? []).map((id) => {
@@ -634,8 +644,8 @@ function renderInventory() {
     btn.textContent = 'Craft';
     btn.disabled = !canMake;
     btn.addEventListener('click', () => {
-      if (!r.in.every(([id, n]) => inventory.count(id) >= n)) return;
-      for (const [id, n] of r.in) inventory.remove(id, n);
+      if (!r.in.every(([id, n]) => countOf(id) >= n)) return;
+      for (const [id, n] of r.in) takeOf(id, n);
       let lost = inventory.add(r.out[0], r.out[1]);
       for (const [id, n] of r.also ?? []) lost += inventory.add(id, n);
       if (lost) toast('Inventory full');
@@ -644,6 +654,16 @@ function renderInventory() {
     row.appendChild(btn);
     list.appendChild(row);
   });
+}
+
+// A recipe ingredient can be one id or a list of alternatives (coal or charcoal).
+const idsOf = (spec) => (Array.isArray(spec) ? spec : [spec]);
+const countOf = (spec) => idsOf(spec).reduce((t, id) => t + inventory.count(id), 0);
+function takeOf(spec, n) {
+  for (const id of idsOf(spec)) {
+    const k = Math.min(n, inventory.count(id));
+    if (k) { inventory.remove(id, k); n -= k; }
+  }
 }
 
 function openInventory(station = null) {
@@ -663,9 +683,131 @@ function closeInventory() {
   openedAt = null;
 }
 function toggleInventory() {
+  if (openStationAt) { closeStation(); return; }
   if ($('inventory').classList.contains('hidden')) {
     if ($('menu').classList.contains('hidden')) openInventory();
   } else closeInventory();
+}
+
+// ---------- ovens and smelters ----------
+// Tap one to open it: move ingredients and fuel in from your inventory (tap a slot, then another),
+// and tap the result to collect it. It keeps cooking while it has fuel and ingredients.
+let openStationAt = null; // { x, y, z, kind }
+let stPicked = null; // { area, i }: the slot you tapped first
+
+function setStationLit(x, y, z, lit) {
+  const d = BLOCKS[world.get(x, y, z)];
+  const base = d.station === 'oven' ? OVEN : SMELTER;
+  world.setBlock(x, y, z, base + d.facing + (lit ? 4 : 0));
+}
+
+const currentStation = () => openStationAt && stations.get(openStationAt.x, openStationAt.y, openStationAt.z, openStationAt.kind);
+
+function stationSlot(area, i) {
+  const st = currentStation();
+  if (area === 'in') return { get: () => st.inputs[i], set: (v) => { st.inputs[i] = v; } };
+  if (area === 'fuel') return { get: () => st.fuel, set: (v) => { st.fuel = v; } };
+  if (area === 'out') return { get: () => st.out, set: (v) => { st.out = v; } };
+  return { get: () => inventory.slots[i], set: (v) => { inventory.slots[i] = v; } };
+}
+
+function openStation(x, y, z) {
+  const kind = stationKind(world.get(x, y, z));
+  stations.get(x, y, z, kind);
+  openStationAt = { x, y, z, kind };
+  stPicked = null;
+  paused = true;
+  controls.reset();
+  document.exitPointerLock?.();
+  const K = STATION_KINDS[kind];
+  $('station-title').textContent = K.name;
+  // build the slots for this kind of station
+  const make = (parent, area, i) => {
+    const el = document.createElement('div');
+    el.className = 'slot';
+    el.dataset.area = area;
+    el.dataset.i = i;
+    el.addEventListener('click', () => onStationSlot(area, i));
+    parent.appendChild(el);
+  };
+  const ins = $('st-inputs');
+  ins.innerHTML = '';
+  ins.style.gridTemplateColumns = `repeat(${K.inputs > 1 ? 2 : 1}, var(--slot))`;
+  for (let i = 0; i < K.inputs; i++) make(ins, 'in', i);
+  for (const [id, area] of [['st-fuel', 'fuel'], ['st-out', 'out']]) { $(id).innerHTML = ''; make($(id), area, 0); }
+  $('st-inv').innerHTML = ''; $('st-hotbar').innerHTML = '';
+  for (let i = 9; i < SLOTS; i++) make($('st-inv'), 'inv', i);
+  for (let i = 0; i < 9; i++) make($('st-hotbar'), 'inv', i);
+  // what it can make
+  $('st-recipes').innerHTML = K.recipes.map((r) => {
+    const ing = r.in.map(([id, n]) => `<span class="ing" title="${itemName(id)}"><img src="${icons[id]}" alt="">${n}</span>`).join('');
+    const tools = (r.tools ?? []).map((id) => `<span class="ing tool" title="${itemName(id)} (not used up)"><img src="${icons[id]}" alt="">kept</span>`).join('');
+    return `<div class="recipe">${ing}${tools}<span class="arrow">→</span><img class="outimg" src="${icons[r.out[0]]}" alt="">` +
+      `<span class="name">${r.out[1] > 1 ? r.out[1] + ' × ' : ''}${itemName(r.out[0])}</span></div>`;
+  }).join('') + '<p class="hint">Fuel, in items cooked per piece: log or planks 1, stick ½, coal or charcoal 10, ' +
+    'slime fuel 40 (its bucket is left in the fuel slot). Fuel is only used while something is cooking.</p>';
+  $('station').classList.remove('hidden');
+  renderStation();
+}
+
+function closeStation() {
+  $('station').classList.add('hidden');
+  openStationAt = null;
+  stPicked = null;
+  paused = false;
+}
+
+function renderStation() {
+  const st = currentStation();
+  if (!st) return;
+  for (const el of $('station').querySelectorAll('.slot')) {
+    const area = el.dataset.area, i = +el.dataset.i;
+    el.innerHTML = slotHTML(stationSlot(area, i).get());
+    el.classList.toggle('picked', !!stPicked && stPicked.area === area && stPicked.i === i);
+  }
+  const r = stations.recipeFor(st);
+  $('st-progress').style.width = `${r ? Math.min(100, (st.progress / r.time) * 100) : 0}%`;
+  $('st-flame').style.opacity = st.burn > 0 ? String(0.35 + 0.65 * (st.burn / (st.burnMax || 1))) : '0.12';
+  const fuelLeft = st.burn > 1e-9 ? ` (fuel for ${+st.burn.toFixed(1)} more)` : '';
+  $('st-status').textContent = r ? (st.burn > 1e-9 || (st.fuel && isFuel(st.fuel.id)) ? `Making ${itemName(r.out[0]).toLowerCase()}…${fuelLeft}` : 'Needs fuel') :
+    `Put ingredients in${fuelLeft}`;
+}
+
+function onStationSlot(area, i) {
+  const st = currentStation();
+  if (!st) return;
+  // tapping the result collects it
+  if (area === 'out' && !stPicked) {
+    if (st.out) {
+      const left = inventory.add(st.out.id, st.out.count);
+      st.out = left ? { id: st.out.id, count: left } : null;
+      if (left) toast('Inventory full'); else sound.pop();
+    }
+    renderStation();
+    return;
+  }
+  if (!stPicked) {
+    if (stationSlot(area, i).get()) stPicked = { area, i };
+    renderStation();
+    return;
+  }
+  const fromArea = stPicked.area, fromI = stPicked.i;
+  stPicked = null;
+  if (fromArea === area && fromI === i) { renderStation(); return; }
+  const from = stationSlot(fromArea, fromI), to = stationSlot(area, i);
+  const a = from.get(), b = to.get();
+  if (!a || area === 'out') { renderStation(); return; } // nothing can be put into the result slot
+  if (area === 'fuel' && !isFuel(a.id)) { toast(`${itemName(a.id)} won't burn`); renderStation(); return; }
+  if (fromArea === 'fuel' && b && !isFuel(b.id)) { renderStation(); return; }
+  if (b && b.id === a.id) {
+    const k = Math.min(a.count, maxStack(a.id) - b.count);
+    b.count += k; a.count -= k;
+    if (!a.count) from.set(null);
+  } else {
+    from.set(b); to.set(a);
+  }
+  inventory.onChange();
+  renderStation();
 }
 
 // ---------- actions ----------
@@ -688,6 +830,25 @@ function hitMob() {
     else { toast(`+${n} ${itemName(id)}`, 1200); sound.pop(); }
   }
   if (r.said) toast(r.said);
+}
+
+// Raw sugar cane: a heart of health and half a point of food. Eating five or more in a day
+// (they're counted from sunrise) gives you food poisoning.
+function eatCane() {
+  if (hunger > MAX_HUNGER - 1 && health >= MAX_HEALTH) { toast('You\'re not hungry'); return; }
+  hunger = Math.min(MAX_HUNGER, hunger + 1);
+  health = Math.min(MAX_HEALTH, health + 2);
+  inventory.consumeHeld();
+  sound.eat();
+  caneToday++;
+  if (caneToday >= 5) {
+    poisoned = Math.max(poisoned, 20);
+    toast('Too much raw sugar cane! You have food poisoning.', 2500);
+  } else {
+    toast(`Ate raw sugar cane (${caneToday} today${caneToday === 4 ? ': any more and you\'ll feel sick' : ''})`, 1800);
+  }
+  renderHunger();
+  renderHealth();
 }
 
 function eat(id) {
@@ -800,6 +961,8 @@ async function sleepUntilMorning() {
   const skipped = (1 - sky.time) * DAY_LENGTH; // seconds of night slept through
   sky.time = 0.001;
   day++;
+  caneToday = 0;
+  stations.tick(skipped, world, setStationLit);
   tickLamps(skipped);
   for (let i = 0; i < 6; i++) world.tickPlants(skipped / 6);
   hunger = Math.max(0, hunger - 3); // a night's sleep makes you a bit peckish
@@ -825,6 +988,14 @@ function place() {
     if (isDoor(tid)) { toggleDoor(tx, ty, tz); return; }
     if (isCurtain(tid)) { toggleCurtain(tx, ty, tz); return; }
     if (isLamp(tid)) { useLamp(tx, ty, tz, held); return; }
+    if (stationKind(tid)) { sound.click(); openStation(tx, ty, tz); return; }
+  }
+  // sugar cane in hand: plant it if you're aiming at a good spot beside water, otherwise eat it
+  if (held?.id === SUGAR_CANE) {
+    const ground = target && (target.id === SAND || target.id === GRASS || target.id === DIRT);
+    const plantable = target && target.ny === 1 && world.get(target.x, target.y + 1, target.z) === AIR &&
+      (target.id === SUGAR_CANE || (ground && waterBeside(target.x, target.y, target.z)));
+    if (!plantable) { eatCane(); return; }
   }
   if (held && (foodValue(held.id) || ITEMS[held.id]?.drink)) { eat(held.id); return; }
   if (!target || !held) return;
@@ -873,7 +1044,7 @@ function place() {
     if (there !== AIR || !world.isSolid(x, y - 1, z)) { toast(`${BLOCKS[id].name}s need something solid underneath`); return; }
   } else {
     // chairs face you; curtains hang across your line of sight
-    if (id === CHAIR) id += facingTowardPlayer(x, z);
+    if (id === CHAIR || id === OVEN || id === SMELTER) id += facingTowardPlayer(x, z); // the front faces you
     else if (id === CURTAIN) id += facingTowardPlayer(x, z) % 2; // facing 0/2 -> hangs across x, 1/3 -> across z
     if (BLOCKS[id].solid && player.overlapsBlock(x, y, z)) return;
   }
@@ -943,6 +1114,7 @@ function breakBlock(x, y, z) {
     drops = [[DOOR, 1]];
   }
   if (isLamp(id)) lamps.delete(lampKey(x, y, z));
+  if (stationKind(id)) giveDrops(stations.remove(x, y, z)); // whatever was inside comes back too
   if (isBed(id)) {
     // either half takes the whole bed with it
     const [ox, oy, oz] = bedPartner(x, y, z);
@@ -995,6 +1167,8 @@ function dropUnsupported(x, y, z) {
 // ---------- menu ----------
 function updateAutoJumpLabel() { $('btn-autojump').textContent = `Auto-jump: ${player?.autoJump ? 'on' : 'off'}`; }
 $('btn-respawn').addEventListener('click', respawnPlayer);
+$('btn-close-station').addEventListener('click', closeStation);
+$('station').addEventListener('click', (e) => { if (e.target.id === 'station') closeStation(); });
 $('btn-menu').addEventListener('click', () => {
   paused = true; controls.reset(); document.exitPointerLock?.();
   $('menu').classList.remove('hidden');
@@ -1116,6 +1290,7 @@ function playMovementSounds(dt, wasGround, wasWater, fallSpeed) {
 // ---------- main loop ----------
 let last = performance.now();
 let coordsTimer = 0;
+let stationRefresh = 0;
 let unsavedCount = 0, lastEditAt = 0;
 const perf = { frames: 0, since: 0, fps: 0 };
 function frame(now) {
@@ -1125,6 +1300,10 @@ function frame(now) {
   if (!world) return;
   // gameplay, streaming and rendering are isolated so an error in one can't stop the others
   try { stepGame(now, dt); } catch (err) { reportError(err); }
+  try {
+    if (!dead) stations.tick(dt, world, setStationLit);
+    if (openStationAt && (stationRefresh -= dt) <= 0) { stationRefresh = 0.15; renderStation(); }
+  } catch (err) { reportError(err); }
   try { world.update(player.pos.x, player.pos.z, scene, materials, 6, dt); } catch (err) { reportError(err); }
   renderer.render(scene, camera);
   updatePerf(now);
@@ -1187,7 +1366,7 @@ function stepGame(now, dt) {
 
   const before = sky.time;
   sky.update(paused ? 0 : dt, eye, lightUniforms.uDay, player.eyeInWater);
-  if (sky.time < before) { day++; toast(`Day ${day}`, 2500); } // the clock wrapped round to sunrise
+  if (sky.time < before) { day++; caneToday = 0; toast(`Day ${day}`, 2500); } // the clock wrapped round to sunrise
   lightUniforms.uFlicker.value = 0.93 + 0.04 * Math.sin(now * 0.011) + 0.03 * Math.sin(now * 0.029);
   $('underwater').classList.toggle('show', player.eyeInWater);
   waterTex.offset.x = (waterTex.offset.x + dt * 0.06) % 1;
@@ -1222,6 +1401,7 @@ window.minicraft = {
   get paused() { return paused; },
   get health() { return health; }, set health(v) { health = v; renderHealth(); },
   get poisoned() { return poisoned; }, get dead() { return dead; }, get air() { return air; }, set air(v) { air = v; },
-  arrows, damage, lamps, tickLamps, sleepUntilMorning,
+  arrows, damage, lamps, tickLamps, sleepUntilMorning, stations, openStation, closeStation,
+  get caneToday() { return caneToday; },
   get bedSpawn() { return bedSpawn; },
 };

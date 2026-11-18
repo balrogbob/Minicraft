@@ -18,7 +18,9 @@ export const AIR = 0, GRASS = 1, DIRT = 2, STONE = 3, COBBLE = 4, LOG = 5, PLANK
   CARPET = 41,
   CURTAIN = 42, // 42..45: + axis (0 = hangs across x, 1 = across z) + 2 if open
   DOOR = 46, // 46..61: + facing*4 + 2 if open + 1 for the upper half
-  BED_FOOT = 62; // 62..65: the foot half of a bed, one block toward where it faces
+  BED_FOOT = 62, // 62..65: the foot half of a bed, one block toward where it faces
+  OVEN = 66, // 66..73: + facing, + 4 while burning
+  SMELTER = 74; // 74..81: + facing, + 4 while burning
 
 // Wall direction [dx, dz] for each wall-torch variant, in id order.
 export const WALL_TORCH_DIRS = [[-1, 0], [1, 0], [0, -1], [0, 1]];
@@ -34,7 +36,10 @@ export const STICK = 100, COAL = 101,
   BUCKET = 128, MILK_BUCKET = 129, SLIME_BUCKET = 130,
   FEATHER = 131, MORTAR = 132,
   STRING = 133, ARROW = 134, BOW = 135,
-  COAL_DUST = 136, SLIME_FUEL = 137;
+  COAL_DUST = 136, SLIME_FUEL = 137, CHARCOAL = 138;
+
+// Charcoal (smelted from logs) can stand in for coal anywhere coal is used.
+export const COAL_OR_CHARCOAL = [COAL, CHARCOAL];
 
 // Texture atlas tile indices.
 export const T = {
@@ -43,6 +48,8 @@ export const T = {
   COAL_ORE: 14, BEDROCK: 15, TORCH: 16, WOOL: 17,
   WHEAT_0: 18, WHEAT_1: 19, WHEAT_2: 20, WHEAT_3: 21, SUGAR_CANE: 22, CHURN_SIDE: 23, CHURN_TOP: 24,
   BLANKET: 25, SHELF: 26, FLAME: 27, LAMP_EMPTY: 28, DOOR_LOWER: 29, DOOR_UPPER: 30, CURTAIN: 31,
+  OVEN_SIDE: 32, OVEN_TOP: 33, OVEN_FRONT: 34, OVEN_FRONT_LIT: 35,
+  SMELTER_SIDE: 36, SMELTER_TOP: 37, SMELTER_FRONT: 38, SMELTER_FRONT_LIT: 39,
 };
 
 export const BLOCKS = [];
@@ -71,6 +78,8 @@ function block(id, o) {
     grows: o.grows ?? null, // id this plant grows into (or 'up' for sugar cane)
     // furniture state, encoded in which variant id is placed
     facing: o.facing ?? 0, open: !!o.open, upper: !!o.upper, axis: o.axis ?? 0, fuel: o.fuel ?? 0, foot: !!o.foot,
+    front: o.front ?? null, // a different tile on the side that faces `facing` (ovens, smelters)
+    lit: !!o.lit, station: o.station ?? null, // 'oven' | 'smelter'
   };
 }
 
@@ -209,6 +218,21 @@ export const isChair = (id) => id >= CHAIR && id < CHAIR + 4;
 export const isLamp = (id) => id >= LAMP && id <= LAMP + 3;
 export const isCurtain = (id) => id >= CURTAIN && id < CURTAIN + 4;
 export const isDoor = (id) => id >= DOOR && id < DOOR + 16;
+
+// Ovens and smelters: cube blocks whose front faces you; they glow while burning fuel.
+for (const [base, station, name, side, top, front, frontLit] of [
+  [OVEN, 'oven', 'Oven', T.OVEN_SIDE, T.OVEN_TOP, T.OVEN_FRONT, T.OVEN_FRONT_LIT],
+  [SMELTER, 'smelter', 'Smelter', T.SMELTER_SIDE, T.SMELTER_TOP, T.SMELTER_FRONT, T.SMELTER_FRONT_LIT],
+]) {
+  for (let k = 0; k < 8; k++) {
+    const facing = k & 3, lit = k >= 4;
+    block(base + k, {
+      name, station, side, top, bottom: side, front: lit ? frontLit : front, facing, lit, light: lit ? 13 : 0,
+      hardness: 2.5, tool: 'pick', variantOf: k ? base : 0, drop: base,
+    });
+  }
+}
+export const stationKind = (id) => BLOCKS[id]?.station ?? null;
 export const doorId = (facing, open, upper) => DOOR + facing * 4 + (open ? 2 : 0) + (upper ? 1 : 0);
 export const MAX_LAMP_FUEL = 3;
 
@@ -241,6 +265,7 @@ export const ITEMS = {
   [BOW]: { name: 'Bow', stack: 1 },
   [COAL_DUST]: { name: 'Coal Dust' },
   [SLIME_FUEL]: { name: 'Slime Fuel', stack: 1 }, // a bucket of lamp fuel; the bucket stays with you
+  [CHARCOAL]: { name: 'Charcoal' },
 };
 
 export const foodValue = (id) => ITEMS[id]?.food ?? 0;
@@ -279,7 +304,7 @@ export function dropsFor(blockId, heldId) {
 
 // Crafting recipes.
 //   out:   [id, count] made
-//   in:    [[id, count], ...] used up
+//   in:    [[id, count], ...] used up (an id can be a list of alternatives, e.g. coal or charcoal)
 //   tools: ids you must have, which are not used up (e.g. the mortar)
 //   also:  extra things given back (e.g. the empty bucket after churning milk)
 //   table / churn: needs a crafting table / butter churn nearby
@@ -287,7 +312,7 @@ export const RECIPES = [
   { out: [PLANKS, 4], in: [[LOG, 1]] },
   { out: [STICK, 4], in: [[PLANKS, 2]] },
   { out: [TABLE, 1], in: [[PLANKS, 4]] },
-  { out: [TORCH, 4], in: [[COAL, 1], [STICK, 1]] },
+  { out: [TORCH, 4], in: [[COAL_OR_CHARCOAL, 1], [STICK, 1]] },
   { out: [WOOD_PICK, 1], in: [[PLANKS, 3], [STICK, 2]], table: true },
   { out: [WOOD_AXE, 1], in: [[PLANKS, 3], [STICK, 2]], table: true },
   { out: [WOOD_SHOVEL, 1], in: [[PLANKS, 1], [STICK, 2]], table: true },
@@ -295,20 +320,16 @@ export const RECIPES = [
   { out: [STONE_AXE, 1], in: [[COBBLE, 3], [STICK, 2]], table: true },
   { out: [STONE_SHOVEL, 1], in: [[COBBLE, 1], [STICK, 2]], table: true },
   { out: [BRICKS, 4], in: [[COBBLE, 4]], table: true },
-  { out: [GLASS, 4], in: [[SAND, 4], [COAL, 1]], table: true },
   { out: [BUCKET, 1], in: [[PLANKS, 3]], table: true },
   { out: [MORTAR, 1], in: [[COBBLE, 3], [STICK, 1]], table: true },
   { out: [CHURN, 1], in: [[PLANKS, 7]], table: true },
   { out: [FLOUR, 1], in: [[WHEAT, 1]], tools: [MORTAR] },
   { out: [SUGAR, 1], in: [[SUGAR_CANE, 1]], tools: [MORTAR] },
   { out: [BUTTER, 1], in: [[MILK_BUCKET, 1]], also: [[BUCKET, 1]], churn: true },
-  { out: [BREAD, 1], in: [[FLOUR, 3]], table: true },
-  { out: [COOKIE, 9], in: [[FLOUR, 3], [SUGAR, 3], [BUTTER, 1]], tools: [MILK_BUCKET], table: true },
-  { out: [CAKE, 1], in: [[FLOUR, 3], [SUGAR, 3], [BUTTER, 3]], table: true },
   { out: [STRING, 1], in: [[SLIME_BUCKET, 1], [WHEAT, 3]], also: [[BUCKET, 1]] },
   { out: [ARROW, 1], in: [[FEATHER, 1], [COBBLE, 1], [STICK, 1]], table: true },
   { out: [BOW, 1], in: [[STICK, 3], [STRING, 3]], table: true },
-  { out: [COAL_DUST, 1], in: [[COAL, 1]], tools: [MORTAR] },
+  { out: [COAL_DUST, 1], in: [[COAL_OR_CHARCOAL, 1]], tools: [MORTAR] },
   { out: [SLIME_FUEL, 1], in: [[COAL_DUST, 3], [SLIME_BUCKET, 1]] },
   { out: [LAMP, 1], in: [[GLASS, 1], [COBBLE, 2]], table: true },
   { out: [BED, 1], in: [[WOOL, 3], [PLANKS, 3]], table: true },
@@ -318,4 +339,8 @@ export const RECIPES = [
   { out: [CARPET, 3], in: [[WOOL, 2]], table: true },
   { out: [CURTAIN, 1], in: [[WOOL, 2], [STICK, 1]], table: true },
   { out: [DOOR, 1], in: [[PLANKS, 4]], table: true },
+  { out: [OVEN, 1], in: [[COBBLE, 6], [SAND, 2]], table: true },
+  { out: [SMELTER, 1], in: [[COBBLE, 8]], table: true },
 ];
+// (Bread, cookies and cake are baked in the oven, and glass, stone and charcoal come from the smelter:
+// see stations.js.)

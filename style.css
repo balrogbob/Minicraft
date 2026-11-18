@@ -206,6 +206,19 @@ html, body {
 .recipe .btn { min-height: 40px; font-size: 15px; }
 #table-status { font-size: 13px; font-weight: normal; color: #555; }
 
+/* oven / smelter panel */
+.station-row { display: flex; align-items: center; gap: 14px; margin-bottom: 4px; }
+#st-inputs { grid-template-columns: repeat(2, var(--slot)); }
+.st-mid { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.st-arrow { width: 70px; height: 12px; background: #8b8b8b; border-radius: 6px; overflow: hidden; border: 2px solid #555; }
+#st-progress { height: 100%; width: 0; background: #f6f6f6; transition: width 0.15s linear; }
+.st-fuel-row { display: flex; align-items: center; gap: 6px; }
+#st-flame { font-size: 22px; transition: opacity 0.3s; }
+#st-fuel .slot, #st-out .slot { background: #8b8b8b; border-color: #555 #fff #fff #555; color: #fff; }
+#st-out .slot { width: calc(var(--slot) * 1.25); height: calc(var(--slot) * 1.25); }
+#st-fuel .slot.picked, #st-out .slot.picked { background: #b9d98b; border-color: #3a7d1a; }
+#st-status { margin-top: 2px; font-weight: 600; }
+
 .menu-panel { width: min(420px, 100%); }
 .menu-items { display: flex; flex-direction: column; gap: 10px; padding: 0 14px 14px; overflow: auto; }
 #difficulty-about { margin: -4px 0 0; }
