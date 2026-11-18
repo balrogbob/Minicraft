@@ -346,3 +346,21 @@ html, body {
 #ach-toast.show { transform: none; }
 #ach-toast .icon { font-size: 28px; }
 #ach-toast small { display: block; color: #f0c838; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; }
+
+/* tooltips */
+#look-tip {
+  position: absolute; left: 50%; top: calc(50% + 22px); transform: translateX(-50%);
+  padding: 2px 8px; border-radius: 6px; background: rgba(0,0,0,0.45); color: #fff;
+  font-size: 14px; font-weight: 600; text-shadow: 1px 1px 2px #000; white-space: nowrap;
+  pointer-events: none; display: none;
+}
+#look-tip.show { display: block; }
+#inv-tip {
+  position: fixed; z-index: 50; max-width: 260px; padding: 6px 10px; border-radius: 8px;
+  background: rgba(20, 16, 30, 0.92); color: #fff; border: 2px solid #6a4ca0;
+  font-size: 14px; line-height: 1.35; pointer-events: none; display: none;
+}
+#inv-tip.show { display: block; }
+#inv-tip span { display: block; font-size: 12px; color: #cfc6e0; }
+#inv-tip span.ench { color: #c9a8ff; }
+#palette-wrap.hidden { display: none; }

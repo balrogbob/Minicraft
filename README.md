@@ -630,6 +630,9 @@ Search recipes by name (of what they make, or what goes in) at the top of the cr
 favourite a recipe (favourites come first), and use ★ and ✓ to show only favourites or only what you can
 make right now. **Sort backpack** (and **Sort** in a chest) stacks things up and puts them in order.
 
+Tooltips (on by default, ☰ → Tooltips) name what the crosshair is on, and in 🎒 show the name and details of
+the item under the mouse or the one you tap.
+
 Holding the map, tap a sign to mark it on the map (named by its first line), or a bed. Tap it again
 to take the mark off. Marks off the edge of the map show as arrows pointing toward them.
 

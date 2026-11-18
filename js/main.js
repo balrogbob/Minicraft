@@ -70,7 +70,7 @@ function writeSave(obj, slot = settings.slot) {
 }
 // Settings live apart from the world so they survive "New world".
 const settings = (() => {
-  const defaults = { sens: 6, volume: 70, viewDistance: 6, perf: false, difficulty: 'worrying', wear: true, favs: [], slot: 0, fov: 72, keys: {} };
+  const defaults = { sens: 6, volume: 70, viewDistance: 6, perf: false, difficulty: 'worrying', wear: true, favs: [], slot: 0, fov: 72, keys: {}, tips: true };
   let s;
   try { s = { ...defaults, ...JSON.parse(localStorage.getItem(SETTINGS_KEY)) }; } catch { s = { ...defaults }; }
   s.slot = Math.max(0, Math.min(SLOT_COUNT - 1, s.slot | 0));
@@ -779,7 +779,9 @@ function buildInventoryGrid() {
   const make = (i, parent) => {
     const el = document.createElement('div');
     el.className = 'slot';
-    el.addEventListener('click', () => onInvSlot(i));
+    el.addEventListener('click', () => { onInvSlot(i); showSlotTip(i); });
+    el.addEventListener('mouseenter', () => showSlotTip(i));
+    el.addEventListener('mouseleave', () => { if (tipSlot === i) showSlotTip(picked); });
     parent.appendChild(el);
     invEls[i] = el;
   };
@@ -788,6 +790,59 @@ function buildInventoryGrid() {
   for (let k = 0; k < 5; k++) make(ARMOUR_SLOT + k, $('inv-armour'));
 }
 const ARMOUR_SLOT = 100; // the armour slots count as 100..103 in the inventory panel
+
+// ---------- tooltips ----------
+// In the inventory: the name (and a few details) of the slot under the mouse, or the one you tapped.
+// In the world: the name of whatever the crosshair is on. Both can be turned off in the ☰ menu.
+let tipSlot = -1;
+function itemTipHTML(s) {
+  const def = ITEMS[s.id];
+  const bits = [];
+  if (def?.about) bits.push(def.about);
+  if (foodValue(s.id)) bits.push(`${foodValue(s.id)} food`);
+  if (def?.tool) bits.push(`${def.tool.type === 'pick' ? 'pickaxe' : def.tool.type}${def.tool.tier ? `, tier ${def.tool.tier}` : ''}`);
+  if (def?.armour?.points) bits.push(`${def.armour.points} armour`);
+  const mw = maxWear(s.id);
+  if (mw) bits.push(`${Math.max(0, Math.round(100 - (s.wear ?? 0) / mw * 100))}% left`);
+  const ench = (s.ench ?? []).map((k) => ENCHANTS[k]?.name).filter(Boolean);
+  return `<b>${itemName(s.id)}</b>${s.count > 1 ? ` × ${s.count}` : ''}` +
+    (ench.length ? `<span class="ench">${ench.join(', ')}</span>` : '') + (bits.length ? `<span>${bits.join(' · ')}</span>` : '');
+}
+function showSlotTip(i) {
+  const tip = $('inv-tip');
+  tipSlot = i;
+  const s = i < 0 ? null : i >= ARMOUR_SLOT ? (armour[i - ARMOUR_SLOT] && { id: armour[i - ARMOUR_SLOT], count: 1, wear: armourWear[i - ARMOUR_SLOT], ench: armourEnch[i - ARMOUR_SLOT] }) : inventory.slots[i];
+  if (!settings.tips || !s || !invEls[i]) { tip.classList.remove('show'); return; }
+  tip.innerHTML = itemTipHTML(s);
+  tip.classList.add('show');
+  // just above the slot, kept on screen
+  const r = invEls[i].getBoundingClientRect(), w = tip.offsetWidth, h = tip.offsetHeight;
+  tip.style.left = Math.max(4, Math.min(window.innerWidth - w - 4, r.left + r.width / 2 - w / 2)) + 'px';
+  tip.style.top = (r.top - h - 6 < 4 ? r.bottom + 6 : r.top - h - 6) + 'px';
+}
+const capital = (t) => t.charAt(0).toUpperCase() + t.slice(1);
+function lookName() {
+  if (targetCart) return targetCart.cart.store ? 'Storage Cart' : 'Minecart';
+  if (targetMob) {
+    const m = targetMob.mob;
+    const name = m.spec.name ?? (m.kind === 'villager' ? `Villager (${m.profession ?? 'farmer'})` : capital(m.kind));
+    return m.tame ? `${name} (tame)` : name;
+  }
+  if (target) {
+    const def = BLOCKS[target.id];
+    return def ? (def.variantOf && BLOCKS[def.variantOf] ? BLOCKS[def.variantOf].name : def.name) : '';
+  }
+  return '';
+}
+let shownLook = null;
+function updateLookTip() {
+  const name = settings.tips && !paused ? lookName() : '';
+  if (name === shownLook) return;
+  shownLook = name;
+  const el = $('look-tip');
+  el.textContent = name;
+  el.classList.toggle('show', !!name);
+}
 buildInventoryGrid();
 
 const armourPiece = (id) => ITEMS[id]?.armour?.piece ?? -1;
@@ -844,6 +899,7 @@ function nearBlock(id) {
 }
 
 function renderInventory() {
+  if (tipSlot >= 0) requestAnimationFrame(() => showSlotTip(tipSlot)); // (what's in the slot may have changed)
   if (creative) renderPalette();
   for (let i = 0; i < SLOTS; i++) {
     invEls[i].innerHTML = slotHTML(inventory.slots[i]);
@@ -968,6 +1024,8 @@ function openInventory(station = null) {
   renderInventory();
 }
 function closeInventory() {
+  tipSlot = -1;
+  $('inv-tip').classList.remove('show');
   $('inventory').classList.add('hidden');
   paused = false;
   openedAt = null;
@@ -2683,6 +2741,9 @@ function applyFov() {
 applyFov();
 $('fov').addEventListener('input', (e) => { settings.fov = +e.target.value; applyFov(); saveSettings(); });
 $('version').textContent = `Version ${GAME_VERSION}`;
+function updateTipsLabel() { $('btn-tips').textContent = `Tooltips: ${settings.tips ? 'on' : 'off'}`; }
+updateTipsLabel();
+$('btn-tips').addEventListener('click', () => { settings.tips = !settings.tips; updateTipsLabel(); saveSettings(); if (!settings.tips) $('inv-tip').classList.remove('show'); });
 function updatePerfLabel() { $('btn-perf').textContent = `Performance info: ${settings.perf ? 'on' : 'off'}`; }
 updatePerfLabel();
 $('perf').classList.toggle('hidden', !settings.perf);
@@ -3331,6 +3392,7 @@ function stepGame(now, dt) {
     highlight.position.set(target.x + 0.5, target.y + 0.5, target.z + 0.5);
   } else highlight.visible = false;
 
+  updateLookTip();
   if (!paused) updateBreaking(dt);
   else crack.visible = false;
 }
