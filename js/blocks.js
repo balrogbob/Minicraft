@@ -1,7 +1,7 @@
 // Block and item definitions.
 
-// Block ids: < 100, 190..255 and 400..999. Stored in each chunk's Uint16Array.
-// Item ids: 100..189, 300..399 and 1000 up (never stored in the world).
+// Block ids: < 100, 190..255, 400..999 and 1100 up. Stored in each chunk's Uint16Array.
+// Item ids: 100..189, 300..399 and 1000..1099 (never stored in the world).
 export const AIR = 0, GRASS = 1, DIRT = 2, STONE = 3, COBBLE = 4, LOG = 5, PLANKS = 6,
   LEAVES = 7, SAND = 8, GLASS = 9, TABLE = 10, BRICKS = 11, COAL_ORE = 12, BEDROCK = 13, WATER = 14,
   TORCH = 15, // standing torch; the only torch id that lives in the inventory
@@ -128,6 +128,7 @@ export const T = {
   PAINTED_DOOR: 176, // 176..195: the lower then upper half of a door painted in each colour
   GLOW_LAMP: 196, // 196..205: a glow lamp in each colour
   PILLAR_SIDE: 206, PILLAR_TOP: 207, SAND_PILLAR_SIDE: 208, SAND_PILLAR_TOP: 209, CANDLE: 210,
+  WIRE_OFF: 211, WIRE_ON: 212, LOGIC_BASE: 213, EJECTOR_FRONT: 214, CRAFTER_FRONT: 215,
 };
 
 // Ores, deepest-reaching last. tier: the pickaxe tier needed to mine it (see TOOL_TIERS);
@@ -225,6 +226,11 @@ function block(id, o) {
     wallTex: o.wallTex ?? null, // the tile a wall is built of
     paneTex: o.paneTex ?? null, // a coloured glass pane's tile
     painting: o.painting ?? null, // { art, w, h }: a painting hung on a wall (see paintings.js)
+    logic: o.logic ?? null, // 'wire' | 'inverter' | 'delay' | 'latch': signal parts worked out by logic.js
+    flip: o.flip ?? 0, // a switch's id in its other state (on <-> off), for the newer switches
+    directed: !!o.directed, // a switch that only signals the block in front of it (inverters, delays, latches)
+    sorts: o.sorts ?? null, // a belt that sends things off to the side: 'split' (left and right in turn) | 'sort' (matches go left)
+    ejector: !!o.ejector, collector: !!o.collector, elevator: !!o.elevator, // more automation (see machines.js)
   };
 }
 
@@ -1494,4 +1500,123 @@ RECIPES.push(
   { out: [LANTERN, 1], in: [[IRON_INGOT, 2], [TORCH, 1]], table: true, metal: IRON_INGOT },
   { out: [CHANDELIER, 1], in: [[GOLD_INGOT, 2], [TORCH, 4]], table: true, metal: GOLD_INGOT },
   { out: [PAINTING, 1], in: [[STICK, 4], [WOOL, 1], [DYE + 2, 1]], table: true, metal: DYE + 2 },
+);
+
+// ---------- signals: copper wire, inverters, delay blocks, latches and detector rails ----------
+// Copper wire lies on top of blocks and carries a signal along itself as far as it runs (up and down a
+// block too): anything that switches on beside a wire (a lever, a button, an observer...) powers the whole
+// line, and the wire powers what it touches, like a switch. The three logic blocks sit on top of a block
+// too, and take their signal from behind (a wire, a switch or a powered block) and give it out in front:
+// an inverter gives a signal while it gets none; a delay block passes on its signal after a while (tap it
+// to set from half a second to five); a latch flips on or off each time its signal comes on. A detector
+// rail signals while a cart is on it.
+export const WIRE = 1100, // 1101 = carrying a signal
+  INVERTER = 1102, // 1102..1109: + facing (the way its signal goes) + 4 while it signals
+  DELAY = 1110, // 1110..1117: likewise
+  LATCH = 1118, // 1118..1125: likewise
+  DETECTOR_RAIL = 1126; // 1126..1129: + axis (0 along z, 1 along x) + 2 while a cart is on it
+for (let k = 0; k < 2; k++) {
+  const on = !!k, t = on ? T.WIRE_ON : T.WIRE_OFF;
+  block(WIRE + k, {
+    name: 'Copper Wire', shape: 'wire', sound: 'stone', hardness: 0.2, transparent: true, solid: false, switch: 'wire', on, floor: true,
+    logic: 'wire', flip: WIRE + 1 - k, light: on ? 3 : 0, variantOf: k ? WIRE : 0, drop: WIRE,
+    model: [[6.5, 0, 0, 9.5, 1, 16, t], [0, 0, 6.5, 16, 1, 9.5, t]], // (as an icon: the world draws it joined up, see world.js)
+  });
+}
+// a stone plate with a copper strip from back to front and little lamps that light up; drawn facing +z
+const logicModel = (kind, on) => {
+  const lamp = on ? T.WIRE_ON : T.WIRE_OFF, m = [[0, 0, 0, 16, 2, 16, T.LOGIC_BASE], [7, 2, 0, 9, 2.5, 16, T.WIRE_OFF]];
+  if (kind === 'inverter') m.push([6.5, 2, 9, 9.5, 7, 12, lamp], [5, 2, 3, 11, 3, 5, T.STONE]);
+  if (kind === 'delay') m.push([6.5, 2, 2, 9.5, 6, 5, lamp], [6.5, 2, 11, 9.5, 6, 14, lamp], [3, 2, 7, 13, 3.5, 9, T.IRON]);
+  if (kind === 'latch') m.push([4, 2, 5, 12, 4, 11, T.LOGIC_BASE], [6.5, 4, 7, 9.5, 7, 9, lamp], on ? [10, 2, 12, 13, 5, 15, lamp] : [3, 2, 12, 6, 5, 15, lamp]);
+  return m;
+};
+[['inverter', INVERTER, 'Inverter'], ['delay', DELAY, 'Delay Block'], ['latch', LATCH, 'Latch']].forEach(([kind, base, name]) => {
+  for (let k = 0; k < 8; k++) {
+    const f = k & 3, on = k >= 4;
+    block(base + k, {
+      name, sound: 'stone', hardness: 0.3, transparent: true, solid: false, switch: kind, on, floor: true, facing: f, directed: true,
+      logic: kind, flip: base + (k ^ 4), light: on ? 4 : 0, model: rotateModel(logicModel(kind, on), f), variantOf: k ? base : 0, drop: base,
+    });
+  }
+});
+for (let k = 0; k < 4; k++) {
+  const axis = k & 1, on = k >= 2, ends = axis ? [1, 3] : [0, 2];
+  block(DETECTOR_RAIL + k, {
+    name: 'Detector Rail', sound: 'stone', transparent: true, solid: false, hardness: 0.7, tool: 'pick', switch: 'detector', on, floor: true,
+    model: [...railModel({ ends }), ...rotateModel([[6, 0, 6, 10, 1.5, 10, on ? T.WIRE_ON : T.LOGIC_BASE]], axis)],
+    rail: { ends, slope: -1, powered: false, detector: true }, flip: DETECTOR_RAIL + (k ^ 2), light: on ? 4 : 0,
+    variantOf: k ? DETECTOR_RAIL : 0, drop: DETECTOR_RAIL,
+  });
+}
+export const DELAYS = [0.5, 1, 1.5, 2, 3, 4, 5]; // the settings of a delay block, in seconds
+RECIPES.push(
+  { out: [WIRE, 8], in: [[COPPER_INGOT, 1]], table: true, metal: COPPER_INGOT },
+  { out: [INVERTER, 1], in: [[WIRE, 2], [TORCH, 1], [STONE, 2]], table: true, metal: COPPER_INGOT },
+  { out: [DELAY, 1], in: [[WIRE, 2], [TORCH, 2], [STONE, 3]], table: true, metal: COPPER_INGOT },
+  { out: [LATCH, 1], in: [[WIRE, 2], [LEVER, 1], [STONE, 2]], table: true, metal: COPPER_INGOT },
+  { out: [DETECTOR_RAIL, 2], in: [[RAIL, 2], [PRESSURE_PLATE, 1]], table: true, metal: IRON_INGOT },
+);
+
+// ---------- moving things: ejectors, collectors, splitting and sorting belts, bucket elevators, auto-crafters ----------
+// An ejector throws things out of the chest or machine behind it, onto the ground in front: one at a time
+// while it gets a signal (or, tapped to change it, a whole stack each time the signal comes on).
+// A collector is a hopper that also pulls in loose things lying within a few blocks of it.
+// A splitting belt sends what it carries off to its left and right in turn; a sorting belt sends things
+// that match an item frame on it off to the left, and the rest straight on.
+// A bucket elevator carries what's put into it (by a belt, a hopper, or dropped in) up its column while a
+// shaft turns it, into whatever is above the top, or out onto the top.
+// An auto-crafter makes the thing shown in an item frame on it, whenever its ingredients are inside.
+export const EJECTOR = 1130, // 1130..1133: + facing (the way it throws)
+  COLLECTOR = 1134, // 1134..1138: like a hopper
+  BELT_SPLITTER = 1139, // 1139..1142: + facing
+  BELT_SORTER = 1143, // 1143..1146: + facing
+  ELEVATOR = 1147,
+  AUTO_CRAFTER = 1148;
+for (let f = 0; f < 4; f++) {
+  block(EJECTOR + f, {
+    name: 'Ejector', hardness: 2, tool: 'pick', sound: 'stone', side: T.OBSERVER_SIDE, top: T.OBSERVER_SIDE, bottom: T.OBSERVER_SIDE,
+    front: T.EJECTOR_FRONT, facing: f, ejector: true, variantOf: f ? EJECTOR : 0, drop: EJECTOR,
+  });
+}
+const COLLECTOR_TOP = [[0, 10, 0, 16, 16, 16, T.ELECTRUM], [4, 5, 4, 12, 10, 12, T.IRON], [1, 16, 1, 15, 16.5, 15, T.WIRE_OFF]];
+for (let k = 0; k < 5; k++) {
+  const down = k === 4;
+  block(COLLECTOR + k, {
+    name: 'Collector', sound: 'stone', hardness: 2, tool: 'pick', transparent: true, facing: down ? 0 : k, down,
+    model: down ? [...COLLECTOR_TOP, [6, 0, 6, 10, 5, 10, T.IRON]] : rotateModel([...COLLECTOR_TOP, [6, 5, 12, 10, 9, 16, T.IRON]], k),
+    variantOf: k ? COLLECTOR : 0, drop: COLLECTOR, hopper: true, collector: true,
+  });
+}
+for (let f = 0; f < 4; f++) {
+  const belt = [[0, 0, 0, 16, 4, 16, { top: T.BELT0 + f, side: T.LOG_SIDE, bottom: T.PLANKS }]];
+  block(BELT_SPLITTER + f, {
+    name: 'Splitting Belt', sound: 'wool', hardness: 0.8, tool: 'axe', transparent: true, facing: f, belt: true, sorts: 'split',
+    model: [...belt, ...rotateModel([[7, 4, 9, 9, 7, 16, T.IRON], [5, 4, 14, 11, 7, 16, T.IRON]], f)],
+    variantOf: f ? BELT_SPLITTER : 0, drop: BELT_SPLITTER, machine: { load: MACHINE_LOAD.belt },
+  });
+  block(BELT_SORTER + f, {
+    name: 'Sorting Belt', sound: 'wool', hardness: 0.8, tool: 'axe', transparent: true, facing: f, belt: true, sorts: 'sort',
+    model: [...belt, ...rotateModel([[0, 4, 14, 16, 5, 16, T.GOLD], [0, 4, 9, 1.5, 9, 16, T.GOLD]], f)],
+    variantOf: f ? BELT_SORTER : 0, drop: BELT_SORTER, machine: { load: MACHINE_LOAD.belt },
+  });
+}
+block(ELEVATOR, {
+  name: 'Bucket Elevator', sound: 'wood', hardness: 1.5, tool: 'axe', transparent: true, elevator: true, machine: { load: 1 },
+  model: [
+    [0, 0, 0, 2, 16, 2, T.PLANKS], [14, 0, 0, 16, 16, 2, T.PLANKS], [0, 0, 14, 2, 16, 16, T.PLANKS], [14, 0, 14, 16, 16, 16, T.PLANKS],
+    [0, 0, 0, 16, 1, 16, T.PLANKS], [7.5, 0, 3, 8.5, 16, 4, T.IRON], [7.5, 0, 12, 8.5, 16, 13, T.IRON],
+    [5, 3, 2, 11, 6, 5, T.IRON], [5, 11, 2, 11, 14, 5, T.IRON], [5, 6, 11, 11, 9, 14, T.IRON],
+  ],
+});
+block(AUTO_CRAFTER, {
+  name: 'Auto-Crafter', station: 'crafter', hardness: 2.5, tool: 'axe', sound: 'wood', top: T.TABLE_TOP, bottom: T.PLANKS, side: T.CRAFTER_FRONT,
+});
+RECIPES.push(
+  { out: [EJECTOR, 1], in: [[COBBLE, 5], [IRON_INGOT, 2], [WIRE, 1]], table: true, metal: IRON_INGOT },
+  { out: [COLLECTOR, 1], in: [[HOPPER, 1], [COPPER_INGOT, 4]], table: true, metal: COPPER_INGOT },
+  { out: [BELT_SPLITTER, 1], in: [[BELT, 1], [IRON_INGOT, 1]], table: true, metal: IRON_INGOT },
+  { out: [BELT_SORTER, 1], in: [[BELT, 1], [ITEM_FRAME, 1], [GOLD_INGOT, 1]], table: true, metal: GOLD_INGOT },
+  { out: [ELEVATOR, 4], in: [[PLANKS, 4], [BUCKET, 1], [LEATHER, 2]], table: true, metal: LEATHER },
+  { out: [AUTO_CRAFTER, 1], in: [[TABLE, 1], [IRON_INGOT, 4], [kineticId('gear', 1), 1]], table: true, metal: IRON_INGOT },
 );

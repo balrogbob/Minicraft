@@ -839,6 +839,29 @@ P[T.SAND_PILLAR_SIDE] = pillarSide([226, 208, 152]);
 P[T.SAND_PILLAR_TOP] = pillarTop([226, 208, 152]);
 P[T.CANDLE] = (t) => { for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) t.set(x, y, t.vary([240, 232, 206], 0.03)); };
 
+// signals: copper wire, dull or glowing; the smooth stone plate logic blocks sit on
+P[T.WIRE_OFF] = (t) => { for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) t.set(x, y, t.vary((x + y) % 4 ? [150, 82, 46] : [186, 110, 64], 0.06)); };
+P[T.WIRE_ON] = (t) => { for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) t.set(x, y, t.vary((x + y) % 4 ? [255, 120, 50] : [255, 214, 120], 0.05)); };
+// an ejector's dark mouth with a push plate; an auto-crafter's side: a little grid with gears
+P[T.EJECTOR_FRONT] = (t) => {
+  P[T.OBSERVER_SIDE](t);
+  for (let y = 3; y < 13; y++) for (let x = 3; x < 13; x++) t.set(x, y, x === 3 || x === 12 || y === 3 || y === 12 ? [70, 70, 76] : [28, 26, 30]);
+  for (let y = 6; y < 10; y++) for (let x = 6; x < 10; x++) t.set(x, y, [200, 120, 70]);
+};
+P[T.CRAFTER_FRONT] = (t) => {
+  P[T.TABLE_SIDE](t);
+  for (let y = 2; y < 9; y++) for (let x = 2; x < 9; x++) t.set(x, y, (x - 2) % 2 && (y - 2) % 2 ? [150, 110, 64] : [90, 90, 98]);
+  for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+    const d = Math.hypot(x - 11.5, y - 11.5);
+    if (d < 3.6 && (d > 2.4 || d < 1)) t.set(x, y, [176, 176, 184]);
+    else if (d >= 3.6 && d < 4.4 && (Math.round(Math.atan2(y - 11.5, x - 11.5) * 4 / Math.PI) & 1)) t.set(x, y, [150, 150, 160]);
+  }
+};
+P[T.LOGIC_BASE] = (t) => {
+  for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) t.set(x, y, t.vary([172, 172, 168], 0.04));
+  frame(t, [128, 128, 126], 1);
+};
+
 // A plank door: a frame with a centre board; the upper half has a four-pane window you can see through,
 // the lower half has the handle.
 function doorPanel(t, upper) {

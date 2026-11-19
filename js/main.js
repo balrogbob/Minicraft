@@ -22,6 +22,7 @@ import {
   TINTS, WALL, LANTERN, HANGING_LANTERN, CHANDELIER, PAINTING, ART, isWall,
   ENCHANT_ALTAR, LAIRS, ENCHANTS, hasEnch, HONEY_TEA, CRYSTAL_BLOCK, SUN_SCARAB, FROST_HEART, EMBER_CORE, OBSIDIAN, SANDSTONE,
   STICK, STRING, PAPER, CAKE, COOKIE, LEATHER, FISHING_ROD as ROD, WEIGHTED_ROD as WROD, SEEDS, FLOUR, BUTTER, COPY_WAND,
+  WIRE, INVERTER, DELAY, LATCH, DETECTOR_RAIL, EJECTOR, COLLECTOR, BELT_SPLITTER, BELT_SORTER,
 } from './blocks.js';
 import { createAtlas, createIcons, createCrackCanvases, createWaterCanvas, createHudIcons, paintSeason } from './textures.js';
 import { World, CHUNK, WORLD_SIZE, chunkKey } from './world.js';
@@ -49,6 +50,7 @@ import { Frames } from './frames.js';
 import { Weather } from './weather.js';
 import { Bees } from './bees.js';
 import { Paintings, paintingCells } from './paintings.js';
+import { Logic } from './logic.js';
 
 // v2 = the 16k x 16k streaming world (player state here, edited chunks in IndexedDB).
 // v1 = the old 128 x 128 world, migrated into the middle of the big world on first launch.
@@ -237,7 +239,10 @@ const paintings = new Paintings(scene); // the pictures in paintings
 const weather = new Weather(scene);
 const bees = new Bees(scene, sound);
 let ridingMob = null; // the camel you're riding
-machines.frames = frames; machines.carts = carts;
+machines.frames = frames; machines.carts = carts; machines.loose = loose;
+machines.throwItem = (stack, pos, vel) => loose.spawn(stack, pos, vel, 0.5);
+// An auto-crafter makes what the item frame on it shows: the first recipe for that thing.
+const crafterRecipe = (x, y, z) => { const want = frames.around(world, x, y, z)[0]; return want ? RECIPES.find((r) => r.out[0] === want) ?? null : null; };
 kinetics.engineOn = (x, y, z) => machines.engineOn(x, y, z);
 kinetics.engineStatus = (x, y, z) => machines.engineStatus(x, y, z);
 // Bellows blowing into an oven or smelter (while they're turned) make it work half as fast again.
@@ -334,7 +339,8 @@ async function startWorld(save, opts = {}) {
   signs.load(save?.signs);
   frames.load(save?.frames);
   loose.load(save?.loose);
-  pressedButtons.clear(); pressedPlates.clear();
+  pressedButtons.clear(); pressedPlates.clear(); detected.clear();
+  logic.load(save?.logic);
   machines.load(save?.machines);
   carts.load(save?.carts);
   riding = null;
@@ -458,6 +464,7 @@ function saveGame() {
     signs: signs.serialize(),
     frames: frames.serialize(),
     machines: machines.serialize(),
+    logic: logic.serialize(),
     carts: carts.serialize(),
     armour: [...armour],
     armourWear: [...armourWear],
@@ -1136,19 +1143,22 @@ function openStation(x, y, z, cart = null) {
   for (let i = 0; i < K.inputs; i++) make(ins, 'in', i);
   for (const [id, area] of [['st-fuel', 'fuel'], ['st-out', 'out']]) {
     $(id).innerHTML = '';
-    if (!K.storage && (area === 'out' || !K.powered)) make($(id), area, 0);
+    if (!K.storage && (area === 'out' || !(K.powered || K.crafter))) make($(id), area, 0);
   }
-  $('station').querySelector('.st-fuel-row').style.display = K.powered ? 'none' : '';
+  $('station').querySelector('.st-fuel-row').style.display = K.powered || K.crafter ? 'none' : '';
   $('st-inv').innerHTML = ''; $('st-hotbar').innerHTML = '';
   for (let i = 9; i < SLOTS; i++) make($('st-inv'), 'inv', i);
   for (let i = 0; i < 9; i++) make($('st-hotbar'), 'inv', i);
   // what it can make
-  $('st-recipes').innerHTML = K.recipes.map((r) => {
+  const shownRecipes = K.crafter ? [crafterRecipe(x, y, z)].filter(Boolean) : K.recipes;
+  $('st-recipes').innerHTML = shownRecipes.map((r) => {
     const ing = r.in.map(([id, n]) => `<span class="ing" title="${idsOf(id).map(itemName).join(' or ')}"><img src="${icons[idsOf(id)[0]]}" alt="">${n}</span>`).join('');
     const tools = (r.tools ?? []).map((id) => `<span class="ing tool" title="${itemName(id)} (not used up)"><img src="${icons[id]}" alt="">kept</span>`).join('');
     return `<div class="recipe">${ing}${tools}<span class="arrow">→</span><img class="outimg" src="${icons[r.out[0]]}" alt="">` +
       `<span class="name">${r.out[1] > 1 ? r.out[1] + ' × ' : ''}${itemName(r.out[0])}</span></div>`;
-  }).join('') + (K.powered ? '<p class="hint">Times are at 1x speed. Drive it with a water wheel or windmill by turning a shaft or gear ' +
+  }).join('') + (K.crafter ? '<p class="hint">Hang an item frame on it showing what to make. Whenever the ingredients are inside, ' +
+    'it makes one, a second at a time, into the output slot: fill it with hoppers or belts and empty it with a hopper underneath.</p>'
+    : K.powered ? '<p class="hint">Times are at 1x speed. Drive it with a water wheel or windmill by turning a shaft or gear ' +
     'against any face; gear it up for more speed.' + (kind === 'crusher' ? ' Ore dust smelts into ingots, so crushing ore doubles what you get.' : '') + '</p>'
     : '<p class="hint">Fuel, in items cooked per piece: log or planks 1, stick ½, coal or charcoal 10, ' +
     'slime fuel 40, lava bucket 100 (their buckets are left in the fuel slot). Fuel is only used while something is cooking.' +
@@ -1178,8 +1188,13 @@ function renderStation() {
     $('st-status').textContent = `${st.inputs.filter(Boolean).length} of ${K.inputs} slots used`;
     return;
   }
-  const r = stations.recipeFor(st);
+  const r = stations.recipeFor(st, `${openStationAt.x},${openStationAt.y},${openStationAt.z}`);
   $('st-progress').style.width = `${r ? Math.min(100, (st.progress / r.time) * 100) : 0}%`;
+  if (K.crafter) {
+    const want = crafterRecipe(openStationAt.x, openStationAt.y, openStationAt.z);
+    $('st-status').textContent = !want ? 'Hang an item frame on it showing what to make' : r ? `Making ${itemName(want.out[0]).toLowerCase()}…` : `Put in what ${itemName(want.out[0]).toLowerCase()} needs`;
+    return;
+  }
   if (STATION_KINDS[st.kind].powered) {
     const { x, y, z } = openStationAt;
     const power = kinetics.statusAt(x, y, z);
@@ -1470,7 +1485,7 @@ async function napThroughStorm() {
   sky.time += skip;
   weather.set(false);
   const secs = skip * DAY_LENGTH;
-  stations.tick(secs, world, setStationLit, powerAt, boostAt);
+  stations.tick(secs, world, setStationLit, powerAt, boostAt, crafterRecipe);
   tickLamps(secs);
   world.tickPlants(secs);
   hunger = Math.max(0, hunger - 1);
@@ -1490,7 +1505,7 @@ async function sleepUntilMorning() {
   sky.time = 0.001;
   day++;
   caneToday = 0;
-  stations.tick(skipped, world, setStationLit, powerAt, boostAt);
+  stations.tick(skipped, world, setStationLit, powerAt, boostAt, crafterRecipe);
   tickLamps(skipped);
   for (let i = 0; i < 6; i++) world.tickPlants(skipped / 6);
   hunger = Math.max(0, hunger - 3); // a night's sleep makes you a bit peckish
@@ -1895,40 +1910,53 @@ $('trade').addEventListener('click', (e) => { if (e.target.id === 'trade') close
 const SIDES6 = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]];
 const pressedButtons = new Map(); // "x,y,z" -> seconds until it pops back out
 const pressedPlates = new Map(); // "x,y,z" -> seconds since anything stood on it
-const attachedTo = (x, y, z, d) => (d.floor ? [x, y - 1, z] : [x - FACING_DIRS[d.facing][0], y, z - FACING_DIRS[d.facing][1]]);
-function signalAt(x, y, z) {
-  for (const [dx, dy, dz] of SIDES6) {
-    const nx = x + dx, ny = y + dy, nz = z + dz;
-    const d = BLOCKS[world.get(nx, ny, nz)];
-    if (d?.switch) {
-      // (an observer or gauge doesn't power the block it's watching, or it would set itself off again)
-      const watching = d.sensor && nx + FACING_DIRS[d.facing][0] === x && ny === y && nz + FACING_DIRS[d.facing][1] === z;
-      if (d.on && !watching) return true;
-      continue;
-    }
-    if (!d?.solid || d.shape !== 'cube') continue;
-    // a switch fixed to this block passes its signal through it
-    for (const [ex, ey, ez] of SIDES6) {
-      const sx = nx + ex, sy = ny + ey, sz = nz + ez, s = BLOCKS[world.get(sx, sy, sz)];
-      if (!s?.switch || !s.on) continue;
-      const [ax, ay, az] = attachedTo(sx, sy, sz, s);
-      if (ax === nx && ay === ny && az === nz) return true;
-    }
+const pressedRails = new Map(); // detector rails: "x,y,z" -> seconds since a cart was on it
+const detected = pressedRails;
+const logic = new Logic(); // wires, inverters, delay blocks and latches
+// The block a switch passes its signal through: the one it's fixed to (or stands on); for a logic block,
+// the one in front of it.
+const attachedTo = (x, y, z, d) => (d.directed ? [x + FACING_DIRS[d.facing][0], y, z + FACING_DIRS[d.facing][1]]
+  : d.floor ? [x, y - 1, z] : [x - FACING_DIRS[d.facing][0], y, z - FACING_DIRS[d.facing][1]]);
+// Does the block at (nx, ny, nz) give a signal to its neighbour (x, y, z)? noWire: leave out wires (a
+// line of wire only counts the signals that come from outside it).
+function feeds(x, y, z, nx, ny, nz, noWire) {
+  const d = BLOCKS[world.get(nx, ny, nz)];
+  if (d?.switch) {
+    if (!d.on || (noWire && d.logic === 'wire')) return false;
+    // a logic block only signals the block in front of it
+    if (d.directed) return nx + FACING_DIRS[d.facing][0] === x && ny === y && nz + FACING_DIRS[d.facing][1] === z;
+    // (an observer or gauge doesn't power the block it's watching, or it would set itself off again)
+    return !(d.sensor && nx + FACING_DIRS[d.facing][0] === x && ny === y && nz + FACING_DIRS[d.facing][1] === z);
   }
+  if (!d?.solid || d.shape !== 'cube') return false;
+  // a switch fixed to this block passes its signal through it
+  for (const [ex, ey, ez] of SIDES6) {
+    const sx = nx + ex, sy = ny + ey, sz = nz + ez;
+    if (sx === x && sy === y && sz === z) continue;
+    const s = BLOCKS[world.get(sx, sy, sz)];
+    if (!s?.switch || !s.on || (noWire && s.logic === 'wire')) continue;
+    const [ax, ay, az] = attachedTo(sx, sy, sz, s);
+    if (ax === nx && ay === ny && az === nz) return true;
+  }
+  return false;
+}
+function signalAt(x, y, z) {
+  for (const [dx, dy, dz] of SIDES6) if (feeds(x, y, z, x + dx, y + dy, z + dz, false)) return true;
   return false;
 }
 kinetics.signalAt = signalAt;
 machines.onSwitch = (x, y, z, on) => setSwitch(x, y, z, on);
+machines.signalAt = signalAt;
 
 function setSwitch(x, y, z, on) {
   const d = BLOCKS[world.get(x, y, z)];
   if (!d?.switch || d.on === on) return;
-  const id = d.switch === 'lever' ? LEVER + (d.floor ? 4 : d.facing) + (on ? 5 : 0)
+  const id = d.flip ? d.flip : d.switch === 'lever' ? LEVER + (d.floor ? 4 : d.facing) + (on ? 5 : 0)
     : d.switch === 'button' ? BUTTON + d.facing + (on ? 4 : 0)
       : d.switch === 'observer' ? OBSERVER + d.facing + (on ? 4 : 0)
         : d.switch === 'gauge' ? GAUGE + d.facing + (on ? 4 : 0) : PRESSURE_PLATE + (on ? 1 : 0);
   world.setBlock(x, y, z, id);
-  if (!d.sensor) sound.click();
+  if (!d.sensor && !d.logic && d.switch !== 'detector') sound.click();
   signalChanged(x, y, z);
 }
 
@@ -1941,6 +1969,7 @@ function signalChanged(x, y, z) {
   world.machinesChanged = true; // clutches
   for (const [cx, cy, cz] of cells.values()) {
     const id = world.get(cx, cy, cz), d = BLOCKS[id];
+    if (d?.logic) logic.mark(cx, cy, cz);
     if (isGate(id) || isTrapdoor(id)) toggleHatch(cx, cy, cz, signalAt(cx, cy, cz));
     else if (d?.rail?.junction) {
       const j = d.rail.junction, on = signalAt(cx, cy, cz);
@@ -1952,6 +1981,16 @@ function signalChanged(x, y, z) {
       if (on !== d.open) toggleDoor(cx, cy, cz, true);
     }
   }
+}
+
+// Tap a logic block: a delay block goes on to its next setting, a latch flips over, and the others say
+// what they're doing.
+function useLogic(x, y, z, d) {
+  sound.click();
+  if (d.logic === 'delay') { toast(`Delay block: passes its signal on after ${logic.cycleDelay(x, y, z)} s`, 2000); return; }
+  if (d.logic === 'latch') { setSwitch(x, y, z, !d.on); toast(`Latch: ${d.on ? 'off' : 'on'} (flips each time its signal comes on)`, 2000); return; }
+  if (d.logic === 'inverter') { toast(`Inverter: ${d.on ? 'on: it gets no signal' : 'off: it gets a signal'}`, 2000); return; }
+  toast(`Copper wire: ${d.on ? 'carrying a signal' : 'no signal'}`, 1500);
 }
 
 // Buttons pop back out; pressure plates go down under you, animals and creatures, and up again after.
@@ -1974,6 +2013,20 @@ function tickSwitches(dt) {
     const [x, y, z] = k.split(',').map(Number);
     if (!BLOCKS[world.get(x, y, z)].on) setSwitch(x, y, z, true);
   }
+  // detector rails: on while a cart is on them, and a moment after
+  for (const c of carts.carts) {
+    const id = world.get(c.x, c.y, c.z);
+    if (BLOCKS[id]?.switch !== 'detector') continue;
+    pressedRails.set(lampKey(c.x, c.y, c.z), 0);
+    if (!BLOCKS[id].on) setSwitch(c.x, c.y, c.z, true);
+  }
+  for (const [k, t] of pressedRails) {
+    if (t + dt < 0.3) { pressedRails.set(k, t + dt); continue; }
+    pressedRails.delete(k);
+    const [x, y, z] = k.split(',').map(Number);
+    if (world.chunkAt(x, z)) setSwitch(x, y, z, false);
+  }
+  logic.update(dt, world, { feeds, set: setSwitch });
   for (const [k, t] of pressedPlates) {
     if (standing.has(k)) continue;
     if (t + dt < 0.4) { pressedPlates.set(k, t + dt); continue; }
@@ -2145,7 +2198,7 @@ function place() {
   }
   if (held?.id === COPY_WAND) { useWand(); return; }
   // tap a belt or hopper with an item (not a block, or a tool) to put it in: one on a belt, the lot into a hopper
-  if (target && held && !isBlock(held.id) && !ITEMS[held.id]?.tool && !held.wear && !held.ench?.length && (BLOCKS[target.id].belt || BLOCKS[target.id].hopper)) {
+  if (target && held && !isBlock(held.id) && !ITEMS[held.id]?.tool && !held.wear && !held.ench?.length && (BLOCKS[target.id].belt || BLOCKS[target.id].hopper || BLOCKS[target.id].elevator)) {
     const n = machines.insert(world, stations, target.x, target.y, target.z, held.id, BLOCKS[target.id].belt ? 1 : held.count, false);
     if (n) { takeFromHeld(n); sound.place('wool'); } else toast(BLOCKS[target.id].belt ? 'The belt is full there' : 'That hopper has nowhere to put it', 1500);
     return;
@@ -2159,6 +2212,7 @@ function place() {
     if (isCurtain(tid)) { toggleCurtain(tx, ty, tz); return; }
     if (isGate(tid) || isTrapdoor(tid)) { toggleHatch(tx, ty, tz); return; }
     if (BLOCKS[tid].switch === 'lever') { setSwitch(tx, ty, tz, !BLOCKS[tid].on); return; }
+    if (BLOCKS[tid].logic && !(held && isBlock(held.id))) { useLogic(tx, ty, tz, BLOCKS[tid]); return; }
     if (BLOCKS[tid].switch === 'button') { setSwitch(tx, ty, tz, true); pressedButtons.set(lampKey(tx, ty, tz), 1.5); return; }
     if (isFrame(tid)) { useFrame(tx, ty, tz, held); return; }
     if (BLOCKS[tid].hive >= 0 && (held?.id === GLASS_BOTTLE || !held || !isBlock(held.id))) {
@@ -2213,6 +2267,12 @@ function place() {
       toast(`Steam engine: ${machines.engineText(tx, ty, tz)}. ${kinetics.statusAt(tx, ty, tz)}`, 3000);
       return;
     }
+    if (BLOCKS[tid].ejector && !(held && isBlock(held.id))) {
+      sound.click();
+      toast(machines.toggleEjector(tx, ty, tz) ? 'Ejector: throws a whole stack each time its signal comes on' : 'Ejector: throws one thing at a time while it gets a signal', 2500);
+      return;
+    }
+    if (BLOCKS[tid].elevator && !(held && isBlock(held.id))) { toast(`Bucket elevator: ${machines.liftStatus(world, kinetics, tx, ty, tz)}`, 2500); return; }
     if (BLOCKS[tid].sensor === 'gauge' && !(held && isBlock(held.id))) {
       const full = machines.toggleGauge(tx, ty, tz);
       sound.click();
@@ -2355,6 +2415,19 @@ function place() {
     sound.place('stone');
     inventory.consumeHeld();
     return;
+  } else if (id === WIRE || id === INVERTER || id === DELAY || id === LATCH || id === DETECTOR_RAIL) {
+    // wire and logic blocks lie on top of a block; logic blocks pass their signal on the way you're looking
+    if (there !== AIR || target.ny !== 1 || !BLOCKS[target.id].solid || BLOCKS[target.id].shape !== 'cube') {
+      toast(`${BLOCKS[id].name}${id === WIRE ? '' : 's'} go${id === WIRE ? 'es' : ''} on top of a full block`); return;
+    }
+    if (id === DETECTOR_RAIL) id += facingTowardPlayer(x, z) % 2;
+    else if (id !== WIRE) id += (facingTowardPlayer(x, z) + 2) % 4;
+    world.setBlock(x, y, z, id);
+    logic.near(world, x, y, z);
+    signalChanged(x, y, z);
+    sound.place('stone');
+    inventory.consumeHeld();
+    return;
   } else if (id === LEVER || id === BUTTON || id === ITEM_FRAME || id === PRESSURE_PLATE) {
     // switches and frames are fixed to the side of a solid block (a lever can also stand on top of one,
     // and a pressure plate only goes on top)
@@ -2385,10 +2458,10 @@ function place() {
     // chairs face you; curtains hang across your line of sight
     if ([CHAIR, OVEN, SMELTER, BLAST_SMELTER, CRUSHER, CHEST, IRON_CHEST, SAW, TRIP_HAMMER].includes(id)) id += facingTowardPlayer(x, z); // the front faces you
     else if (id === DRILL) id += player.pitch < -0.75 ? 4 : (facingTowardPlayer(x, z) + 2) % 4; // drills the way you're looking
-    else if (id === OBSERVER || id === GAUGE || id === HARVESTER) id += (facingTowardPlayer(x, z) + 2) % 4; // looks (or reaps) the way you're looking
+    else if (id === OBSERVER || id === GAUGE || id === HARVESTER || id === EJECTOR) id += (facingTowardPlayer(x, z) + 2) % 4; // looks (or reaps) the way you're looking
     else if (id === STEAM_ENGINE) id += facingTowardPlayer(x, z); // its firebox door faces you
-    else if (id === BELT) id += (facingTowardPlayer(x, z) + 2) % 4; // carries things away from you
-    else if (id === HOPPER) id += target.ny === 1 ? 4 : FACING_DIRS.findIndex(([dx, dz]) => dx === -target.nx && dz === -target.nz); // into the block you tapped
+    else if (id === BELT || id === BELT_SPLITTER || id === BELT_SORTER) id += (facingTowardPlayer(x, z) + 2) % 4; // carries things away from you
+    else if (id === HOPPER || id === COLLECTOR) id += target.ny === 1 ? 4 : FACING_DIRS.findIndex(([dx, dz]) => dx === -target.nx && dz === -target.nz); // into the block you tapped
     else if (BLOCKS[id].kinetic) id = kineticVariant(id);
     else if (id === CURTAIN) id += facingTowardPlayer(x, z) % 2; // facing 0/2 -> hangs across x, 1/3 -> across z
     else if (BLOCKS[id].stair) id += facingTowardPlayer(x, z); // you walk up them away from you
@@ -2397,6 +2470,7 @@ function place() {
     if (BLOCKS[id].solid && player.overlapsBlock(x, y, z)) return;
   }
   world.setBlock(x, y, z, id);
+  logic.near(world, x, y, z); // (a block put down beside a wire or logic block can change what it gets)
   sound.place(BLOCKS[id].sound);
   inventory.consumeHeld();
 }
@@ -2639,7 +2713,7 @@ function breakBlock(x, y, z) {
   if (isSign(id) || isBed(id)) { dropWaypoint(x, y, z); dropWaypoint(...bedPartnerOr(x, y, z, id)); }
   if (isFrame(id)) { const item = frames.remove(x, y, z); if (item) drops.push([item, 1]); }
   if (stationKind(id)) loose.spill(stations.removeStacks(x, y, z), x, y, z); // whatever was inside spills out
-  if (def.machine || def.engine || def.sensor) loose.spill(machines.removeAt(x, y, z).map(([i, n]) => ({ id: i, count: n })), x, y, z); // and whatever was on a belt or in a drill
+  if (def.machine || def.engine || def.sensor || def.ejector || def.hopper) loose.spill(machines.removeAt(x, y, z).map(([i, n]) => ({ id: i, count: n })), x, y, z); // and whatever was on a belt or in a drill
   if (isBed(id)) {
     // either half takes the whole bed with it
     const [ox, oy, oz] = bedPartner(x, y, z);
@@ -2658,6 +2732,8 @@ function breakBlock(x, y, z) {
   const felled = id === LOG && ITEMS[inventory.heldId()]?.tool?.type === 'axe' ? treeAbove(x, y, z) : [];
   world.setBlock(x, y, z, id === ICE ? WATER : AIR); // ice melts into water
   if (def.switch) signalChanged(x, y, z);
+  if (def.logic) logic.removed(x, y, z);
+  logic.near(world, x, y, z);
   dropUnsupported(x, y, z);
   for (const [lx, ly, lz] of felled) {
     world.setBlock(lx, ly, lz, AIR);
@@ -2731,6 +2807,7 @@ function dropUnsupported(x, y, z) {
   const onTop = BLOCKS[world.get(x, y + 1, z)];
   if (onTop?.switch && onTop.floor) {
     world.setBlock(x, y + 1, z, AIR);
+    if (onTop.logic) logic.removed(x, y + 1, z);
     inventory.add(onTop.drop, 1);
     signalChanged(x, y + 1, z);
   }
@@ -3326,7 +3403,7 @@ function frame(now) {
   // gameplay, streaming and rendering are isolated so an error in one can't stop the others
   try { stepGame(now, dt); } catch (err) { reportError(err); }
   try {
-    if (!dead) stations.tick(dt, world, setStationLit, powerAt, boostAt);
+    if (!dead) stations.tick(dt, world, setStationLit, powerAt, boostAt, crafterRecipe);
     if (openStationAt && (stationRefresh -= dt) <= 0) { stationRefresh = 0.15; renderStation(); }
   } catch (err) { reportError(err); }
   try { world.update(player.pos.x, player.pos.z, scene, materials, 6, dt); } catch (err) { reportError(err); }
@@ -3479,7 +3556,7 @@ window.minicraft = {
   get paused() { return paused; },
   get health() { return health; }, set health(v) { health = v; renderHealth(); },
   get poisoned() { return poisoned; }, get dead() { return dead; }, get air() { return air; }, set air(v) { air = v; },
-  arrows, fishing, kinetics, bees, catchAt, seasonOf, applySeason, set day(v) { day = v; applySeason(); }, frames, signalAt, setSwitch, machines, carts, minimap, signs, armour, damage, placeRail, getInCart, getOutOfCart,
+  arrows, fishing, kinetics, bees, catchAt, seasonOf, applySeason, set day(v) { day = v; applySeason(); }, frames, signalAt, setSwitch, logic, machines, carts, minimap, signs, armour, damage, placeRail, getInCart, getOutOfCart,
   get riding() { return riding; }, explode, lightFuse, fuses, clockTime, compassText, place, editSign, closeSign, openInventory, closeInventory, chestMove, lamps, tickLamps, sleepUntilMorning, stations, openStation, closeStation,
   get caneToday() { return caneToday; }, get creative() { return creative; }, set creative(v) { creative = v; applyCreative(); }, toggleFly, wand, useWand, get achieved() { return achieved; }, achieve, worldMap, openMap, closeMap, openGuide, switchSlot, store, saveGame, renderWorlds, openWorlds, exportSlot, get target() { return target; }, set target(v) { target = v; }, applyKeys, renderKeys, camera, get controls() { return controls; }, loose, throwHeld, get waypoints() { return waypoints; }, toggleWaypoint, sortSlots, weather, openTrade, closeTrade, mountMob, dismount, get ridingMob() { return ridingMob; }, effects, armourWear, useAnvil, rollLoot, settings,
   get bedSpawn() { return bedSpawn; }, paintings, placeSwitchRail, signalAt, ailments, armourEnch, openAltar, lairNear, useBed, eat, drinkTea,

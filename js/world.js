@@ -113,6 +113,7 @@ class Chunk {
     this.growing = new Set(); // local indices of plants that can still grow
     this.machines = new Set(); // local indices of water wheels, shafts, gears and crushers
     this.hives = new Set(); // local indices of bee hives
+    this.logic = new Set(); // local indices of wires and logic blocks (see logic.js)
   }
 }
 
@@ -239,10 +240,11 @@ export class World {
     // water nearby may now flow in, or drain away
     this.flow.push([x, y, z], [x + 1, y, z], [x - 1, y, z], [x, y + 1, z], [x, y - 1, z], [x, y, z + 1], [x, y, z - 1]);
     const def = BLOCKS[id];
-    const isMachine = (d) => !!(d?.kinetic || d?.machine || d?.hopper || d?.sensor || d?.painting);
+    const isMachine = (d) => !!(d?.kinetic || d?.machine || d?.hopper || d?.sensor || d?.painting || d?.ejector);
     if (isMachine(def)) c.machines.add(li); else c.machines.delete(li);
     if (isMachine(BLOCKS[old]) || isMachine(def)) this.machinesChanged = true;
     if (def?.hive >= 0) c.hives.add(li); else c.hives.delete(li);
+    if (def?.logic) c.logic.add(li); else c.logic.delete(li);
     // this cell, and the one below (a sugar cane that's no longer, or now is, the top), may start or stop growing
     this.refreshGrowth(c, x, y, z);
     if (y > 0) this.refreshGrowth(c, x, y - 1, z);
@@ -288,6 +290,21 @@ export class World {
     const glass = def.paneTex ?? T.GLASS;
     const m = [[7, 0, 7, 9, 16, 9, glass]];
     for (const [dx, dz] of dirs) m.push(arm(dx, dz, 7, 9, 0, 16, glass));
+    return m;
+  }
+
+  // Copper wire: a dot in the middle, with a strip out to each wire or switch it touches, to wires a
+  // block lower, and up the side of a block to wires on top of it.
+  wireModel(x, y, z, def) {
+    const t = def.on ? T.WIRE_ON : T.WIRE_OFF, m = [[6.5, 0, 6.5, 9.5, 1, 9.5, t]];
+    for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const n = BLOCKS[this.get(x + dx, y, z + dz)];
+      const up = BLOCKS[this.get(x + dx, y + 1, z + dz)]?.logic === 'wire' && !BLOCKS[this.get(x, y + 1, z)]?.solid;
+      const down = BLOCKS[this.get(x + dx, y - 1, z + dz)]?.logic === 'wire' && !n?.solid;
+      if (!(n?.switch || up || down)) continue;
+      m.push(dx > 0 ? [9.5, 0, 6.5, 16, 1, 9.5, t] : dx < 0 ? [0, 0, 6.5, 6.5, 1, 9.5, t] : dz > 0 ? [6.5, 0, 9.5, 9.5, 1, 16, t] : [6.5, 0, 0, 9.5, 1, 6.5, t]);
+      if (up) m.push(dx > 0 ? [15, 0, 6.5, 16, 16, 9.5, t] : dx < 0 ? [0, 0, 6.5, 1, 16, 9.5, t] : dz > 0 ? [6.5, 0, 15, 9.5, 16, 16, t] : [6.5, 0, 0, 9.5, 16, 1, t]);
+    }
     return m;
   }
 
@@ -790,8 +807,9 @@ export class World {
       if (id < 15) continue; // (quick skip for the common blocks: none of these grow, flow or turn)
       const def = BLOCKS[id];
       if (def?.hive >= 0) c.hives.add(li);
+      if (def?.logic) c.logic.add(li);
       if (def?.grows && this.canGrow(c, li & 15, li >> 8, (li >> 4) & 15)) c.growing.add(li);
-      else if (def?.kinetic || def?.machine || def?.hopper || def?.sensor || def?.painting) { c.machines.add(li); this.machinesChanged = true; }
+      else if (def?.kinetic || def?.machine || def?.hopper || def?.sensor || def?.painting || def?.ejector) { c.machines.add(li); this.machinesChanged = true; }
       else if (isFlowing(id)) this.flow.push([x0 + (li & 15), li >> 8, z0 + ((li >> 4) & 15)]); // water left running
     }
     this.dirty.add(c.key);
@@ -1038,6 +1056,11 @@ export class World {
         if (joins(this.get(x, y, z + 1))) model.push([5.5, 5.5, 11, 10.5, 10.5, 16, T.LEAD]);
         if (joins(this.get(x, y, z - 1))) model.push([5.5, 5.5, 0, 10.5, 10.5, 5, T.LEAD]);
         vcount = this.addModel(lx, y, lz, { model }, this.torchAt(x, y, z), skyBrightness(this.skyAt(x, y, z)),
+          pos, uv, col, tl, sl, index, vcount);
+        continue;
+      }
+      if (def.shape === 'wire') {
+        vcount = this.addModel(lx, y, lz, { model: this.wireModel(x, y, z, def) }, this.torchAt(x, y, z), skyBrightness(this.skyAt(x, y, z)),
           pos, uv, col, tl, sl, index, vcount);
         continue;
       }

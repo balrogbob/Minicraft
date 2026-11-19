@@ -7,7 +7,8 @@
 //  - a large gear meshes with a small gear one cell diagonally across the axle: the small one turns
 //    twice as fast as the large one (and the large one half as fast as the small one);
 //  - a machine (crusher, millstone, saw, trip hammer, bellows, pump, drill, filament lamp, belt) is driven
-//    by any shaft, gear or wheel whose axle points into one of its faces; belts side by side share it.
+//    by any shaft, gear or wheel whose axle points into one of its faces; belts side by side share it (and a
+//    bucket elevator's column).
 //
 // Each connected set of parts is a network. Every water wheel with flowing water beside it turns at 1x
 // and gives WHEEL_POWER; a windmill with room for its sails gives less, more the higher up it stands.
@@ -83,7 +84,7 @@ export class Kinetics {
         const id = c.data[li];
         const def = BLOCKS[id];
         if (def.kinetic) nodes.set(key(x, y, z), { x, y, z, id, ...def.kinetic, speed: 0, rel: null, net: null });
-        else if (def.machine) nodes.set(key(x, y, z), { x, y, z, id, part: 'machine', load: def.machine.load, belt: def.belt, speed: 0, net: null });
+        else if (def.machine) nodes.set(key(x, y, z), { x, y, z, id, part: 'machine', load: def.machine.load, belt: def.belt || def.elevator, lift: def.elevator, speed: 0, net: null });
       }
     }
     const at = (x, y, z) => nodes.get(key(x, y, z));
@@ -176,9 +177,10 @@ export class Kinetics {
       while (queue.length) {
         const b = queue.pop();
         group.push(b);
-        for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
-          const m = at(b.x + dx, b.y, b.z + dz);
-          if (m?.belt && !seenBelt.has(m)) { seenBelt.add(m); queue.push(m); }
+        // (a bucket elevator's column, likewise, up and down)
+        for (const [dx, dy, dz] of b.lift ? [[0, 1, 0], [0, -1, 0]] : [[1, 0, 0], [-1, 0, 0], [0, 0, 1], [0, 0, -1]]) {
+          const m = at(b.x + dx, b.y + dy, b.z + dz);
+          if (m?.belt && !!m.lift === !!b.lift && !seenBelt.has(m)) { seenBelt.add(m); queue.push(m); }
         }
       }
       const driven = group.find((b) => b.drive);

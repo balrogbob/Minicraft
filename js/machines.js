@@ -15,6 +15,10 @@
 //  - A harvester reaps the ripe crops in front of it and passes them back, like a drill.
 //  - A steam engine burns the fuel put into it while there's water beside it, and drives shafts.
 //  - Observers and storage gauges watch the block in front of them and switch on (see onSwitch).
+//  - An ejector throws what's in the chest or machine behind it out onto the ground, while it's signalled.
+//  - A collector is a hopper that also pulls in loose things lying near it.
+//  - Splitting belts send things left and right in turn; sorting belts send what matches their frames left.
+//  - A bucket elevator, while driven, lifts what's put into it up its column and out of the top.
 import * as THREE from 'three';
 import {
   BLOCKS, AIR, WATER, LAVA, PIPE, PUMP, SPOUT, DRILL, FILAMENT_LAMP, BELT, FACING_DIRS, TOOL_MATERIALS,
@@ -36,6 +40,10 @@ const HOPPER_EVERY = 0.4; // seconds between items a hopper moves
 const HARVEST_TIME = 1.5; // seconds a harvester takes over each crop at 1x
 const ENGINE_BURN = 30; // seconds a steam engine runs on one "item" of fuel (a coal runs it for 5 minutes)
 const PULSE = 0.4; // seconds an observer's signal lasts
+const EJECT_EVERY = 0.5; // seconds between things an ejector throws while it's signalled
+const COLLECT_REACH = 4; // how far a collector pulls loose things from
+const LIFT_SPEED = 2; // blocks a second a bucket elevator lifts things at 1x
+const LIFT_GAP = 0.35;
 
 // The way a drill, hopper or belt points: [dx, dy, dz].
 export function pointing(def) {
@@ -69,6 +77,10 @@ export class Machines {
     this.seen = new Map(); // observer "x,y,z" -> the block it last saw in front of it
     this.pulses = new Map(); // observer "x,y,z" -> seconds left of its signal
     this.gaugeFull = new Set(); // gauges set to signal only when what they watch is full
+    this.ejectors = new Map(); // "x,y,z" -> { t: seconds to the next throw, sig: signalled last time }
+    this.ejectStacks = new Set(); // ejectors set to throw a whole stack each time their signal comes on
+    this.split = new Map(); // splitting belt "x,y,z" -> which side the next thing goes (0 left, 1 right)
+    this.lifts = new Map(); // bucket elevator column, by its bottom "x,y,z" -> [{ id, h, sprite }] (h: height climbed)
     this.sensorTimer = 0;
     this.world = null;
     this.hopperTimer = 0;
@@ -85,6 +97,9 @@ export class Machines {
     this.seen.clear();
     this.pulses.clear();
     this.gaugeFull.clear();
+    this.ejectors.clear(); this.ejectStacks.clear(); this.split.clear();
+    for (const items of this.lifts.values()) for (const it of items) this.dropSprite(it);
+    this.lifts.clear();
   }
 
   // ---------- putting things into blocks ----------
@@ -98,7 +113,7 @@ export class Machines {
     if (kind) {
       const K = STATION_KINDS[kind];
       const st = stations.get(x, y, z, kind);
-      if (fuel && !K.storage && !K.powered && isFuel(id)) {
+      if (fuel && !K.storage && !K.powered && !K.crafter && isFuel(id)) {
         if (!st.fuel) { const k = Math.min(n, maxStack(id)); st.fuel = { id, count: k }; return k; }
         if (st.fuel.id !== id) return 0;
         const k = Math.min(n, maxStack(id) - st.fuel.count);
@@ -129,6 +144,17 @@ export class Machines {
       const k = Math.min(n, maxStack(id) - (e.fuel?.count ?? 0));
       if (k > 0) e.fuel = { id, count: (e.fuel?.count ?? 0) + k };
       return Math.max(0, k);
+    }
+    if (def.elevator) {
+      // into the bucket elevator column, at this height
+      let by = y;
+      while (BLOCKS[world.get(x, by - 1, z)]?.elevator) by--;
+      const k = key(x, by, z), items = this.lifts.get(k) ?? [], h = y - by;
+      if (items.some((it) => Math.abs(it.h - h) < LIFT_GAP)) return 0;
+      items.push({ id, h, sprite: null });
+      items.sort((a, b) => b.h - a.h);
+      this.lifts.set(k, items);
+      return 1;
     }
     if (def.belt) {
       const items = this.belts.get(key(x, y, z)) ?? [];
@@ -174,7 +200,7 @@ export class Machines {
   tick(dt, world, kinetics, stations, light) {
     // gather the machines in the loaded world
     this.world = world;
-    const pumps = [], drills = [], lamps = [], hoppers = [], sensors = [], harvesters = [], engines = [];
+    const pumps = [], drills = [], lamps = [], hoppers = [], sensors = [], harvesters = [], engines = [], ejectors = [], collectors = [];
     for (const c of world.chunks.values()) {
       for (const li of c.machines) {
         const id = c.data[li], def = BLOCKS[id];
@@ -182,7 +208,8 @@ export class Machines {
         if (id === PUMP) pumps.push([x, y, z]);
         else if (def.machine && id >= DRILL && id <= DRILL + 4) drills.push([x, y, z, def]);
         else if (id === FILAMENT_LAMP || id === FILAMENT_LAMP + 1) lamps.push([x, y, z, id]);
-        else if (def.hopper) hoppers.push([x, y, z, def]);
+        else if (def.hopper) { hoppers.push([x, y, z, def]); if (def.collector) collectors.push([x, y, z, def]); }
+        else if (def.ejector) ejectors.push([x, y, z, def]);
         else if (def.sensor) sensors.push([x, y, z, def]);
         else if (def.harvester) harvesters.push([x, y, z, def]);
         else if (def.engine) engines.push([x, y, z, def]);
@@ -208,6 +235,108 @@ export class Machines {
       }
     }
     this.tickBelts(dt, world, kinetics, stations, light);
+    this.tickLifts(dt, world, kinetics, stations, light);
+    for (const e of ejectors) this.tickEjector(dt, world, stations, e);
+    if (collectors.length) this.tickCollectors(dt, world, stations, collectors);
+  }
+
+  // ---------- ejectors and collectors ----------
+
+  tickEjector(dt, world, stations, [x, y, z, def]) {
+    const k = key(x, y, z);
+    let e = this.ejectors.get(k);
+    if (!e) { e = { t: 0, sig: false }; this.ejectors.set(k, e); }
+    const sig = !!this.signalAt?.(x, y, z), rising = sig && !e.sig;
+    e.sig = sig;
+    e.t -= dt;
+    const stack = this.ejectStacks.has(k);
+    if (stack ? !rising : !sig || e.t > 0) return;
+    e.t = EJECT_EVERY;
+    const [dx, dz] = FACING_DIRS[def.facing];
+    if (world.isSolid(x + dx, y, z + dz)) return; // nowhere to throw it
+    const bx = x - dx, bz = z - dz;
+    const id = this.takeOne(world, stations, bx, y, bz, true);
+    if (!id) return;
+    let n = 0;
+    const most = stack ? maxStack(id) : 1;
+    while (n < most && this.takeOne(world, stations, bx, y, bz, true) === id) { this.takeOne(world, stations, bx, y, bz); n++; }
+    this.throwItem?.({ id, count: n }, { x: x + 0.5 + dx * 0.7, y: y + 0.35, z: z + 0.5 + dz * 0.7 }, { x: dx * 4, y: 2, z: dz * 4 });
+  }
+
+  // Tapping an ejector switches it between one at a time and a stack per signal. Returns true for stacks.
+  toggleEjector(x, y, z) {
+    const k = key(x, y, z);
+    if (this.ejectStacks.has(k)) this.ejectStacks.delete(k); else this.ejectStacks.add(k);
+    return this.ejectStacks.has(k);
+  }
+
+  // Collectors draw in loose things lying near them; when one gets there, it goes in like a dropped one.
+  tickCollectors(dt, world, stations, collectors) {
+    if (!this.loose) return;
+    for (const it of this.loose.items) {
+      if (it.age < it.delay || it.stack.wear || it.stack.ench?.length || (it.noCollect -= dt) > 0) continue;
+      let best = null, bd = Infinity;
+      for (const c of collectors) {
+        const cx = c[0] + 0.5, cy = c[1] + 1, cz = c[2] + 0.5;
+        const d = Math.hypot(it.pos.x - cx, it.pos.y - cy, it.pos.z - cz);
+        if (d < bd && d <= COLLECT_REACH + 0.5 && it.pos.y > c[1] - 1.5) { bd = d; best = c; }
+      }
+      if (!best) continue;
+      const [x, y, z] = best;
+      if (bd < 0.9) {
+        const took = this.insert(world, stations, x, y, z, it.stack.id, it.stack.count, false);
+        if (took > 0) it.stack.count -= took; else it.noCollect = 3; // (the collector has nowhere to put it: leave it be a while)
+        continue;
+      }
+      const dx = x + 0.5 - it.pos.x, dy = y + 1.1 - it.pos.y, dz = z + 0.5 - it.pos.z, d = Math.hypot(dx, dy, dz) || 1;
+      it.vel.set((dx / d) * 4, Math.max(it.vel.y, (dy / d) * 4 + 1), (dz / d) * 4);
+    }
+  }
+
+  // ---------- bucket elevators ----------
+
+  tickLifts(dt, world, kinetics, stations, light) {
+    for (const [k, items] of this.lifts) {
+      const [x, y, z] = unkey(k);
+      if (!world.chunkAt(x, z)) continue;
+      if (!BLOCKS[world.get(x, y, z)]?.elevator || BLOCKS[world.get(x, y - 1, z)]?.elevator) {
+        // the column was broken up: what it held spills out
+        for (const it of items) { this.dropSprite(it); this.throwItem?.({ id: it.id, count: 1 }, { x: x + 0.5, y: y + it.h + 0.5, z: z + 0.5 }, { x: 0, y: 1, z: 0 }); }
+        this.lifts.delete(k);
+        continue;
+      }
+      let top = y, speed = 0;
+      for (; BLOCKS[world.get(x, top, z)]?.elevator; top++) speed = Math.max(speed, kinetics.powerAt(x, top, z));
+      const height = top - y; // things come out at this height (the top of the column)
+      for (let i = 0; i < items.length; i++) {
+        const limit = i === 0 ? height : items[i - 1].h - LIFT_GAP;
+        items[i].h = Math.max(items[i].h, Math.min(limit, items[i].h + dt * speed * LIFT_SPEED));
+      }
+      if (items.length && items[0].h >= height - 1e-6 && speed > 0) {
+        // out of the top: into what's above, or onto it
+        const it = items[0];
+        const above = world.get(x, top, z);
+        const out = above === 0 ? (this.throwItem?.({ id: it.id, count: 1 }, { x: x + 0.5, y: top + 0.1, z: z + 0.5 }, { x: 0, y: 2.5, z: 0 }), 1)
+          : this.insert(world, stations, x, top, z, it.id, 1, false);
+        if (out) { this.dropSprite(items.shift()); if (!items.length) { this.lifts.delete(k); continue; } }
+      }
+      const sun = light.day * skyBrightness(world.skyAt(x, y, z)), t = lightBrightness(world.lightAt(x, y, z)) * light.flicker;
+      for (const it of items) {
+        if (!it.sprite) it.sprite = this.makeSprite(it.id);
+        it.sprite.position.set(x + 0.5, y + Math.min(it.h, height - 0.5) + 0.4, z + 0.5);
+        it.sprite.material.color.setRGB(Math.max(sun, t, light.ambient), Math.max(sun, t * 0.86, light.ambient), Math.max(sun, t * 0.66, light.ambient));
+      }
+    }
+  }
+
+  // What a bucket elevator is doing, for a toast.
+  liftStatus(world, kinetics, x, y, z) {
+    let by = y;
+    while (BLOCKS[world.get(x, by - 1, z)]?.elevator) by--;
+    let top = by, speed = 0;
+    for (; BLOCKS[world.get(x, top, z)]?.elevator; top++) speed = Math.max(speed, kinetics.powerAt(x, top, z));
+    const n = this.lifts.get(key(x, by, z))?.length ?? 0;
+    return `${top - by} block${top - by > 1 ? 's' : ''} high, ${n ? `lifting ${n} thing${n > 1 ? 's' : ''}` : 'empty'}; ${speed > 0 ? `running at ${+speed.toFixed(2)}x` : 'not turning: drive it with a shaft'}`;
   }
 
   tickPumps(world, kinetics, pumps) {
@@ -450,9 +579,12 @@ export class Machines {
         }
         if (!items.length) { this.belts.delete(k); continue; }
       }
-      // at the end: on to the next belt, or into whatever it points at
+      // at the end: on to the next belt, or into whatever it points at (or off to the side)
       if (items.length && items[0].t >= 1 && speed > 0) {
-        if (this.insert(world, stations, x + dx, y, z + dz, items[0].id, 1, false)) {
+        const outs = this.beltOuts(world, x, y, z, def, items[0].id);
+        const i = outs.findIndex(([ox, oz]) => this.insert(world, stations, ox, y, oz, items[0].id, 1, false));
+        if (i >= 0) {
+          if (def.sorts === 'split') this.split.set(k, (outs[i][2] + 1) % 2);
           this.dropSprite(items.shift());
           if (!items.length) this.belts.delete(k);
         }
@@ -466,6 +598,22 @@ export class Machines {
         it.sprite.material.color.setRGB(Math.max(sun, t, light.ambient), Math.max(sun, t * 0.86, light.ambient), Math.max(sun, t * 0.66, light.ambient));
       }
     }
+  }
+
+  // Where the front thing on a belt can go next, in the order to try: [[x, z, side], ...].
+  beltOuts(world, x, y, z, def, id) {
+    const f = def.facing, step = (g) => [x + FACING_DIRS[g][0], z + FACING_DIRS[g][1]];
+    const left = (f + 3) % 4, right = (f + 1) % 4;
+    if (def.sorts === 'split') {
+      const first = this.split.get(key(x, y, z)) ?? 0;
+      const sides = [[...step(left), 0], [...step(right), 1]];
+      return first ? [sides[1], sides[0]] : sides;
+    }
+    if (def.sorts === 'sort') {
+      const filter = this.frames?.around(world, x, y, z) ?? [];
+      return filter.includes(id) ? [[...step(left), 0]] : [[...step(f), 0]];
+    }
+    return [[...step(f), 0]];
   }
 
   makeSprite(id) {
@@ -500,6 +648,19 @@ export class Machines {
     this.engines.delete(k);
     this.gaugeFull.delete(k);
     this.seen.delete(k);
+    this.ejectors.delete(k); this.ejectStacks.delete(k); this.split.delete(k);
+    if (BLOCKS[this.world?.get(x, y, z)]?.elevator) {
+      // the column it was part of: what it holds comes back
+      for (const [lk, items] of this.lifts) {
+        const [lx, ly, lz] = unkey(lk);
+        if (lx !== x || lz !== z || ly > y) continue;
+        let joined = true;
+        for (let cy = ly; cy < y && joined; cy++) joined = !!BLOCKS[this.world.get(x, cy, z)]?.elevator;
+        if (!joined) continue;
+        for (const it of items) { out.push([it.id, 1]); this.dropSprite(it); }
+        this.lifts.delete(lk);
+      }
+    }
     return out;
   }
 
@@ -513,6 +674,8 @@ export class Machines {
       drills: [...this.drills].filter(([, d]) => d.held.length).map(([k, d]) => [k, d.held]),
       engines: [...this.engines].filter(([, e]) => e.fuel || e.burn > 0).map(([k, e]) => [k, +e.burn.toFixed(1), e.fuel ? [e.fuel.id, e.fuel.count] : 0]),
       gaugeFull: [...this.gaugeFull],
+      ejectStacks: [...this.ejectStacks],
+      lifts: [...this.lifts].map(([k, items]) => [k, items.map((it) => [it.id, +it.h.toFixed(2)])]),
     };
   }
 
@@ -530,6 +693,10 @@ export class Machines {
       this.engines.set(k, { burn: Math.max(0, +burn || 0), fuel: Array.isArray(fuel) && fuel[0] > 0 && fuel[1] > 0 ? { id: fuel[0], count: fuel[1] } : null });
     }
     for (const k of o?.gaugeFull ?? []) if (typeof k === 'string') this.gaugeFull.add(k);
+    for (const k of o?.ejectStacks ?? []) if (typeof k === 'string') this.ejectStacks.add(k);
+    for (const [k, items] of o?.lifts ?? []) {
+      if (typeof k === 'string' && Array.isArray(items)) this.lifts.set(k, items.filter((it) => it?.[0] > 0).map(([id, h]) => ({ id, h: Math.max(0, +h || 0), sprite: null })));
+    }
     for (const [k, held] of o?.drills ?? []) {
       if (typeof k === 'string' && Array.isArray(held)) this.drills.set(k, { progress: 0, target: '', held: held.filter((h) => h?.[0] > 0 && h[1] > 0), status: '' });
     }
