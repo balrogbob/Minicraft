@@ -221,7 +221,7 @@ in the ☰ menu, and every keyboard key above can be changed under ☰ → **Key
 | Make | From | Where |
 | --- | --- | --- |
 | Wooden Bucket | 3 planks | crafting table |
-| Mortar and Pestle | 3 cobblestone + 1 stick | crafting table |
+| Mortar and Pestle | 3 cobblestone + 1 stick (lasts 96 grindings; mend it at an anvil with cobblestone) | crafting table |
 | Butter Churn (placeable) | 7 planks | crafting table |
 | Flour | 1 wheat, with the mortar (not used up) | anywhere |
 | Sugar | 1 sugar cane, with the mortar (not used up) | anywhere |
@@ -1162,6 +1162,8 @@ breed when there are 12 or more about.
   from it for the smoke, or the room fills with it.
 - **Pin a recipe** (📌 beside it) to keep it on screen with how many of each thing you have and still need; it
   goes green when you've got everything. Up to three.
+- The **mortar and pestle** now wears with use: each thing ground in it counts, and it breaks after 96 (the most
+  worn one you carry is used first). Mend it at an anvil with cobblestone.
 - **Auto-refill**: when the stack in your hand runs out, or a tool breaks, the next one of the same thing moves
   in from your backpack. Turn it off under ☰ if you'd rather not.
 

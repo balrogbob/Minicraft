@@ -1222,6 +1222,8 @@ TOOL_MATERIALS.forEach((m, i) => {
 });
 const ARMOUR_WEAR = [80, 160, 220, 320, 450];
 ARMOUR_MATS.forEach((m, mi) => ARMOUR_PIECES.forEach((p, pi) => Object.assign(ITEMS[armourId(mi, pi)], { wearMax: ARMOUR_WEAR[mi], repair: m.plate ?? LEATHER })));
+// the mortar and pestle wears a little with each thing ground in it
+Object.assign(ITEMS[MORTAR], { wearMax: 96, repair: COBBLE });
 export const maxWear = (id) => ITEMS[id]?.wearMax ?? 0;
 
 RECIPES.push(
