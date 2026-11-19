@@ -17,7 +17,7 @@ import {
   SUN_SCARAB, FROST_HEART, EMBER_CORE, SUN_MASK, FROST_CIRCLET, EMBER_CROWN, HONEY_TEA, MUSHROOM_STEW, FISH_PIE, COPY_WAND,
   CRYSTAL_SHARD, HONEY_BOTTLE, HONEYCOMB, SALMON, BAKED_SALMON, ICEFISH, BAKED_ICEFISH, PUFFERFISH, OLD_BOOT,
   BATTERY, PORTABLE_LAMP, JACKHAMMER, JETPACK, ELECTRIC_DRILL, HOVER_BOOTS, NV_GOGGLES, MAGNET_RING, WIND_TURBINE, NICKEL_INGOT, CUPRONICKEL_INGOT,
-  ELECTRIC_RAIL, CHAINSAW, SAWDUST, BOOK, BACKPACK, BIG_BACKPACK, HUGE_BACKPACK, SPANNER, GRAPPLE, URANIUM_INGOT, FUEL_ROD, JOURNAL, FERTILISER, SPENT_ROD, ENRICHED_URANIUM, ENRICHED_ROD, hazmatId, INVAR_INGOT, RAIL_STATION, BOAT, BALLOON, ZIP_LINE, METEORIC_IRON, STARSTEEL_INGOT, starsteelTool, EGG, FRIED_EGG, SADDLE, TRUFFLE, FLOWER_POT, HANGING_PLANT, WINDOW_BOX, APPLE, CHERRIES, ORANGE_FRUIT, APPLE_PIE, CHERRY_PIE, FRUIT_SALAD, ORANGE_JUICE, FISH_SOUP, TRUFFLE_SOUP, BERRY_JAM, COOK_POT, SCARECROW, EXPLORER_MAP, TREASURE_MAP, BEESWAX, CABLE_CAR, COIN, CARROT, POTATO, BAKED_POTATO, PUMPKIN_SEEDS, PUMPKIN_PIE, GRAPES, GRAPE_JUICE, WINE, FINE_WINE, CURDS, CHEESE, AGED_CHEESE, DIVING_HELMET, FLIPPERS, PEARL, LOCOMOTIVE, FIREWORK,
+  ELECTRIC_RAIL, CHAINSAW, SAWDUST, BOOK, BACKPACK, BIG_BACKPACK, HUGE_BACKPACK, SPANNER, GRAPPLE, URANIUM_INGOT, FUEL_ROD, JOURNAL, FERTILISER, SPENT_ROD, ENRICHED_URANIUM, ENRICHED_ROD, hazmatId, INVAR_INGOT, RAIL_STATION, BOAT, BALLOON, ZIP_LINE, METEORIC_IRON, STARSTEEL_INGOT, starsteelTool, EGG, FRIED_EGG, SADDLE, TRUFFLE, FLOWER_POT, HANGING_PLANT, WINDOW_BOX, APPLE, CHERRIES, ORANGE_FRUIT, APPLE_PIE, CHERRY_PIE, FRUIT_SALAD, ORANGE_JUICE, FISH_SOUP, TRUFFLE_SOUP, BERRY_JAM, COOK_POT, SCARECROW, EXPLORER_MAP, TREASURE_MAP, BEESWAX, CABLE_CAR, COIN, CARROT, POTATO, BAKED_POTATO, PUMPKIN_SEEDS, PUMPKIN_PIE, GRAPES, GRAPE_JUICE, WINE, FINE_WINE, CURDS, CHEESE, AGED_CHEESE, DIVING_HELMET, FLIPPERS, PEARL, LOCOMOTIVE, FIREWORK, UNFIRED_URN,
   ONION, BEANS, TOMATO, HERBS, APPLE_JUICE, BERRY_JUICE, CIDER, VINTAGE_CIDER, BERRY_WINE, FINE_BERRY_WINE, VEG_STEW, TOMATO_SOUP, BAKED_BEANS,
   SALTPETRE, GUNPOWDER, LEAD_SINKER, WEIGHTED_ROD, LEAD_BUCKET, LAVA_BUCKET, GOLD_CLOCK, COMPASS, SILVER_ARROW, MIRROR_LAMP,
 } from './blocks.js';
@@ -2728,3 +2728,38 @@ ITEM_PAINTERS[FINE_BERRY_WINE] = wineBottle([150, 20, 90], [236, 220, 170]);
 ITEM_PAINTERS[VEG_STEW] = bowlPainter([170, 110, 60], [[5, 8, [236, 120, 30]], [9, 8, [214, 180, 120]], [11, 9, [80, 140, 70]], [7, 9, [196, 160, 96]]]);
 ITEM_PAINTERS[TOMATO_SOUP] = bowlPainter([206, 50, 34], [[6, 8, [80, 140, 70]], [10, 9, [240, 120, 100]]]);
 ITEM_PAINTERS[BAKED_BEANS] = bowlPainter([196, 90, 40], [[5, 8, [230, 170, 120]], [7, 9, [230, 170, 120]], [9, 8, [230, 170, 120]], [11, 9, [230, 170, 120]]]);
+
+// v27 D: the kiln, terracotta, glazed tiles, roof tiles, urns and rope
+P[T.KILN_SIDE] = (t) => bricks(t, [176, 104, 70], [130, 112, 96]);
+P[T.KILN_TOP] = (t) => { bricks(t, [150, 88, 60], [120, 100, 86]); for (let y = 5; y < 11; y++) for (let x = 5; x < 11; x++) t.set(x, y, t.vary([40, 34, 30], 0.1)); };
+P[T.KILN_FRONT] = (t) => { bricks(t, [176, 104, 70], [130, 112, 96]); mouth(t, 'arch', false); };
+P[T.KILN_FRONT_LIT] = (t) => { bricks(t, [176, 104, 70], [130, 112, 96]); mouth(t, 'arch', true); };
+const TERRA = [178, 98, 62];
+P[T.TERRACOTTA] = (t) => { for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) t.set(x, y, t.vary(TERRA, 0.05)); for (let k = 0; k < 6; k++) t.set(Math.floor(t.r() * 16), Math.floor(t.r() * 16), shade(TERRA, 0.88)); };
+COLORS.forEach((c, i) => {
+  // fired colours come out earthy and muted
+  const col = c.rgb.map((v, j) => Math.round(v * 0.62 + TERRA[j] * 0.28));
+  P[T.TERRA_COL + i] = (t) => { for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) t.set(x, y, t.vary(col, 0.05)); for (let k = 0; k < 6; k++) t.set(Math.floor(t.r() * 16), Math.floor(t.r() * 16), shade(col, 0.88)); };
+  // glazed: shiny, with a pattern that makes a bigger one when tiles are laid together
+  const hi = c.rgb.map((v) => Math.min(255, v + 70)), lo = shade(c.rgb, 0.7);
+  P[T.GLAZED + i] = (t) => {
+    for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+      const d = Math.abs(x - 7.5) + Math.abs(y - 7.5), corner = Math.min(x, 15 - x) + Math.min(y, 15 - y);
+      t.set(x, y, t.vary(d < 3 ? [240, 236, 220] : d < 5 ? lo : corner < 4 ? hi : (x + y) % 6 === 0 ? lo : c.rgb, 0.03));
+    }
+    for (const [x, y] of [[3, 2], [4, 2], [2, 3]]) t.set(x, y, [255, 255, 255]); // the shine
+  };
+});
+P[T.ROOF_TILES] = (t) => {
+  for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+    const row = y >> 2, off = row % 2 ? 2 : 0, u = (x + off) % 4, v = y % 4;
+    const edge = v === 3 || (v >= 2 && (u === 0 || u === 3));
+    t.set(x, y, t.vary(edge ? [120, 58, 38] : v === 0 ? [196, 104, 66] : [170, 84, 52], 0.05));
+  }
+};
+P[T.URN] = (t) => { for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) t.set(x, y, t.vary(y === 4 || y === 5 || y === 11 ? [40, 30, 26] : y === 8 && x % 4 < 2 ? [40, 30, 26] : TERRA, 0.05)); };
+P[T.ROPE] = (t) => { for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) t.set(x, y, t.vary((x + y) % 4 < 2 ? [196, 170, 120] : [160, 134, 90], 0.05)); };
+ITEM_PAINTERS[UNFIRED_URN] = (ctx) => {
+  const c = [150, 156, 170], d = [120, 126, 140];
+  rect(ctx, 5, 13, 6, 1, d); rect(ctx, 3, 6, 10, 7, c); rect(ctx, 4, 5, 8, 1, c); rect(ctx, 6, 3, 4, 2, c); rect(ctx, 5, 2, 6, 1, d); rect(ctx, 11, 7, 2, 5, d);
+};

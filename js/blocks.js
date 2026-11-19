@@ -140,7 +140,7 @@ export const T = {
   LEAD_CHEST_SIDE: 267, LEAD_CHEST_TOP: 268, LEAD_CHEST_FRONT: 269, CENTRIFUGE_SIDE: 270, CENTRIFUGE_TOP: 271, TESLA: 272, TESLA_TOP: 273,
   FENCE_POST: 274, FENCE_WIRE: 275, FREEZER_SIDE: 276, FREEZER_FRONT: 277, ARC_SIDE: 278, ARC_FRONT: 279, PACKED_ICE: 280, INVAR: 281, RAIL_STOP: 282, BASALT: 283, BASALT_TOP: 284, METEORITE: 285,
   IRON_BARS: 286, POT: 287, IVY: 288, BOX_FLOWERS: 289,
-  FRUIT_LEAVES: 290, FRUIT_RIPE: 293, FRUIT_SAPLING: 296, HAY: 299, SACK: 300, BEACON: 301, APIARY_SIDE: 302, APIARY_FRONT: 303, APIARY_FULL: 304, APIARY_TOP: 305, BELT_CROSS: 306, FARM_CTRL: 307, FARM_CTRL_ON: 308, TUBE: 309, TUBE_END: 310, AWNING: 311, FIRE: 312, CARROT_0: 313, POTATO_0: 317, STEM_0: 321, PUMPKIN_SIDE: 324, PUMPKIN_TOP: 325, JACK_FACE: 326, TRELLIS: 327, VINE_0: 328, BARREL_SIDE: 331, BARREL_TOP: 332, CHEESE: 333, SEA_BRICK: 334, SEA_LANTERN: 335, VAULT: 336, SKY_STONE: 337, AIR_PUMP: 338, RADIO: 339, RADIO_ON: 340, SORTBOX: 341, SORTBOX_TOP: 342, HEARTH: 343, HEARTH_LIT: 344, CHIMNEY_TOP: 345, STABLE_SIDE: 346, SNOWMAN_FRONT: 347, ONION_0: 348, BEAN_0: 352, TOMATO_0: 356, HERB_0: 360, // (fruit tiles: apple, cherry, orange)
+  FRUIT_LEAVES: 290, FRUIT_RIPE: 293, FRUIT_SAPLING: 296, HAY: 299, SACK: 300, BEACON: 301, APIARY_SIDE: 302, APIARY_FRONT: 303, APIARY_FULL: 304, APIARY_TOP: 305, BELT_CROSS: 306, FARM_CTRL: 307, FARM_CTRL_ON: 308, TUBE: 309, TUBE_END: 310, AWNING: 311, FIRE: 312, CARROT_0: 313, POTATO_0: 317, STEM_0: 321, PUMPKIN_SIDE: 324, PUMPKIN_TOP: 325, JACK_FACE: 326, TRELLIS: 327, VINE_0: 328, BARREL_SIDE: 331, BARREL_TOP: 332, CHEESE: 333, SEA_BRICK: 334, SEA_LANTERN: 335, VAULT: 336, SKY_STONE: 337, AIR_PUMP: 338, RADIO: 339, RADIO_ON: 340, SORTBOX: 341, SORTBOX_TOP: 342, HEARTH: 343, HEARTH_LIT: 344, CHIMNEY_TOP: 345, STABLE_SIDE: 346, SNOWMAN_FRONT: 347, ONION_0: 348, BEAN_0: 352, TOMATO_0: 356, HERB_0: 360, KILN_SIDE: 364, KILN_TOP: 365, KILN_FRONT: 366, KILN_FRONT_LIT: 367, TERRACOTTA: 368, TERRA_COL: 369, GLAZED: 379, ROOF_TILES: 389, URN: 390, ROPE: 391, // (fruit tiles: apple, cherry, orange)
 };
 
 // Ores, deepest-reaching last. tier: the pickaxe tier needed to mine it (see TOOL_TIERS);
@@ -250,7 +250,7 @@ function block(id, o) {
     postTex: o.postTex ?? null, armTex: o.armTex ?? null, // a fence's own post and rail tiles (an electric fence)
     shock: !!o.shock, tesla: !!o.tesla, zip: !!o.zip, // v24: electric fences, tesla coils, zipline posts (see main.js)
     fruit: o.fruit ?? null, scarecrow: !!o.scarecrow, apiary: !!o.apiary, crossing: !!o.crossing, tube: !!o.tube, // v25: { kind, ripe } on a fruit tree's leaves; scarecrows keep crows off crops
-    sortbox: !!o.sortbox, hearth: !!o.hearth, chimney: !!o.chimney, stable: !!o.stable, snowman: !!o.snowman, // v26: a sorting machine (see machines.js)
+    sortbox: !!o.sortbox, hearth: !!o.hearth, chimney: !!o.chimney, stable: !!o.stable, snowman: !!o.snowman, ropeLadder: !!o.ropeLadder, bridge: o.bridge ?? null, // v26: a sorting machine (see machines.js)
     crop: o.crop ?? null, // v26: { kind, stage, ripe, seed } for the newer crops (carrots, potatoes, pumpkin vines, grapes)
     farm: o.farm ?? null, // 'feller' | 'planter' | 'breaker' | 'placer' | 'ranch' | 'net' (see machines.js)
   };
@@ -2625,3 +2625,68 @@ ITEMS[VEG_STEW] = { name: 'Vegetable Stew', food: 10, meal: ['warm', 300], about
 ITEMS[TOMATO_SOUP] = { name: 'Tomato Soup', food: 7, meal: ['heal', 4], about: 'feel better' };
 ITEMS[BAKED_BEANS] = { name: 'Baked Beans', food: 7 };
 Object.assign(AGING, { [APPLE_JUICE]: [CIDER, 1], [CIDER]: [VINTAGE_CIDER, 3], [BERRY_JUICE]: [BERRY_WINE, 1], [BERRY_WINE]: [FINE_BERRY_WINE, 3] });
+
+// ---------- v27 D: the kiln, terracotta and pottery; rope ladders and rope bridges ----------
+// A kiln burns fuel like an oven and fires clay: a block of clay into terracotta (dye it, then fire it again
+// for glazed tiles), clay balls into bricks (quicker than a smelter) or into an urn to keep things in.
+// A rope ladder fixed to the top of a drop unrolls down it; a rope bridge is laid out across a gap, plank by
+// plank, the way you're facing, with rope rails along it.
+export const KILN = 1407, // 1407..1414: + facing, + 4 while burning
+  TERRACOTTA = 1415, TERRA_COL = 1416, // 1416..1425: + colour 0..9
+  GLAZED_TILE = 1426, // 1426..1435: + colour
+  ROOF_TILES = 1436, URN = 1437,
+  ROPE_LADDER = 1438, // 1438..1441: + facing
+  ROPE_BRIDGE = 1442, // 1442..1443: + axis (0 along z, 1 along x)
+  BRIDGE_RAIL = 1444; // 1444..1445: the rope rails over a bridge, + axis
+export const UNFIRED_URN = 102;
+ITEMS[UNFIRED_URN] = { name: 'Unfired Urn', about: 'fire it in a kiln' };
+for (let k = 0; k < 8; k++) {
+  const facing = k & 3, lit = k >= 4;
+  block(KILN + k, {
+    name: 'Kiln', station: 'kiln', side: T.KILN_SIDE, top: T.KILN_TOP, bottom: T.KILN_SIDE, front: lit ? T.KILN_FRONT_LIT : T.KILN_FRONT, facing, lit, light: lit ? 13 : 0,
+    hardness: 2.5, tool: 'pick', variantOf: k ? KILN : 0, drop: KILN, stationBase: KILN,
+  });
+}
+block(TERRACOTTA, { name: 'Terracotta', sound: 'stone', tex: T.TERRACOTTA, hardness: 1.5, tool: 'pick' });
+COLORS.forEach((c, i) => {
+  block(TERRA_COL + i, { name: `${c.name} Terracotta`, sound: 'stone', tex: T.TERRA_COL + i, hardness: 1.5, tool: 'pick', color: i });
+  block(GLAZED_TILE + i, { name: `${c.name} Glazed Tile`, sound: 'glass', tex: T.GLAZED + i, hardness: 1.5, tool: 'pick', color: i });
+});
+block(ROOF_TILES, { name: 'Roof Tiles', sound: 'stone', tex: T.ROOF_TILES, hardness: 1.5, tool: 'pick' });
+block(URN, {
+  name: 'Urn', station: 'urn', sound: 'stone', transparent: true, hardness: 1, tool: 'pick',
+  model: [[4, 0, 4, 12, 1, 12, T.URN], [2.5, 1, 2.5, 13.5, 10, 13.5, T.URN], [4, 10, 4, 12, 12, 12, T.URN], [5, 12, 5, 11, 14, 11, T.URN], [4, 14, 4, 12, 15, 12, T.URN]],
+  boxes: [[2.5, 0, 2.5, 13.5, 15, 13.5]],
+});
+const rope = T.ROPE;
+const ROPE_LADDER_MODEL = [
+  [2.5, 0, 0.3, 3.5, 16, 1.3, rope], [12.5, 0, 0.3, 13.5, 16, 1.3, rope],
+  ...[2, 6, 10, 14].map((y) => [3.5, y, 0.2, 12.5, y + 1, 1.4, T.PLANKS]),
+];
+for (let f = 0; f < 4; f++) {
+  block(ROPE_LADDER + f, {
+    name: 'Rope Ladder', sound: 'wool', transparent: true, solid: false, hardness: 0.4, climb: true, ropeLadder: true,
+    model: rotateModel(ROPE_LADDER_MODEL, f), facing: f, variantOf: f ? ROPE_LADDER : 0, drop: ROPE_LADDER,
+  });
+}
+// (a rotation by 1 turns a model along z into one along x)
+const BRIDGE_MODEL = [...[0, 4, 8, 12].map((z) => [0.5, 13, z + 0.3, 15.5, 15, z + 3.7, T.PLANKS]), [1, 12, 0, 2, 13, 16, rope], [14, 12, 0, 15, 13, 16, rope]];
+const RAIL_MODEL = [[0.5, 9, 0, 1.5, 10, 16, rope], [14.5, 9, 0, 15.5, 10, 16, rope], [0.7, 0, 7.5, 1.3, 9, 8.5, rope], [14.7, 0, 7.5, 15.3, 9, 8.5, rope]];
+for (let a = 0; a < 2; a++) {
+  block(ROPE_BRIDGE + a, {
+    name: 'Rope Bridge', sound: 'wood', transparent: true, hardness: 0.8, tool: 'axe', bridge: a,
+    model: a ? rotateModel(BRIDGE_MODEL, 1) : BRIDGE_MODEL, boxes: [[0, 13, 0, 16, 15, 16]], variantOf: a ? ROPE_BRIDGE : 0, drop: ROPE_BRIDGE,
+  });
+  block(BRIDGE_RAIL + a, {
+    name: 'Rope Rail', sound: 'wool', transparent: true, solid: false, hardness: 0.1, variantOf: ROPE_BRIDGE, drop: 0,
+    model: a ? rotateModel(RAIL_MODEL, 1) : RAIL_MODEL,
+  });
+}
+RECIPES.push(
+  { out: [KILN, 1], in: [[CLAY_BRICKS, 5], [IRON_INGOT, 1]], table: true, metal: IRON_INGOT },
+  { out: [ROOF_TILES, 4], in: [[TERRACOTTA, 4]], table: true },
+  { out: [UNFIRED_URN, 1], in: [[CLAY_BALL, 6]] },
+  { out: [ROPE_LADDER, 4], in: [[STRING, 4], [STICK, 3]] },
+  { out: [ROPE_BRIDGE, 4], in: [[PLANKS, 3], [STRING, 3]] },
+);
+COLORS.forEach((c, i) => RECIPES.push({ out: [TERRA_COL + i, 4], in: [[TERRACOTTA, 4], [DYE + i, 1]], metal: DYE + i }));

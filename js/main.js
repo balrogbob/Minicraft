@@ -31,6 +31,7 @@ import {
   RADIO_TX, RADIO_RX, SORTING_MACHINE, LOCOMOTIVE, FIREPLACE, CHIMNEY, HEARTH_FUEL, STABLE,
   SNOWMAN, FIREWORK, PUMPKIN, JACK_O_LANTERN, EGG, POPPY, DANDELION, DAISY, LAVENDER,
   ONION, BEANS, TOMATO, HERBS, CIDER, VINTAGE_CIDER, BERRY_WINE, FINE_BERRY_WINE,
+  KILN, ROPE_LADDER, ROPE_BRIDGE, BRIDGE_RAIL,
 } from './blocks.js';
 import { Smoke } from './smoke.js';
 import { Fireworks } from './fireworks.js';
@@ -3835,6 +3836,8 @@ function placeInner() {
   if (held?.id === MAGNET_RING) { switchMagnet(held); return; }
   if (held && ITEMS[held.id]?.armour) { wearHeld(); return; }
   if (!target || !held) return;
+  if (held.id === ROPE_LADDER) { hangRopeLadder(target); return; }
+  if (held.id === ROPE_BRIDGE) { layBridge(target); return; }
   // ladders and scaffolding tapped with more of the same grow upward from the top of the column
   if ((held.id === LADDER && BLOCKS[target.id].climb && target.id !== SCAFFOLD) || (held.id === SCAFFOLD && target.id === SCAFFOLD)) {
     let ty = target.y;
@@ -4000,7 +4003,7 @@ function placeInner() {
     if (there !== AIR || !world.isSolid(x, y - 1, z)) { toast(`${BLOCKS[id].name}s need something solid underneath`); return; }
   } else {
     // chairs face you; curtains hang across your line of sight
-    if ([CHAIR, SCARECROW, COOK_POT, OVEN, SMELTER, BLAST_SMELTER, CRUSHER, PULVERIZER, E_SMELTER, CHEST, IRON_CHEST, SAW, TRIP_HAMMER, LEAD_CHEST, FREEZER, ARC_FURNACE, MARKET_STALL, FIREPLACE, SNOWMAN].includes(id)) id += facingTowardPlayer(x, z); // the front faces you
+    if ([CHAIR, SCARECROW, COOK_POT, OVEN, SMELTER, BLAST_SMELTER, CRUSHER, PULVERIZER, E_SMELTER, CHEST, IRON_CHEST, SAW, TRIP_HAMMER, LEAD_CHEST, FREEZER, ARC_FURNACE, MARKET_STALL, FIREPLACE, SNOWMAN, KILN].includes(id)) id += facingTowardPlayer(x, z); // the front faces you
     else if (id === DRILL) id += player.pitch < -0.75 ? 4 : (facingTowardPlayer(x, z) + 2) % 4; // drills the way you're looking
     else if (id === ITEM_COUNTER) id += ((facingTowardPlayer(x, z) + 2) % 4) * 2; // passes things on the way you're looking
     else if ([OBSERVER, GAUGE, HARVESTER, EJECTOR, TREE_FELLER, PLANTER, BREAKER, PLACER, QUARRY].includes(id)) id += (facingTowardPlayer(x, z) + 2) % 4; // looks (or reaps) the way you're looking
@@ -4452,6 +4455,9 @@ function treeAbove(x, y, z) {
 // Things resting on a block that was just removed pop off into the inventory: torches standing on
 // it or hanging from it, wheat growing on it, and a whole column of sugar cane above it.
 function dropUnsupported(x, y, z) {
+  // a bridge's rope rails go with its deck; a rope ladder rolls up from where it was cut (or lost its hold)
+  if (BLOCKS[world.get(x, y + 1, z)]?.name === 'Rope Rail') world.setBlock(x, y + 1, z, AIR);
+  if (BLOCKS[world.get(x, y - 1, z)]?.ropeLadder) rollUpRope(x, y - 1, z);
   const check = [[x, y + 1, z, TORCH]];
   WALL_TORCH_DIRS.forEach(([dx, dz], i) => check.push([x - dx, y, z - dz, TORCH_WALL_W + i]));
   for (const [tx, ty, tz, id] of check) {
@@ -4462,6 +4468,7 @@ function dropUnsupported(x, y, z) {
   // ladders and signs fixed to it (each faces away from the block it hangs on), and a sign post on top
   FACING_DIRS.forEach(([dx, dz], f) => {
     const id = world.get(x + dx, y, z + dz), d = BLOCKS[id];
+    if (id === ROPE_LADDER + f) { rollUpRope(x + dx, y, z + dz); return; }
     const hung = id === LADDER + f || id === SIGN + f || id === ITEM_FRAME + f || (d?.switch && !d.floor && d.facing === f);
     if (hung) {
       world.setBlock(x + dx, y, z + dz, AIR);
@@ -5477,6 +5484,65 @@ function takeDownDecor(g) {
   g.decor = [];
 }
 
+
+// ---------- v27 D: rope ladders and rope bridges ----------
+// A rope ladder fixed to the side of a block (or to the edge of a drop: tap the top of the edge block, looking
+// out over it) unrolls straight down until it reaches something, one piece from your hand for each block.
+// Tap the ladder with more to make it longer. Cut it (or what it hangs from) and it rolls back up into your bag.
+const MAX_ROPE = 48;
+function hangRopeLadder(t) {
+  const d = BLOCKS[t.id];
+  let x, y, z, f;
+  if (d.ropeLadder) {
+    x = t.x; z = t.z; f = d.facing; y = t.y;
+    while (y > 1 && BLOCKS[world.get(x, y - 1, z)]?.ropeLadder) y--;
+    y--;
+  } else {
+    if (!d.solid) { toast('Rope ladders hang from the side of a solid block'); return; }
+    let dx = t.nx, dz = t.nz;
+    if (t.ny === 1) { const l = player.lookDir(); [dx, dz] = Math.abs(l.x) > Math.abs(l.z) ? [Math.sign(l.x), 0] : [0, Math.sign(l.z)]; } // over the edge
+    else if (t.ny !== 0) { toast('Rope ladders hang from the side of a block, or over the edge of a drop'); return; }
+    x = t.x + dx; y = t.y; z = t.z + dz; f = FACING_DIRS.findIndex(([fx, fz]) => fx === dx && fz === dz);
+  }
+  const held = inventory.held();
+  let n = 0;
+  while (n < Math.min(held.count, MAX_ROPE) && y > 0 && world.get(x, y, z) === AIR) { world.setBlock(x, y, z, ROPE_LADDER + f); n++; y--; }
+  if (!n) { toast('There\'s no room for the ladder to hang there'); return; }
+  takeFromHeld(n);
+  sound.place('wool');
+  const more = y > 0 && world.get(x, y, z) === AIR;
+  toast(`The rope ladder unrolls ${n} block${n > 1 ? 's' : ''} down${more ? ': it doesn\'t reach the bottom yet (tap it with more)' : ''}`, 2000);
+}
+function rollUpRope(x, y, z) {
+  let n = 0;
+  while (y > 0 && BLOCKS[world.get(x, y, z)]?.ropeLadder) { world.setBlock(x, y, z, AIR); n++; y--; }
+  if (n) giveDrops([[ROPE_LADDER, n]]);
+}
+// A rope bridge is laid out from the block you tap, level with its top, the way you're facing, plank by plank
+// until it reaches the other side (or you run out). Tap the end of one to carry on with it.
+const MAX_BRIDGE = 48;
+function layBridge(t) {
+  const d = BLOCKS[t.id];
+  if (!d.solid && d.bridge == null) { toast('Lay a rope bridge out from the top of a solid block'); return; }
+  const l = player.lookDir(), along = Math.abs(l.x) > Math.abs(l.z), dx = along ? Math.sign(l.x) : 0, dz = along ? 0 : Math.sign(l.z), a = along ? 1 : 0;
+  const held = inventory.held(), max = Math.min(held.count, MAX_BRIDGE);
+  let x = t.x, z = t.z, n = 0, reached = false;
+  for (let k = 0; k < 96 && n < max; k++) {
+    x += dx; z += dz;
+    const id = world.get(x, t.y, z);
+    if (BLOCKS[id]?.bridge != null) continue; // over what's laid already
+    if (id !== AIR) { reached = true; break; }
+    world.setBlock(x, t.y, z, ROPE_BRIDGE + a);
+    if (world.get(x, t.y + 1, z) === AIR) world.setBlock(x, t.y + 1, z, BRIDGE_RAIL + a);
+    n++;
+  }
+  if (!n) { toast('There\'s nowhere to lay a bridge that way'); return; }
+  if (!reached && n === max) { const id = world.get(x + dx, t.y, z + dz); reached = id !== AIR && BLOCKS[id]?.bridge == null; }
+  takeFromHeld(n);
+  sound.place('wood');
+  toast(`You lay out ${n} block${n > 1 ? 's' : ''} of rope bridge${reached ? ' to the other side' : ': it doesn\'t reach across yet (tap its end with more)'}`, 2200);
+}
+
 // ---------- v26 E: temple and sky-island puzzles, diving ----------
 // A sunken temple's vault opens when each of its three levers matches the lamp above it (lit: on, dark: off).
 // A sky island's opens when you step on its plates in the order of the wool over the vault's gate.
@@ -5929,5 +5995,5 @@ window.minicraft = {
   arrows, fishing, kinetics, electric, lightUniforms, bees, catchAt, seasonOf, applySeason, set day(v) { day = v; applySeason(); }, frames, signalAt, setSwitch, logic, machines, carts, minimap, signs, armour, damage, placeRail, getInCart, getOutOfCart,
   get riding() { return riding; }, explode, lightFuse, fuses, clockTime, compassText, place, editSign, closeSign, openInventory, closeInventory, chestMove, lamps, tickLamps, sleepUntilMorning, stations, openStation, closeStation,
   get caneToday() { return caneToday; }, get creative() { return creative; }, set creative(v) { creative = v; applyCreative(); }, toggleFly, wand, useWand, get achieved() { return achieved; }, achieve, worldMap, openMap, closeMap, openGuide, switchSlot, store, saveGame, renderWorlds, openWorlds, exportSlot, get target() { return target; }, set target(v) { target = v; }, applyKeys, renderKeys, camera, get controls() { return controls; }, loose, throwHeld, get waypoints() { return waypoints; }, toggleWaypoint, sortSlots, quickStack, dropMeteor, get meteors() { return meteors; }, weather, openTrade, closeTrade, mountMob, dismount, get ridingMob() { return ridingMob; }, effects, armourWear, useAnvil, rollLoot, settings,
-  get bedSpawn() { return bedSpawn; }, fertilise, openJournal, closeJournal, get packs() { return packs; }, radiationAt, vehicles, boardVehicle, leaveVehicle, get boarded() { return boarded; }, get seated() { return seated; }, crows, onInvSlot, onStationSlot, quickMoveInv, quickMoveStation, usedIn, itemTipHTML, critters, tickPets, get catGiftDay() { return catGiftDay; }, get villageGrowth() { return villageGrowth; }, notePlanting, tickPuzzles, airPumpNear, useStable, stableNear, horseLabel, fireworks, ringBell, requestFor, festivalToday, repOf, addRep, tradeCost, tickFestival, villageEntry, hearths, tickHearths, feedHearth, chimneyTop, smoke, renderPins, togglePin, lightning, igniteAt, fires, tickFires, tickStorm, growVillage, buildVillageHouse, stallPrice, tickStalls, tickVillages, set catGiftDay(v) { catGiftDay = v; }, get places() { return places; }, get treasures() { return treasures; }, readTreasureMap, tickTreasure, beams, tickBeams, beaconSpots: () => beaconSpots, mistNow, tickSnow, tickExplore, sitOn, standUp, useDisplay, zips, linkZip, startZip, get zipping() { return zipping; }, burnCoal, get health() { return health; }, set health(v) { health = v; }, paintings, placeSwitchRail, signalAt, ailments, armourEnch, openAltar, lairNear, useBed, eat, drinkTea,
+  get bedSpawn() { return bedSpawn; }, fertilise, openJournal, closeJournal, get packs() { return packs; }, radiationAt, vehicles, boardVehicle, leaveVehicle, get boarded() { return boarded; }, get seated() { return seated; }, crows, onInvSlot, onStationSlot, quickMoveInv, quickMoveStation, usedIn, itemTipHTML, critters, tickPets, get catGiftDay() { return catGiftDay; }, get villageGrowth() { return villageGrowth; }, notePlanting, tickPuzzles, airPumpNear, useStable, stableNear, horseLabel, hangRopeLadder, layBridge, rollUpRope, fireworks, ringBell, requestFor, festivalToday, repOf, addRep, tradeCost, tickFestival, villageEntry, hearths, tickHearths, feedHearth, chimneyTop, smoke, renderPins, togglePin, lightning, igniteAt, fires, tickFires, tickStorm, growVillage, buildVillageHouse, stallPrice, tickStalls, tickVillages, set catGiftDay(v) { catGiftDay = v; }, get places() { return places; }, get treasures() { return treasures; }, readTreasureMap, tickTreasure, beams, tickBeams, beaconSpots: () => beaconSpots, mistNow, tickSnow, tickExplore, sitOn, standUp, useDisplay, zips, linkZip, startZip, get zipping() { return zipping; }, burnCoal, get health() { return health; }, set health(v) { health = v; }, paintings, placeSwitchRail, signalAt, ailments, armourEnch, openAltar, lairNear, useBed, eat, drinkTea,
 };

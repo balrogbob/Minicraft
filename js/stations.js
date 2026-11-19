@@ -15,6 +15,7 @@ import {
   EGG, FRIED_EGG, TRUFFLE, APPLE, CHERRIES, APPLE_PIE, CHERRY_PIE, FISH_SOUP, TRUFFLE_SOUP, BERRY_JAM,
   CARROT, POTATO, BAKED_POTATO, PUMPKIN, PUMPKIN_PIE, PUMPKIN_SEEDS, GRAPES, GRAPE_JUICE, CURDS, AGING,
   ONION, BEANS, TOMATO, HERBS, APPLE_JUICE, BERRY_JUICE, VEG_STEW, TOMATO_SOUP, BAKED_BEANS,
+  CLAY, TERRACOTTA, TERRA_COL, GLAZED_TILE, URN, UNFIRED_URN, COLORS,
 } from './blocks.js';
 
 // A recipe ingredient can be one id or a list of alternatives (coal or charcoal).
@@ -407,3 +408,12 @@ export class Stations {
     }
   }
 }
+
+// v27 D: the kiln fires clay (burning fuel like an oven); an urn is a little pot to keep things in
+STATION_KINDS.kiln = { name: 'Kiln', verb: 'Firing', inputs: 2, recipes: [
+  { out: [TERRACOTTA, 1], in: [[CLAY, 1]], time: 5 },
+  { out: [BRICK, 1], in: [[CLAY_BALL, 1]], time: 2.5 },
+  { out: [URN, 1], in: [[UNFIRED_URN, 1]], time: 8 },
+  ...COLORS.map((c, i) => ({ out: [GLAZED_TILE + i, 1], in: [[TERRA_COL + i, 1]], time: 5 })),
+] };
+STATION_KINDS.urn = { name: 'Urn', inputs: 6, storage: true, recipes: [] };
