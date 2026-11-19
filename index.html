@@ -39,6 +39,12 @@
     <div id="ach-toast"></div>
     <div id="look-tip"></div>
     <div id="inv-tip"></div>
+    <div id="split-menu" class="hidden">
+      <div id="split-title"></div>
+      <div class="split-row"><button class="btn small" id="btn-split-half">Half</button><button class="btn small" id="btn-split-one">One</button></div>
+      <div class="split-row"><input id="split-range" type="range" min="1" value="1"><span id="split-n">1</span></div>
+      <div class="split-row"><button class="btn small" id="btn-split-go">Split</button><button class="btn small" id="btn-split-cancel">Cancel</button></div>
+    </div>
     <div id="item-name"></div>
 
     <div id="status">
@@ -68,7 +74,8 @@
             <div class="slot-grid" id="inv-grid"></div>
             <div class="slot-grid hotbar-row" id="inv-hotbar"></div>
             <div class="armour-row"><span class="armour-label">Armour &amp; shield</span><div class="slot-grid" id="inv-armour"></div><span id="armour-total"></span></div>
-            <p class="hint">Tap a slot, then tap another to move or swap. Put armour in the armour slots to wear it. <button class="btn small" id="btn-sort">Sort backpack</button> <button class="btn small" id="btn-quick-stack" title="Put backpack things into chests nearby that already hold the same thing">Quick-stack to chests</button></p>
+            <p class="hint">Tap a slot, then tap another to move or swap. Right-click (or two-finger tap) a stack to split it. Put armour in the armour slots to wear it.</p>
+            <p class="hint"><button class="btn small" id="btn-sort">Sort backpack</button> <button class="btn small" id="btn-quick-stack" title="Put backpack things into chests nearby that already hold the same thing">Quick-stack to chests</button></p>
           </div>
           <div class="craft-col">
             <div id="palette-wrap" class="hidden">
@@ -107,7 +114,7 @@
             <div class="chest-buttons"><button class="btn" id="btn-chest-in">Put backpack in</button><button class="btn" id="btn-chest-out">Take all</button><button class="btn" id="btn-chest-sort">Sort</button><button class="btn" id="btn-chest-match" title="Put in only the things this chest already holds">Stack matching</button></div>
             <div class="slot-grid" id="st-inv"></div>
             <div class="slot-grid hotbar-row" id="st-hotbar"></div>
-            <p class="hint">Tap a slot, then another, to move items in or out. Tap the result to collect it.</p>
+            <p class="hint">Tap a slot, then another, to move items in or out. Tap the result to collect it. Right-click (or two-finger tap) a stack to split it.</p>
           </div>
           <div class="craft-col">
             <h3>Makes</h3>

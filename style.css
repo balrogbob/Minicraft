@@ -285,8 +285,8 @@ html, body {
 .btn.toggle.on { background: #f0c838; color: #3a2a00; }
 .recipe .fav { background: none; border: none; font-size: 18px; color: #999; cursor: pointer; padding: 0 4px; touch-action: manipulation; }
 .recipe .fav.on { color: #e0a800; }
-#btn-sort { margin-left: 6px; vertical-align: middle; }
-#btn-sort { font-size: 14px; min-height: 32px; min-width: 0; padding: 2px 10px; }
+#btn-sort, #btn-quick-stack { margin-right: 6px; vertical-align: middle; }
+#btn-sort, #btn-quick-stack { font-size: 14px; min-height: 32px; min-width: 0; padding: 2px 10px; }
 
 /* ---------- creative flying ---------- */
 #btn-down { position: absolute; right: max(28px, env(safe-area-inset-right)); bottom: calc(var(--slot) + 124px); }
@@ -367,4 +367,14 @@ html, body {
 #inv-tip.show { display: block; }
 #inv-tip span { display: block; font-size: 12px; color: #cfc6e0; }
 #inv-tip span.ench { color: #c9a8ff; }
+#split-menu {
+  position: fixed; z-index: 60; width: 200px; padding: 8px 10px; border-radius: 8px;
+  background: rgba(20, 16, 30, 0.96); color: #fff; border: 2px solid #6a4ca0; font-size: 14px;
+}
+#split-menu.hidden { display: none; }
+#split-title { font-weight: 600; margin-bottom: 6px; }
+#split-menu .split-row { display: flex; gap: 6px; align-items: center; margin-top: 6px; }
+#split-menu .split-row button { flex: 1; padding: 4px; font-size: 15px; min-height: 36px; }
+#split-range { flex: 1; min-width: 0; }
+#split-n { min-width: 2.2em; text-align: right; }
 #palette-wrap.hidden { display: none; }
