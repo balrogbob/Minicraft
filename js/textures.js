@@ -552,6 +552,15 @@ const farmFace = (on) => (t) => {
 };
 P[T.FARM_CTRL] = farmFace(false);
 P[T.FARM_CTRL_ON] = farmFace(true);
+P[T.FIRE] = (t) => {
+  for (let x = 0; x < TILE; x++) {
+    const top = TILE * (0.25 + 0.5 * Math.abs(Math.sin(x * 1.7) * Math.cos(x * 0.6)));
+    for (let y = Math.floor(top); y < TILE; y++) {
+      const k = (y - top) / (TILE - top), c = k > 0.6 ? [255, 236, 120] : k > 0.3 ? [250, 160, 40] : [220, 70, 20];
+      t.set(x, y, t.vary(c, 0.06), 255);
+    }
+  }
+};
 P[T.AWNING] = (t) => { for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) t.set(x, y, t.vary(Math.floor(x / 4) % 2 ? [240, 236, 224] : [200, 44, 44], 0.04)); };
 P[T.TUBE] = (t) => {
   for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {

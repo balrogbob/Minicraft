@@ -113,6 +113,16 @@ export class Sound {
     this.noiseBurst({ type: 'bandpass', freq: 1800, q: 0.7, dur: 0.35, vol: 0.6 }, gain, 1);
   }
 
+  // thunder: a sharp crack when it's close, then a long low rumble (gain falls off with distance)
+  thunder(gain = 1, near = false) {
+    if (!this.ready || gain <= 0.01) return;
+    if (near) this.noiseBurst({ type: 'highpass', freq: 1500, q: 0.4, dur: 0.4, vol: 0.9 }, gain, 1);
+    this.tone(55, 1.4, 0.5 * gain, 'sine', 32);
+    for (let i = 0; i < 4; i++) setTimeout(() => this.noiseBurst({ type: 'lowpass', freq: 260 + Math.random() * 160, q: 0.4, dur: 1.4, vol: 0.9 - i * 0.15 }, gain, 1), i * 380 + Math.random() * 200);
+  }
+  // fire crackling
+  crackle(gain = 1) { if (this.ready && gain > 0.01) this.noiseBurst({ type: 'bandpass', freq: 2400, q: 1.5, dur: 0.08, vol: 0.25 }, gain, 1 + Math.random() * 0.5); }
+
   // a village bell: a bright strike with a long ring
   ding(gain = 1) {
     if (!this.ready || gain <= 0.01) return;
@@ -386,9 +396,9 @@ export class Sound {
       src.start();
       this.rain = { f, g };
     }
-    const sand = kind === 'sand', snow = kind === 'snow';
-    this.rain.f.type = sand ? 'bandpass' : 'lowpass';
-    this.rain.f.frequency.value = sand ? 700 : snow ? 500 : 2600;
+    const sand = kind === 'sand', snow = kind === 'snow', hail = kind === 'hail';
+    this.rain.f.type = sand || hail ? 'bandpass' : 'lowpass';
+    this.rain.f.frequency.value = sand ? 700 : snow ? 500 : hail ? 3800 : 2600;
     const want = this.muted ? 0 : level * (snow ? 0.08 : sand ? 0.25 : 0.18);
     this.rain.g.gain.setTargetAtTime(want, this.ctx.currentTime, 0.4);
   }

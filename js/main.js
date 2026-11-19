@@ -5,7 +5,7 @@ import {
   WOOD_PICK, STONE_PICK, WOOD_AXE, STONE_AXE, WOOD_SHOVEL, STONE_SHOVEL,
   BED, BED_FOOT, CHAIR, LAMP, CARPET, CURTAIN, DOOR, SLIME_FUEL, FACING_DIRS, MAX_LAMP_FUEL,
   isBed, isChair, isLamp, isCurtain, isDoor, doorId, IRON_BARS, FLOWER_POT, HANGING_PLANT, WINDOW_BOX, POT_PLANTS, potOf,
-  OVEN, SMELTER, stationKind, maxStack, FISHING_ROD, RAW_FISH, TOOL_TIERS, LOG, LEAVES, SAPLING, WHEAT_3, isLeaves, FRUITS, fruitLeaves, FRUIT_SAPLING, SCARECROW, COOK_POT, SNOW_LAYER, LIGHTHOUSE_LAMP, EXPLORER_MAP, TREASURE_MAP, STARSTEEL_INGOT, MAX_LIGHT, APIARY, MAX_APIARY, BEESWAX, CANDLE_BLOCK, CABLE_CAR, FARM_REACH, MARKET_STALL, COIN, GLASS_PANE, FURN_TABLE, GRAVEL,
+  OVEN, SMELTER, stationKind, maxStack, FISHING_ROD, RAW_FISH, TOOL_TIERS, LOG, LEAVES, SAPLING, WHEAT_3, isLeaves, FRUITS, fruitLeaves, FRUIT_SAPLING, SCARECROW, COOK_POT, SNOW_LAYER, LIGHTHOUSE_LAMP, EXPLORER_MAP, TREASURE_MAP, STARSTEEL_INGOT, MAX_LIGHT, APIARY, MAX_APIARY, BEESWAX, CANDLE_BLOCK, CABLE_CAR, FARM_REACH, MARKET_STALL, COIN, GLASS_PANE, FURN_TABLE, GRAVEL, FIRE, isFlammable,
   BLAST_SMELTER, CRUSHER, WATER_BUCKET, WATER_WHEEL, isWaterId, isFlowing,
   CHEST, IRON_CHEST, LADDER, SCAFFOLD, SIGN, SIGN_POST, isSign, isSword, ARMOUR_PIECES,
   SAW, TRIP_HAMMER, DRILL, HOPPER, BELT, WINDMILL, BELLOWS, PUMP, FILAMENT_LAMP, MILLSTONE,
@@ -438,7 +438,7 @@ async function startWorld(save, opts = {}) {
     const drops = dropsFor(LEAVES, 0); // (fruit trees' leaves too: not their fruit, which you'd pick)
     if (drops.length) giveDrops(drops);
   };
-  mobs.reset(world); bees.clear(); crows.clear(); critters.clear(); catGiftDay = -1; bellDay = -1; villageGrowth = new Map(); shownSeason = -1;
+  mobs.reset(world); bees.clear(); crows.clear(); critters.clear(); fires.clear(); strikeIn = 20; catGiftDay = -1; bellDay = -1; villageGrowth = new Map(); shownSeason = -1;
   kinetics.clear();
   kinetics.load(save?.kinetics);
   beltStart = null;
@@ -501,6 +501,7 @@ async function startWorld(save, opts = {}) {
   treasures = Array.isArray(save?.treasures) ? save.treasures.filter((t) => t && [t.x, t.z].every(Number.isFinite)) : [];
   catGiftDay = Number.isInteger(save?.catGiftDay) ? save.catGiftDay : -1;
   bellDay = Number.isInteger(save?.bellDay) ? save.bellDay : -1;
+  for (const e of Array.isArray(save?.fires) ? save.fires : []) if (Array.isArray(e) && typeof e[0] === 'string' && Number.isFinite(e[1])) fires.set(e[0], e[1]);
   villageGrowth = new Map((Array.isArray(save?.villageGrowth) ? save.villageGrowth : []).filter((e) => Array.isArray(e) && typeof e[0] === 'string' && e[1] && Number.isFinite(e[1].deals))
     .map(([k, g]) => [k, { deals: g.deals, built: (Array.isArray(g.built) ? g.built : []).filter((h) => h && [h.x, h.y, h.z].every(Number.isFinite) && Array.isArray(h.door)) }]));
   beaconSpots = new Set(Array.isArray(save?.beacons) ? save.beacons.filter((k) => typeof k === 'string') : []);
@@ -601,7 +602,7 @@ function saveGame() {
     weather: { raining: weather.raining, timer: Math.round(weather.timer) },
     pets: mobs.pets(),
     waypoints,
-    places, treasures, beacons: [...beaconSpots], catGiftDay, villageGrowth: [...villageGrowth], bellDay,
+    places, treasures, beacons: [...beaconSpots], catGiftDay, villageGrowth: [...villageGrowth], bellDay, fires: [...fires],
     time: sky.time,
     creative,
     flying: player.flying,
@@ -5136,6 +5137,78 @@ function tickVillages(dt) {
   tickStalls(dt);
 }
 
+// ---------- v26 B: thunderstorms, fire, hail ----------
+// Some spells of rain are thunderstorms: lightning strikes the ground now and then within sight, lights up the
+// sky, and can set trees alight; the thunder follows a moment later. Up in the mountains rain falls as hail,
+// which stings if your head's bare.
+const HAIL_HEIGHT = 50;
+let strikeIn = 20, hailIn = 3, flashLevel = 0;
+const fires = new Map(); // "x,y,z" -> seconds left burning
+function topBlock(x, z) {
+  for (let y = H - 1; y > 0; y--) { const id = world.get(x, y, z); if (id !== AIR && !(BLOCKS[id]?.liquid && !world.isWater(x, y, z))) return y; }
+  return null;
+}
+function lightning(x, z) {
+  const y = topBlock(x, z);
+  if (y === null) return false;
+  weather.bolt(x, y, z);
+  flashLevel = Math.max(flashLevel, 0.55 * Math.max(0.25, weather.level));
+  const d = Math.hypot(x + 0.5 - player.pos.x, z + 0.5 - player.pos.z);
+  setTimeout(() => sound.thunder(Math.max(0.2, 1 - d / 120), d < 24), Math.min(3000, d * 25));
+  const id = world.get(x, y, z);
+  if (isFlammable(id)) { igniteAt(x, y, z, true); for (const [dx, dy, dz] of SIDES6) if (Math.random() < 0.5) igniteAt(x + dx, y + dy, z + dz, true); }
+  else if (world.get(x, y + 1, z) === AIR && !world.isWater(x, y, z) && Math.random() < 0.3 && BLOCKS[id]?.solid) igniteAt(x, y + 1, z);
+  if (d < 3 && Math.abs(player.pos.y - y) < 4) damage(6, 'Struck by lightning');
+  for (const m of mobs.mobs) if (!m.dying && Math.hypot(m.pos.x - x - 0.5, m.pos.z - z - 0.5) < 2.5) { m.burning = 4; if (m.spec.hostile) m.dying = 0.4; }
+  return true;
+}
+// Set fire to the block at (x, y, z) (burning it away), or light the air there.
+function igniteAt(x, y, z, replace = false) {
+  if (fires.size > 240) return;
+  const id = world.get(x, y, z);
+  if (!(replace ? isFlammable(id) : id === AIR)) return;
+  world.setBlock(x, y, z, FIRE);
+  fires.set(`${x},${y},${z}`, 3 + Math.random() * 5);
+}
+let burnTimer = 0;
+function tickFires(dt) {
+  flashLevel = Math.max(0, flashLevel - dt * 2.5);
+  $('flash').style.opacity = flashLevel.toFixed(2);
+  burnTimer -= dt;
+  if (burnTimer > 0 || !fires.size) return;
+  const step = 0.5 - burnTimer; burnTimer = 0.5;
+  let nearest = Infinity;
+  for (const [k, left] of [...fires]) {
+    const [x, y, z] = k.split(',').map(Number);
+    if (world.get(x, y, z) !== FIRE) { fires.delete(k); continue; }
+    const wet = world.raining && world.skyAt(x, y + 1, z) >= MAX_LIGHT;
+    const t = left - step * (wet ? 3 : 1);
+    if (t <= 0) { fires.delete(k); world.setBlock(x, y, z, AIR); continue; }
+    fires.set(k, t);
+    for (const [dx, dy, dz] of SIDES6) if (Math.random() < (wet ? 0.015 : 0.065) * step * 2) igniteAt(x + dx, y + dy, z + dz, true);
+    nearest = Math.min(nearest, Math.hypot(x + 0.5 - player.pos.x, y + 0.5 - player.pos.y, z + 0.5 - player.pos.z));
+    // standing in it burns
+    if (Math.floor(player.pos.x) === x && Math.floor(player.pos.z) === z && (Math.floor(player.pos.y) === y || Math.floor(player.pos.y + 1) === y)) damage(1, 'Burned');
+  }
+  if (nearest < 16 && Math.random() < 0.7) sound.crackle(1 - nearest / 16);
+}
+function tickStorm(dt) {
+  if (weather.raining && weather.storm && weather.kind !== 'snow' && weather.kind !== 'sand' && (weather.overcast ?? 0) > 0.6) {
+    strikeIn -= dt;
+    if (strikeIn <= 0) {
+      strikeIn = 6 + Math.random() * 16;
+      const a = Math.random() * Math.PI * 2, d = 6 + Math.random() * 64;
+      const x = Math.floor(player.pos.x + Math.cos(a) * d), z = Math.floor(player.pos.z + Math.sin(a) * d);
+      if (world.chunkAt(x, z)) lightning(x, z);
+    }
+  }
+  // hail: a sting now and then if you're out in it with nothing on your head
+  if (weather.kind === 'hail' && weather.level > 0.5 && !armour[0]) {
+    hailIn -= dt;
+    if (hailIn <= 0) { hailIn = 3 + Math.random() * 3; damage(1, 'Pelted by hailstones'); }
+  }
+}
+
 // ---------- seasons ----------
 // The year turns through four seasons of SEASON_DAYS days each. Crops grow fastest in summer and
 // barely at all in winter; leaves turn in autumn and fall in winter, and winter frosts the grass and
@@ -5240,7 +5313,7 @@ function stepGame(now, dt) {
     world.tickPlants(dt);
     world.tickLeaves(dt);
     tickLamps(dt);
-    tickExplore(dt); tickTreasure(dt); tickSnow(dt); tickVillages(dt);
+    tickExplore(dt); tickTreasure(dt); tickSnow(dt); tickVillages(dt); tickStorm(dt); tickFires(dt);
     crows.update(dt, world, player.pos, {
       day: lightUniforms.uDay.value,
       eat: (x, y, z) => world.setBlock(x, y, z, WHEAT_3 - 2), // back to green shoots
@@ -5324,7 +5397,8 @@ function stepGame(now, dt) {
 
   const biome = world.generator.biomeAt(Math.floor(player.pos.x), Math.floor(player.pos.z));
   // in winter it snows rather than rains in temperate land
-  weather.update(paused ? 0 : dt, eye, biome === 'temperate' && seasonOf(day) === 3 ? 'tundra' : biome, world.skyAt(Math.floor(eye.x), Math.min(H - 1, Math.floor(eye.y) + 1), Math.floor(eye.z)));
+  weather.update(paused ? 0 : dt, eye, biome === 'temperate' && seasonOf(day) === 3 ? 'tundra' : biome, world.skyAt(Math.floor(eye.x), Math.min(H - 1, Math.floor(eye.y) + 1), Math.floor(eye.z)),
+    eye.y > HAIL_HEIGHT, Math.cos(sky.time * Math.PI * 2), sky.light);
   sky.weather = { overcast: weather.overcast, level: weather.level, kind: weather.kind };
   world.raining = weather.raining && biome !== 'desert';
   sound.weather(paused ? 0 : weather.level, weather.kind);
@@ -5381,5 +5455,5 @@ window.minicraft = {
   arrows, fishing, kinetics, electric, lightUniforms, bees, catchAt, seasonOf, applySeason, set day(v) { day = v; applySeason(); }, frames, signalAt, setSwitch, logic, machines, carts, minimap, signs, armour, damage, placeRail, getInCart, getOutOfCart,
   get riding() { return riding; }, explode, lightFuse, fuses, clockTime, compassText, place, editSign, closeSign, openInventory, closeInventory, chestMove, lamps, tickLamps, sleepUntilMorning, stations, openStation, closeStation,
   get caneToday() { return caneToday; }, get creative() { return creative; }, set creative(v) { creative = v; applyCreative(); }, toggleFly, wand, useWand, get achieved() { return achieved; }, achieve, worldMap, openMap, closeMap, openGuide, switchSlot, store, saveGame, renderWorlds, openWorlds, exportSlot, get target() { return target; }, set target(v) { target = v; }, applyKeys, renderKeys, camera, get controls() { return controls; }, loose, throwHeld, get waypoints() { return waypoints; }, toggleWaypoint, sortSlots, quickStack, dropMeteor, get meteors() { return meteors; }, weather, openTrade, closeTrade, mountMob, dismount, get ridingMob() { return ridingMob; }, effects, armourWear, useAnvil, rollLoot, settings,
-  get bedSpawn() { return bedSpawn; }, fertilise, openJournal, closeJournal, get packs() { return packs; }, radiationAt, vehicles, boardVehicle, leaveVehicle, get boarded() { return boarded; }, get seated() { return seated; }, crows, onInvSlot, onStationSlot, quickMoveInv, quickMoveStation, usedIn, itemTipHTML, critters, tickPets, get catGiftDay() { return catGiftDay; }, get villageGrowth() { return villageGrowth; }, growVillage, buildVillageHouse, stallPrice, tickStalls, tickVillages, set catGiftDay(v) { catGiftDay = v; }, get places() { return places; }, get treasures() { return treasures; }, readTreasureMap, tickTreasure, beams, tickBeams, beaconSpots: () => beaconSpots, mistNow, tickSnow, tickExplore, sitOn, standUp, useDisplay, zips, linkZip, startZip, get zipping() { return zipping; }, burnCoal, get health() { return health; }, set health(v) { health = v; }, paintings, placeSwitchRail, signalAt, ailments, armourEnch, openAltar, lairNear, useBed, eat, drinkTea,
+  get bedSpawn() { return bedSpawn; }, fertilise, openJournal, closeJournal, get packs() { return packs; }, radiationAt, vehicles, boardVehicle, leaveVehicle, get boarded() { return boarded; }, get seated() { return seated; }, crows, onInvSlot, onStationSlot, quickMoveInv, quickMoveStation, usedIn, itemTipHTML, critters, tickPets, get catGiftDay() { return catGiftDay; }, get villageGrowth() { return villageGrowth; }, lightning, igniteAt, fires, tickFires, tickStorm, growVillage, buildVillageHouse, stallPrice, tickStalls, tickVillages, set catGiftDay(v) { catGiftDay = v; }, get places() { return places; }, get treasures() { return treasures; }, readTreasureMap, tickTreasure, beams, tickBeams, beaconSpots: () => beaconSpots, mistNow, tickSnow, tickExplore, sitOn, standUp, useDisplay, zips, linkZip, startZip, get zipping() { return zipping; }, burnCoal, get health() { return health; }, set health(v) { health = v; }, paintings, placeSwitchRail, signalAt, ailments, armourEnch, openAltar, lairNear, useBed, eat, drinkTea,
 };

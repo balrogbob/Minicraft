@@ -140,7 +140,7 @@ export const T = {
   LEAD_CHEST_SIDE: 267, LEAD_CHEST_TOP: 268, LEAD_CHEST_FRONT: 269, CENTRIFUGE_SIDE: 270, CENTRIFUGE_TOP: 271, TESLA: 272, TESLA_TOP: 273,
   FENCE_POST: 274, FENCE_WIRE: 275, FREEZER_SIDE: 276, FREEZER_FRONT: 277, ARC_SIDE: 278, ARC_FRONT: 279, PACKED_ICE: 280, INVAR: 281, RAIL_STOP: 282, BASALT: 283, BASALT_TOP: 284, METEORITE: 285,
   IRON_BARS: 286, POT: 287, IVY: 288, BOX_FLOWERS: 289,
-  FRUIT_LEAVES: 290, FRUIT_RIPE: 293, FRUIT_SAPLING: 296, HAY: 299, SACK: 300, BEACON: 301, APIARY_SIDE: 302, APIARY_FRONT: 303, APIARY_FULL: 304, APIARY_TOP: 305, BELT_CROSS: 306, FARM_CTRL: 307, FARM_CTRL_ON: 308, TUBE: 309, TUBE_END: 310, AWNING: 311, // (fruit tiles: apple, cherry, orange)
+  FRUIT_LEAVES: 290, FRUIT_RIPE: 293, FRUIT_SAPLING: 296, HAY: 299, SACK: 300, BEACON: 301, APIARY_SIDE: 302, APIARY_FRONT: 303, APIARY_FULL: 304, APIARY_TOP: 305, BELT_CROSS: 306, FARM_CTRL: 307, FARM_CTRL_ON: 308, TUBE: 309, TUBE_END: 310, AWNING: 311, FIRE: 312, // (fruit tiles: apple, cherry, orange)
 };
 
 // Ores, deepest-reaching last. tier: the pickaxe tier needed to mine it (see TOOL_TIERS);
@@ -2404,3 +2404,10 @@ for (let f = 0; f < 4; f++) {
 }
 ITEMS[COIN] = { name: 'Silver Coin', stack: 99, about: 'villagers pay these at a market stall, and take them in trade' };
 RECIPES.push({ out: [MARKET_STALL, 1], in: [[PLANKS, 6], [LOG, 4], [WOOL, 3]], table: true });
+
+// ---------- v26 B: fire ----------
+// Lightning can set trees and wooden things alight. Fire spreads to leaves, logs, planks and wool beside it,
+// burning them away; rain puts it out.
+export const FIRE = 1347;
+block(FIRE, { name: 'Fire', sound: 'leaves', tex: T.FIRE, transparent: true, solid: false, shape: 'cross', hardness: 0, light: 13, drop: 0 });
+export const isFlammable = (id) => !!id && (isLeaves(id) || id === LOG || id === PLANKS || /(Wool|Log|Planks|Leaves)$/.test(BLOCKS[id]?.name ?? '')) && !BLOCKS[id]?.station;
