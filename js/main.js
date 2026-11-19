@@ -5,7 +5,7 @@ import {
   WOOD_PICK, STONE_PICK, WOOD_AXE, STONE_AXE, WOOD_SHOVEL, STONE_SHOVEL,
   BED, BED_FOOT, CHAIR, LAMP, CARPET, CURTAIN, DOOR, SLIME_FUEL, FACING_DIRS, MAX_LAMP_FUEL,
   isBed, isChair, isLamp, isCurtain, isDoor, doorId, IRON_BARS, FLOWER_POT, HANGING_PLANT, WINDOW_BOX, POT_PLANTS, potOf,
-  OVEN, SMELTER, stationKind, maxStack, FISHING_ROD, RAW_FISH, TOOL_TIERS, LOG, LEAVES, SAPLING, WHEAT_3, isLeaves, FRUITS, fruitLeaves, FRUIT_SAPLING, SCARECROW, COOK_POT, SNOW_LAYER, LIGHTHOUSE_LAMP, EXPLORER_MAP, TREASURE_MAP, STARSTEEL_INGOT, MAX_LIGHT, APIARY, MAX_APIARY, BEESWAX, CANDLE_BLOCK, CABLE_CAR, FARM_REACH, MARKET_STALL, COIN, GLASS_PANE, FURN_TABLE, GRAVEL, FIRE, isFlammable, isCrop, GRAPES, TRELLIS, GRAPE_VINE, PUMPKIN_SEEDS, CARROT, POTATO,
+  OVEN, SMELTER, stationKind, maxStack, FISHING_ROD, RAW_FISH, TOOL_TIERS, LOG, LEAVES, SAPLING, WHEAT_3, isLeaves, FRUITS, fruitLeaves, FRUIT_SAPLING, SCARECROW, COOK_POT, SNOW_LAYER, LIGHTHOUSE_LAMP, EXPLORER_MAP, TREASURE_MAP, STARSTEEL_INGOT, MAX_LIGHT, APIARY, MAX_APIARY, BEESWAX, CANDLE_BLOCK, CABLE_CAR, FARM_REACH, MARKET_STALL, COIN, GLASS_PANE, FURN_TABLE, GRAVEL, FIRE, isFlammable, isCrop, GRAPES, TRELLIS, GRAPE_VINE, PUMPKIN_SEEDS, CARROT, POTATO, AGING, WINE, FINE_WINE, CHEESE, AGED_CHEESE,
   BLAST_SMELTER, CRUSHER, WATER_BUCKET, WATER_WHEEL, isWaterId, isFlowing,
   CHEST, IRON_CHEST, LADDER, SCAFFOLD, SIGN, SIGN_POST, isSign, isSword, ARMOUR_PIECES,
   SAW, TRIP_HAMMER, DRILL, HOPPER, BELT, WINDMILL, BELLOWS, PUMP, FILAMENT_LAMP, MILLSTONE,
@@ -1333,6 +1333,7 @@ function openStation(x, y, z, cart = null) {
     'signal (a lever, or a power meter set to signal a shortfall) to push its control rods in and stop it.</p>'
     : K.holder ? `<p class="hint">${kind === 'planter' ? 'Put saplings, seeds, carrots or potatoes in (or feed them in with a hopper): it plants one on the grass or dirt in front of it whenever there\'s room.'
     : 'Put empty buckets in for milking yaks, and wheat to feed the animals (their coats grow back faster). Wheat, seeds or berries also feed pairs of animals so they have young. What it gets comes out of its back, into a chest, hopper or belt.'}</p>`
+    : kind === 'winepress' || kind === 'cheesepress' ? `<p class="hint">It needs no fuel or power. Lay what it makes down in an oak barrel to age: ${kind === 'winepress' ? 'juice becomes wine in a day, and fine wine three days later' : 'curds become cheese in a day, and aged cheese three days later'}.</p>`
     : kind === 'compost' ? '<p class="hint">It needs no fuel or power: scraps just rot down, given time. Tap a crop or sapling with fertiliser to grow it a step.</p>'
     : kind === 'pcrafter' ? '<p class="hint">Hang item frames on it (up to four) showing what to make: it makes the first, and steps on ' +
     'to the next each time it gets a signal (a lever, button, item counter...). Fill it with hoppers or belts and empty it with a hopper underneath.</p>'
@@ -1373,6 +1374,13 @@ function renderStation() {
   const K = STATION_KINDS[st.kind];
   if (K.storage) {
     $('st-status').textContent = `${st.inputs.filter(Boolean).length} of ${st.inputs.length} slots used`;
+    if (K.ages) {
+      // a barrel: how the first thing that's ageing is coming along
+      const i = st.inputs.findIndex((s) => s && AGING[s.id]);
+      const s = st.inputs[i];
+      $('st-status').textContent = s ? `${itemName(s.id)} → ${itemName(AGING[s.id][0])}: ${Math.floor(Math.min(1, (st.age?.[i] ?? 0) / (AGING[s.id][1] * DAY_LENGTH)) * 100)}% (${AGING[s.id][1]} day${AGING[s.id][1] > 1 ? 's' : ''} in all)`
+        : 'Lay down grape juice or curds to age: juice becomes wine in a day, then fine wine after three more; curds become cheese, then aged cheese';
+    }
     return;
   }
   const r = stations.recipeFor(st, `${openStationAt.x},${openStationAt.y},${openStationAt.z}`);
@@ -1776,7 +1784,7 @@ function eat(id) {
   if (foodValue(id) >= 6) {
     const was = effects.fed > 0;
     effects.fed = Math.max(effects.fed, foodValue(id) * 20); // a hearty meal keeps you going: the better the meal, the longer
-    if (!was) toast(`Ate ${itemName(id).toLowerCase()}: you feel well fed`, 1600);
+    if (!was) toast(`${ITEMS[id]?.bottle ? "Drank" : "Ate"} ${itemName(id).toLowerCase()}: you feel well fed`, 1600);
     achieve('eat');
   }
   const meal = ITEMS[id]?.meal;
@@ -1791,7 +1799,7 @@ function eat(id) {
   if (id === HONEY_BOTTLE) { inventory.add(GLASS_BOTTLE, 1); health = Math.min(MAX_HEALTH, health + 2); renderHealth(); }
   if (id === PUFFERFISH) { poisoned = Math.max(poisoned, 15); toast('Ugh! The pufferfish was poisonous.', 2500); renderHealth(); }
   sound.eat();
-  toast(`Ate ${itemName(id).toLowerCase()}`, 1000);
+  toast(`${ITEMS[id]?.bottle ? "Drank" : "Ate"} ${itemName(id).toLowerCase()}`, 1000);
   renderHunger();
 }
 
@@ -5099,6 +5107,8 @@ function placeHouse({ x, y, z, door }) {
 // What villagers pay at a stall: [how many they take, coins]. Food by how filling it is, metal well, and
 // building stuff cheaply.
 function stallPrice(id) {
+  if (id === FINE_WINE || id === AGED_CHEESE) return [1, 6]; // the best things villagers can buy
+  if (id === WINE || id === CHEESE) return [1, 3];
   const food = foodValue(id);
   if (food) return food >= 6 ? [1, 2] : food >= 3 ? [1, 1] : [2, 1];
   if (id === GOLD_INGOT || id === STARSTEEL_INGOT) return [1, 5];

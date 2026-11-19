@@ -13,7 +13,7 @@ import {
   LAVA_BUCKET, LEAD_BUCKET, SALTPETRE, SANDSTONE, WHEAT, SUGAR_CANE, COAL_DUST, PLATE_METALS, PLATES, TUNGSTEN_INGOT, FILAMENT,
   SAPLING, ELECTRIC_ITEMS, chargeCap, GLASS_BOTTLE, NIGHT_TEA, HASTE_TEA, FIRE_TEA, HEAL_TEA, BERRIES, CORNFLOWER, DANDELION, POPPY, CACTUS, LAVENDER, DAISY, CAULDRON,
   EGG, FRIED_EGG, TRUFFLE, APPLE, CHERRIES, APPLE_PIE, CHERRY_PIE, FISH_SOUP, TRUFFLE_SOUP, BERRY_JAM,
-  CARROT, POTATO, BAKED_POTATO, PUMPKIN, PUMPKIN_PIE, PUMPKIN_SEEDS,
+  CARROT, POTATO, BAKED_POTATO, PUMPKIN, PUMPKIN_PIE, PUMPKIN_SEEDS, GRAPES, GRAPE_JUICE, CURDS, AGING,
 } from './blocks.js';
 
 // A recipe ingredient can be one id or a list of alternatives (coal or charcoal).
@@ -197,6 +197,16 @@ STATION_KINDS.cookpot = {
   ],
 };
 
+// v26 D: presses (no fuel or power) and the oak barrel, where drinks and cheese age (see tick)
+STATION_KINDS.winepress = { name: 'Wine Press', verb: 'Pressing', inputs: 2, powered: true, passive: true, recipes: [
+  { out: [GRAPE_JUICE, 1], in: [[GRAPES, 6], [GLASS_BOTTLE, 1]], time: 8 },
+] };
+STATION_KINDS.cheesepress = { name: 'Cheese Press', verb: 'Pressing', inputs: 2, powered: true, passive: true, recipes: [
+  { out: [CURDS, 1], in: [[MILK_BUCKET, 1]], leaves: BUCKET, time: 10 },
+] };
+STATION_KINDS.barrel = { name: 'Oak Barrel', inputs: 6, storage: true, ages: true, recipes: [] };
+export const AGE_DAY = 12 * 60; // (a game day, in seconds)
+
 // v26: the new crops in the oven and the pot
 STATION_KINDS.oven.recipes.push(
   { out: [BAKED_POTATO, 1], in: [[POTATO, 1]], time: 5 },
@@ -309,6 +319,7 @@ export class Stations {
       const id = world.get(x, y, z);
       if (stationKind(id) !== st.kind) { this.map.delete(k); continue; }
       const K = STATION_KINDS[st.kind];
+      if (K.ages) this.age(st, dt);
       if (K.storage || K.holder) continue;
       if (K.crafter) {
         const want = recipeAt(x, y, z);
@@ -354,6 +365,20 @@ export class Stations {
     }
   }
 
+  // Things laid down in a barrel age a little each second: a whole stack together. (Taking it out and putting
+  // it back starts it again.)
+  age(st, dt) {
+    st.age ??= new Array(st.inputs.length).fill(0);
+    st.ageOf ??= new Array(st.inputs.length).fill(0);
+    st.inputs.forEach((s, i) => {
+      const a = s && AGING[s.id];
+      if (!a) { st.age[i] = 0; st.ageOf[i] = 0; return; }
+      if (st.ageOf[i] !== s.id) { st.ageOf[i] = s.id; st.age[i] = 0; }
+      st.age[i] += dt;
+      if (st.age[i] >= a[1] * AGE_DAY) { s.id = a[0]; st.ageOf[i] = s.id; st.age[i] = 0; }
+    });
+  }
+
   serialize() { return [...this.map]; }
 
   load(list) {
@@ -367,6 +392,7 @@ export class Stations {
         inputs: Array.from({ length: n }, (_, i) => clean(st.inputs?.[i])),
         fuel: clean(st.fuel), out: clean(st.out),
         burn: Math.max(0, +st.burn || 0), burnMax: Math.max(0, +st.burnMax || 0), progress: Math.max(0, +st.progress || 0), brews: st.brews | 0,
+        ...(Array.isArray(st.age) && Array.isArray(st.ageOf) ? { age: Array.from({ length: n }, (_, i) => Math.max(0, +st.age[i] || 0)), ageOf: Array.from({ length: n }, (_, i) => st.ageOf[i] | 0) } : {}),
       });
     }
   }

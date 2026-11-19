@@ -17,7 +17,7 @@ import {
   SUN_SCARAB, FROST_HEART, EMBER_CORE, SUN_MASK, FROST_CIRCLET, EMBER_CROWN, HONEY_TEA, MUSHROOM_STEW, FISH_PIE, COPY_WAND,
   CRYSTAL_SHARD, HONEY_BOTTLE, HONEYCOMB, SALMON, BAKED_SALMON, ICEFISH, BAKED_ICEFISH, PUFFERFISH, OLD_BOOT,
   BATTERY, PORTABLE_LAMP, JACKHAMMER, JETPACK, ELECTRIC_DRILL, HOVER_BOOTS, NV_GOGGLES, MAGNET_RING, WIND_TURBINE, NICKEL_INGOT, CUPRONICKEL_INGOT,
-  ELECTRIC_RAIL, CHAINSAW, SAWDUST, BOOK, BACKPACK, BIG_BACKPACK, HUGE_BACKPACK, SPANNER, GRAPPLE, URANIUM_INGOT, FUEL_ROD, JOURNAL, FERTILISER, SPENT_ROD, ENRICHED_URANIUM, ENRICHED_ROD, hazmatId, INVAR_INGOT, RAIL_STATION, BOAT, BALLOON, ZIP_LINE, METEORIC_IRON, STARSTEEL_INGOT, starsteelTool, EGG, FRIED_EGG, SADDLE, TRUFFLE, FLOWER_POT, HANGING_PLANT, WINDOW_BOX, APPLE, CHERRIES, ORANGE_FRUIT, APPLE_PIE, CHERRY_PIE, FRUIT_SALAD, ORANGE_JUICE, FISH_SOUP, TRUFFLE_SOUP, BERRY_JAM, COOK_POT, SCARECROW, EXPLORER_MAP, TREASURE_MAP, BEESWAX, CABLE_CAR, COIN, CARROT, POTATO, BAKED_POTATO, PUMPKIN_SEEDS, PUMPKIN_PIE, GRAPES,
+  ELECTRIC_RAIL, CHAINSAW, SAWDUST, BOOK, BACKPACK, BIG_BACKPACK, HUGE_BACKPACK, SPANNER, GRAPPLE, URANIUM_INGOT, FUEL_ROD, JOURNAL, FERTILISER, SPENT_ROD, ENRICHED_URANIUM, ENRICHED_ROD, hazmatId, INVAR_INGOT, RAIL_STATION, BOAT, BALLOON, ZIP_LINE, METEORIC_IRON, STARSTEEL_INGOT, starsteelTool, EGG, FRIED_EGG, SADDLE, TRUFFLE, FLOWER_POT, HANGING_PLANT, WINDOW_BOX, APPLE, CHERRIES, ORANGE_FRUIT, APPLE_PIE, CHERRY_PIE, FRUIT_SALAD, ORANGE_JUICE, FISH_SOUP, TRUFFLE_SOUP, BERRY_JAM, COOK_POT, SCARECROW, EXPLORER_MAP, TREASURE_MAP, BEESWAX, CABLE_CAR, COIN, CARROT, POTATO, BAKED_POTATO, PUMPKIN_SEEDS, PUMPKIN_PIE, GRAPES, GRAPE_JUICE, WINE, FINE_WINE, CURDS, CHEESE, AGED_CHEESE,
   SALTPETRE, GUNPOWDER, LEAD_SINKER, WEIGHTED_ROD, LEAD_BUCKET, LAVA_BUCKET, GOLD_CLOCK, COMPASS, SILVER_ARROW, MIRROR_LAMP,
 } from './blocks.js';
 
@@ -599,6 +599,20 @@ for (let k = 0; k < 3; k++) P[T.VINE_0 + k] = (t) => {
   for (let y = 15; y > 15 - reach; y--) for (let x = 0; x < TILE; x++) if (t.r() < (k ? 0.45 : 0.25) && (x + y) % 2 === 0) t.set(x, y, t.vary([66, 132, 48], 0.15));
   if (k === 2) for (const [x, y] of [[3, 6], [10, 4], [7, 10], [12, 11]]) for (let dy = 0; dy < 3; dy++) for (let dx = 0; dx < 2 + (dy < 2 ? 1 : 0) - (dy === 2 ? 1 : 0); dx++) t.set(x + dx, y + dy, t.vary([96, 40, 120], 0.12));
 };
+P[T.BARREL_SIDE] = (t) => {
+  for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+    const hoop = y === 2 || y === 3 || y === 12 || y === 13;
+    t.set(x, y, hoop ? t.vary([92, 92, 100], 0.08) : t.vary(x % 4 === 0 ? [104, 70, 38] : [140, 96, 54], 0.08));
+  }
+};
+P[T.BARREL_TOP] = (t) => {
+  for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+    const d = Math.hypot(x - 7.5, y - 7.5);
+    t.set(x, y, d > 6.6 ? t.vary([92, 92, 100], 0.08) : t.vary(y % 4 === 0 ? [104, 70, 38] : [150, 106, 62], 0.08));
+  }
+  for (const [x, y] of [[7, 7], [8, 7], [7, 8], [8, 8]]) t.set(x, y, [70, 46, 24]);
+};
+P[T.CHEESE] = (t) => { for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) t.set(x, y, t.vary((x * 7 + y * 3) % 11 === 0 ? [214, 180, 70] : [244, 214, 110], 0.05)); };
 P[T.AWNING] = (t) => { for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) t.set(x, y, t.vary(Math.floor(x / 4) % 2 ? [240, 236, 224] : [200, 44, 44], 0.04)); };
 P[T.TUBE] = (t) => {
   for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
@@ -2308,6 +2322,24 @@ ITEM_PAINTERS[GRAPES] = (ctx) => {
   for (const [x, y] of [[5, 4], [8, 4], [11, 4], [6, 7], [9, 7], [7, 10], [10, 10], [8, 13]]) { rect(ctx, x - 1, y - 1, 3, 3, [96, 40, 120]); px(ctx, x - 1, y - 1, [160, 100, 190]); }
   rect(ctx, 8, 0, 1, 3, [110, 80, 40]); rect(ctx, 9, 1, 3, 1, [70, 140, 50]);
 };
+// v26 D: bottles of juice and wine; curds and cheeses
+const wineBottle = (c, label) => (ctx) => {
+  rect(ctx, 6, 1, 4, 2, [110, 80, 50]); rect(ctx, 6, 3, 4, 3, [60, 90, 60]); rect(ctx, 4, 6, 8, 9, [60, 90, 60]);
+  rect(ctx, 5, 7, 6, 7, c);
+  if (label) { rect(ctx, 5, 9, 6, 3, label); px(ctx, 7, 10, [160, 40, 40]); }
+  px(ctx, 5, 7, [200, 230, 200]);
+};
+ITEM_PAINTERS[GRAPE_JUICE] = (ctx) => { bottlePainter([140, 60, 160])(ctx); };
+ITEM_PAINTERS[WINE] = wineBottle([110, 20, 40], null);
+ITEM_PAINTERS[FINE_WINE] = wineBottle([110, 20, 40], [236, 220, 170]);
+ITEM_PAINTERS[CURDS] = (ctx) => { for (const [x, y] of [[4, 8], [8, 6], [9, 10], [5, 11], [11, 8]]) { rect(ctx, x, y, 3, 3, [246, 244, 230]); px(ctx, x + 2, y + 2, [210, 206, 190]); } };
+const cheeseWedge = (c, rind) => (ctx) => {
+  for (let k = 0; k < 9; k++) rect(ctx, 3, 12 - k, 4 + k, 1, c);
+  rect(ctx, 3, 12, 12, 2, rind);
+  for (const [x, y] of [[6, 9], [9, 10], [5, 6], [11, 8]]) px(ctx, x, y, [rind[0] * 0.9, rind[1] * 0.85, rind[2] * 0.6]);
+};
+ITEM_PAINTERS[CHEESE] = cheeseWedge([244, 214, 110], [220, 180, 70]);
+ITEM_PAINTERS[AGED_CHEESE] = cheeseWedge([226, 180, 70], [150, 100, 40]);
 // v26: a silver coin
 ITEM_PAINTERS[COIN] = (ctx) => {
   for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) {

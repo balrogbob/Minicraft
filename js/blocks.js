@@ -140,7 +140,7 @@ export const T = {
   LEAD_CHEST_SIDE: 267, LEAD_CHEST_TOP: 268, LEAD_CHEST_FRONT: 269, CENTRIFUGE_SIDE: 270, CENTRIFUGE_TOP: 271, TESLA: 272, TESLA_TOP: 273,
   FENCE_POST: 274, FENCE_WIRE: 275, FREEZER_SIDE: 276, FREEZER_FRONT: 277, ARC_SIDE: 278, ARC_FRONT: 279, PACKED_ICE: 280, INVAR: 281, RAIL_STOP: 282, BASALT: 283, BASALT_TOP: 284, METEORITE: 285,
   IRON_BARS: 286, POT: 287, IVY: 288, BOX_FLOWERS: 289,
-  FRUIT_LEAVES: 290, FRUIT_RIPE: 293, FRUIT_SAPLING: 296, HAY: 299, SACK: 300, BEACON: 301, APIARY_SIDE: 302, APIARY_FRONT: 303, APIARY_FULL: 304, APIARY_TOP: 305, BELT_CROSS: 306, FARM_CTRL: 307, FARM_CTRL_ON: 308, TUBE: 309, TUBE_END: 310, AWNING: 311, FIRE: 312, CARROT_0: 313, POTATO_0: 317, STEM_0: 321, PUMPKIN_SIDE: 324, PUMPKIN_TOP: 325, JACK_FACE: 326, TRELLIS: 327, VINE_0: 328, // (fruit tiles: apple, cherry, orange)
+  FRUIT_LEAVES: 290, FRUIT_RIPE: 293, FRUIT_SAPLING: 296, HAY: 299, SACK: 300, BEACON: 301, APIARY_SIDE: 302, APIARY_FRONT: 303, APIARY_FULL: 304, APIARY_TOP: 305, BELT_CROSS: 306, FARM_CTRL: 307, FARM_CTRL_ON: 308, TUBE: 309, TUBE_END: 310, AWNING: 311, FIRE: 312, CARROT_0: 313, POTATO_0: 317, STEM_0: 321, PUMPKIN_SIDE: 324, PUMPKIN_TOP: 325, JACK_FACE: 326, TRELLIS: 327, VINE_0: 328, BARREL_SIDE: 331, BARREL_TOP: 332, CHEESE: 333, // (fruit tiles: apple, cherry, orange)
 };
 
 // Ores, deepest-reaching last. tier: the pickaxe tier needed to mine it (see TOOL_TIERS);
@@ -2459,4 +2459,32 @@ RECIPES.push(
   { out: [PUMPKIN_SEEDS, 4], in: [[PUMPKIN, 1]] },
   { out: [JACK_O_LANTERN, 1], in: [[PUMPKIN, 1], [TORCH, 1]] },
   { out: [TRELLIS, 2], in: [[STICK, 6]] },
+);
+
+// ---------- v26 D: the winery and the dairy ----------
+// A wine press squeezes grapes into juice, and a cheese press turns milk into curds. Both need no fuel or
+// power. Laid down in an oak barrel they age, day by day: juice into wine and then fine wine; curds into
+// cheese and then aged cheese. The longer they're kept, the better (and the more villagers pay).
+export const WINE_PRESS = 1365, CHEESE_PRESS = 1366, BARREL = 1367;
+export const GRAPE_JUICE = 1104, WINE = 1105, FINE_WINE = 1106, CURDS = 1107, CHEESE = 1108, AGED_CHEESE = 1109;
+const pressModel = (top) => [
+  [2, 0, 2, 14, 6, 14, T.PLANKS], [3, 5.5, 3, 13, 6.2, 13, top], // the tub, and what's in it
+  [0.5, 0, 7, 2, 16, 9, T.LOG_SIDE], [14, 0, 7, 15.5, 16, 9, T.LOG_SIDE], [0.5, 14, 6.5, 15.5, 16, 9.5, T.LOG_SIDE], // the frame
+  [7.25, 8, 7.25, 8.75, 14, 8.75, T.IRON], [4, 7, 4, 12, 8.5, 12, T.PLANKS], // the screw and its plate
+];
+block(WINE_PRESS, { name: 'Wine Press', station: 'winepress', sound: 'wood', transparent: true, hardness: 1.5, tool: 'axe', model: pressModel(T.VINE_0 + 2), boxes: [[2, 0, 2, 14, 9, 14]] });
+block(CHEESE_PRESS, { name: 'Cheese Press', station: 'cheesepress', sound: 'wood', transparent: true, hardness: 1.5, tool: 'axe', model: pressModel(T.CHEESE), boxes: [[2, 0, 2, 14, 9, 14]] });
+block(BARREL, { name: 'Oak Barrel', station: 'barrel', sound: 'wood', side: T.BARREL_SIDE, top: T.BARREL_TOP, bottom: T.BARREL_TOP, hardness: 1.5, tool: 'axe' });
+ITEMS[GRAPE_JUICE] = { name: 'Grape Juice', stack: 8, food: 3, bottle: true, about: 'lay it down in a barrel to make wine' };
+ITEMS[WINE] = { name: 'Wine', stack: 8, food: 4, meal: ['warm', 200], about: 'feel warm inside', bottle: true };
+ITEMS[FINE_WINE] = { name: 'Fine Wine', stack: 8, food: 6, meal: ['heal', 8], about: 'feel wonderful', bottle: true };
+ITEMS[CURDS] = { name: 'Curds', food: 2, about: 'age them in a barrel to make cheese' };
+ITEMS[CHEESE] = { name: 'Cheese', food: 6 };
+ITEMS[AGED_CHEESE] = { name: 'Aged Cheese', food: 10, meal: ['fed', 400], about: 'feel well fed for ages' };
+// what ages into what in a barrel, and how many days it takes
+export const AGING = { [GRAPE_JUICE]: [WINE, 1], [WINE]: [FINE_WINE, 3], [CURDS]: [CHEESE, 1], [CHEESE]: [AGED_CHEESE, 3] };
+RECIPES.push(
+  { out: [WINE_PRESS, 1], in: [[PLANKS, 6], [LOG, 3], [IRON_INGOT, 1]], table: true, metal: IRON_INGOT },
+  { out: [CHEESE_PRESS, 1], in: [[PLANKS, 6], [LOG, 3], [IRON_INGOT, 1], [STRING, 1]], table: true, metal: IRON_INGOT },
+  { out: [BARREL, 1], in: [[PLANKS, 6], [IRON_INGOT, 1]], table: true, metal: IRON_INGOT },
 );
