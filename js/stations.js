@@ -4,10 +4,10 @@
 // Each placed station keeps its contents here, keyed by position, and they're saved with the world.
 // Like crops and lamps, a station only works while its part of the world is loaded.
 import {
-  COAL, CHARCOAL, LOG, PLANKS, STICK, COBBLE, STONE, SAND, GLASS, SLIME_FUEL, BUCKET,
+  COAL, CHARCOAL, LOG, PLANKS, STICK, COBBLE, STONE, SAND, GLASS, SLIME_FUEL, BUCKET, SEEDS,
   SALMON, BAKED_SALMON, ICEFISH, BAKED_ICEFISH, HONEY_TEA, HONEYCOMB, MUSHROOM_STEW, FISH_PIE, GLOW_MUSHROOM,
   FLOUR, SUGAR, BUTTER, MILK_BUCKET, BREAD, COOKIE, CAKE, RAW_FISH, BAKED_FISH, BLOCKS, maxStack, stationKind,
-  ORES, COAL_OR_CHARCOAL, CUPRONICKEL_INGOT, NICKEL_INGOT, IRON_INGOT, COPPER_INGOT, TIN_INGOT, ZINC_INGOT, ALUMINIUM_INGOT, SILVER_INGOT, GOLD_INGOT,
+  ORES, COAL_OR_CHARCOAL, FUEL_ROD, CUPRONICKEL_INGOT, NICKEL_INGOT, IRON_INGOT, COPPER_INGOT, TIN_INGOT, ZINC_INGOT, ALUMINIUM_INGOT, SILVER_INGOT, GOLD_INGOT,
   BRONZE_INGOT, ELECTRUM_INGOT, STAINLESS_INGOT, STEEL_INGOT, AL_BRONZE_INGOT,
   GRAVEL, FLINT, FLINT_DUST, CLAY_BALL, CLAY_DUST, BRICK, FIRE_CLAY, FIRE_BRICK, oreDust, HIDE, LEATHER,
   LAVA_BUCKET, LEAD_BUCKET, SALTPETRE, SANDSTONE, WHEAT, SUGAR_CANE, COAL_DUST, PLATE_METALS, PLATES, TUNGSTEN_INGOT, FILAMENT,
@@ -145,8 +145,10 @@ STATION_KINDS.pcrafter = { name: 'Programmable Crafter', inputs: 9, crafter: tru
 // Farm machines that hold things: a planter's saplings, an animal station's buckets and wheat (both just
 // hold them: see machines.js), and a fishing net's catch (taken out by a hopper underneath).
 STATION_KINDS.planter = { name: 'Planter', inputs: 4, holder: true, accepts: [SAPLING], recipes: [] };
-STATION_KINDS.ranch = { name: 'Animal Station', inputs: 6, holder: true, accepts: [BUCKET, WHEAT], recipes: [] };
+STATION_KINDS.ranch = { name: 'Animal Station', inputs: 6, holder: true, accepts: [BUCKET, WHEAT, SEEDS, BERRIES], recipes: [] };
 STATION_KINDS.net = { name: 'Fishing Net', inputs: 4, storage: true, recipes: [] };
+// A reactor holds up to four fuel rods, burning them all at once (see electric.js).
+STATION_KINDS.reactor = { name: 'Reactor', inputs: 4, holder: true, accepts: [FUEL_ROD], recipes: [] };
 
 const key = (x, y, z) => `${x},${y},${z}`;
 
@@ -282,7 +284,7 @@ export class Stations {
     this.map.clear();
     for (const [k, st] of list ?? []) {
       if (typeof k !== 'string' || !STATION_KINDS[st?.kind]) continue;
-      const clean = (s) => (s && s.id && s.count > 0 ? { id: s.id, count: s.count, ...(s.wear > 0 ? { wear: s.wear } : {}), ...(Array.isArray(s.ench) && s.ench.length ? { ench: s.ench } : {}) } : null);
+      const clean = (s) => (s && s.id && s.count > 0 ? { id: s.id, count: s.count, ...(s.wear > 0 ? { wear: s.wear } : {}), ...(Array.isArray(s.ench) && s.ench.length ? { ench: s.ench } : {}), ...(s.on === true ? { on: true } : {}), ...(s.pack > 0 ? { pack: Math.floor(s.pack) } : {}) } : null);
       const n = STATION_KINDS[st.kind].inputs;
       this.map.set(k, {
         kind: st.kind,

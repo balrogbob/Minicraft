@@ -162,6 +162,24 @@ export class Player {
     }
   }
 
+  // Pulled along by something (a grappling hook): velocity v, no gravity or walking, still stopped by blocks.
+  // Returns how far it really moved.
+  pulled(dt, v) {
+    this.updateWaterState();
+    this.vel.copy(v);
+    this.kx = 0; this.kz = 0;
+    const from = this.pos.clone();
+    const steps = Math.max(1, Math.ceil(v.length() * dt / 0.3));
+    const h = dt / steps;
+    for (let i = 0; i < steps; i++) {
+      this.moveAxis('x', v.x * h, false);
+      this.moveAxis('z', v.z * h, false);
+      this.onGround = false;
+      this.moveAxis('y', v.y * h);
+    }
+    return this.pos.distanceTo(from);
+  }
+
   canStepUp(wx, wz) {
     const w = this.world;
     const ax = Math.floor(this.pos.x + Math.sign(wx) * (HALF + 0.3));

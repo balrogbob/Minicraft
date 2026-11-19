@@ -119,6 +119,19 @@ export class Sound {
     for (const [f, v] of [[880, 0.25], [1320, 0.12], [2210, 0.06]]) this.voice({ type: 'sine', from: f, to: f * 0.998, dur: 2.2, vol: v, freq: 6000, attack: 0.005 });
   }
 
+  // A reactor's alarm: a two-tone whoop, louder the nearer (k: 0..1).
+  alarm(k = 1) {
+    if (!this.ready || k <= 0) return;
+    this.voice({ type: 'square', from: 620, to: 920, dur: 0.35, vol: 0.12 * k, freq: 2200, attack: 0.01 });
+    setTimeout(() => this.voice({ type: 'square', from: 920, to: 620, dur: 0.35, vol: 0.12 * k, freq: 2200, attack: 0.01 }), 380);
+  }
+
+  // A chainsaw biting into wood: a rasping buzz.
+  saw() {
+    if (!this.ready) return;
+    this.voice({ type: 'sawtooth', from: 140, to: 110, dur: 0.22, vol: 0.12, freq: 1800, q: 2 });
+  }
+
   pop() { if (this.ready) this.tone(520 + Math.random() * 80, 0.09, 0.2, 'square', 900); }
 
   click() { if (this.ready) this.tone(800, 0.04, 0.08, 'square'); }

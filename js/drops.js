@@ -146,6 +146,7 @@ export class ItemDrops {
       const stack = { id: s.id, count: s.count };
       if (s.wear > 0) stack.wear = s.wear;
       if (Array.isArray(s.ench) && s.ench.length) stack.ench = s.ench.filter((k) => typeof k === 'string');
+      if (s.pack > 0) stack.pack = Math.floor(s.pack);
       const it = this.spawn(stack, { x, y, z });
       if (it) it.age = Math.max(0, +age || 0);
     }

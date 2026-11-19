@@ -81,12 +81,13 @@ export function stateOf(s) {
   if (s.wear > 0) o.wear = s.wear;
   if (Array.isArray(s.ench) && s.ench.length) o.ench = [...s.ench];
   if (s.on) o.on = true;
-  return o.wear || o.ench || o.on ? o : null;
+  if (s.pack > 0) o.pack = s.pack; // what's inside a backpack, or a machine taken up with a spanner (see main.js)
+  return o.wear || o.ench || o.on || o.pack ? o : null;
 }
 // The same, checked over (for loading a save).
 const cleanState = (o) => {
   if (!o || typeof o !== 'object') return {};
-  return stateOf({ wear: +o.wear || 0, ench: Array.isArray(o.ench) ? o.ench.filter((e) => typeof e === 'string') : null, on: o.on === true }) ?? {};
+  return stateOf({ wear: +o.wear || 0, ench: Array.isArray(o.ench) ? o.ench.filter((e) => typeof e === 'string') : null, on: o.on === true, pack: Math.floor(+o.pack || 0) }) ?? {};
 };
 const idOf = (item) => (typeof item === 'object' ? item?.id ?? 0 : item);
 
@@ -589,7 +590,18 @@ export class Machines {
       const hungry = near.filter((m) => m.shornFor > 0 || m.featherFor > 0);
       if (hungry.length && (d.fed = (d.fed ?? 0) - RANCH_EVERY) <= 0 && take(WHEAT)) d.fed = 30;
       if (d.fed > 0) for (const m of hungry) { if (m.shornFor > 0) m.shornFor -= RANCH_EVERY; if (m.featherFor > 0) m.featherFor -= RANCH_EVERY; }
-      d.status = near.length ? `${near.length} animal${near.length > 1 ? 's' : ''} nearby${got ? `: got ${got} thing${got > 1 ? 's' : ''}` : ''}${d.fed > 0 ? ', fed' : ''}` : 'No animals within 5 blocks';
+      // breeding: two of a kind ready to breed are each fed what they breed on, if it's in the station
+      let paired = 0;
+      const kinds = new Map();
+      for (const m of near) if (mobs.canBreed(m) && !m.tame) kinds.set(m.kind, [...(kinds.get(m.kind) ?? []), m]);
+      for (const group of kinds.values()) {
+        if (group.length < 2) continue;
+        const food = group[0].spec.breeds.find((id) => st.inputs.filter((s) => s?.id === id).reduce((t, s) => t + s.count, 0) >= 2);
+        if (food === undefined) continue;
+        for (const m of group.slice(0, 2)) { take(food); mobs.feed(m); }
+        paired++;
+      }
+      d.status = near.length ? `${near.length} animal${near.length > 1 ? 's' : ''} nearby${got ? `: got ${got} thing${got > 1 ? 's' : ''}` : ''}${d.fed > 0 ? ', fed' : ''}${paired ? `, ${paired} pair${paired > 1 ? 's' : ''} fed to breed` : ''}` : 'No animals within 5 blocks';
     }
   }
 

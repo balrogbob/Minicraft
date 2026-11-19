@@ -7,7 +7,7 @@
 // They aren't saved: they're spawned fresh around wherever you are.
 import * as THREE from 'three';
 import { AIR, WATER, LEAVES, LOG, GRASS, SAND, DIRT, WOOL, BUCKET, MILK_BUCKET, SLIME_BUCKET, FEATHER, COAL, COBBLE, ARROW, HIDE, SNOW_GRASS, SNOW, KING_CROWN, GOLD_INGOT, MOSSY_BRICKS, RAW_FISH, BAKED_FISH, WHEAT, SALMON, BAKED_SALMON, ICEFISH, BAKED_ICEFISH,
-  SUN_SCARAB, FROST_HEART, EMBER_CORE, SUN_MASK, FROST_CIRCLET, EMBER_CROWN, SILVER_INGOT, OBSIDIAN, STRING, BLOCKS, LAVA } from './blocks.js';
+  SUN_SCARAB, FROST_HEART, EMBER_CORE, SUN_MASK, FROST_CIRCLET, EMBER_CROWN, SILVER_INGOT, OBSIDIAN, STRING, BLOCKS, LAVA, SEEDS, BERRIES } from './blocks.js';
 import { SEA_LEVEL, H } from './terrain.js';
 import { skyBrightness, lightBrightness } from './world.js';
 import { THORN_SPEED, THORN_GRAVITY } from './arrows.js';
@@ -571,6 +571,30 @@ const SPECIES = {
   },
 };
 
+// Breeding: what each animal can be fed to look for a mate. Two of a kind that have both been fed find each
+// other and have a young one, which grows up over GROW_TIME; then they need BREED_REST before they'll breed
+// again. They won't when there are already CROWD of their kind close by.
+const BREED_FOOD = { duck: [SEEDS], buffalo: [WHEAT], alpaca: [WHEAT], yak: [WHEAT], camel: [WHEAT], newt: [BERRIES] };
+for (const [k, f] of Object.entries(BREED_FOOD)) SPECIES[k].breeds = f;
+SPECIES.wolf.breeds = SPECIES.wolf.tames;
+export const LOVE_TIME = 30, BREED_REST = 300, GROW_TIME = 300, CROWD = 12;
+let heartTexture = null;
+function heartSprite() {
+  if (!heartTexture) {
+    const c = document.createElement('canvas');
+    c.width = c.height = 16;
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = '#ff4a7a';
+    for (const [x, y, w] of [[3, 3, 4], [9, 3, 4], [2, 4, 12], [2, 5, 12], [2, 6, 12], [3, 7, 10], [4, 8, 8], [5, 9, 6], [6, 10, 4], [7, 11, 2]]) ctx.fillRect(x, y, w, 1);
+    ctx.fillStyle = '#ffc0d0'; ctx.fillRect(4, 4, 2, 1);
+    heartTexture = new THREE.CanvasTexture(c);
+    heartTexture.magFilter = THREE.NearestFilter;
+  }
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: heartTexture, transparent: true, depthWrite: false }));
+  sp.scale.set(0.35, 0.35, 0.35);
+  return sp;
+}
+
 export const MOB_KINDS = Object.keys(SPECIES);
 export { SPECIES };
 export const PROFESSIONS = ['farmer', 'smith', 'fisher', 'cleric'];
@@ -636,6 +660,7 @@ class Mob {
 
   dispose(scene) {
     scene.remove(this.root);
+    if (this.heart) { scene.remove(this.heart); this.heart.material.dispose(); this.heart = null; }
     for (const g of this.geometries) g.dispose();
     this.material.dispose();
     this.glowMaterial.dispose();
@@ -917,9 +942,12 @@ export class MobManager {
         }
       } else if (m.tame) {
         this.thinkPet(m, dt, player);
+        if (m.love > 0) this.seekMate(m);
       } else {
         this.think(m, dt, player);
+        if (m.love > 0) this.seekMate(m);
       }
+      if (!m.spec.hostile) this.tickBreeding(m, dt);
       this.move(m, dt);
       if (m.spec.hostile) this.worldHarm(m, dt);
       this.animate(m, dt);
@@ -1283,6 +1311,13 @@ export class MobManager {
       return { give, take, said: '' };
     }
     if (m.spec.trader) return { give, take, said: '', trade: true };
+    if (m.spec.breeds?.includes(held) && (!m.spec.tames || m.tame)) {
+      const said = this.feed(m);
+      if (said) return { give, take, said };
+      take.push([held, 1]);
+      this.sound?.mob(m.kind, 0.9);
+      return { give, take, said: `The ${m.kind} looks around for a mate` };
+    }
     if (m.spec.tames) {
       if (m.tame) {
         if (m.spec.rideable) return { give, take, said: '', ride: true };
@@ -1315,6 +1350,62 @@ export class MobManager {
       give.push([HIDE, 1]);
     }
     return { give, take, said: '' };
+  }
+
+  // Breeding timers, the heart over an animal looking for a mate, and a young one growing up.
+  tickBreeding(m, dt) {
+    if (m.breedFor > 0) m.breedFor -= dt;
+    if (m.love > 0) m.love -= dt;
+    if (m.love > 0 && !m.heart) { m.heart = heartSprite(); this.scene.add(m.heart); }
+    if (m.heart) {
+      if (m.love > 0 && !m.dying) m.heart.position.set(m.pos.x, m.pos.y + m.spec.h * (m.baby > 0 ? 0.6 : 1) + 0.3 + Math.sin(m.love * 4) * 0.06, m.pos.z);
+      else { this.scene.remove(m.heart); m.heart.material.dispose(); m.heart = null; }
+    }
+    if (m.baby > 0) {
+      m.baby = Math.max(0, m.baby - dt);
+      m.root.scale.setScalar(m.baseScale * (1 - 0.5 * m.baby / GROW_TIME));
+    }
+  }
+
+  // Feed an animal what it breeds on, so it looks for a mate. Returns '' if it took it, or why it wouldn't.
+  feed(m) {
+    if (m.dying || !m.spec.breeds) return 'It won\'t eat that';
+    if (m.baby > 0) return `This ${m.kind} is too young to have young of its own`;
+    if (m.breedFor > 0) return `This ${m.kind} isn't ready to have young again yet`;
+    if (m.love > 0) return `This ${m.kind} is already looking for a mate`;
+    m.love = LOVE_TIME;
+    return '';
+  }
+
+  // Could this animal be fed to breed now?
+  canBreed(m) { return !m.dying && !!m.spec.breeds && !(m.baby > 0) && !(m.breedFor > 0) && !(m.love > 0); }
+
+  // An animal looking for a mate heads for the nearest other of its kind that's looking too; when they meet,
+  // a young one is born between them.
+  seekMate(m) {
+    if (m.sitting || m.state === 'flee') return;
+    let best = null, bd = 10;
+    for (const o of this.mobs) {
+      if (o === m || o.kind !== m.kind || !(o.love > 0) || o.dying) continue;
+      const d = Math.hypot(o.pos.x - m.pos.x, o.pos.z - m.pos.z);
+      if (d < bd && Math.abs(o.pos.y - m.pos.y) < 3) { bd = d; best = o; }
+    }
+    if (!best) return;
+    if (bd > m.spec.w + 0.4) {
+      m.state = 'walk';
+      m.timer = 0.5;
+      m.heading = Math.atan2(best.pos.x - m.pos.x, best.pos.z - m.pos.z);
+      return;
+    }
+    for (const p of [m, best]) { p.love = 0; p.breedFor = BREED_REST; p.state = 'idle'; p.timer = rand(2, 4); }
+    const crowd = this.mobs.filter((o) => o.kind === m.kind && !o.dying && Math.hypot(o.pos.x - m.pos.x, o.pos.z - m.pos.z) < 8).length;
+    if (crowd >= CROWD) return;
+    const baby = this.spawn(m.kind, (m.pos.x + best.pos.x) / 2, Math.max(m.pos.y, best.pos.y), (m.pos.z + best.pos.z) / 2);
+    baby.baby = GROW_TIME;
+    baby.root.scale.setScalar(baby.baseScale * 0.5);
+    if (m.tame && best.tame) this.setTame(baby);
+    this.sound?.mob(m.kind, 1.3);
+    this.onBred?.(baby);
   }
 
   setTame(m) {

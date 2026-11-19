@@ -25,6 +25,7 @@ import {
   ELECTRUM_WIRE, PULVERIZER, BATTERY, PORTABLE_LAMP, JACKHAMMER, JETPACK, CHARGE_USE, chargeCap, chargeLeft, ORES, oreDust,
   E_SMELTER, QUARRY, ITEM_COUNTER, TELEPAD, PROG_CRAFTER, PAD_PLAYER, ELECTRIC_DRILL, HOVER_BOOTS, NV_GOGGLES, MAGNET_RING, isElectricLamp, SPAWNER,
   WIRE, INVERTER, DELAY, LATCH, DETECTOR_RAIL, DRIVE_BELT, TREE_FELLER, PLANTER, BREAKER, PLACER, ANIMAL_STATION, EJECTOR, COLLECTOR, BELT_SPLITTER, BELT_SORTER,
+  ELECTRIC_RAIL, LIFT, LIFT_REACH, WIRELESS_REACH, CHAINSAW, SAWDUST, SPANNER, GRAPPLE, isBackpack, kineticId, MELTDOWN, REACTOR_POWER, ROD_LIFE, BOOK,
 } from './blocks.js';
 import { createAtlas, createIcons, createCrackCanvases, createWaterCanvas, createHudIcons, paintSeason } from './textures.js';
 import { World, CHUNK, WORLD_SIZE, chunkKey } from './world.js';
@@ -57,7 +58,7 @@ import { Logic } from './logic.js';
 
 // v2 = the 16k x 16k streaming world (player state here, edited chunks in IndexedDB).
 // v1 = the old 128 x 128 world, migrated into the middle of the big world on first launch.
-const GAME_VERSION = '22'; // shown in the menu; bump with each release
+const GAME_VERSION = '23'; // shown in the menu; bump with each release
 const SAVE_KEY = 'minicraft-save-v2';
 const LEGACY_SAVE_KEY = 'minicraft-save-v1';
 const SETTINGS_KEY = 'minicraft-settings-v1';
@@ -239,8 +240,49 @@ const electricHooks = {
   signalAt: (x, y, z) => signalAt(x, y, z),
   daylight: () => sky.light,
   raining: () => weather.raining,
-  wants: (n) => (BLOCKS[n.id].quarry ? machines.quarryWants(n.x, n.y, n.z) : undefined),
+  wants: (n) => {
+    const d = BLOCKS[n.id];
+    if (d.quarry) return machines.quarryWants(n.x, n.y, n.z);
+    if (d.rail) return carts.carts.some((c) => c.x === n.x && c.y === n.y && c.z === n.z); // an electric rail, while a cart's on it
+    if (d.lift) return lift?.from === `${n.x},${n.y},${n.z}`; // a lift, while it's carrying you
+    return undefined;
+  },
+  wireless: (n, amount) => wirelessCharge(n, amount),
+  meltdown: (x, y, z) => meltdown(x, y, z),
+  alarm: (x, y, z, k) => {
+    const d = Math.hypot(x + 0.5 - player.pos.x, y + 0.5 - player.pos.y, z + 0.5 - player.pos.z);
+    if (d < 40) sound.alarm(Math.min(1, 1.2 - d / 40));
+    if (d < 40 && (reactorWarned -= 1) <= 0) { reactorWarned = 8; toast(`A reactor is overheating (${Math.round(k * 100)}%): cool it with water, take its rods out or give it a signal!`, 3500); }
+  },
 };
+let reactorWarned = 0;
+// What's inside backpacks, and inside machines taken up with a spanner: pack id -> contents. The stack holds
+// the id as its `pack`, so the contents go wherever the stack goes (chests, belts, the ground) and are saved.
+//   a backpack: { slots: [stack | null, ...] }
+//   a machine:  { kind, inputs, fuel, out } (what was in it) and/or { charge } (a grid battery's or pad's)
+const packs = new Map();
+let nextPack = 1;
+function newPack(v) { const id = nextPack++; packs.set(id, v); return id; }
+const cleanStack = (s) => (s && s.id > 0 && s.count > 0 ? {
+  id: s.id, count: s.count, ...(s.wear > 0 ? { wear: +s.wear } : {}), ...(Array.isArray(s.ench) && s.ench.length ? { ench: s.ench.filter((e) => typeof e === 'string') } : {}),
+  ...(s.on === true ? { on: true } : {}), ...(s.pack > 0 ? { pack: Math.floor(s.pack) } : {}),
+} : null);
+function loadPacks(list, next) {
+  packs.clear();
+  for (const e of Array.isArray(list) ? list : []) {
+    if (!Array.isArray(e) || !(e[0] > 0) || !e[1] || typeof e[1] !== 'object') continue;
+    const v = e[1], c = {};
+    if (Array.isArray(v.slots)) c.slots = v.slots.slice(0, 54).map(cleanStack);
+    if (typeof v.kind === 'string' && STATION_KINDS[v.kind]) {
+      c.kind = v.kind;
+      c.inputs = (Array.isArray(v.inputs) ? v.inputs : []).slice(0, 54).map(cleanStack);
+      c.fuel = cleanStack(v.fuel); c.out = cleanStack(v.out);
+    }
+    if (v.charge > 0) c.charge = +v.charge;
+    packs.set(Math.floor(e[0]), c);
+  }
+  nextPack = Math.max(1, Math.floor(+next || 0), ...[...packs.keys()].map((k) => k + 1));
+}
 const signs = new Signs(scene); // what's written on each sign
 const machines = new Machines(scene, icons); // pumps, drills, hoppers and belts
 const loose = new ItemDrops(scene, (id) => machines.makeSprite(id)); // items lying on the ground
@@ -376,6 +418,8 @@ async function startWorld(save, opts = {}) {
   logic.load(save?.logic);
   machines.load(save?.machines);
   electric.load(save?.electric);
+  loadPacks(save?.packs, save?.nextPack);
+  lift = null; releaseGrapple();
   carts.load(save?.carts);
   riding = null;
   ridingMob = null;
@@ -501,6 +545,8 @@ function saveGame() {
     logic: logic.serialize(),
     kinetics: kinetics.serialize(),
     electric: electric.serialize(),
+    packs: [...packs],
+    nextPack,
     carts: carts.serialize(),
     armour: [...armour],
     armourWear: [...armourWear],
@@ -1165,6 +1211,7 @@ function stationSlot(area, i) {
 
 function openStation(x, y, z, cart = null) {
   const kind = cart ? 'chest' : stationKind(world.get(x, y, z));
+  const nIn = cart ? cart.store.inputs.length : STATION_KINDS[kind].inputs;
   if (!cart) stations.get(x, y, z, kind);
   openStationAt = { x, y, z, kind, cart };
   stPicked = null;
@@ -1172,7 +1219,7 @@ function openStation(x, y, z, cart = null) {
   controls.reset();
   document.exitPointerLock?.();
   const K = STATION_KINDS[kind];
-  $('station-title').textContent = cart ? 'Storage Cart' : K.name;
+  $('station-title').textContent = cart ? cart.title ?? 'Storage Cart' : K.name;
   $('station').classList.toggle('storage', !!K.storage);
   // build the slots for this kind of station
   const make = (parent, area, i) => {
@@ -1186,7 +1233,7 @@ function openStation(x, y, z, cart = null) {
   const ins = $('st-inputs');
   ins.innerHTML = '';
   ins.style.gridTemplateColumns = K.storage ? '' : `repeat(${K.inputs > 1 ? 2 : 1}, var(--slot))`;
-  for (let i = 0; i < K.inputs; i++) make(ins, 'in', i);
+  for (let i = 0; i < nIn; i++) make(ins, 'in', i);
   for (const [id, area] of [['st-fuel', 'fuel'], ['st-out', 'out']]) {
     $(id).innerHTML = '';
     if (!K.storage && !K.holder && (area === 'out' || !(K.powered || K.crafter))) make($(id), area, 0);
@@ -1202,10 +1249,13 @@ function openStation(x, y, z, cart = null) {
     const tools = (r.tools ?? []).map((id) => `<span class="ing tool" title="${itemName(id)} (not used up)"><img src="${icons[id]}" alt="">kept</span>`).join('');
     return `<div class="recipe">${ing}${tools}<span class="arrow">→</span><img class="outimg" src="${icons[r.out[0]]}" alt="">` +
       `<span class="name">${r.out[1] > 1 ? r.out[1] + ' × ' : ''}${itemName(r.out[0])}</span></div>`;
-  }).join('') + (kind === 'charger' ? '<p class="hint">Put in a battery, or anything that runs on one (a portable lamp, jackhammer, jetpack, drill, hover boots, goggles or magnet ring): ' +
+  }).join('') + (kind === 'charger' ? '<p class="hint">Put in a battery, or anything that runs on one (a portable lamp, jackhammer, jetpack, drill, chainsaw, hover boots, goggles or magnet ring): ' +
     'it charges while it has electricity. Join it to a generator with electrum wire, or set it right beside one.</p>'
+    : kind === 'reactor' ? `<p class="hint">Put fuel rods in: each burns for ${ROD_LIFE / 60} minutes, making ${REACTOR_POWER} power, and heats the reactor. ` +
+    'Water touching it (each face counts) cools it. If it gets too hot it melts down, so keep plenty of water round it, take rods out, or give it a ' +
+    'signal (a lever, or a power meter set to signal a shortfall) to push its control rods in and stop it.</p>'
     : K.holder ? `<p class="hint">${kind === 'planter' ? 'Put saplings in (or feed them in with a hopper): it plants one on the grass or dirt in front of it whenever there\'s room.'
-    : 'Put empty buckets in for milking yaks, and wheat to feed the animals (their coats grow back faster). What it gets comes out of its back, into a chest, hopper or belt.'}</p>`
+    : 'Put empty buckets in for milking yaks, and wheat to feed the animals (their coats grow back faster). Wheat, seeds or berries also feed pairs of animals so they have young. What it gets comes out of its back, into a chest, hopper or belt.'}</p>`
     : kind === 'pcrafter' ? '<p class="hint">Hang item frames on it (up to four) showing what to make: it makes the first, and steps on ' +
     'to the next each time it gets a signal (a lever, button, item counter...). Fill it with hoppers or belts and empty it with a hopper underneath.</p>'
     : K.crafter ? '<p class="hint">Hang an item frame on it showing what to make. Whenever the ingredients are inside, ' +
@@ -1240,7 +1290,7 @@ function renderStation() {
   }
   const K = STATION_KINDS[st.kind];
   if (K.storage) {
-    $('st-status').textContent = `${st.inputs.filter(Boolean).length} of ${K.inputs} slots used`;
+    $('st-status').textContent = `${st.inputs.filter(Boolean).length} of ${st.inputs.length} slots used`;
     return;
   }
   const r = stations.recipeFor(st, `${openStationAt.x},${openStationAt.y},${openStationAt.z}`);
@@ -1250,6 +1300,12 @@ function renderStation() {
     $('st-progress').style.width = s && chargeCap(s.id) ? `${chargeLeft(s) / chargeCap(s.id) * 100}%` : '0%';
     $('st-status').textContent = !s ? `Put a battery in. ${electric.statusAt(x, y, z)}` : !s.wear ? `${itemName(s.id)}: fully charged` :
       `${itemName(s.id)}: ${Math.floor(chargeLeft(s) / chargeCap(s.id) * 100)}% charged. ${electric.statusAt(x, y, z)}`;
+    return;
+  }
+  if (st.kind === 'reactor') {
+    const { x, y, z } = openStationAt, heat = (electric.heat.get(`${x},${y},${z}`) ?? 0) / MELTDOWN;
+    $('st-progress').style.width = `${Math.min(100, heat * 100)}%`;
+    $('st-status').textContent = electric.statusAt(x, y, z);
     return;
   }
   if (K.holder) {
@@ -1287,12 +1343,12 @@ function chestMove(intoChest) {
     if (!s) return;
     for (let j = 0; j < slots.length && s.count; j++) {
       const t = slots[j];
-      if (t && t.id === s.id && t.count < maxStack(s.id)) { const k = Math.min(s.count, maxStack(s.id) - t.count); t.count += k; s.count -= k; }
+      if (t && t.id === s.id && !t.pack && !s.pack && t.count < maxStack(s.id)) { const k = Math.min(s.count, maxStack(s.id) - t.count); t.count += k; s.count -= k; }
     }
     for (let j = 0; j < slots.length && s.count; j++) if (!slots[j]) { slots[j] = { ...s }; s.count = 0; }
     if (!s.count) from[i] = null;
   };
-  if (intoChest) for (let i = 9; i < SLOTS; i++) put(st.inputs, inventory.slots, i);
+  if (intoChest) for (let i = 9; i < SLOTS; i++) { if (!(openStationAt.cart?.backpack && isBackpack(inventory.slots[i]?.id))) put(st.inputs, inventory.slots, i); }
   else {
     for (let i = 0; i < st.inputs.length; i++) {
       const s = st.inputs[i];
@@ -1333,10 +1389,11 @@ function onStationSlot(area, i) {
   const a = from.get(), b = to.get();
   if (!a || area === 'out') { renderStation(); return; } // nothing can be put into the result slot
   const K = STATION_KINDS[st.kind];
+  if (area === 'in' && openStationAt.cart?.backpack && isBackpack(a.id)) { toast('A backpack won\'t go inside a backpack'); renderStation(); return; }
   if (area === 'in' && K?.accepts && !K.accepts.includes(a.id)) { toast(`The ${K.name.toLowerCase()} won't take ${itemName(a.id).toLowerCase()}`); renderStation(); return; }
   if (area === 'fuel' && !isFuel(a.id)) { toast(`${itemName(a.id)} won't burn`); renderStation(); return; }
   if (fromArea === 'fuel' && b && !isFuel(b.id)) { renderStation(); return; }
-  if (b && b.id === a.id) {
+  if (b && b.id === a.id && !a.pack && !b.pack) {
     const k = Math.min(a.count, maxStack(a.id) - b.count);
     b.count += k; a.count -= k;
     if (!a.count) from.set(null);
@@ -1706,6 +1763,212 @@ function tickHum(dt) {
     else if (n.role === 'use' && n.want && electric.nets[n.net]?.share > 0) elec += 1;
   }
   sound.hum(paused || dead ? 0 : Math.min(1, mech / 8), paused || dead ? 0 : Math.min(1, elec / 6));
+}
+
+// A wireless charger tops up what you carry (things in your inventory first, then what you're wearing) while
+// you're within WIRELESS_REACH of it. Returns whether anything needed charge; with amount 0 it only looks.
+function wirelessCharge(n, amount) {
+  if (dead || Math.hypot(player.pos.x - n.x - 0.5, player.pos.y + 0.9 - n.y - 0.5, player.pos.z - n.z - 0.5) > WIRELESS_REACH) return false;
+  for (const s of inventory.slots) {
+    if (!s || !chargeCap(s.id) || !(s.wear > 0)) continue;
+    if (amount > 0) { s.wear = Math.max(0, s.wear - amount); if (s.wear <= 1e-9) { delete s.wear; inventory.onChange(); } else if ((chargeShown -= 1 / 60) <= 0) { chargeShown = 1; inventory.onChange(); } }
+    return true;
+  }
+  for (let i = 0; i < armour.length; i++) {
+    if (!armour[i] || !chargeCap(armour[i]) || !(armourWear[i] > 0)) continue;
+    if (amount > 0) armourWear[i] = Math.max(0, armourWear[i] - amount);
+    return true;
+  }
+  return false;
+}
+
+// Lifts: stand on one and jump to ride up to the next lift above in the same column (or sneak to go down to
+// the next one below), while it has power. You pass up or down through anything between.
+const LIFT_SPEED = 9;
+let lift = null; // { from: "x,y,z", x, z, toY }
+let liftWarned = '';
+function tickLift(dt) {
+  if (lift) {
+    const goal = lift.toY + 1, dy = goal - player.pos.y, step = LIFT_SPEED * dt;
+    player.pos.x += (lift.x + 0.5 - player.pos.x) * Math.min(1, dt * 8);
+    player.pos.z += (lift.z + 0.5 - player.pos.z) * Math.min(1, dt * 8);
+    player.vel.set(0, 0, 0);
+    fallTop = null;
+    if (Math.abs(dy) <= step) { player.pos.y = goal; player.onGround = true; lift = null; sound.ding(); electric.timer = 0; }
+    else player.pos.y += Math.sign(dy) * step;
+    return true;
+  }
+  const dir = controls.jump ? 1 : controls.down ? -1 : 0;
+  if (!dir) { liftWarned = ''; return false; }
+  if (!player.onGround || riding || ridingMob || player.flying) return false;
+  const x = Math.floor(player.pos.x), y = Math.floor(player.pos.y - 0.05), z = Math.floor(player.pos.z), k = `${x},${y},${z}`;
+  if (!BLOCKS[world.get(x, y, z)]?.lift) return false;
+  const warn = (msg) => { if (liftWarned !== k + dir) { liftWarned = k + dir; toast(msg, 2200); } };
+  let to = null;
+  for (let ty = y + dir; Math.abs(ty - y) <= LIFT_REACH && ty >= 0 && ty < H - 2; ty += dir) {
+    if (BLOCKS[world.get(x, ty, z)]?.lift && !world.isSolid(x, ty + 1, z) && !world.isSolid(x, ty + 2, z)) { to = ty; break; }
+  }
+  if (to === null) { warn(dir > 0 ? 'There\'s no lift above this one to go up to' : 'There\'s no lift below this one to go down to'); return dir < 0; }
+  if (!(electric.speedAt(x, y, z) > 0)) { warn(`The lift has no power. ${electric.statusAt(x, y, z)}`); return dir < 0; }
+  lift = { from: k, x, z, toY: to };
+  electric.timer = 0;
+  sound.click();
+  return true;
+}
+
+// The grappling hook: tap to throw it at what you're looking at (up to GRAPPLE_REACH away); it catches on the
+// first solid block and pulls you there, and you hang on it. Jump to climb up off it (onto a ledge), sneak
+// (or tap again) to let go.
+const GRAPPLE_REACH = 24, GRAPPLE_SPEED = 15;
+let grapple = null; // { x, y, z, t, stuck, hang, line }
+function throwGrapple() {
+  const eye = player.eye, d = player.lookDir();
+  let hit = null;
+  for (let t = 0.6; t <= GRAPPLE_REACH; t += 0.1) {
+    const x = eye.x + d.x * t, y = eye.y + d.y * t, z = eye.z + d.z * t;
+    if (world.isSolid(Math.floor(x), Math.floor(y), Math.floor(z))) { hit = { x: eye.x + d.x * (t - 0.3), y: eye.y + d.y * (t - 0.3), z: eye.z + d.z * (t - 0.3), cell: [Math.floor(x), Math.floor(y), Math.floor(z)] }; break; }
+  }
+  if (!hit) { toast('The hook found nothing to catch on', 1200); sound.click(); return; }
+  releaseGrapple();
+  const geo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]);
+  const line = new THREE.Line(geo, new THREE.LineBasicMaterial({ color: 0xd8c8a0 }));
+  line.frustumCulled = false;
+  scene.add(line);
+  grapple = { ...hit, t: 0, stuck: 0, line };
+  sound.bow?.(0.6);
+  wearOutHeld(1);
+}
+function releaseGrapple() {
+  if (!grapple) return;
+  scene.remove(grapple.line); grapple.line.geometry.dispose(); grapple.line.material.dispose();
+  grapple = null;
+}
+function tickGrapple(dt) {
+  if (!grapple) return false;
+  const g = grapple;
+  g.t += dt;
+  const to = new THREE.Vector3(g.x - player.pos.x, g.y - (player.pos.y + 0.9), g.z - player.pos.z), dist = to.length();
+  if (g.vault) {
+    // climbing up onto the ledge: up first, then across onto it
+    const v = g.vault;
+    v.t = Math.min(1, v.t + dt / 0.45);
+    const up = Math.min(1, v.t * 2), across = Math.max(0, v.t * 2 - 1);
+    player.pos.set(v.from.x + (v.to.x - v.from.x) * across, v.from.y + (v.to.y - v.from.y) * up, v.from.z + (v.to.z - v.from.z) * across);
+    player.vel.set(0, 0, 0);
+    fallTop = null;
+    if (v.t >= 1) { player.onGround = true; releaseGrapple(); }
+    return true;
+  }
+  if (controls.down || riding || ridingMob || dead || (!g.hang && g.t > 3)) { releaseGrapple(); return false; }
+  if (g.hang && controls.jump && g.t > 0.3) {
+    // climb up off the rope: onto the top of the block it's caught on if there's room there, or a hop
+    const [cx, cy, cz] = g.cell;
+    let ty = cy;
+    while (ty < cy + 3 && world.isSolid(cx, ty, cz)) ty++;
+    if (!world.isSolid(cx, ty, cz) && !world.isSolid(cx, ty + 1, cz) && ty - player.pos.y <= 3.2) {
+      g.vault = { from: player.pos.clone(), to: new THREE.Vector3(cx + 0.5, ty, cz + 0.5), t: 0 };
+      return true;
+    }
+    player.vel.y = 7.5;
+    releaseGrapple();
+    return false;
+  }
+  if (dist < 1.2 || g.stuck > 0.2) g.hang = true;
+  if (g.hang) player.vel.set(0, 0, 0);
+  else {
+    const moved = player.pulled(dt, to.multiplyScalar(GRAPPLE_SPEED / dist));
+    g.stuck = moved < GRAPPLE_SPEED * dt * 0.2 ? g.stuck + dt : 0;
+  }
+  fallTop = null;
+  const pos = g.line.geometry.attributes.position;
+  pos.setXYZ(0, player.pos.x, player.pos.y + 1.1, player.pos.z); pos.setXYZ(1, g.x, g.y, g.z); pos.needsUpdate = true;
+  return true;
+}
+
+// A reactor that got too hot: it blows up (a much bigger blast than a blasting charge) and leaves its molten
+// core behind as lava.
+function meltdown(x, y, z) {
+  stations.map.delete(`${x},${y},${z}`);
+  if (openStationAt && openStationAt.x === x && openStationAt.y === y && openStationAt.z === z && !openStationAt.cart) closeStation();
+  explode(x, y, z, 5.5, 'You were too close to a reactor when it melted down.');
+  world.setBlock(x, y, z, LAVA);
+  for (let i = 0; i < 8; i++) {
+    const lx = x + Math.round((Math.random() - 0.5) * 6), lz = z + Math.round((Math.random() - 0.5) * 6);
+    for (let ly = y + 1; ly > y - 6; ly--) if (world.get(lx, ly, lz) === AIR && world.isSolid(lx, ly - 1, lz)) { world.setBlock(lx, ly, lz, LAVA); break; }
+  }
+  if (Math.hypot(x - player.pos.x, z - player.pos.z) < 80) toast('A reactor has melted down!', 4000);
+}
+
+// The spanner: tap a machine to turn it round (the next way it can face, or its axle onto the next axis);
+// hold on one to take it up with whatever's inside it.
+const SPANNER_TIME = 0.4;
+const spannerable = (d) => !!d && !d.spawner && !d.rail && !d.liquid && !(d.switch && !d.sensor && !d.logic) &&
+  !!(d.station || d.machine || d.kinetic || d.hopper || d.belt || d.farm || d.electric || d.sensor || d.ejector || d.quarry || d.counter || d.engine || d.tank || d.logic || d.elevator || d.harvester || d.pad);
+function spannerTurn(x, y, z) {
+  const id = world.get(x, y, z), d = BLOCKS[id];
+  if (!spannerable(d)) return false;
+  const root = d.variantOf || id;
+  let next = 0;
+  for (let i = root; i < root + 48 && !next; i++) {
+    const e = BLOCKS[i];
+    if (!e || (i !== root && e.variantOf !== root) || e.name !== d.name) continue;
+    if (e.facing === (d.facing + 1) % 4 && e.on === d.on && e.lit === d.lit && e.down === d.down && e.open === d.open && e.water === d.water) next = i;
+  }
+  if (!next && d.kinetic && d.kinetic.axis >= 0) {
+    for (let a = 1; a < 3 && !next; a++) {
+      const k = kineticId(d.kinetic.part, d.kinetic.mat, (d.kinetic.axis + a) % 3);
+      if (BLOCKS[k]?.kinetic && k !== id) next = k;
+    }
+  }
+  if (!next) { toast(`The ${d.name.toLowerCase()} only goes one way round`, 1500); return true; }
+  world.setBlock(x, y, z, next);
+  logic.near(world, x, y, z);
+  signalChanged(x, y, z);
+  sound.place('stone');
+  return true;
+}
+let spannerPack = -1; // while a machine is being taken up with the spanner: the pack its contents went in (0: none)
+function spannerTake(x, y, z) {
+  const id = world.get(x, y, z), k = `${x},${y},${z}`, kind = stationKind(id);
+  let content = null;
+  const st = kind && stations.map.get(k);
+  if (st && [...st.inputs, st.fuel, st.out].some(Boolean)) {
+    content = { kind, inputs: st.inputs.map((s) => (s ? { ...s } : null)), fuel: st.fuel && { ...st.fuel }, out: st.out && { ...st.out } };
+    st.inputs.fill(null); st.fuel = null; st.out = null;
+  }
+  const charge = electric.store.get(k);
+  if (charge > 0) { (content ??= {}).charge = charge; electric.store.delete(k); }
+  if (openStationAt && !openStationAt.cart && openStationAt.x === x && openStationAt.y === y && openStationAt.z === z) closeStation();
+  spannerPack = content ? newPack(content) : 0;
+  try { breakBlock(x, y, z); } finally { spannerPack = -1; }
+}
+// Put back what was inside a machine taken up with the spanner, now it's been set down at (x, y, z).
+function unpack(x, y, z, pid) {
+  const c = packs.get(pid);
+  packs.delete(pid);
+  if (!c) return;
+  const spill = [];
+  if (c.kind) {
+    const kind = stationKind(world.get(x, y, z));
+    if (kind) {
+      const st = stations.get(x, y, z, kind);
+      c.inputs.forEach((s, i) => { if (!s) return; if (i < st.inputs.length && !st.inputs[i]) st.inputs[i] = s; else spill.push(s); });
+      if (c.fuel) { if (!st.fuel) st.fuel = c.fuel; else spill.push(c.fuel); }
+      if (c.out) { if (!st.out) st.out = c.out; else spill.push(c.out); }
+    } else spill.push(...c.inputs.filter(Boolean), c.fuel, c.out);
+  }
+  if (c.charge > 0) electric.store.set(`${x},${y},${z}`, c.charge);
+  loose.spill(spill.filter(Boolean), x, y, z);
+}
+
+// Open a backpack in hand: like a chest you carry about.
+function openBackpack(s) {
+  const size = ITEMS[s.id].backpack;
+  if (!(s.pack > 0) || !packs.get(s.pack)?.slots) s.pack = newPack({ slots: new Array(size).fill(null) });
+  const c = packs.get(s.pack);
+  while (c.slots.length < size) c.slots.push(null);
+  sound.click();
+  openStation(0, 0, 0, { store: { kind: 'chest', inputs: c.slots }, title: itemName(s.id), backpack: s });
 }
 
 function switchHandLamp(s) {
@@ -2149,6 +2412,7 @@ machines.farmHooks = { treeAbove: (x, y, z) => treeAbove(x, y, z), catchAt: (pos
 mobs.onWorldKill = (m, drops) => {
   for (const [id, n] of drops) loose.spawn({ id, count: n }, { x: m.pos.x, y: m.pos.y + 0.3, z: m.pos.z }, { x: (Math.random() - 0.5) * 2, y: 3, z: (Math.random() - 0.5) * 2 }, 0);
 };
+mobs.onBred = (baby) => { if (Math.hypot(baby.pos.x - player.pos.x, baby.pos.z - player.pos.z) < 24) toast(`A young ${baby.kind} is born!`, 2200); };
 machines.onBlockChanged = (x, y, z) => { logic.near(world, x, y, z); dropUnsupported(x, y, z); };
 machines.signalAt = signalAt;
 
@@ -2292,7 +2556,7 @@ function placeRail(x, y, z, powered) {
   cands.sort((a, b) => a.pri - b.pri);
   let pick = cands.slice(0, 2);
   const straight = (a, b) => (a + 2) % 4 === b;
-  if (pick.length === 2 && powered && !straight(pick[0].d, pick[1].d)) pick = pick.slice(0, 1); // powered rails don't bend
+  if (pick.length === 2 && powered && !straight(pick[0].d, pick[1].d)) pick = pick.slice(0, 1); // powered (and electric) rails don't bend
   const up = pick.find((c) => c.dy === 1);
   if (up) pick = [up, ...pick.filter((c) => c !== up && straight(c.d, up.d))]; // a slope runs straight
   let ends;
@@ -2310,7 +2574,7 @@ function placeRail(x, y, z, powered) {
     if (straight(nends[0], nends[1]) || !nr.powered) {
       const slope = dy === -1 && straight(nends[0], nends[1]) && !nr.powered ? back : -1; // a lower rail slopes up to meet this one
       if (dy === -1 && slope < 0) continue;
-      world.setBlock(nx, ny, nz, railId(nends, slope, nr.powered));
+      world.setBlock(nx, ny, nz, railId(nends, slope, nr.electric ? 'electric' : nr.powered));
     }
   }
 }
@@ -2398,7 +2662,18 @@ $('sign-text').addEventListener('input', (e) => {
   }
 });
 
+// Placing a machine taken up with the spanner puts back what was inside it.
 function place() {
+  const before = inventory.held();
+  const pk = before?.pack > 0 && isBlock(before.id) ? before.pack : 0;
+  const at = target && { x: target.x + target.nx, y: target.y + target.ny, z: target.z + target.nz };
+  placeInner();
+  if (!pk || (inventory.slots[inventory.selected] === before && before.count > 0)) return;
+  const there = at && world.get(at.x, at.y, at.z);
+  if (there && ((BLOCKS[there].variantOf || there) === before.id || BLOCKS[there].drop === before.id)) unpack(at.x, at.y, at.z, pk);
+  else if (at) unpack(at.x, at.y, at.z, pk); // (spills what was inside)
+}
+function placeInner() {
   if (paused) return;
   const held = inventory.held();
   if (isRod(held?.id)) { useRod(held.id); return; }
@@ -2418,6 +2693,10 @@ function place() {
   }
   if (held?.id === COPY_WAND) { useWand(); return; }
   if (held?.id === DRIVE_BELT) { useDriveBelt(); return; }
+  if (held && isBackpack(held.id)) { openBackpack(held); return; }
+  if (held?.id === BOOK) { openGuide(); return; }
+  if (held?.id === GRAPPLE) { if (grapple) releaseGrapple(); else throwGrapple(); return; }
+  if (held?.id === SPANNER && target && spannerTurn(target.x, target.y, target.z)) return;
   // tap a belt or hopper with an item (not a block, or a tool) to put it in: one on a belt, the lot into a hopper
   if (target && held && !isBlock(held.id) && !ITEMS[held.id]?.tool && (BLOCKS[target.id].belt || BLOCKS[target.id].hopper || BLOCKS[target.id].elevator)) {
     const n = machines.insert(world, stations, target.x, target.y, target.z, held, BLOCKS[target.id].belt ? 1 : held.count, false);
@@ -2686,11 +2965,11 @@ function place() {
     sound.place('stone');
     inventory.consumeHeld();
     return;
-  } else if (id === RAIL || id === POWERED_RAIL || id === LOADER_RAIL) {
+  } else if (id === RAIL || id === POWERED_RAIL || id === LOADER_RAIL || id === ELECTRIC_RAIL) {
     // rails lie on top of a block, and bend to join the rails next to them (loader rails just run straight)
     if (there !== AIR || target.ny !== 1 || !BLOCKS[target.id].solid) { toast('Rails go on top of a block'); return; }
     if (id === LOADER_RAIL) world.setBlock(x, y, z, LOADER_RAIL + (facingTowardPlayer(x, z) % 2));
-    else placeRail(x, y, z, id === POWERED_RAIL);
+    else placeRail(x, y, z, id === ELECTRIC_RAIL ? 'electric' : id === POWERED_RAIL);
     sound.place('stone');
     inventory.consumeHeld();
     return;
@@ -2854,12 +3133,12 @@ function removeFuse(k, f) {
 }
 const blastable = (def) => def && !def.blastproof && !def.liquid && !def.station && !def.kinetic && def.hardness !== Infinity &&
   (def.shape === 'cube' || def.shape === 'cross' || def.shape === 'torch' || def.climb || def.sign || def.slab || def.stair || def.shape === 'fence' || def.shape === 'pane' || def.shape === 'wall');
-function explode(x, y, z) {
+function explode(x, y, z, R = BLAST_RADIUS, cause = 'You stood too close to a blasting charge.') {
   world.setBlock(x, y, z, AIR);
-  const R = BLAST_RADIUS, gathered = new Map();
-  const near = (x + 0.5 - player.pos.x) ** 2 + (y + 0.5 - player.pos.y) ** 2 + (z + 0.5 - player.pos.z) ** 2 < 24 * 24;
+  const gathered = new Map(), span = Math.ceil(R);
+  const near = R <= BLAST_RADIUS && (x + 0.5 - player.pos.x) ** 2 + (y + 0.5 - player.pos.y) ** 2 + (z + 0.5 - player.pos.z) ** 2 < 24 * 24; // (a meltdown just destroys)
   const cleared = [];
-  for (let dy = -3; dy <= 3; dy++) for (let dz = -3; dz <= 3; dz++) for (let dx = -3; dx <= 3; dx++) {
+  for (let dy = -span; dy <= span; dy++) for (let dz = -span; dz <= span; dz++) for (let dx = -span; dx <= span; dx++) {
     if (dx * dx + dy * dy + dz * dz > R * R) continue;
     const bx = x + dx, by = y + dy, bz = z + dz;
     const id = world.get(bx, by, bz);
@@ -2882,16 +3161,17 @@ function explode(x, y, z) {
   const dist = Math.hypot(x + 0.5 - player.pos.x, y + 0.5 - (player.pos.y + 0.9), z + 0.5 - player.pos.z);
   sound.boom(Math.max(0.15, 1 - dist / 40));
   flashBlast(x + 0.5, y + 0.5, z + 0.5);
-  if (dist < 5.5 && !dead) {
+  const reach = R + 2.9;
+  if (dist < reach && !dead) {
     const len = dist || 1;
     player.kx = ((player.pos.x - x - 0.5) / len) * 10; player.kz = ((player.pos.z - z - 0.5) / len) * 10;
     player.vel.y = 6;
-    damage(armoured(Math.round((5.5 - dist) * 3)), 'You stood too close to a blasting charge.');
+    damage(armoured(Math.round((reach - dist) * 3)), cause);
   }
   for (const m of mobs.mobs) {
     const d = Math.hypot(m.pos.x - x - 0.5, m.pos.y - y, m.pos.z - z - 0.5);
-    if (d > 5.5) continue;
-    if (m.spec.hostile) giveDrops(mobs.hurt(m, Math.round((5.5 - d) * 6), { x: x + 0.5, y, z: z + 0.5 }));
+    if (d > reach) continue;
+    if (m.spec.hostile) giveDrops(mobs.hurt(m, Math.round((reach - d) * 6), { x: x + 0.5, y, z: z + 0.5 }));
     else mobs.bump(m, { x: x + 0.5, y, z: z + 0.5 });
   }
 }
@@ -2958,6 +3238,12 @@ function updateBreaking(dt) {
   }
   const key = `${target.x},${target.y},${target.z}`;
   if (key !== breakState.key) { breakState.key = key; breakState.progress = 0; }
+  if (inventory.heldId() === SPANNER && spannerable(BLOCKS[target.id])) {
+    // holding the spanner on a machine takes it up, with what's inside it
+    breakState.progress += dt / SPANNER_TIME;
+    if (breakState.progress >= 1) { spannerTake(target.x, target.y, target.z); breakState.key = ''; breakState.progress = 0; crack.visible = false; target = null; }
+    return;
+  }
   const held = toolHeld();
   const t = breakTime(target.id, held);
   if (!isFinite(t)) { crack.visible = false; return; }
@@ -3003,6 +3289,7 @@ function breakBlock(x, y, z) {
   sound.breakBlock(def.sound);
   const tool = toolHeld();
   let drops = dropsFor(id, tool);
+  if (spannerPack >= 0) drops = [[typeof def.drop === 'number' && def.drop ? def.drop : def.variantOf || id, 1]]; // taken up with a spanner
   if (id === LOOT_CHEST) drops.push(...rollLoot());
   if (tool === ELECTRIC_DRILL && def.hardness > 0) drawCharge(inventory.held(), CHARGE_USE.drill);
   if (tool === JACKHAMMER && def.hardness > 0) {
@@ -3039,7 +3326,13 @@ function breakBlock(x, y, z) {
     if (n) drops.push([SCAFFOLD, n]);
   }
   // cutting a tree's trunk with an axe brings down the whole tree above it
-  const felled = id === LOG && ITEMS[inventory.heldId()]?.tool?.type === 'axe' ? treeAbove(x, y, z) : [];
+  const felled = id === LOG && ITEMS[tool]?.tool?.type === 'axe' ? treeAbove(x, y, z) : [];
+  if (tool === CHAINSAW && def.hardness > 0) {
+    // the chainsaw uses charge for each log it cuts, and leaves sawdust besides
+    drawCharge(inventory.held(), CHARGE_USE.chainsaw * (1 + felled.length));
+    if (id === LOG) drops.push([SAWDUST, 1 + felled.length]);
+    sound.saw();
+  }
   world.setBlock(x, y, z, id === ICE ? WATER : AIR); // ice melts into water
   if (def.switch) signalChanged(x, y, z);
   if (def.logic) logic.removed(x, y, z);
@@ -3058,7 +3351,8 @@ function breakBlock(x, y, z) {
     // creative: blocks you break aren't collected (the palette has them all)
   } else if (drops.length) {
     let lost = 0;
-    for (const [d, n] of drops) lost += inventory.add(d, n);
+    for (const [d, n] of drops) lost += spannerPack > 0 && d === drops[0][0] && n === 1 ? inventory.addItem({ id: d, count: 1, pack: spannerPack }) : inventory.add(d, n);
+    if (lost && spannerPack > 0) { loose.spill([{ id: drops[0][0], count: 1, pack: spannerPack }], x, y, z); lost--; }
     if (lost) toast('Inventory full');
   } else if (def.needsTool) {
     const kind = def.tool === 'pick' ? 'pickaxe' : def.tool;
@@ -3746,6 +4040,7 @@ function stepGame(now, dt) {
       { day: lightUniforms.uDay.value, flicker: lightUniforms.uFlicker.value, ambient: lightUniforms.uAmbient.value });
     if (riding) followCart();
     else if (ridingMob) followMount();
+    else if (tickGrapple(dt) || tickLift(dt)) { /* carried by the hook or a lift */ }
     else player.update(dt, { moveX: controls.moveX, moveZ: controls.moveZ, jump: controls.jump, down: controls.down });
     if (player.pos.y < -20) respawn();
     playMovementSounds(dt, wasGround, wasWater, fallSpeed);
