@@ -445,6 +445,9 @@ const SPECIES = {
       }
       parts.collar = b.box(root, [0.44, 0.08, 0.1], 0xc82828, [0, 0.66, 0.38]);
       parts.collar.visible = false;
+      const stick = b.box(head, [0.5, 0.06, 0.06], 0x8a6a3a, [0, -0.08, 0.36]); // a fetched stick, held crosswise
+      stick.visible = false;
+      parts.carry = (on) => { stick.visible = on; };
       for (const [x, z] of [[-0.13, 0.28], [0.13, 0.28], [-0.13, -0.3], [0.13, -0.3]]) {
         const leg = b.pivot(root, [x, 0.38, z]);
         b.box(leg, [0.11, 0.38, 0.11], fur, [0, -0.19, 0]);
@@ -515,6 +518,42 @@ const SPECIES = {
       b.box(tail, [0.06, 0.06, 0.4], fur, [0, 0.08, -0.18]);
       parts.tail.rotation.x = 0.6;
       parts.tame = (on) => { parts.collar.visible = on; };
+      return parts;
+    },
+  },
+
+  // deer: shy forest animals that bolt when you come near, unless you creep up on them (hold sneak)
+  deer: {
+    w: 0.7, h: 1.5, speed: 1.2, fleeSpeed: 6.5, sink: 1.0, stride: 8, legSwing: 0.55,
+    group: [2, 4], cap: 6, avoidWater: true, grazes: true, shy: 9,
+    coats: [0x9a6a3a, 0x8a5c30, 0xa8784a],
+    build(b, root, opts = {}) {
+      const coat = opts.coat ?? pick(this.coats), pale = 0xe8dcc8, dark = new THREE.Color(coat).multiplyScalar(0.7).getHex();
+      const parts = { legs: [], coat };
+      b.box(root, [0.42, 0.42, 0.95], coat, [0, 0.95, 0]);
+      b.box(root, [0.3, 0.16, 0.5], pale, [0, 0.76, 0.02]); // pale belly
+      for (const [x, z] of [[-0.12, 0.3], [0.12, -0.05], [-0.1, -0.25], [0.1, 0.2]]) b.box(root, [0.06, 0.02, 0.06], pale, [x * 1.6, 1.165, z]); // dapples
+      b.box(root, [0.2, 0.5, 0.2], coat, [0, 1.25, 0.46]); // neck
+      const head = parts.head = b.pivot(root, [0, 1.5, 0.52]);
+      b.box(head, [0.24, 0.24, 0.36], coat, [0, 0.02, 0.1]);
+      b.box(head, [0.14, 0.12, 0.12], dark, [0, -0.04, 0.3]); // muzzle
+      b.box(head, [0.06, 0.04, 0.03], 0x111111, [0, 0, 0.365]);
+      for (const sx of [-1, 1]) {
+        b.box(head, [0.14, 0.08, 0.04], coat, [sx * 0.17, 0.1, 0.02]); // ears
+        b.box(head, [0.03, 0.04, 0.03], 0x111111, [sx * 0.12, 0.06, 0.2]);
+        // antlers
+        b.box(head, [0.04, 0.3, 0.04], 0xc8b48a, [sx * 0.08, 0.3, 0.02]);
+        b.box(head, [0.16, 0.04, 0.04], 0xc8b48a, [sx * 0.14, 0.38, 0.02]);
+        b.box(head, [0.04, 0.14, 0.04], 0xc8b48a, [sx * 0.2, 0.46, 0.02]);
+      }
+      for (const [x, z] of [[-0.13, 0.36], [0.13, 0.36], [-0.13, -0.36], [0.13, -0.36]]) {
+        const leg = b.pivot(root, [x, 0.75, z]);
+        b.box(leg, [0.09, 0.75, 0.09], coat, [0, -0.37, 0]);
+        b.box(leg, [0.1, 0.06, 0.1], 0x2a1e14, [0, -0.72, 0]);
+        parts.legs.push(leg);
+      }
+      const tail = parts.tail = b.pivot(root, [0, 1.08, -0.48]);
+      b.box(tail, [0.12, 0.16, 0.06], pale, [0, -0.04, -0.02]);
       return parts;
     },
   },
@@ -669,7 +708,7 @@ const SPECIES = {
 // Breeding: what each animal can be fed to look for a mate. Two of a kind that have both been fed find each
 // other and have a young one, which grows up over GROW_TIME; then they need BREED_REST before they'll breed
 // again. They won't when there are already CROWD of their kind close by.
-const BREED_FOOD = { duck: [SEEDS], buffalo: [WHEAT], alpaca: [WHEAT], yak: [WHEAT], camel: [WHEAT], newt: [BERRIES], chicken: [SEEDS], pig: [BERRIES, WHEAT] };
+const BREED_FOOD = { duck: [SEEDS], buffalo: [WHEAT], alpaca: [WHEAT], yak: [WHEAT], camel: [WHEAT], newt: [BERRIES], chicken: [SEEDS], pig: [BERRIES, WHEAT], deer: [BERRIES] };
 for (const [k, f] of Object.entries(BREED_FOOD)) SPECIES[k].breeds = f;
 SPECIES.wolf.breeds = SPECIES.wolf.tames;
 SPECIES.cat.breeds = SPECIES.cat.tames;
@@ -828,7 +867,7 @@ export class MobManager {
     if (this.nearWater(x, s.y, z)) return { kinds: ['duck', 'newt'], y };
     if (s.id !== GRASS) return null;
     if (s.y >= SEA_LEVEL + 12) return { kinds: ['alpaca', 'yak', 'yak'], y };
-    if (s.y >= SEA_LEVEL + 2) return { kinds: ['buffalo', 'buffalo', 'chicken', 'chicken', 'pig', 'cat'], y };
+    if (s.y >= SEA_LEVEL + 2) return { kinds: ['buffalo', 'buffalo', 'chicken', 'chicken', 'pig', 'cat', 'deer', 'deer'], y };
     return null;
   }
 
@@ -1083,6 +1122,11 @@ export class MobManager {
   think(m, dt, player) {
     const spec = m.spec;
     m.timer -= dt;
+    // a shy animal (a deer) bolts from you when you come near, unless you creep up holding sneak
+    if (spec.shy && !m.tame && !(m.love > 0) && m.state !== 'flee' && !this.sneaking && Math.hypot(m.pos.x - player.pos.x, m.pos.z - player.pos.z) < spec.shy) {
+      m.state = 'flee'; m.timer = rand(2.5, 4);
+      this.sound?.mob(m.kind, 0.6);
+    }
     // villagers wander back toward the well if they stray too far
     if (m.home && m.state === 'walk' && Math.hypot(m.pos.x - m.home.x, m.pos.z - m.home.z) > 16) m.heading = Math.atan2(m.home.x - m.pos.x, m.home.z - m.pos.z);
     if (m.state === 'flee') {
@@ -1108,6 +1152,8 @@ export class MobManager {
   thinkPet(m, dt, player) {
     m.attackCD = Math.max(0, (m.attackCD ?? 0) - dt);
     if (m.sitting) { m.state = 'idle'; return; }
+    // fetching: run to the stick, then back to you (main.js sets and clears the goal)
+    if (m.goal) { m.state = 'follow'; m.heading = Math.atan2(m.goal.x - m.pos.x, m.goal.z - m.pos.z); return; }
     const dp = Math.hypot(player.pos.x - m.pos.x, player.pos.z - m.pos.z);
     if (m.spec.fights) {
       let target = null, best = 12;

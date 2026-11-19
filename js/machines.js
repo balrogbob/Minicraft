@@ -886,7 +886,7 @@ export class Machines {
     const id = world.get(x, y, z), def = BLOCKS[id];
     if (!def) return false;
     if (def.stationBase === CAULDRON) return full ? def.water >= 3 : def.water > 0;
-    if (def.hive >= 0) return full ? def.hive >= MAX_HONEY : def.hive > 0;
+    if (def.hive >= 0) return full ? def.hive >= (def.apiary ? 5 : MAX_HONEY) : def.hive > 0;
     if (def.tank) { const t = this.tanks.get(key(x, y, z)); return full ? (t?.amount ?? 0) >= TANK_CAP : (t?.amount ?? 0) > 0; }
     if (def.engine) { const e = this.engines.get(key(x, y, z)); return full ? (e?.fuel?.count ?? 0) >= maxStack(e?.fuel?.id ?? 0) : !!e?.fuel; }
     if (def.rail?.loader) {

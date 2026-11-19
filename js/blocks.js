@@ -140,7 +140,7 @@ export const T = {
   LEAD_CHEST_SIDE: 267, LEAD_CHEST_TOP: 268, LEAD_CHEST_FRONT: 269, CENTRIFUGE_SIDE: 270, CENTRIFUGE_TOP: 271, TESLA: 272, TESLA_TOP: 273,
   FENCE_POST: 274, FENCE_WIRE: 275, FREEZER_SIDE: 276, FREEZER_FRONT: 277, ARC_SIDE: 278, ARC_FRONT: 279, PACKED_ICE: 280, INVAR: 281, RAIL_STOP: 282, BASALT: 283, BASALT_TOP: 284, METEORITE: 285,
   IRON_BARS: 286, POT: 287, IVY: 288, BOX_FLOWERS: 289,
-  FRUIT_LEAVES: 290, FRUIT_RIPE: 293, FRUIT_SAPLING: 296, HAY: 299, SACK: 300, BEACON: 301, // (fruit tiles: apple, cherry, orange)
+  FRUIT_LEAVES: 290, FRUIT_RIPE: 293, FRUIT_SAPLING: 296, HAY: 299, SACK: 300, BEACON: 301, APIARY_SIDE: 302, APIARY_FRONT: 303, APIARY_FULL: 304, APIARY_TOP: 305, // (fruit tiles: apple, cherry, orange)
 };
 
 // Ores, deepest-reaching last. tier: the pickaxe tier needed to mine it (see TOOL_TIERS);
@@ -249,7 +249,7 @@ function block(id, o) {
     lift: !!o.lift, reactor: !!o.reactor, // v23: lifts and reactors (see electric.js and main.js)
     postTex: o.postTex ?? null, armTex: o.armTex ?? null, // a fence's own post and rail tiles (an electric fence)
     shock: !!o.shock, tesla: !!o.tesla, zip: !!o.zip, // v24: electric fences, tesla coils, zipline posts (see main.js)
-    fruit: o.fruit ?? null, scarecrow: !!o.scarecrow, // v25: { kind, ripe } on a fruit tree's leaves; scarecrows keep crows off crops
+    fruit: o.fruit ?? null, scarecrow: !!o.scarecrow, apiary: !!o.apiary, // v25: { kind, ripe } on a fruit tree's leaves; scarecrows keep crows off crops
     farm: o.farm ?? null, // 'feller' | 'planter' | 'breaker' | 'placer' | 'ranch' | 'net' (see machines.js)
   };
 }
@@ -2326,4 +2326,29 @@ ITEMS[TREASURE_MAP] = { name: 'Treasure Map', stack: 1, about: 'tap to read: X m
 RECIPES.push(
   { out: [EXPLORER_MAP, 1], in: [[MAP, 1], [COMPASS, 1], [GOLD_INGOT, 1]], table: true },
   { out: [LIGHTHOUSE_LAMP, 1], in: [[LANTERN, 1], [GLASS, 4], [GOLD_INGOT, 2]], table: true, metal: GOLD_INGOT },
+);
+
+// ---------- v25 D: apiary, beeswax and candles ----------
+// An apiary is a bee box you build: it holds more honey than a wild hive, and gives up its comb and wax by hand.
+export const APIARY = 1332, // 1332..1337: + honey level 0..5 (5 is full)
+  CANDLE_BLOCK = 1338;
+export const MAX_APIARY = 5;
+export const BEESWAX = 1095;
+for (let k = 0; k <= MAX_APIARY; k++) {
+  block(APIARY + k, {
+    name: 'Apiary', sound: 'wood', top: T.APIARY_TOP, bottom: T.APIARY_TOP, side: T.APIARY_SIDE, front: k === MAX_APIARY ? T.APIARY_FULL : T.APIARY_FRONT,
+    hardness: 1, tool: 'axe', variantOf: k ? APIARY : 0, grows: k < MAX_APIARY ? 'honey' : null, hive: k, apiary: true,
+    drop: () => [[APIARY, 1], [HONEYCOMB, Math.floor(k / 2)]],
+  });
+}
+block(CANDLE_BLOCK, {
+  name: 'Beeswax Candle', sound: 'wood', transparent: true, solid: false, hardness: 0.2, light: 12,
+  model: [[6, 0, 6, 10, 7, 10, T.CANDLE], [7.5, 7, 7.5, 8.5, 9, 8.5, T.FLAME, true]],
+  boxes: [[6, 0, 6, 10, 9, 10]],
+});
+ITEMS[BEESWAX] = { name: 'Beeswax', about: 'from honeycomb or an apiary; makes candles' };
+RECIPES.push(
+  { out: [APIARY, 1], in: [[PLANKS, 8], [HONEYCOMB, 3], [GLASS, 1]], table: true },
+  { out: [BEESWAX, 1], in: [[HONEYCOMB, 1]] },
+  { out: [CANDLE_BLOCK, 3], in: [[BEESWAX, 2], [STRING, 1]] },
 );

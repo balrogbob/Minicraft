@@ -5,7 +5,7 @@ import {
   WOOD_PICK, STONE_PICK, WOOD_AXE, STONE_AXE, WOOD_SHOVEL, STONE_SHOVEL,
   BED, BED_FOOT, CHAIR, LAMP, CARPET, CURTAIN, DOOR, SLIME_FUEL, FACING_DIRS, MAX_LAMP_FUEL,
   isBed, isChair, isLamp, isCurtain, isDoor, doorId, IRON_BARS, FLOWER_POT, HANGING_PLANT, WINDOW_BOX, POT_PLANTS, potOf,
-  OVEN, SMELTER, stationKind, maxStack, FISHING_ROD, RAW_FISH, TOOL_TIERS, LOG, LEAVES, SAPLING, WHEAT_3, isLeaves, FRUITS, fruitLeaves, FRUIT_SAPLING, SCARECROW, COOK_POT, SNOW_LAYER, LIGHTHOUSE_LAMP, EXPLORER_MAP, TREASURE_MAP, STARSTEEL_INGOT, MAX_LIGHT,
+  OVEN, SMELTER, stationKind, maxStack, FISHING_ROD, RAW_FISH, TOOL_TIERS, LOG, LEAVES, SAPLING, WHEAT_3, isLeaves, FRUITS, fruitLeaves, FRUIT_SAPLING, SCARECROW, COOK_POT, SNOW_LAYER, LIGHTHOUSE_LAMP, EXPLORER_MAP, TREASURE_MAP, STARSTEEL_INGOT, MAX_LIGHT, APIARY, MAX_APIARY, BEESWAX, CANDLE_BLOCK,
   BLAST_SMELTER, CRUSHER, WATER_BUCKET, WATER_WHEEL, isWaterId, isFlowing,
   CHEST, IRON_CHEST, LADDER, SCAFFOLD, SIGN, SIGN_POST, isSign, isSword, ARMOUR_PIECES,
   SAW, TRIP_HAMMER, DRILL, HOPPER, BELT, WINDMILL, BELLOWS, PUMP, FILAMENT_LAMP, MILLSTONE,
@@ -55,6 +55,7 @@ import { Vehicles } from './vehicles.js';
 import { MiniMap } from './minimap.js';
 import { Frames, isDisplay } from './frames.js';
 import { Crows } from './birds.js';
+import { Critters } from './critters.js';
 import { Weather } from './weather.js';
 import { Bees } from './bees.js';
 import { Paintings, paintingCells } from './paintings.js';
@@ -297,6 +298,7 @@ const loose = new ItemDrops(scene, (id) => machines.makeSprite(id)); // items ly
 const carts = new Carts(scene); // minecarts on rails
 const vehicles = new Vehicles(scene); // boats and balloons
 const crows = new Crows(scene); // after ripe wheat (see birds.js)
+const critters = new Critters(scene, sound); // owls, bats and fireflies
 let riding = null; // the minecart you're sitting in
 const minimap = new MiniMap($('map'), atlasCanvas);
 const frames = new Frames(scene, icons); // what's shown in each item frame
@@ -420,7 +422,7 @@ async function startWorld(save, opts = {}) {
     const drops = dropsFor(LEAVES, 0); // (fruit trees' leaves too: not their fruit, which you'd pick)
     if (drops.length) giveDrops(drops);
   };
-  mobs.reset(world); bees.clear(); crows.clear(); shownSeason = -1;
+  mobs.reset(world); bees.clear(); crows.clear(); critters.clear(); catGiftDay = -1; shownSeason = -1;
   kinetics.clear();
   kinetics.load(save?.kinetics);
   beltStart = null;
@@ -481,6 +483,7 @@ async function startWorld(save, opts = {}) {
   waypoints = Array.isArray(save?.waypoints) ? save.waypoints.filter((w) => w && [w.x, w.y, w.z].every(Number.isFinite)).map((w) => ({ x: w.x, y: w.y, z: w.z, name: String(w.name ?? 'Mark').slice(0, 16) })).slice(0, 12) : [];
   places = Array.isArray(save?.places) ? save.places.filter((p) => p && typeof p.kind === 'string' && [p.x, p.z].every(Number.isFinite)).slice(0, 400) : [];
   treasures = Array.isArray(save?.treasures) ? save.treasures.filter((t) => t && [t.x, t.z].every(Number.isFinite)) : [];
+  catGiftDay = Number.isInteger(save?.catGiftDay) ? save.catGiftDay : -1;
   beaconSpots = new Set(Array.isArray(save?.beacons) ? save.beacons.filter((k) => typeof k === 'string') : []);
   if (save?.weather) weather.set(!!save.weather.raining, Math.max(10, +save.weather.timer || 60));
   else weather.set(false);
@@ -579,7 +582,7 @@ function saveGame() {
     weather: { raining: weather.raining, timer: Math.round(weather.timer) },
     pets: mobs.pets(),
     waypoints,
-    places, treasures, beacons: [...beaconSpots],
+    places, treasures, beacons: [...beaconSpots], catGiftDay,
     time: sky.time,
     creative,
     flying: player.flying,
@@ -674,7 +677,8 @@ function throwHeld(all) {
   const dir = player.lookDir();
   const from = player.eye.clone().addScaledVector(dir, 0.4);
   from.y -= 0.35;
-  loose.spawn({ ...s, count: n }, from, { x: dir.x * 5.5 + player.vel.x * 0.5, y: dir.y * 5.5 + 2, z: dir.z * 5.5 + player.vel.z * 0.5 }, 1.5);
+  const it = loose.spawn({ ...s, count: n }, from, { x: dir.x * 5.5 + player.vel.x * 0.5, y: dir.y * 5.5 + 2, z: dir.z * 5.5 + player.vel.z * 0.5 }, 1.5);
+  if (it && s.id === STICK) it.thrown = true; // a tame wolf will fetch it
   takeFromHeld(n);
   sound.click?.() ?? sound.pop();
   return true;
@@ -3278,6 +3282,18 @@ function placeInner() {
     if (isDisplay(tid) && target.ny === 1 && (frames.get(tx, ty, tz) || (held && !isBlock(held.id)))) { useDisplay(tx, ty, tz, held); return; }
     if (isChair(tid) && !(held && isBlock(held.id))) { sitOn(tx, ty, tz); return; }
     if (potOf(tid) >= 0 && usePot(tx, ty, tz, tid, held)) return;
+    if (BLOCKS[tid].apiary && (held?.id === GLASS_BOTTLE || !held || !isBlock(held.id))) {
+      // an apiary: take the comb and wax by hand (and a bottle of honey too, if you hold a bottle)
+      const lv = BLOCKS[tid].hive;
+      if (lv >= MAX_APIARY) {
+        world.setBlock(tx, ty, tz, APIARY);
+        if (held?.id === GLASS_BOTTLE) { inventory.consumeHeld(); giveDrops([[HONEY_BOTTLE, 1], [HONEYCOMB, 2], [BEESWAX, 2]]); }
+        else giveDrops([[HONEYCOMB, 3], [BEESWAX, 2]]);
+        sound.pop();
+        toast('You take the frames of comb from the apiary', 1500);
+      } else toast(`The bees are filling the frames (${lv}/${MAX_APIARY})`, 2000);
+      return;
+    }
     if (BLOCKS[tid].hive >= 0 && (held?.id === GLASS_BOTTLE || !held || !isBlock(held.id))) {
       const lv = BLOCKS[tid].hive;
       if (held?.id === GLASS_BOTTLE && lv >= MAX_HONEY) {
@@ -4758,6 +4774,56 @@ function tickSnow(dt) {
   }
 }
 
+// ---------- v25 D: pets that fetch and bring presents ----------
+// Throw a stick (the drop key, or drag it out of your bag) and a tame wolf that isn't told to stay runs after it
+// and brings it back. A tame cat, now and then of a morning, leaves you a present.
+let catGiftDay = -1;
+const CAT_GIFTS = [[FEATHER, 1, 2], [STRING, 1, 2], [RAW_FISH, 1, 1], [SEEDS, 2, 4], [BERRIES, 1, 3], [OLD_BOOT, 1, 1]];
+function tickPets(dt) {
+  for (const m of mobs.mobs) {
+    if (m.kind !== 'wolf' || !m.tame) continue;
+    if (m.sitting || m.dying) { if (m.fetch) { m.fetch = null; m.goal = null; } continue; }
+    if (m.carrying) {
+      // bring it back and drop it at your feet
+      m.goal = player.pos;
+      if (Math.hypot(m.pos.x - player.pos.x, m.pos.z - player.pos.z) < 2) {
+        const dx = player.pos.x - m.pos.x, dz = player.pos.z - m.pos.z; // dropped (tossed) at your feet
+        loose.spawn(m.carrying, { x: m.pos.x, y: m.pos.y + 0.5, z: m.pos.z }, { x: dx * 2, y: 2.5, z: dz * 2 }, 0);
+        m.carrying = null; m.goal = null; m.parts.carry?.(false);
+        sound.mob('wolf', 0.7);
+      }
+      continue;
+    }
+    if (m.fetch) {
+      if (!loose.items.includes(m.fetch)) { m.fetch = null; m.goal = null; continue; } // someone picked it up
+      m.goal = m.fetch.pos;
+      if (m.fetch.ground && Math.hypot(m.pos.x - m.fetch.pos.x, m.pos.z - m.fetch.pos.z) < 1.1 && Math.abs(m.pos.y - m.fetch.pos.y) < 1.5) {
+        m.carrying = { ...m.fetch.stack };
+        loose.remove(m.fetch);
+        m.fetch = null; m.parts.carry?.(true);
+      }
+      continue;
+    }
+    // look for a stick you've thrown
+    const stick = loose.items.find((it) => it.thrown && !mobs.mobs.some((o) => o.fetch === it) && it.pos.distanceTo(m.pos) < 24);
+    if (stick) { m.fetch = stick; m.goal = stick.pos; sound.mob('wolf', 0.5); }
+  }
+  // a cat's morning present
+  const hours = (sky.time * 24 + 6) % 24;
+  if (catGiftDay !== day && hours > 6.2 && hours < 10) {
+    const cat = mobs.mobs.find((m) => m.kind === 'cat' && m.tame && !m.dying && Math.hypot(m.pos.x - player.pos.x, m.pos.z - player.pos.z) < 32);
+    if (cat) {
+      catGiftDay = day;
+      if (Math.random() < 0.6) {
+        const [id, a, b] = CAT_GIFTS[Math.floor(Math.random() * CAT_GIFTS.length)];
+        loose.spawn({ id, count: a + Math.floor(Math.random() * (b - a + 1)) }, { x: cat.pos.x, y: cat.pos.y + 0.4, z: cat.pos.z }, { x: 0, y: 2, z: 0 }, 0.5);
+        sound.mob('cat', 0.8);
+        toast(`Your cat has left you a present: ${itemName(id)}`, 2500);
+      }
+    }
+  }
+}
+
 // ---------- seasons ----------
 // The year turns through four seasons of SEASON_DAYS days each. Crops grow fastest in summer and
 // barely at all in winter; leaves turn in autumn and fall in winter, and winter frosts the grass and
@@ -4864,6 +4930,14 @@ function stepGame(now, dt) {
       eat: (x, y, z) => world.setBlock(x, y, z, WHEAT_3 - 2), // back to green shoots
       caw: (p) => { const d = p.distanceTo(player.pos); if (d < 24) sound.mob('crow', 1 - d / 28); },
     });
+    {
+      const hours = (sky.time * 24 + 6) % 24;
+      critters.update(dt, world, player, {
+        night: Math.max(0, Math.min(1, (0.55 - lightUniforms.uDay.value) * 2.5)), dusk: hours > 18.3 && hours < 20.5,
+        season: seasonOf(day), raining: weather.raining, light: Math.max(lightUniforms.uDay.value, lightUniforms.uAmbient.value),
+      });
+    }
+    tickPets(dt);
     tickFuses(dt);
     tickSwitches(dt);
     tickProgress(dt);
@@ -4893,6 +4967,7 @@ function stepGame(now, dt) {
     for (const id of picked) { inventory.add(id, 1); sound.pop(); }
     updateFishing(dt);
     bees.update(dt, world, player, { day: lightUniforms.uDay.value, flicker: lightUniforms.uFlicker.value, ambient: lightUniforms.uAmbient.value }, sky.light);
+    mobs.sneaking = controls.down && player.onGround; // (deer let you creep up on them)
     mobs.update(dt, player, { day: lightUniforms.uDay.value, flicker: lightUniforms.uFlicker.value, ambient: lightUniforms.uAmbient.value },
       { difficulty: difficulty(), daylight: sky.light, playerDead: dead, ride: ridingMob && { moveX: controls.moveX, moveZ: controls.moveZ, yaw: player.yaw } });
     if (ridingMob) followMount();
@@ -4990,5 +5065,5 @@ window.minicraft = {
   arrows, fishing, kinetics, electric, lightUniforms, bees, catchAt, seasonOf, applySeason, set day(v) { day = v; applySeason(); }, frames, signalAt, setSwitch, logic, machines, carts, minimap, signs, armour, damage, placeRail, getInCart, getOutOfCart,
   get riding() { return riding; }, explode, lightFuse, fuses, clockTime, compassText, place, editSign, closeSign, openInventory, closeInventory, chestMove, lamps, tickLamps, sleepUntilMorning, stations, openStation, closeStation,
   get caneToday() { return caneToday; }, get creative() { return creative; }, set creative(v) { creative = v; applyCreative(); }, toggleFly, wand, useWand, get achieved() { return achieved; }, achieve, worldMap, openMap, closeMap, openGuide, switchSlot, store, saveGame, renderWorlds, openWorlds, exportSlot, get target() { return target; }, set target(v) { target = v; }, applyKeys, renderKeys, camera, get controls() { return controls; }, loose, throwHeld, get waypoints() { return waypoints; }, toggleWaypoint, sortSlots, quickStack, dropMeteor, get meteors() { return meteors; }, weather, openTrade, closeTrade, mountMob, dismount, get ridingMob() { return ridingMob; }, effects, armourWear, useAnvil, rollLoot, settings,
-  get bedSpawn() { return bedSpawn; }, fertilise, openJournal, closeJournal, get packs() { return packs; }, radiationAt, vehicles, boardVehicle, leaveVehicle, get boarded() { return boarded; }, get seated() { return seated; }, crows, get places() { return places; }, get treasures() { return treasures; }, readTreasureMap, tickTreasure, beams, tickBeams, beaconSpots: () => beaconSpots, mistNow, tickSnow, tickExplore, sitOn, standUp, useDisplay, zips, linkZip, startZip, get zipping() { return zipping; }, burnCoal, get health() { return health; }, set health(v) { health = v; }, paintings, placeSwitchRail, signalAt, ailments, armourEnch, openAltar, lairNear, useBed, eat, drinkTea,
+  get bedSpawn() { return bedSpawn; }, fertilise, openJournal, closeJournal, get packs() { return packs; }, radiationAt, vehicles, boardVehicle, leaveVehicle, get boarded() { return boarded; }, get seated() { return seated; }, crows, critters, tickPets, get catGiftDay() { return catGiftDay; }, set catGiftDay(v) { catGiftDay = v; }, get places() { return places; }, get treasures() { return treasures; }, readTreasureMap, tickTreasure, beams, tickBeams, beaconSpots: () => beaconSpots, mistNow, tickSnow, tickExplore, sitOn, standUp, useDisplay, zips, linkZip, startZip, get zipping() { return zipping; }, burnCoal, get health() { return health; }, set health(v) { health = v; }, paintings, placeSwitchRail, signalAt, ailments, armourEnch, openAltar, lairNear, useBed, eat, drinkTea,
 };

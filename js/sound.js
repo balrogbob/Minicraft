@@ -302,6 +302,16 @@ export class Sound {
     } else if (kind === 'chicken') {
       // a few quick clucks
       for (const delay of hurt ? [0, 0.08, 0.16] : [0, 0.12]) this.voice({ type: 'square', from: p(620, 700), to: p(420, 480), dur: 0.07, vol: 0.12 * gain, freq: 1800, q: 2, delay });
+    } else if (kind === 'deer') {
+      // a soft nasal bleat; a sharp bark when startled
+      if (hurt || gain > 0.55) this.voice({ type: 'sawtooth', from: p(520, 580), to: p(380, 420), dur: 0.14, vol: 0.14 * gain, freq: 1400, q: 2 });
+      else this.voice({ type: 'triangle', from: p(600, 660), to: p(480, 520), dur: 0.35, vol: 0.12 * gain, freq: 1600, attack: 0.05, vibrato: 10 });
+    } else if (kind === 'owl') {
+      // hoo, hoo-hoo
+      for (const [delay, dur] of [[0, 0.32], [0.55, 0.16], [0.75, 0.4]]) this.voice({ type: 'sine', from: p(370, 390), to: p(330, 345), dur, vol: 0.2 * gain, freq: 900, attack: 0.05, delay });
+    } else if (kind === 'bat') {
+      // a few tiny squeaks
+      for (const delay of [0, 0.07, 0.15]) this.voice({ type: 'square', from: p(3200, 3600), to: p(2600, 2800), dur: 0.03, vol: 0.05 * gain, freq: 5000, delay });
     } else if (kind === 'crow') {
       // a harsh caw or two
       for (const delay of [0, 0.3]) this.voice({ type: 'sawtooth', from: p(560, 640), to: p(380, 420), dur: 0.2, vol: 0.16 * gain, freq: 1500, q: 3, delay, vibrato: 30 });

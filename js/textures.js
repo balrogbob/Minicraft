@@ -17,7 +17,7 @@ import {
   SUN_SCARAB, FROST_HEART, EMBER_CORE, SUN_MASK, FROST_CIRCLET, EMBER_CROWN, HONEY_TEA, MUSHROOM_STEW, FISH_PIE, COPY_WAND,
   CRYSTAL_SHARD, HONEY_BOTTLE, HONEYCOMB, SALMON, BAKED_SALMON, ICEFISH, BAKED_ICEFISH, PUFFERFISH, OLD_BOOT,
   BATTERY, PORTABLE_LAMP, JACKHAMMER, JETPACK, ELECTRIC_DRILL, HOVER_BOOTS, NV_GOGGLES, MAGNET_RING, WIND_TURBINE, NICKEL_INGOT, CUPRONICKEL_INGOT,
-  ELECTRIC_RAIL, CHAINSAW, SAWDUST, BOOK, BACKPACK, BIG_BACKPACK, HUGE_BACKPACK, SPANNER, GRAPPLE, URANIUM_INGOT, FUEL_ROD, JOURNAL, FERTILISER, SPENT_ROD, ENRICHED_URANIUM, ENRICHED_ROD, hazmatId, INVAR_INGOT, RAIL_STATION, BOAT, BALLOON, ZIP_LINE, METEORIC_IRON, STARSTEEL_INGOT, starsteelTool, EGG, FRIED_EGG, SADDLE, TRUFFLE, FLOWER_POT, HANGING_PLANT, WINDOW_BOX, APPLE, CHERRIES, ORANGE_FRUIT, APPLE_PIE, CHERRY_PIE, FRUIT_SALAD, ORANGE_JUICE, FISH_SOUP, TRUFFLE_SOUP, BERRY_JAM, COOK_POT, SCARECROW, EXPLORER_MAP, TREASURE_MAP,
+  ELECTRIC_RAIL, CHAINSAW, SAWDUST, BOOK, BACKPACK, BIG_BACKPACK, HUGE_BACKPACK, SPANNER, GRAPPLE, URANIUM_INGOT, FUEL_ROD, JOURNAL, FERTILISER, SPENT_ROD, ENRICHED_URANIUM, ENRICHED_ROD, hazmatId, INVAR_INGOT, RAIL_STATION, BOAT, BALLOON, ZIP_LINE, METEORIC_IRON, STARSTEEL_INGOT, starsteelTool, EGG, FRIED_EGG, SADDLE, TRUFFLE, FLOWER_POT, HANGING_PLANT, WINDOW_BOX, APPLE, CHERRIES, ORANGE_FRUIT, APPLE_PIE, CHERRY_PIE, FRUIT_SALAD, ORANGE_JUICE, FISH_SOUP, TRUFFLE_SOUP, BERRY_JAM, COOK_POT, SCARECROW, EXPLORER_MAP, TREASURE_MAP, BEESWAX,
   SALTPETRE, GUNPOWDER, LEAD_SINKER, WEIGHTED_ROD, LEAD_BUCKET, LAVA_BUCKET, GOLD_CLOCK, COMPASS, SILVER_ARROW, MIRROR_LAMP,
 } from './blocks.js';
 
@@ -725,6 +725,20 @@ const hiveFront = (full) => (t) => {
   if (full) for (const [x, y0, n] of [[3, 0, 6], [6, 3, 4], [12, 1, 7], [9, 11, 4], [2, 9, 5]]) for (let y = y0; y < y0 + n; y++) t.set(x, y, y === y0 + n - 1 ? [255, 200, 60] : [240, 170, 30]);
 };
 P[T.HIVE_FRONT] = hiveFront(false);
+// an apiary: a white-painted bee box of stacked supers, with a slot of an entrance at the bottom
+const apiarySide = (t) => {
+  for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) t.set(x, y, t.vary(y % 5 === 4 ? [196, 192, 178] : [236, 232, 218], 0.03));
+  for (let y = 0; y < TILE; y++) { t.set(0, y, [180, 176, 160]); t.set(15, y, [180, 176, 160]); }
+};
+P[T.APIARY_SIDE] = apiarySide;
+P[T.APIARY_TOP] = (t) => { t.fill([150, 112, 64], 0.06); for (let i = 0; i < 16; i++) { t.set(i, 0, [110, 80, 44]); t.set(i, 15, [110, 80, 44]); t.set(0, i, [110, 80, 44]); t.set(15, i, [110, 80, 44]); } };
+const apiaryFront = (full) => (t) => {
+  apiarySide(t);
+  for (let x = 3; x < 13; x++) { t.set(x, 13, [40, 28, 14]); t.set(x, 12, [70, 50, 26]); } // the entrance slot
+  if (full) for (const [x, y0, n] of [[3, 1, 5], [7, 0, 3], [11, 2, 6], [5, 6, 4], [13, 7, 3]]) for (let y = y0; y < y0 + n; y++) t.set(x, y, y === y0 + n - 1 ? [255, 200, 60] : [240, 170, 30]);
+};
+P[T.APIARY_FRONT] = apiaryFront(false);
+P[T.APIARY_FULL] = apiaryFront(true);
 P[T.HIVE_FULL] = hiveFront(true);
 P[T.BELL] = (t) => { for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) t.set(x, y, t.vary(shade([236, 196, 76], 0.8 + 0.25 * Math.sin(x * 0.5)), 0.05)); };
 
@@ -2201,6 +2215,11 @@ ITEM_PAINTERS[TREASURE_MAP] = (ctx) => {
   for (let y = 2; y < 14; y++) for (let x = 1; x < 15; x++) px(ctx, x, y, (x * 3 + y * 5) % 7 ? [214, 190, 140] : [196, 168, 116]);
   for (const [x, y] of [[3, 11], [4, 10], [5, 10], [6, 9], [8, 8], [9, 7], [10, 6]]) px(ctx, x, y, [120, 80, 50]); // the trail
   for (let i = 0; i < 4; i++) { px(ctx, 10 + i, 3 + i, [200, 30, 30]); px(ctx, 13 - i, 3 + i, [200, 30, 30]); } // X
+};
+// v25 D: a cake of beeswax
+ITEM_PAINTERS[BEESWAX] = (ctx) => {
+  for (let y = 5; y < 13; y++) for (let x = 2; x < 14; x++) px(ctx, x, y, y === 5 ? [252, 226, 130] : x === 2 || y === 12 ? [204, 150, 40] : (x * 7 + y * 3) % 5 ? [240, 196, 80] : [226, 178, 60]);
+  for (let x = 3; x < 13; x++) px(ctx, x, 4, [246, 212, 110]);
 };
 // v25 A: a terracotta pot, a hanging basket of ivy, a window box of flowers
 const potShape = (ctx, x0, y0, w, h) => {
