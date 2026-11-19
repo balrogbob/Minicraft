@@ -29,8 +29,10 @@ import {
   BOOKSHELF, JOURNAL, FERTILISER, SHELF_DISCOUNT, LEAD_CHEST, FREEZER, ARC_FURNACE, SPENT_ROD, RADIATION_REACH, hazmatId, TESLA_REACH, TESLA_DAMAGE, ELECTRIC_FENCE,
   RAIL_STATION, ZIP_POST, ZIP_LINE, ZIP_REACH, BOAT, BALLOON, CHARCOAL, METEORITE, METEORIC_IRON, metalSword, TRUFFLE,
   RADIO_TX, RADIO_RX, SORTING_MACHINE, LOCOMOTIVE, FIREPLACE, CHIMNEY, HEARTH_FUEL, STABLE,
+  SNOWMAN, FIREWORK, PUMPKIN, JACK_O_LANTERN, EGG, POPPY, DANDELION, DAISY, LAVENDER,
 } from './blocks.js';
 import { Smoke } from './smoke.js';
+import { Fireworks } from './fireworks.js';
 import { createAtlas, createIcons, createCrackCanvases, createWaterCanvas, createHudIcons, paintSeason } from './textures.js';
 import { World, CHUNK, WORLD_SIZE, chunkKey } from './world.js';
 import { localIndex, CHUNK_VOLUME, H, SEA_LEVEL } from './terrain.js';
@@ -318,6 +320,13 @@ const frames = new Frames(scene, icons); // what's shown in each item frame
 const paintings = new Paintings(scene); // the pictures in paintings
 const weather = new Weather(scene);
 const smoke = new Smoke(scene); // chimney and locomotive smoke
+const fireworks = new Fireworks(scene);
+fireworks.onBurst = (x, y, z) => {
+  const d = Math.hypot(x - player.pos.x, y - player.pos.y, z - player.pos.z), g = Math.max(0, 1 - d / 160);
+  if (g <= 0) return;
+  sound.boom(0.22 * g);
+  for (let i = 0; i < 4; i++) setTimeout(() => sound.crackle(0.6 * g), 250 + i * 120 + Math.random() * 100);
+};
 const bees = new Bees(scene, sound);
 let ridingMob = null; // the camel you're riding
 let boarded = null; // the boat or balloon you're in
@@ -452,7 +461,7 @@ async function startWorld(save, opts = {}) {
     const drops = dropsFor(LEAVES, 0); // (fruit trees' leaves too: not their fruit, which you'd pick)
     if (drops.length) giveDrops(drops);
   };
-  mobs.reset(world); bees.clear(); crows.clear(); critters.clear(); fires.clear(); hearths.clear(); smoke.clear(); strikeIn = 20; catGiftDay = -1; bellDay = -1; villageGrowth = new Map(); shownSeason = -1;
+  mobs.reset(world); bees.clear(); crows.clear(); critters.clear(); fires.clear(); hearths.clear(); smoke.clear(); fireworks.clear(); strikeIn = 20; catGiftDay = -1; bellDay = -1; villageGrowth = new Map(); shownSeason = -1;
   kinetics.clear();
   kinetics.load(save?.kinetics);
   beltStart = null;
@@ -519,7 +528,9 @@ async function startWorld(save, opts = {}) {
   for (const e of Array.isArray(save?.hearths) ? save.hearths : []) if (Array.isArray(e) && typeof e[0] === 'string' && Number.isFinite(e[1])) hearths.set(e[0], e[1]);
   for (const e of Array.isArray(save?.fires) ? save.fires : []) if (Array.isArray(e) && typeof e[0] === 'string' && Number.isFinite(e[1])) fires.set(e[0], e[1]);
   villageGrowth = new Map((Array.isArray(save?.villageGrowth) ? save.villageGrowth : []).filter((e) => Array.isArray(e) && typeof e[0] === 'string' && e[1] && Number.isFinite(e[1].deals))
-    .map(([k, g]) => [k, { deals: g.deals, built: (Array.isArray(g.built) ? g.built : []).filter((h) => h && [h.x, h.y, h.z].every(Number.isFinite) && Array.isArray(h.door)) }]));
+    .map(([k, g]) => [k, { deals: g.deals, built: (Array.isArray(g.built) ? g.built : []).filter((h) => h && [h.x, h.y, h.z].every(Number.isFinite) && Array.isArray(h.door)),
+      rep: Number.isFinite(g.rep) ? g.rep : 0, reqDay: Number.isInteger(g.reqDay) ? g.reqDay : -1, decorDay: Number.isInteger(g.decorDay) ? g.decorDay : -1,
+      decor: (Array.isArray(g.decor) ? g.decor : []).filter((e) => Array.isArray(e) && e.length === 4 && e.every(Number.isFinite)) }]));
   beaconSpots = new Set(Array.isArray(save?.beacons) ? save.beacons.filter((k) => typeof k === 'string') : []);
   if (save?.weather) weather.set(!!save.weather.raining, Math.max(10, +save.weather.timer || 60));
   else weather.set(false);
@@ -3015,7 +3026,7 @@ function openTrade(m) {
   if (!m.trades) (m.spec.villager ? mobs.onVillagerSpawn : mobs.onTraderSpawn)(m);
   if (m.spec.villager) {
     $('trade-title').textContent = `${PROFESSION_NAMES[m.profession] ?? 'Villager'} of ${m.home?.name ?? 'the village'}`;
-    $('trade-hint').textContent = '"Welcome, friend! Have a look at what I can offer."';
+    $('trade-hint').textContent = tradeGreeting(m.home);
   } else {
     $('trade-title').textContent = 'Wandering Trader';
     $('trade-hint').textContent = `"Rare things from far away! I'll take what you have plenty of.${villageHint()}" The trader moves on after a while.`;
@@ -3032,7 +3043,8 @@ function closeTrade() { $('trade').classList.add('hidden'); tradingWith = null; 
 function renderTrades() {
   const list = $('trades');
   list.innerHTML = '';
-  for (const [[gid, gn], [oid, on]] of tradingWith.trades) {
+  for (const [[gid, gn0], [oid, on]] of tradingWith.trades) {
+    const gn = tradeCost(gn0, tradingWith.home);
     const row = document.createElement('div');
     row.className = 'recipe';
     const have = inventory.count(gid) >= gn;
@@ -3048,7 +3060,7 @@ function renderTrades() {
       inventory.add(oid, on);
       sound.pop();
       achieve('trade');
-      if (tradingWith.home) growVillage(tradingWith.home);
+      if (tradingWith.home) { growVillage(tradingWith.home); addRep(tradingWith.home, 1); }
       renderTrades();
     });
     row.appendChild(btn);
@@ -3610,6 +3622,7 @@ function placeInner() {
   if (held?.id === BOOK) { openGuide(); return; }
   if (held?.id === JOURNAL) { openJournal(held); return; }
   if (held?.id === TREASURE_MAP) { readTreasureMap(held); return; }
+  if (held?.id === FIREWORK) { const l = player.lookDir(); fireworks.launch(player.pos.x + l.x * 1.2, player.pos.y + 1, player.pos.z + l.z * 1.2); sound.fuse(); inventory.consumeHeld(); return; }
   if (held?.id === FERTILISER && target && fertilise(target.x, target.y, target.z)) { inventory.consumeHeld(); return; }
   if (held?.id === GRAPPLE) { if (grapple) releaseGrapple(); else throwGrapple(); return; }
   if (held?.id === SPANNER && target && spannerTurn(target.x, target.y, target.z)) return;
@@ -3673,12 +3686,7 @@ function placeInner() {
       return;
     }
     if (tid === ENCHANT_ALTAR) { openAltar(tx, ty, tz); return; }
-    if (BLOCKS[tid].bell) {
-      const v = world.generator.nearestVillage(tx, tz, 1);
-      sound.ding?.() ?? sound.pop();
-      toast(v ? `Welcome to ${v.name}` : 'Ding!', 2200);
-      return;
-    }
+    if (BLOCKS[tid].bell) { ringBell(tx, tz, held); return; }
     if (BLOCKS[tid].fruit?.ripe) {
       // pick the fruit off a fruit tree's leaves
       const f = BLOCKS[tid].fruit;
@@ -3991,7 +3999,7 @@ function placeInner() {
     if (there !== AIR || !world.isSolid(x, y - 1, z)) { toast(`${BLOCKS[id].name}s need something solid underneath`); return; }
   } else {
     // chairs face you; curtains hang across your line of sight
-    if ([CHAIR, SCARECROW, COOK_POT, OVEN, SMELTER, BLAST_SMELTER, CRUSHER, PULVERIZER, E_SMELTER, CHEST, IRON_CHEST, SAW, TRIP_HAMMER, LEAD_CHEST, FREEZER, ARC_FURNACE, MARKET_STALL, FIREPLACE].includes(id)) id += facingTowardPlayer(x, z); // the front faces you
+    if ([CHAIR, SCARECROW, COOK_POT, OVEN, SMELTER, BLAST_SMELTER, CRUSHER, PULVERIZER, E_SMELTER, CHEST, IRON_CHEST, SAW, TRIP_HAMMER, LEAD_CHEST, FREEZER, ARC_FURNACE, MARKET_STALL, FIREPLACE, SNOWMAN].includes(id)) id += facingTowardPlayer(x, z); // the front faces you
     else if (id === DRILL) id += player.pitch < -0.75 ? 4 : (facingTowardPlayer(x, z) + 2) % 4; // drills the way you're looking
     else if (id === ITEM_COUNTER) id += ((facingTowardPlayer(x, z) + 2) % 4) * 2; // passes things on the way you're looking
     else if ([OBSERVER, GAUGE, HARVESTER, EJECTOR, TREE_FELLER, PLANTER, BREAKER, PLACER, QUARRY].includes(id)) id += (facingTowardPlayer(x, z) + 2) % 4; // looks (or reaps) the way you're looking
@@ -5151,7 +5159,7 @@ function tickSnow(dt) {
     let y = Math.min(H - 2, Math.floor(player.pos.y) + 24);
     while (y > Math.floor(player.pos.y) - 24 && world.get(x, y, z) === AIR) y--;
     const id = world.get(x, y, z);
-    if (id === SNOW_LAYER) {
+    if (id === SNOW_LAYER || BLOCKS[id]?.snowman) {
       const tundra = world.generator.biomeAt(x, z) === 'tundra';
       if (!winter && !tundra && Math.random() < 0.5) world.setBlock(x, y, z, AIR);
       continue;
@@ -5228,9 +5236,7 @@ function villageHouses(v) {
   for (const h of villageGrowth.get(villageKey(v))?.built ?? []) if (!v.houses.some((o) => o.x === h.x && o.z === h.z)) v.houses.push({ ...h });
 }
 function growVillage(v, n = 1) {
-  villageHouses(v);
-  const g = villageGrowth.get(villageKey(v)) ?? { deals: 0, built: [] };
-  villageGrowth.set(villageKey(v), g);
+  const g = villageEntry(v);
   g.deals += n;
   if (g.deals >= DEALS_PER_HOUSE * (g.built.length + 1) && g.built.length < 6) {
     const h = buildVillageHouse(v);
@@ -5328,7 +5334,7 @@ function tickStalls(dt) {
     if (!buyer) continue;
     const i = st.inputs.findIndex((s2) => s2 && s2.id !== COIN && stallPrice(s2.id));
     if (i < 0) continue;
-    const stack = st.inputs[i], [n, coins] = stallPrice(stack.id);
+    const stack = st.inputs[i], [n, coins0] = stallPrice(stack.id), coins = coins0 * (festivalToday() ? 2 : 1); // festival days pay double
     if (stack.count < n) continue;
     // room for the coins?
     const ci = st.inputs.findIndex((s2) => s2 && s2.id === COIN && s2.count + coins <= maxStack(COIN));
@@ -5342,7 +5348,7 @@ function tickStalls(dt) {
     const d = Math.hypot(x - player.pos.x, y - player.pos.y, z - player.pos.z);
     if (d < 20) { sound.mob('villager', 0.6 * (1 - d / 20)); sound.pop(); }
     if (openStationAt && openStationAt.x === x && openStationAt.y === y && openStationAt.z === z) renderStation?.();
-    if (buyer.home) growVillage(buyer.home);
+    if (buyer.home) { growVillage(buyer.home); addRep(buyer.home, 0.5); }
   }
 }
 // The bell, first thing in the morning: the villagers come out.
@@ -5355,9 +5361,119 @@ function tickVillages(dt) {
   if (v && bellDay !== day && hours > 6.05 && hours < 9) {
     bellDay = day;
     const d = Math.hypot(v.x + 2 - player.pos.x, v.z - player.pos.z);
-    if (d < 64) { sound.ding(Math.max(0.15, 1 - d / 64)); setTimeout(() => sound.ding(Math.max(0.15, 1 - d / 64) * 0.8), 700); toast(`The bell rings in ${v.name}: the villagers are up and about`, 2600); }
+    const fest = festivalToday();
+    if (d < 64) { sound.ding(Math.max(0.15, 1 - d / 64)); setTimeout(() => sound.ding(Math.max(0.15, 1 - d / 64) * 0.8), 700); toast(fest ? `The bell rings in ${v.name}: it's the ${fest.name}! Stalls and requests pay double today, and there are fireworks after dark` : `The bell rings in ${v.name}: the villagers are up and about`, fest ? 4000 : 2600); }
   }
+  mobs.festival = !!festivalToday();
+  if (v) tickFestival(v, hours, dt);
   tickStalls(dt);
+}
+
+// ---------- v27 B: requests, reputation and festivals ----------
+// Each village asks for something new every day (tap its bell to hear what, and tap it again holding the goods
+// to hand them over). Trading, selling at a stall and filling requests earn its good opinion: friends of the
+// village get better prices, and its heroes better still. On the fourth day of every season it holds a festival:
+// decorations go up round the well, stalls and requests pay double, the villagers stay up late and there are
+// fireworks after dark.
+const REP_TIERS = [[60, 'Hero', 0.65], [30, 'Friend', 0.8], [10, 'Neighbour', 1], [0, 'Stranger', 1]];
+const repTier = (rep) => REP_TIERS.find(([n]) => rep >= n);
+function villageEntry(v) {
+  villageHouses(v);
+  let g = villageGrowth.get(villageKey(v));
+  if (!g) villageGrowth.set(villageKey(v), g = { deals: 0, built: [] });
+  g.rep ??= 0; g.reqDay ??= -1; g.decorDay ??= -1; g.decor ??= [];
+  return g;
+}
+const repOf = (v) => villageGrowth.get(villageKey(v))?.rep ?? 0;
+function addRep(v, n) {
+  const g = villageEntry(v), before = repTier(g.rep);
+  g.rep = Math.min(100, g.rep + n);
+  const after = repTier(g.rep);
+  if (after !== before) {
+    toast(after[1] === 'Hero' ? `${v.name} calls you its hero! The villagers give you their best prices` : `The people of ${v.name} count you a ${after[1].toLowerCase()} now${after[2] < 1 ? ': they give you better prices' : ''}`, 3200);
+    if (after[1] === 'Hero') achieve('hero');
+  }
+}
+// What a trade costs you here: friends and heroes of the village pay less.
+const tradeCost = (n, v) => (v ? Math.max(1, Math.round(n * repTier(repOf(v))[2])) : n);
+function tradeGreeting(v) {
+  const t = v ? repTier(repOf(v))[1] : 'Stranger';
+  return { Stranger: '"Hello, traveller. Have a look at what I can offer."', Neighbour: '"Welcome, neighbour! Have a look at what I can offer."',
+    Friend: '"Ah, my friend! For you, a better price."', Hero: '"Our hero! Take anything you like, for next to nothing."' }[t];
+}
+// [item, how many, coins]
+const REQUESTS = [[BREAD, 6, 4], [CARROT, 12, 3], [POTATO, 12, 3], [EGG, 8, 3], [WOOL, 8, 4], [LOG, 24, 3], [PLANKS, 32, 3], [COBBLE, 48, 3],
+  [TORCH, 16, 3], [IRON_INGOT, 6, 6], [BAKED_FISH, 6, 4], [PAPER, 8, 4], [GLASS, 12, 4], [WINE, 1, 5], [CHEESE, 2, 5]];
+const SEASON_REQUESTS = [[[POPPY, 6, 2], [EGG, 12, 4]], [[WOOL, 12, 5], [BAKED_FISH, 8, 5]], [[PUMPKIN, 3, 4], [CARROT, 16, 4]], [[LOG, 32, 4], [TORCH, 24, 4]]];
+function requestFor(v, d = day) {
+  let h = 7;
+  for (const c of `${villageKey(v)}:${d}`) h = (h * 31 + c.charCodeAt(0)) | 0;
+  const pool = [...REQUESTS, ...SEASON_REQUESTS[seasonOf(d)]];
+  return pool[Math.abs(h) % pool.length];
+}
+const FESTIVALS = [{ name: 'Blossom Fair' }, { name: 'Midsummer Feast' }, { name: 'Harvest Festival' }, { name: 'Frost Fair' }];
+const festivalToday = (d = day) => ((d - 1) % SEASON_DAYS === 3 ? FESTIVALS[seasonOf(d)] : null);
+function ringBell(x, z, held) {
+  const v = world.generator.nearestVillage(x, z, 1);
+  sound.ding();
+  if (!v) { toast('Ding!', 1500); return; }
+  const g = villageEntry(v), [id, n, coins] = requestFor(v), fest = festivalToday(), tier = repTier(g.rep)[1];
+  const head = `${v.name}${fest ? ` (the ${fest.name})` : ''}: you are a ${tier.toLowerCase()} here.`;
+  if (g.reqDay === day) { toast(`${head} You've done what they asked today: come back tomorrow`, 3000); return; }
+  if (held?.id === id && inventory.count(id) >= n) {
+    inventory.remove(id, n);
+    const pay = coins * (fest ? 2 : 1);
+    giveDrops([[COIN, pay]]);
+    g.reqDay = day;
+    sound.pop(); setTimeout(() => sound.ding(0.6), 250);
+    toast(`The people of ${v.name} thank you for the ${itemName(id).toLowerCase()} and pay you ${pay} coin${pay > 1 ? 's' : ''}`, 3200);
+    addRep(v, 8);
+    return;
+  }
+  toast(`${head} Today they need ${n} × ${itemName(id)} (${coins * (fest ? 2 : 1)} coins): tap the bell holding them`, 4000);
+}
+// Decorations round the well: flowers in spring, lanterns in summer, jack-o'-lanterns in autumn and snowmen in winter.
+// They go up on the morning of the festival and come down the next day (unless you've moved them).
+const DECOR = [[POPPY, DANDELION, DAISY, LAVENDER], [LANTERN], [JACK_O_LANTERN], [SNOWMAN]];
+let fireworkIn = 0;
+function tickFestival(v, hours, dt) {
+  const fest = festivalToday(), g = villageEntry(v);
+  const near = Math.hypot(v.x - player.pos.x, v.z - player.pos.z);
+  if (near > 96) return;
+  const cx = v.x + 0.5, cz = v.z + 0.5;
+  const loaded = (x, z) => !!world.chunkAt(x, z);
+  if (fest && g.decorDay !== day && loaded(v.x - 6, v.z - 6) && loaded(v.x + 6, v.z + 6)) {
+    takeDownDecor(g);
+    g.decorDay = day;
+    const kinds = DECOR[seasonOf(day)];
+    for (let k = 0; k < 8; k++) {
+      const a = (k / 8) * Math.PI * 2, x = Math.floor(cx + Math.cos(a) * 5), z = Math.floor(cz + Math.sin(a) * 5);
+      const y = groundAt(x, z);
+      if (y == null || world.get(x, y + 1, z) !== AIR || BLOCKS[world.get(x, y, z)]?.liquid) continue;
+      let id = kinds[k % kinds.length];
+      if (id === SNOWMAN) {
+        // face the well
+        const dx = cx - (x + 0.5), dz = cz - (z + 0.5);
+        let best = 0;
+        FACING_DIRS.forEach(([fx, fz], f) => { if (fx * dx + fz * dz > FACING_DIRS[best][0] * dx + FACING_DIRS[best][1] * dz) best = f; });
+        id += best;
+      }
+      world.setBlock(x, y + 1, z, id);
+      g.decor.push([x, y + 1, z, id]);
+    }
+  } else if (!fest && g.decor.length && g.decor.every(([x, , z]) => loaded(x, z))) takeDownDecor(g);
+  // fireworks over the village after dark
+  if (fest && hours > 19.5 && hours < 23 && near < 120 && (fireworkIn -= dt) <= 0) {
+    fireworkIn = 1.2 + Math.random() * 2.5;
+    const x = cx + (Math.random() - 0.5) * 12, z = cz + (Math.random() - 0.5) * 12, y = groundAt(Math.floor(x), Math.floor(z)) ?? v.y;
+    fireworks.launch(x, y + 1.5, z);
+    const d = Math.hypot(x - player.pos.x, z - player.pos.z);
+    if (d < 40) sound.fuse();
+  }
+}
+function takeDownDecor(g) {
+  for (const [x, y, z, id] of g.decor) if (world.get(x, y, z) === id) world.setBlock(x, y, z, AIR);
+  g.decor = [];
 }
 
 // ---------- v26 E: temple and sky-island puzzles, diving ----------
@@ -5650,6 +5766,7 @@ function stepGame(now, dt) {
   if (!paused && here) {
     controls.update();
     const wasGround = player.onGround, wasWater = player.inWater, fallSpeed = -player.vel.y, prevY = player.pos.y;
+    fireworks.update(dt);
     smoke.update(dt, { x: 0.3 + (weather.storm ? 1.2 : 0), z: 0.12 }, sky.light);
     carts.update(dt, world, (x, y, z) => powerAt(x, y, z) || (signalAt(x, y, z) ? 1 : 0), riding && { cart: riding, push: controls.moveZ, look: player.lookDir() },
       { day: lightUniforms.uDay.value, flicker: lightUniforms.uFlicker.value, ambient: lightUniforms.uAmbient.value });
@@ -5810,5 +5927,5 @@ window.minicraft = {
   arrows, fishing, kinetics, electric, lightUniforms, bees, catchAt, seasonOf, applySeason, set day(v) { day = v; applySeason(); }, frames, signalAt, setSwitch, logic, machines, carts, minimap, signs, armour, damage, placeRail, getInCart, getOutOfCart,
   get riding() { return riding; }, explode, lightFuse, fuses, clockTime, compassText, place, editSign, closeSign, openInventory, closeInventory, chestMove, lamps, tickLamps, sleepUntilMorning, stations, openStation, closeStation,
   get caneToday() { return caneToday; }, get creative() { return creative; }, set creative(v) { creative = v; applyCreative(); }, toggleFly, wand, useWand, get achieved() { return achieved; }, achieve, worldMap, openMap, closeMap, openGuide, switchSlot, store, saveGame, renderWorlds, openWorlds, exportSlot, get target() { return target; }, set target(v) { target = v; }, applyKeys, renderKeys, camera, get controls() { return controls; }, loose, throwHeld, get waypoints() { return waypoints; }, toggleWaypoint, sortSlots, quickStack, dropMeteor, get meteors() { return meteors; }, weather, openTrade, closeTrade, mountMob, dismount, get ridingMob() { return ridingMob; }, effects, armourWear, useAnvil, rollLoot, settings,
-  get bedSpawn() { return bedSpawn; }, fertilise, openJournal, closeJournal, get packs() { return packs; }, radiationAt, vehicles, boardVehicle, leaveVehicle, get boarded() { return boarded; }, get seated() { return seated; }, crows, onInvSlot, onStationSlot, quickMoveInv, quickMoveStation, usedIn, itemTipHTML, critters, tickPets, get catGiftDay() { return catGiftDay; }, get villageGrowth() { return villageGrowth; }, notePlanting, tickPuzzles, airPumpNear, useStable, stableNear, horseLabel, hearths, tickHearths, feedHearth, chimneyTop, smoke, renderPins, togglePin, lightning, igniteAt, fires, tickFires, tickStorm, growVillage, buildVillageHouse, stallPrice, tickStalls, tickVillages, set catGiftDay(v) { catGiftDay = v; }, get places() { return places; }, get treasures() { return treasures; }, readTreasureMap, tickTreasure, beams, tickBeams, beaconSpots: () => beaconSpots, mistNow, tickSnow, tickExplore, sitOn, standUp, useDisplay, zips, linkZip, startZip, get zipping() { return zipping; }, burnCoal, get health() { return health; }, set health(v) { health = v; }, paintings, placeSwitchRail, signalAt, ailments, armourEnch, openAltar, lairNear, useBed, eat, drinkTea,
+  get bedSpawn() { return bedSpawn; }, fertilise, openJournal, closeJournal, get packs() { return packs; }, radiationAt, vehicles, boardVehicle, leaveVehicle, get boarded() { return boarded; }, get seated() { return seated; }, crows, onInvSlot, onStationSlot, quickMoveInv, quickMoveStation, usedIn, itemTipHTML, critters, tickPets, get catGiftDay() { return catGiftDay; }, get villageGrowth() { return villageGrowth; }, notePlanting, tickPuzzles, airPumpNear, useStable, stableNear, horseLabel, fireworks, ringBell, requestFor, festivalToday, repOf, addRep, tradeCost, tickFestival, villageEntry, hearths, tickHearths, feedHearth, chimneyTop, smoke, renderPins, togglePin, lightning, igniteAt, fires, tickFires, tickStorm, growVillage, buildVillageHouse, stallPrice, tickStalls, tickVillages, set catGiftDay(v) { catGiftDay = v; }, get places() { return places; }, get treasures() { return treasures; }, readTreasureMap, tickTreasure, beams, tickBeams, beaconSpots: () => beaconSpots, mistNow, tickSnow, tickExplore, sitOn, standUp, useDisplay, zips, linkZip, startZip, get zipping() { return zipping; }, burnCoal, get health() { return health; }, set health(v) { health = v; }, paintings, placeSwitchRail, signalAt, ailments, armourEnch, openAltar, lairNear, useBed, eat, drinkTea,
 };

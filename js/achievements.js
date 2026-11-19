@@ -25,6 +25,7 @@ export const ACHIEVEMENTS = [
   { id: 'diamond', icon: '💎', name: 'Crystal Clear', about: 'Mine a crystal cluster or shard deep underground.' },
   { id: 'treasure', icon: '💰', name: 'X Marks the Spot', about: 'Dig up the chest a treasure map leads to.' },
   { id: 'horse', icon: '🐎', name: 'Giddy-up', about: 'Win over a wild horse, saddle it and ride.' },
+  { id: 'hero', icon: '🎖️', name: 'Local Hero', about: 'Earn a village\'s highest regard by trading and filling its requests.' },
   { id: 'vault', icon: '🔱', name: 'Open Sesame', about: 'Solve the puzzle that opens a sunken temple\'s or a sky island\'s vault.' },
 ];
 

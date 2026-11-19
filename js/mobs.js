@@ -999,7 +999,7 @@ export class MobManager {
   }
 
   // Villagers go indoors from dusk until morning. (`hour` is set by the game each frame: 0..24.)
-  villagerNight() { return this.hour != null && (this.hour > 18.5 || this.hour < 6); }
+  villagerNight() { return this.hour != null && (this.hour > (this.festival ? 23 : 18.5) || this.hour < 6); } // they stay up late on festival days
   // The spot just outside a house's door.
   doorstep(hs) { return { x: hs.x + hs.door[0] + Math.sign(hs.door[0]) + 0.5, z: hs.z + hs.door[1] + Math.sign(hs.door[1]) + 0.5 }; }
   // A villager's evening: walk to its own front door and go in; come back out in the morning.
