@@ -85,6 +85,9 @@ It is designed for Android tablets (touch controls) but also plays with keyboard
   an **auto-crafter**, **drive belts**, **flywheels**, **tachometers**, **gear shifts**, **tanks**, **valves**, lava
   piped in as fuel, **sprinklers**, **tree fellers**, **planters**, **block breakers** and **placers**,
   **animal stations** and **fishing nets**
+- Electricity: **generators** turned by shafts, **electrum wire** (which carries signals too), **electric lamps**,
+  an **electric pulverizer** that gets more out of ore, **batteries** and a **battery charger**, and battery-powered
+  **portable lamps**, **jackhammers** and **jetpacks**
 - **Three world slots** with export to a file and import, a **creative mode** (flying, every block, instant
   breaking and a **copy wand**), rebindable keys, a field-of-view slider, a full-screen **world map** with
   waypoints, and **22 achievements** with an in-game guide
@@ -775,6 +778,33 @@ own colour. Hang a **painting** on a wall: it picks the biggest of eight picture
   feathers grow back twice as fast.
 - A **fishing net** set in water catches a fish every minute or so; a hopper underneath takes them out.
 
+### Electricity
+
+- A **generator** (4 iron, 4 copper, 2 electrum wire) makes electricity while a shaft or gear turns it: 4 power
+  for each 1x it turns at, taking that much load from the shaft.
+- **Electrum wire** (8 from an electrum ingot) lies on top of blocks like copper wire and carries electricity to
+  every electric machine it touches. Electric machines set right beside each other join up too. It also carries
+  signals, and joins up with copper wire.
+- An **electric lamp** (iron, bronze or copper, glass and electrum) is brighter than a filament lamp, and uses 1 power.
+- The **electric pulverizer** (4 stainless steel, electrum, flint, a lead pipe and a chest) crushes everything the
+  rock crusher does, twice as fast, and gets half as much again: 3 dust from an ore, and a 1 in 4 chance of one
+  more. It uses 6 power while it's working.
+- A **battery** is 8 lead and a slime bucket (you keep the bucket). It comes flat: a **battery charger** (3 iron,
+  2 copper, 4 electrum wire) fills one, or anything that runs on one, using 4 power while it charges.
+- When the generators make less than the machines want, everything runs on the share there is: pulverizers and
+  chargers slow down, and lamps go out below half. Tap a generator, lamp or wire to see how the network is doing.
+- Hoppers, belts, elevators, ejectors, collectors and carts pass things on just as they are: a flat battery stays
+  flat, a worn tool stays worn, and enchantments stay put.
+- Battery-powered things are made with a battery and keep its charge. When one runs flat it tops itself up from
+  any charged battery you carry:
+  - The **portable electric lamp** (an electric lamp, a battery and iron): tap with it in hand to switch it on, and
+    it lights the way around you from anywhere in your inventory. Its charge lasts about 16 minutes.
+  - The **jackhammer** (4 stainless steel, a battery, 2 electrum wire) digs like a stainless steel pickaxe, only
+    faster, and now and then shakes a dust off an ore as well as the ore. A charge breaks 200 blocks; flat, it's no
+    better than your hands.
+  - The **electric jetpack** (4 stainless steel, 2 batteries, 4 electrum wire, 2 leather) is worn in place of a
+    chestplate. Hold jump in the air to climb, or to slow a fall. A charge gives 50 seconds of thrust.
+
 ### Worlds, creative mode, the map and achievements
 
 ☰ → **Worlds…** holds three worlds. Play any of them, start a new **survival** or **creative** world in a slot,
@@ -810,6 +840,7 @@ guide to how everything works.
 | `js/kinetics.js` | Water wheels, windmills, shafts, gears, gearboxes, clutches, gear shifts, flywheels and drive belts: power networks, gear ratios, load, and the turning models |
 | `js/machines.js` | Pumps, pipes, valves, tanks and sprinklers, drills, filament lamps, hoppers, collectors, ejectors, belts (splitting and sorting), bucket elevators, sensors and the farm machines |
 | `js/logic.js` | Copper wire and the logic blocks: inverters, delay blocks and latches |
+| `js/electric.js` | Electricity: generators, electrum wire and the machines that run on it (lamps, pulverizers, chargers) |
 | `js/carts.js` | Minecarts and storage carts: rolling along rails, slopes, powered and loader rails, riding |
 | `js/signs.js` | Sign text (and its colour) and the panels that show it |
 | `js/frames.js` | Item frames: what each holds, the pictures in them, and hopper filters |

@@ -11,7 +11,7 @@ import {
   BRONZE_INGOT, ELECTRUM_INGOT, STAINLESS_INGOT, STEEL_INGOT, AL_BRONZE_INGOT,
   GRAVEL, FLINT, FLINT_DUST, CLAY_BALL, CLAY_DUST, BRICK, FIRE_CLAY, FIRE_BRICK, oreDust, HIDE, LEATHER,
   LAVA_BUCKET, LEAD_BUCKET, SALTPETRE, SANDSTONE, WHEAT, SUGAR_CANE, COAL_DUST, PLATE_METALS, PLATES, TUNGSTEN_INGOT, FILAMENT,
-  SAPLING, GLASS_BOTTLE, NIGHT_TEA, HASTE_TEA, FIRE_TEA, HEAL_TEA, BERRIES, CORNFLOWER, DANDELION, POPPY, CACTUS, LAVENDER, DAISY, CAULDRON,
+  SAPLING, ELECTRIC_ITEMS, chargeCap, GLASS_BOTTLE, NIGHT_TEA, HASTE_TEA, FIRE_TEA, HEAL_TEA, BERRIES, CORNFLOWER, DANDELION, POPPY, CACTUS, LAVENDER, DAISY, CAULDRON,
 } from './blocks.js';
 
 // A recipe ingredient can be one id or a list of alternatives (coal or charcoal).
@@ -121,6 +121,14 @@ STATION_KINDS.cauldron = {
     { out: [HONEY_TEA, 1], in: [[GLASS_BOTTLE, 1], [HONEYCOMB, 1]], time: 8 },
   ],
 };
+// The electric pulverizer: a rock crusher run on electricity (see electric.js), twice as fast, that gets
+// half as much again out of everything, and now and then a little more (`bonus`: the chance of one extra).
+STATION_KINDS.pulverizer = {
+  name: 'Electric Pulverizer', verb: 'Pulverizing', inputs: 1, powered: true, electric: true,
+  recipes: STATION_KINDS.crusher.recipes.map((r) => ({ ...r, out: [r.out[0], Math.ceil(r.out[1] * 1.5)], bonus: 0.25 })),
+};
+// The battery charger holds one battery (or anything that runs on one) and fills it while it has power.
+STATION_KINDS.charger = { name: 'Battery Charger', inputs: 1, holder: true, accepts: ELECTRIC_ITEMS, electric: true, recipes: [] };
 // Chests just hold things.
 STATION_KINDS.chest = { name: 'Chest', inputs: 18, storage: true, recipes: [] };
 STATION_KINDS.ironchest = { name: 'Iron-Banded Chest', inputs: 36, storage: true, recipes: [] };
@@ -201,8 +209,9 @@ export class Stations {
         if (!s.count) st.inputs[i] = null;
       }
     }
-    if (st.out) st.out.count += r.out[1];
-    else st.out = { id: r.out[0], count: r.out[1] };
+    const n = r.out[1] + (r.bonus && Math.random() < r.bonus && (st.out?.count ?? 0) + r.out[1] < maxStack(r.out[0]) ? 1 : 0);
+    if (st.out) st.out.count += n;
+    else st.out = { id: r.out[0], count: n, ...(chargeCap(r.out[0]) ? { wear: chargeCap(r.out[0]) } : {}) }; // (batteries come out flat)
   }
 
   // Advance every loaded station by dt seconds. setLit(x, y, z, lit) is called when one lights or goes out.

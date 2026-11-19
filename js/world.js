@@ -240,9 +240,10 @@ export class World {
     // water nearby may now flow in, or drain away
     this.flow.push([x, y, z], [x + 1, y, z], [x - 1, y, z], [x, y + 1, z], [x, y - 1, z], [x, y, z + 1], [x, y, z - 1]);
     const def = BLOCKS[id];
-    const isMachine = (d) => !!(d?.kinetic || d?.machine || d?.hopper || d?.sensor || d?.painting || d?.ejector || d?.farm);
+    const isMachine = (d) => !!(d?.kinetic || d?.machine || d?.hopper || d?.sensor || d?.painting || d?.ejector || d?.farm || d?.electric);
     if (isMachine(def)) c.machines.add(li); else c.machines.delete(li);
     if (isMachine(BLOCKS[old]) || isMachine(def)) this.machinesChanged = true;
+    if (BLOCKS[old]?.electric || def?.electric) this.electricChanged = true;
     if (def?.hive >= 0) c.hives.add(li); else c.hives.delete(li);
     if (def?.logic) c.logic.add(li); else c.logic.delete(li);
     // this cell, and the one below (a sugar cane that's no longer, or now is, the top), may start or stop growing
@@ -296,9 +297,11 @@ export class World {
   // Copper wire: a dot in the middle, with a strip out to each wire or switch it touches, to wires a
   // block lower, and up the side of a block to wires on top of it.
   wireModel(x, y, z, def) {
-    const t = def.on ? T.WIRE_ON : T.WIRE_OFF, m = [[6.5, 0, 6.5, 9.5, 1, 9.5, t]];
+    const t = def.electric ? (def.on ? T.ELWIRE_ON : T.ELWIRE_OFF) : def.on ? T.WIRE_ON : T.WIRE_OFF, m = [[6.5, 0, 6.5, 9.5, 1, 9.5, t]];
     for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
       const n = BLOCKS[this.get(x + dx, y, z + dz)];
+      // (electrum wire also runs up to the electric machines beside it)
+      if (def.electric && n?.electric && !n.switch) { m.push(dx > 0 ? [9.5, 0, 6.5, 16, 1, 9.5, t] : dx < 0 ? [0, 0, 6.5, 6.5, 1, 9.5, t] : dz > 0 ? [6.5, 0, 9.5, 9.5, 1, 16, t] : [6.5, 0, 0, 9.5, 1, 6.5, t]); continue; }
       const up = BLOCKS[this.get(x + dx, y + 1, z + dz)]?.logic === 'wire' && !BLOCKS[this.get(x, y + 1, z)]?.solid;
       const down = BLOCKS[this.get(x + dx, y - 1, z + dz)]?.logic === 'wire' && !n?.solid;
       if (!(n?.switch || up || down)) continue;
@@ -810,7 +813,7 @@ export class World {
       if (def?.hive >= 0) c.hives.add(li);
       if (def?.logic) c.logic.add(li);
       if (def?.grows && this.canGrow(c, li & 15, li >> 8, (li >> 4) & 15)) c.growing.add(li);
-      else if (def?.kinetic || def?.machine || def?.hopper || def?.sensor || def?.painting || def?.ejector || def?.farm) { c.machines.add(li); this.machinesChanged = true; }
+      else if (def?.kinetic || def?.machine || def?.hopper || def?.sensor || def?.painting || def?.ejector || def?.farm || def?.electric) { c.machines.add(li); this.machinesChanged = true; }
       else if (isFlowing(id)) this.flow.push([x0 + (li & 15), li >> 8, z0 + ((li >> 4) & 15)]); // water left running
     }
     this.dirty.add(c.key);

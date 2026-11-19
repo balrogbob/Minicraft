@@ -14,7 +14,6 @@ const MAX_ITEMS = 300;
 const PICKUP_REACH = 1.3;
 const CATCH_EVERY = 0.25; // seconds between tries at handing an item to a belt or hopper
 
-const plain = (s) => !s.wear && !s.ench?.length; // only plain stacks ride belts and go through hoppers
 
 export class ItemDrops {
   // makeSprite(id) -> THREE.Sprite added to the scene
@@ -101,13 +100,13 @@ export class ItemDrops {
       if (it.ground) { const f = Math.exp(-8 * dt); v.x *= f; v.z *= f; }
 
       // a belt or hopper under it takes it
-      if ((it.catchT -= dt) <= 0 && plain(it.stack)) {
+      if ((it.catchT -= dt) <= 0) {
         it.catchT = CATCH_EVERY;
         const bx = Math.floor(p.x), bz = Math.floor(p.z);
         for (const by of [Math.floor(p.y + 0.01), Math.floor(p.y - 0.05)]) {
           const def = BLOCKS[world.get(bx, by, bz)];
           if (!def?.belt && !def?.hopper && !def?.elevator) continue;
-          const took = hooks.insert(bx, by, bz, it.stack.id, def.belt ? 1 : it.stack.count);
+          const took = hooks.insert(bx, by, bz, it.stack, def.belt ? 1 : it.stack.count); // (with its wear and charge)
           if (took > 0) it.stack.count -= took;
           break;
         }

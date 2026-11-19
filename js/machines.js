@@ -59,16 +59,34 @@ export function pointing(def) {
   return [dx, 0, dz];
 }
 
+// What a stack (or a thing on a belt or in an elevator) carries besides its id and count: how worn it is
+// (or how much charge it has used), its enchantments, and whether a portable lamp is switched on. Null for a
+// plain one. Machines pass this along with the thing, so nothing comes out of one mended or recharged.
+export function stateOf(s) {
+  if (!s || typeof s !== 'object') return null;
+  const o = {};
+  if (s.wear > 0) o.wear = s.wear;
+  if (Array.isArray(s.ench) && s.ench.length) o.ench = [...s.ench];
+  if (s.on) o.on = true;
+  return o.wear || o.ench || o.on ? o : null;
+}
+// The same, checked over (for loading a save).
+const cleanState = (o) => {
+  if (!o || typeof o !== 'object') return {};
+  return stateOf({ wear: +o.wear || 0, ench: Array.isArray(o.ench) ? o.ench.filter((e) => typeof e === 'string') : null, on: o.on === true }) ?? {};
+};
+const idOf = (item) => (typeof item === 'object' ? item?.id ?? 0 : item);
+
 // Put up to n of an item into a list of slots: onto matching stacks first, then empty slots.
-// Returns how many went in.
-function addToSlots(slots, id, n) {
+// Returns how many went in. A thing with state (see stateOf) never stacks: it gets a slot of its own.
+function addToSlots(slots, id, n, state = null) {
   let left = n;
   for (const s of slots) {
-    if (!left) break;
-    if (s && s.id === id && s.count < maxStack(id)) { const k = Math.min(left, maxStack(id) - s.count); s.count += k; left -= k; }
+    if (!left || state) break;
+    if (s && s.id === id && !stateOf(s) && s.count < maxStack(id)) { const k = Math.min(left, maxStack(id) - s.count); s.count += k; left -= k; }
   }
   for (let i = 0; i < slots.length && left; i++) {
-    if (!slots[i]) { const k = Math.min(left, maxStack(id)); slots[i] = { id, count: k }; left -= k; }
+    if (!slots[i]) { const k = state ? 1 : Math.min(left, maxStack(id)); slots[i] = { id, count: k, ...state }; left -= k; }
   }
   return n - left;
 }
@@ -145,28 +163,30 @@ export class Machines {
 
   // Put n of an item into the block at (x, y, z): a chest, a machine (as an ingredient, or as fuel when
   // `fuel` and it burns), a hopper (passed straight on) or a belt (one at a time). Returns how many went in.
-  insert(world, stations, x, y, z, id, n, fuel = false, depth = 0) {
+  // `item` is an id, or a stack (or anything with an id) whose state goes along with it (see stateOf).
+  insert(world, stations, x, y, z, item, n, fuel = false, depth = 0) {
+    const id = idOf(item), state = stateOf(item);
     const bid = world.get(x, y, z), def = BLOCKS[bid];
-    if (!def || depth > 6) return 0;
+    if (!def || depth > 6 || !id) return 0;
     const kind = stationKind(bid);
     if (kind) {
       const K = STATION_KINDS[kind];
       const st = stations.get(x, y, z, kind);
       if (K.accepts && !K.accepts.includes(id)) return 0;
-      if (fuel && !K.storage && !K.powered && !K.crafter && !K.holder && isFuel(id)) {
+      if (fuel && !state && !K.storage && !K.powered && !K.crafter && !K.holder && isFuel(id)) {
         if (!st.fuel) { const k = Math.min(n, maxStack(id)); st.fuel = { id, count: k }; return k; }
         if (st.fuel.id !== id) return 0;
         const k = Math.min(n, maxStack(id) - st.fuel.count);
         st.fuel.count += k;
         return k;
       }
-      return addToSlots(st.inputs, id, n);
+      return addToSlots(st.inputs, id, n, state);
     }
     if (def.rail?.loader) {
       // a storage cart waiting on a loader rail
       const cart = this.carts?.storageAt(x, y, z);
       if (!cart) return 0;
-      const k = addToSlots(cart.store.inputs, id, n);
+      const k = addToSlots(cart.store.inputs, id, n, state);
       if (k) this.carts.busy(cart);
       return k;
     }
@@ -175,10 +195,10 @@ export class Machines {
       const filter = this.frames?.around(world, x, y, z);
       if (filter?.length && !filter.includes(id)) return 0;
       const [dx, dy, dz] = pointing(def);
-      return this.insert(world, stations, x + dx, y + dy, z + dz, id, n, !def.down, depth + 1);
+      return this.insert(world, stations, x + dx, y + dy, z + dz, item, n, !def.down, depth + 1);
     }
     if (def.engine) {
-      if (!isFuel(id)) return 0;
+      if (!isFuel(id) || state) return 0;
       const e = this.engine(x, y, z);
       if (e.fuel && e.fuel.id !== id) return 0;
       const k = Math.min(n, maxStack(id) - (e.fuel?.count ?? 0));
@@ -191,7 +211,7 @@ export class Machines {
       while (BLOCKS[world.get(x, by - 1, z)]?.elevator) by--;
       const k = key(x, by, z), items = this.lifts.get(k) ?? [], h = y - by;
       if (items.some((it) => Math.abs(it.h - h) < LIFT_GAP)) return 0;
-      items.push({ id, h, sprite: null });
+      items.push({ id, h, sprite: null, ...state });
       items.sort((a, b) => b.h - a.h);
       this.lifts.set(k, items);
       return 1;
@@ -200,7 +220,7 @@ export class Machines {
       const items = this.belts.get(key(x, y, z)) ?? [];
       const last = items[items.length - 1];
       if (last && last.t < BELT_GAP) return 0;
-      items.push({ id, t: 0, sprite: null });
+      items.push({ id, t: 0, sprite: null, ...state });
       this.belts.set(key(x, y, z), items);
       return 1;
     }
@@ -208,16 +228,17 @@ export class Machines {
   }
 
   // Take one thing out of the chest or machine at (x, y, z) for a hopper below it: a chest's first
-  // stack, or a machine's output. Returns the id taken, or 0 (`peek` only looks).
+  // stack, or a machine's output. Returns { id, ...its state } for the thing taken, or 0 (`peek` only looks).
   takeOne(world, stations, x, y, z, peek = false, filter = null) {
     const ok = (s) => s && (!filter?.length || filter.includes(s.id));
+    const one = (s) => ({ id: s.id, ...stateOf(s) });
     if (BLOCKS[world.get(x, y, z)]?.rail?.loader) {
       const cart = this.carts?.storageAt(x, y, z);
       const i = cart ? cart.store.inputs.findIndex(ok) : -1;
       if (i < 0) return 0;
-      const id = cart.store.inputs[i].id;
+      const it = one(cart.store.inputs[i]);
       if (!peek) { if (!--cart.store.inputs[i].count) cart.store.inputs[i] = null; this.carts.busy(cart); }
-      return id;
+      return it;
     }
     const kind = stationKind(world.get(x, y, z));
     if (!kind) return 0;
@@ -225,14 +246,14 @@ export class Machines {
     if (STATION_KINDS[kind].storage) {
       const i = st.inputs.findIndex(ok);
       if (i < 0) return 0;
-      const id = st.inputs[i].id;
+      const it = one(st.inputs[i]);
       if (!peek && !--st.inputs[i].count) st.inputs[i] = null;
-      return id;
+      return it;
     }
     if (!ok(st.out)) return 0;
-    const id = st.out.id;
+    const it = one(st.out);
     if (!peek && !--st.out.count) st.out = null;
-    return id;
+    return it;
   }
 
   // ---------- each frame ----------
@@ -269,10 +290,10 @@ export class Machines {
       this.hopperTimer = HOPPER_EVERY;
       for (const [x, y, z, def] of hoppers) {
         const filter = this.frames?.around(world, x, y, z);
-        const id = this.takeOne(world, stations, x, y + 1, z, true, filter);
-        if (!id) continue;
+        const it = this.takeOne(world, stations, x, y + 1, z, true, filter);
+        if (!it) continue;
         const [dx, dy, dz] = pointing(def);
-        if (this.insert(world, stations, x + dx, y + dy, z + dz, id, 1, !def.down)) this.takeOne(world, stations, x, y + 1, z, false, filter);
+        if (this.insert(world, stations, x + dx, y + dy, z + dz, it, 1, !def.down)) this.takeOne(world, stations, x, y + 1, z, false, filter);
       }
     }
     this.tickBelts(dt, world, kinetics, stations, light);
@@ -297,12 +318,13 @@ export class Machines {
     const [dx, dz] = FACING_DIRS[def.facing];
     if (world.isSolid(x + dx, y, z + dz)) return; // nowhere to throw it
     const bx = x - dx, bz = z - dz;
-    const id = this.takeOne(world, stations, bx, y, bz, true);
-    if (!id) return;
+    const first = this.takeOne(world, stations, bx, y, bz, true);
+    if (!first) return;
+    const id = first.id, state = stateOf(first);
     let n = 0;
-    const most = stack ? maxStack(id) : 1;
-    while (n < most && this.takeOne(world, stations, bx, y, bz, true) === id) { this.takeOne(world, stations, bx, y, bz); n++; }
-    this.throwItem?.({ id, count: n }, { x: x + 0.5 + dx * 0.7, y: y + 0.35, z: z + 0.5 + dz * 0.7 }, { x: dx * 4, y: 2, z: dz * 4 });
+    const most = stack && !state ? maxStack(id) : 1; // (a thing with state goes on its own)
+    for (let it; n < most && (it = this.takeOne(world, stations, bx, y, bz, true)) && it.id === id && !stateOf(it) === !state;) { this.takeOne(world, stations, bx, y, bz); n++; }
+    this.throwItem?.({ id, count: n, ...state }, { x: x + 0.5 + dx * 0.7, y: y + 0.35, z: z + 0.5 + dz * 0.7 }, { x: dx * 4, y: 2, z: dz * 4 });
   }
 
   // ---------- farm machines ----------
@@ -419,7 +441,7 @@ export class Machines {
   tickCollectors(dt, world, stations, collectors) {
     if (!this.loose) return;
     for (const it of this.loose.items) {
-      if (it.age < it.delay || it.stack.wear || it.stack.ench?.length || (it.noCollect -= dt) > 0) continue;
+      if (it.age < it.delay || (it.noCollect -= dt) > 0) continue;
       let best = null, bd = Infinity;
       for (const c of collectors) {
         const cx = c[0] + 0.5, cy = c[1] + 1, cz = c[2] + 0.5;
@@ -429,7 +451,7 @@ export class Machines {
       if (!best) continue;
       const [x, y, z] = best;
       if (bd < 0.9) {
-        const took = this.insert(world, stations, x, y, z, it.stack.id, it.stack.count, false);
+        const took = this.insert(world, stations, x, y, z, it.stack, it.stack.count, false);
         if (took > 0) it.stack.count -= took; else it.noCollect = 3; // (the collector has nowhere to put it: leave it be a while)
         continue;
       }
@@ -446,7 +468,7 @@ export class Machines {
       if (!world.chunkAt(x, z)) continue;
       if (!BLOCKS[world.get(x, y, z)]?.elevator || BLOCKS[world.get(x, y - 1, z)]?.elevator) {
         // the column was broken up: what it held spills out
-        for (const it of items) { this.dropSprite(it); this.throwItem?.({ id: it.id, count: 1 }, { x: x + 0.5, y: y + it.h + 0.5, z: z + 0.5 }, { x: 0, y: 1, z: 0 }); }
+        for (const it of items) { this.dropSprite(it); this.throwItem?.({ id: it.id, count: 1, ...stateOf(it) }, { x: x + 0.5, y: y + it.h + 0.5, z: z + 0.5 }, { x: 0, y: 1, z: 0 }); }
         this.lifts.delete(k);
         continue;
       }
@@ -461,8 +483,8 @@ export class Machines {
         // out of the top: into what's above, or onto it
         const it = items[0];
         const above = world.get(x, top, z);
-        const out = above === 0 ? (this.throwItem?.({ id: it.id, count: 1 }, { x: x + 0.5, y: top + 0.1, z: z + 0.5 }, { x: 0, y: 2.5, z: 0 }), 1)
-          : this.insert(world, stations, x, top, z, it.id, 1, false);
+        const out = above === 0 ? (this.throwItem?.({ id: it.id, count: 1, ...stateOf(it) }, { x: x + 0.5, y: top + 0.1, z: z + 0.5 }, { x: 0, y: 2.5, z: 0 }), 1)
+          : this.insert(world, stations, x, top, z, it, 1, false);
         if (out) { this.dropSprite(items.shift()); if (!items.length) { this.lifts.delete(k); continue; } }
       }
       const sun = light.day * skyBrightness(world.skyAt(x, y, z)), t = lightBrightness(world.lightAt(x, y, z)) * light.flicker;
@@ -755,14 +777,14 @@ export class Machines {
           const it = items[i];
           if (it.offered || it.t < 0.5) continue;
           it.offered = true;
-          if (this.insert(world, stations, x, y - 1, z, it.id, 1, false)) { this.dropSprite(it); items.splice(i, 1); }
+          if (this.insert(world, stations, x, y - 1, z, it, 1, false)) { this.dropSprite(it); items.splice(i, 1); }
         }
         if (!items.length) { this.belts.delete(k); continue; }
       }
       // at the end: on to the next belt, or into whatever it points at (or off to the side)
       if (items.length && items[0].t >= 1 && speed > 0) {
         const outs = this.beltOuts(world, x, y, z, def, items[0].id);
-        const i = outs.findIndex(([ox, oz]) => this.insert(world, stations, ox, y, oz, items[0].id, 1, false));
+        const i = outs.findIndex(([ox, oz]) => this.insert(world, stations, ox, y, oz, items[0], 1, false));
         if (i >= 0) {
           if (def.sorts === 'split') this.split.set(k, (outs[i][2] + 1) % 2);
           this.dropSprite(items.shift());
@@ -816,10 +838,10 @@ export class Machines {
     it.sprite = null;
   }
 
-  // A machine was broken: what was on it or held in it comes back, as [[id, n], ...].
+  // A machine was broken: what was on it or held in it comes back, as [[id, n, state], ...].
   removeAt(x, y, z) {
     const k = key(x, y, z), out = [];
-    for (const it of this.belts.get(k) ?? []) { out.push([it.id, 1]); this.dropSprite(it); }
+    for (const it of this.belts.get(k) ?? []) { out.push([it.id, 1, stateOf(it)]); this.dropSprite(it); }
     this.belts.delete(k);
     for (const [id, n] of this.drills.get(k)?.held ?? []) out.push([id, n]);
     this.drills.delete(k);
@@ -837,7 +859,7 @@ export class Machines {
         let joined = true;
         for (let cy = ly; cy < y && joined; cy++) joined = !!BLOCKS[this.world.get(x, cy, z)]?.elevator;
         if (!joined) continue;
-        for (const it of items) { out.push([it.id, 1]); this.dropSprite(it); }
+        for (const it of items) { out.push([it.id, 1, stateOf(it)]); this.dropSprite(it); }
         this.lifts.delete(lk);
       }
     }
@@ -849,21 +871,21 @@ export class Machines {
 
   serialize() {
     return {
-      belts: [...this.belts].map(([k, items]) => [k, items.map((it) => [it.id, it.t])]),
+      belts: [...this.belts].map(([k, items]) => [k, items.map((it) => [it.id, it.t, ...(stateOf(it) ? [stateOf(it)] : [])])]),
       spoutWater: [...this.spoutWater].map(([k, l]) => (l === WATER ? k : [k, l])),
       drills: [...this.drills].filter(([, d]) => d.held.length).map(([k, d]) => [k, d.held]),
       engines: [...this.engines].filter(([, e]) => e.fuel || e.burn > 0).map(([k, e]) => [k, +e.burn.toFixed(1), e.fuel ? [e.fuel.id, e.fuel.count] : 0]),
       gaugeFull: [...this.gaugeFull],
       ejectStacks: [...this.ejectStacks],
       tanks: [...this.tanks].filter(([, t]) => t.amount > 0).map(([k, t]) => [k, t.liquid, +t.amount.toFixed(2)]),
-      lifts: [...this.lifts].map(([k, items]) => [k, items.map((it) => [it.id, +it.h.toFixed(2)])]),
+      lifts: [...this.lifts].map(([k, items]) => [k, items.map((it) => [it.id, +it.h.toFixed(2), ...(stateOf(it) ? [stateOf(it)] : [])])]),
     };
   }
 
   load(o) {
     this.clear();
     for (const [k, items] of o?.belts ?? []) {
-      if (typeof k === 'string' && Array.isArray(items)) this.belts.set(k, items.filter((it) => it?.[0] > 0).map(([id, t]) => ({ id, t: Math.min(1, Math.max(0, +t || 0)), sprite: null })));
+      if (typeof k === 'string' && Array.isArray(items)) this.belts.set(k, items.filter((it) => it?.[0] > 0).map(([id, t, st]) => ({ id, t: Math.min(1, Math.max(0, +t || 0)), sprite: null, ...cleanState(st) })));
     }
     for (const k of o?.spoutWater ?? []) {
       if (typeof k === 'string') this.spoutWater.set(k, WATER);
@@ -879,7 +901,7 @@ export class Machines {
       if (typeof k === 'string' && (liquid === WATER || liquid === LAVA)) this.tanks.set(k, { liquid, amount: Math.min(TANK_CAP, Math.max(0, +amount || 0)) });
     }
     for (const [k, items] of o?.lifts ?? []) {
-      if (typeof k === 'string' && Array.isArray(items)) this.lifts.set(k, items.filter((it) => it?.[0] > 0).map(([id, h]) => ({ id, h: Math.max(0, +h || 0), sprite: null })));
+      if (typeof k === 'string' && Array.isArray(items)) this.lifts.set(k, items.filter((it) => it?.[0] > 0).map(([id, h, st]) => ({ id, h: Math.max(0, +h || 0), sprite: null, ...cleanState(st) })));
     }
     for (const [k, held] of o?.drills ?? []) {
       if (typeof k === 'string' && Array.isArray(held)) this.drills.set(k, { progress: 0, target: '', held: held.filter((h) => h?.[0] > 0 && h[1] > 0), status: '' });
