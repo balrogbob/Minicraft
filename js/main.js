@@ -31,7 +31,7 @@ import {
   RADIO_TX, RADIO_RX, SORTING_MACHINE, LOCOMOTIVE, FIREPLACE, CHIMNEY, HEARTH_FUEL, STABLE,
   SNOWMAN, FIREWORK, PUMPKIN, JACK_O_LANTERN, EGG, POPPY, DANDELION, DAISY, LAVENDER,
   ONION, BEANS, TOMATO, HERBS, CIDER, VINTAGE_CIDER, BERRY_WINE, FINE_BERRY_WINE,
-  KILN, ROPE_LADDER, ROPE_BRIDGE, BRIDGE_RAIL,
+  KILN, ROPE_LADDER, ROPE_BRIDGE, BRIDGE_RAIL, LOCK_GATE, SLUICE_WHEEL,
 } from './blocks.js';
 import { Smoke } from './smoke.js';
 import { Fireworks } from './fireworks.js';
@@ -463,7 +463,7 @@ async function startWorld(save, opts = {}) {
     const drops = dropsFor(LEAVES, 0); // (fruit trees' leaves too: not their fruit, which you'd pick)
     if (drops.length) giveDrops(drops);
   };
-  mobs.reset(world); bees.clear(); crows.clear(); critters.clear(); fires.clear(); hearths.clear(); smoke.clear(); fireworks.clear(); strikeIn = 20; catGiftDay = -1; bellDay = -1; villageGrowth = new Map(); shownSeason = -1;
+  mobs.reset(world); bees.clear(); crows.clear(); critters.clear(); fires.clear(); hearths.clear(); smoke.clear(); fireworks.clear(); openGates.clear(); lockJobs.length = 0; strikeIn = 20; catGiftDay = -1; bellDay = -1; villageGrowth = new Map(); shownSeason = -1;
   kinetics.clear();
   kinetics.load(save?.kinetics);
   beltStart = null;
@@ -527,6 +527,7 @@ async function startWorld(save, opts = {}) {
   catGiftDay = Number.isInteger(save?.catGiftDay) ? save.catGiftDay : -1;
   bellDay = Number.isInteger(save?.bellDay) ? save.bellDay : -1;
   world.soil = new Map((Array.isArray(save?.soil) ? save.soil : []).filter((e) => Array.isArray(e) && typeof e[0] === 'string' && e[1] && typeof e[1].kind === 'string'));
+  for (const k of Array.isArray(save?.openGates) ? save.openGates.map((e) => (Array.isArray(e) ? e[0] : e)) : []) if (typeof k === 'string') openGates.set(k, LOCK_GATE);
   for (const e of Array.isArray(save?.hearths) ? save.hearths : []) if (Array.isArray(e) && typeof e[0] === 'string' && Number.isFinite(e[1])) hearths.set(e[0], e[1]);
   for (const e of Array.isArray(save?.fires) ? save.fires : []) if (Array.isArray(e) && typeof e[0] === 'string' && Number.isFinite(e[1])) fires.set(e[0], e[1]);
   villageGrowth = new Map((Array.isArray(save?.villageGrowth) ? save.villageGrowth : []).filter((e) => Array.isArray(e) && typeof e[0] === 'string' && e[1] && Number.isFinite(e[1].deals))
@@ -638,7 +639,7 @@ function saveGame() {
     weather: { raining: weather.raining, timer: Math.round(weather.timer) },
     pets: mobs.pets(),
     waypoints,
-    places, treasures, beacons: [...beaconSpots], catGiftDay, villageGrowth: [...villageGrowth], bellDay, fires: [...fires], hearths: [...hearths], soil: [...(world.soil ?? [])].slice(-4000),
+    places, treasures, beacons: [...beaconSpots], catGiftDay, villageGrowth: [...villageGrowth], bellDay, fires: [...fires], hearths: [...hearths], openGates: [...openGates], soil: [...(world.soil ?? [])].slice(-4000),
     time: sky.time,
     creative,
     flying: player.flying,
@@ -3689,6 +3690,7 @@ function placeInner() {
     }
     if (tid === ENCHANT_ALTAR) { openAltar(tx, ty, tz); return; }
     if (BLOCKS[tid].bell) { ringBell(tx, tz, held); return; }
+    if (tid === SLUICE_WHEEL) { workLock(tx, ty, tz); return; }
     if (BLOCKS[tid].fruit?.ripe) {
       // pick the fruit off a fruit tree's leaves
       const f = BLOCKS[tid].fruit;
@@ -5543,6 +5545,102 @@ function layBridge(t) {
   toast(`You lay out ${n} block${n > 1 ? 's' : ''} of rope bridge${reached ? ' to the other side' : ': it doesn\'t reach across yet (tap its end with more)'}`, 2200);
 }
 
+
+// ---------- v27 E: canal locks ----------
+// Turning a sluice wheel works the lock beside it. The chamber is the walled-in water (or air) next to the
+// wheel, up to the bank it stands on; its gates are the lock gates in its walls (or the open gateways where
+// they were). Beyond each gate is a stretch of canal, and the water there has a level. The wheel shuts every
+// gate, fills or drains the chamber a layer at a time to the level of a canal on another side, and then opens
+// that canal's gate (its cells fill with water up to the level, and the rest stand open).
+const openGates = new Map(); // "x,y,z" of a lock gate that's standing open -> (the gate's id)
+const lockJobs = []; // locks filling or draining: { cells, level, target, open: [gate cells], timer }
+const MAX_CHAMBER = 600;
+let lockTimer = 0;
+function findLock(wx, wy, wz) {
+  const top = wy - 1; // (the level of the bank the wheel stands on)
+  const start = [[1, 0], [-1, 0], [0, 1], [0, -1]].map(([dx, dz]) => [wx + dx, top, wz + dz]).filter(([x, y, z]) => (world.get(x, y, z) === AIR || world.isWater(x, y, z)) && !openGates.has(`${x},${y},${z}`));
+  if (!start.length) return null;
+  // (the wheel has a chamber on one side and open bank or canal on the others: try each side)
+  let best = null;
+  for (const s of start) {
+    const L = chamberFrom(s, top);
+    if (L.cells) return L;
+    best = L.noGates ? L : best ?? L;
+  }
+  return best;
+}
+function chamberFrom(from, top) {
+  const seen = new Set(), cells = [], gates = new Map();
+  const queue = [from];
+  seen.add(from.join(','));
+  while (queue.length) {
+    const [x, y, z] = queue.pop();
+    cells.push([x, y, z]);
+    if (cells.length > MAX_CHAMBER) return { tooBig: true };
+    for (const [dx, dy, dz] of [[1, 0, 0], [-1, 0, 0], [0, 0, 1], [0, 0, -1], [0, -1, 0], [0, 1, 0]]) {
+      const nx = x + dx, ny = y + dy, nz = z + dz, k = `${nx},${ny},${nz}`;
+      if (ny > top || ny < 1 || seen.has(k)) continue;
+      seen.add(k);
+      const id = world.get(nx, ny, nz);
+      if (id === LOCK_GATE || openGates.has(k)) { if (dy === 0) gates.set(k, [nx, ny, nz, dx, dz]); continue; }
+      if (id === AIR || isWaterId(id)) queue.push([nx, ny, nz]);
+    }
+  }
+  if (!gates.size) return { noGates: true };
+  // the gates in each wall, and the canal level beyond them
+  const ends = new Map(); // level -> [gate cells]
+  for (const [, [x, y, z, dx, dz]] of gates) {
+    let level = null;
+    for (let cy = top + 1; cy >= top - 16 && level === null; cy--) if (world.isWater(x + dx, cy, z + dz) && !world.isWater(x + dx, cy + 1, z + dz)) level = cy;
+    if (level === null) continue;
+    if (!ends.has(level)) ends.set(level, []);
+    ends.get(level).push([x, y, z]);
+  }
+  let level = -1;
+  for (const [x, y, z] of cells) if (world.isWater(x, y, z) && y > level) level = y;
+  if (level < 0) level = Math.min(...cells.map((c) => c[1])) - 1;
+  return { cells, gates: [...gates.values()].map(([x, y, z]) => [x, y, z]), ends, level };
+}
+function workLock(x, y, z) {
+  sound.place('wood');
+  if (lockJobs.some((j) => j.wheel === `${x},${y},${z}`)) { toast('The lock is already working', 1500); return; }
+  const L = findLock(x, y, z);
+  if (!L) { toast('A sluice wheel works the lock beside it: stand it on the bank, next to the chamber', 3000); return; }
+  if (L.tooBig) { toast('That isn\'t a lock chamber: the water beside the wheel needs walls and lock gates all round', 3000); return; }
+  if (L.noGates || !L.ends.size) { toast('The chamber needs lock gates in its walls, with canal water beyond them', 3000); return; }
+  const levels = [...L.ends.keys()].sort((a, b) => a - b);
+  if (levels.length < 2) { toast('The canals on either side are at the same level: no lock is needed', 2500); return; }
+  // go to the next level up, or back to the bottom once it's at the top
+  const target = levels.find((l) => l > L.level) ?? levels[0];
+  // shut every gate first
+  for (const [gx, gy, gz] of L.gates) { const k = `${gx},${gy},${gz}`; if (openGates.has(k)) { world.setBlock(gx, gy, gz, LOCK_GATE); openGates.delete(k); } }
+  lockJobs.push({ wheel: `${x},${y},${z}`, cells: L.cells, level: L.level, target, open: L.ends.get(target), timer: 0.6 });
+  sound.splash(true);
+  toast(target > L.level ? 'The sluices open: the lock is filling' : 'The sluices open: the lock is draining', 2200);
+}
+function tickLocks(dt) {
+  if (!lockJobs.length) return;
+  if ((lockTimer -= dt) > 0) return;
+  lockTimer = 0.4;
+  for (let i = lockJobs.length - 1; i >= 0; i--) {
+    const j = lockJobs[i];
+    if (j.level !== j.target) {
+      if (j.level < j.target) { j.level++; for (const [x, y, z] of j.cells) if (y === j.level && world.get(x, y, z) === AIR) world.setBlock(x, y, z, WATER); }
+      else { for (const [x, y, z] of j.cells) if (y === j.level && world.isWater(x, y, z)) world.setBlock(x, y, z, AIR); j.level--; }
+      const [x, , z] = j.cells[0];
+      if (Math.hypot(x - player.pos.x, z - player.pos.z) < 24 && Math.random() < 0.5) sound.splash(false);
+      continue;
+    }
+    // there: open the gates on the side whose canal is at this level
+    for (const [x, y, z] of j.open) { world.setBlock(x, y, z, y <= j.target ? WATER : AIR); openGates.set(`${x},${y},${z}`, LOCK_GATE); }
+    sound.place('wood');
+    const [x, , z] = j.cells[0];
+    if (Math.hypot(x - player.pos.x, z - player.pos.z) < 32) toast('The lock gates swing open', 1800);
+    achieve('lock');
+    lockJobs.splice(i, 1);
+  }
+}
+
 // ---------- v26 E: temple and sky-island puzzles, diving ----------
 // A sunken temple's vault opens when each of its three levers matches the lamp above it (lit: on, dark: off).
 // A sky island's opens when you step on its plates in the order of the wool over the vault's gate.
@@ -5853,7 +5951,7 @@ function stepGame(now, dt) {
     world.tickPlants(dt);
     world.tickLeaves(dt);
     tickLamps(dt);
-    tickExplore(dt); tickTreasure(dt); tickSnow(dt); tickVillages(dt); tickStorm(dt); tickFires(dt); tickPuzzles(dt); tickHearths(dt);
+    tickExplore(dt); tickTreasure(dt); tickLocks(dt); tickSnow(dt); tickVillages(dt); tickStorm(dt); tickFires(dt); tickPuzzles(dt); tickHearths(dt);
     crows.update(dt, world, player.pos, {
       day: lightUniforms.uDay.value,
       eat: (x, y, z) => world.setBlock(x, y, z, WHEAT_3 - 2), // back to green shoots
@@ -5995,5 +6093,5 @@ window.minicraft = {
   arrows, fishing, kinetics, electric, lightUniforms, bees, catchAt, seasonOf, applySeason, set day(v) { day = v; applySeason(); }, frames, signalAt, setSwitch, logic, machines, carts, minimap, signs, armour, damage, placeRail, getInCart, getOutOfCart,
   get riding() { return riding; }, explode, lightFuse, fuses, clockTime, compassText, place, editSign, closeSign, openInventory, closeInventory, chestMove, lamps, tickLamps, sleepUntilMorning, stations, openStation, closeStation,
   get caneToday() { return caneToday; }, get creative() { return creative; }, set creative(v) { creative = v; applyCreative(); }, toggleFly, wand, useWand, get achieved() { return achieved; }, achieve, worldMap, openMap, closeMap, openGuide, switchSlot, store, saveGame, renderWorlds, openWorlds, exportSlot, get target() { return target; }, set target(v) { target = v; }, applyKeys, renderKeys, camera, get controls() { return controls; }, loose, throwHeld, get waypoints() { return waypoints; }, toggleWaypoint, sortSlots, quickStack, dropMeteor, get meteors() { return meteors; }, weather, openTrade, closeTrade, mountMob, dismount, get ridingMob() { return ridingMob; }, effects, armourWear, useAnvil, rollLoot, settings,
-  get bedSpawn() { return bedSpawn; }, fertilise, openJournal, closeJournal, get packs() { return packs; }, radiationAt, vehicles, boardVehicle, leaveVehicle, get boarded() { return boarded; }, get seated() { return seated; }, crows, onInvSlot, onStationSlot, quickMoveInv, quickMoveStation, usedIn, itemTipHTML, critters, tickPets, get catGiftDay() { return catGiftDay; }, get villageGrowth() { return villageGrowth; }, notePlanting, tickPuzzles, airPumpNear, useStable, stableNear, horseLabel, hangRopeLadder, layBridge, rollUpRope, fireworks, ringBell, requestFor, festivalToday, repOf, addRep, tradeCost, tickFestival, villageEntry, hearths, tickHearths, feedHearth, chimneyTop, smoke, renderPins, togglePin, lightning, igniteAt, fires, tickFires, tickStorm, growVillage, buildVillageHouse, stallPrice, tickStalls, tickVillages, set catGiftDay(v) { catGiftDay = v; }, get places() { return places; }, get treasures() { return treasures; }, readTreasureMap, tickTreasure, beams, tickBeams, beaconSpots: () => beaconSpots, mistNow, tickSnow, tickExplore, sitOn, standUp, useDisplay, zips, linkZip, startZip, get zipping() { return zipping; }, burnCoal, get health() { return health; }, set health(v) { health = v; }, paintings, placeSwitchRail, signalAt, ailments, armourEnch, openAltar, lairNear, useBed, eat, drinkTea,
+  get bedSpawn() { return bedSpawn; }, fertilise, openJournal, closeJournal, get packs() { return packs; }, radiationAt, vehicles, boardVehicle, leaveVehicle, get boarded() { return boarded; }, get seated() { return seated; }, crows, onInvSlot, onStationSlot, quickMoveInv, quickMoveStation, usedIn, itemTipHTML, critters, tickPets, get catGiftDay() { return catGiftDay; }, get villageGrowth() { return villageGrowth; }, notePlanting, tickPuzzles, airPumpNear, useStable, stableNear, horseLabel, workLock, findLock, tickLocks, openGates, lockJobs, hangRopeLadder, layBridge, rollUpRope, fireworks, ringBell, requestFor, festivalToday, repOf, addRep, tradeCost, tickFestival, villageEntry, hearths, tickHearths, feedHearth, chimneyTop, smoke, renderPins, togglePin, lightning, igniteAt, fires, tickFires, tickStorm, growVillage, buildVillageHouse, stallPrice, tickStalls, tickVillages, set catGiftDay(v) { catGiftDay = v; }, get places() { return places; }, get treasures() { return treasures; }, readTreasureMap, tickTreasure, beams, tickBeams, beaconSpots: () => beaconSpots, mistNow, tickSnow, tickExplore, sitOn, standUp, useDisplay, zips, linkZip, startZip, get zipping() { return zipping; }, burnCoal, get health() { return health; }, set health(v) { health = v; }, paintings, placeSwitchRail, signalAt, ailments, armourEnch, openAltar, lairNear, useBed, eat, drinkTea,
 };

@@ -2763,3 +2763,13 @@ ITEM_PAINTERS[UNFIRED_URN] = (ctx) => {
   const c = [150, 156, 170], d = [120, 126, 140];
   rect(ctx, 5, 13, 6, 1, d); rect(ctx, 3, 6, 10, 7, c); rect(ctx, 4, 5, 8, 1, c); rect(ctx, 6, 3, 4, 2, c); rect(ctx, 5, 2, 6, 1, d); rect(ctx, 11, 7, 2, 5, d);
 };
+
+// v27 E: lock gates: heavy planks, cross-braced, with iron straps
+P[T.LOCK_GATE] = (t) => {
+  for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+    const strap = y === 2 || y === 13, brace = Math.abs(x - y) <= 0 || Math.abs(x - (15 - y)) <= 0;
+    t.set(x, y, strap ? t.vary([80, 80, 86], 0.06) : brace ? t.vary([110, 76, 44], 0.06) : t.vary(x % 4 === 3 ? [118, 86, 52] : [140, 102, 62], 0.06));
+  }
+  for (const x of [1, 14]) for (const y of [2, 13]) t.set(x, y, [170, 170, 176]);
+};
+P[T.LOCK_GATE_TOP] = (t) => { for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) t.set(x, y, t.vary(y % 4 === 3 ? [118, 86, 52] : [150, 110, 68], 0.06)); };

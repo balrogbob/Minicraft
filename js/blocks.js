@@ -140,7 +140,7 @@ export const T = {
   LEAD_CHEST_SIDE: 267, LEAD_CHEST_TOP: 268, LEAD_CHEST_FRONT: 269, CENTRIFUGE_SIDE: 270, CENTRIFUGE_TOP: 271, TESLA: 272, TESLA_TOP: 273,
   FENCE_POST: 274, FENCE_WIRE: 275, FREEZER_SIDE: 276, FREEZER_FRONT: 277, ARC_SIDE: 278, ARC_FRONT: 279, PACKED_ICE: 280, INVAR: 281, RAIL_STOP: 282, BASALT: 283, BASALT_TOP: 284, METEORITE: 285,
   IRON_BARS: 286, POT: 287, IVY: 288, BOX_FLOWERS: 289,
-  FRUIT_LEAVES: 290, FRUIT_RIPE: 293, FRUIT_SAPLING: 296, HAY: 299, SACK: 300, BEACON: 301, APIARY_SIDE: 302, APIARY_FRONT: 303, APIARY_FULL: 304, APIARY_TOP: 305, BELT_CROSS: 306, FARM_CTRL: 307, FARM_CTRL_ON: 308, TUBE: 309, TUBE_END: 310, AWNING: 311, FIRE: 312, CARROT_0: 313, POTATO_0: 317, STEM_0: 321, PUMPKIN_SIDE: 324, PUMPKIN_TOP: 325, JACK_FACE: 326, TRELLIS: 327, VINE_0: 328, BARREL_SIDE: 331, BARREL_TOP: 332, CHEESE: 333, SEA_BRICK: 334, SEA_LANTERN: 335, VAULT: 336, SKY_STONE: 337, AIR_PUMP: 338, RADIO: 339, RADIO_ON: 340, SORTBOX: 341, SORTBOX_TOP: 342, HEARTH: 343, HEARTH_LIT: 344, CHIMNEY_TOP: 345, STABLE_SIDE: 346, SNOWMAN_FRONT: 347, ONION_0: 348, BEAN_0: 352, TOMATO_0: 356, HERB_0: 360, KILN_SIDE: 364, KILN_TOP: 365, KILN_FRONT: 366, KILN_FRONT_LIT: 367, TERRACOTTA: 368, TERRA_COL: 369, GLAZED: 379, ROOF_TILES: 389, URN: 390, ROPE: 391, // (fruit tiles: apple, cherry, orange)
+  FRUIT_LEAVES: 290, FRUIT_RIPE: 293, FRUIT_SAPLING: 296, HAY: 299, SACK: 300, BEACON: 301, APIARY_SIDE: 302, APIARY_FRONT: 303, APIARY_FULL: 304, APIARY_TOP: 305, BELT_CROSS: 306, FARM_CTRL: 307, FARM_CTRL_ON: 308, TUBE: 309, TUBE_END: 310, AWNING: 311, FIRE: 312, CARROT_0: 313, POTATO_0: 317, STEM_0: 321, PUMPKIN_SIDE: 324, PUMPKIN_TOP: 325, JACK_FACE: 326, TRELLIS: 327, VINE_0: 328, BARREL_SIDE: 331, BARREL_TOP: 332, CHEESE: 333, SEA_BRICK: 334, SEA_LANTERN: 335, VAULT: 336, SKY_STONE: 337, AIR_PUMP: 338, RADIO: 339, RADIO_ON: 340, SORTBOX: 341, SORTBOX_TOP: 342, HEARTH: 343, HEARTH_LIT: 344, CHIMNEY_TOP: 345, STABLE_SIDE: 346, SNOWMAN_FRONT: 347, ONION_0: 348, BEAN_0: 352, TOMATO_0: 356, HERB_0: 360, KILN_SIDE: 364, KILN_TOP: 365, KILN_FRONT: 366, KILN_FRONT_LIT: 367, TERRACOTTA: 368, TERRA_COL: 369, GLAZED: 379, ROOF_TILES: 389, URN: 390, ROPE: 391, LOCK_GATE: 392, LOCK_GATE_TOP: 393, // (fruit tiles: apple, cherry, orange)
 };
 
 // Ores, deepest-reaching last. tier: the pickaxe tier needed to mine it (see TOOL_TIERS);
@@ -2690,3 +2690,25 @@ RECIPES.push(
   { out: [ROPE_BRIDGE, 4], in: [[PLANKS, 3], [STRING, 3]] },
 );
 COLORS.forEach((c, i) => RECIPES.push({ out: [TERRA_COL + i, 4], in: [[TERRACOTTA, 4], [DYE + i, 1]], metal: DYE + i }));
+
+// ---------- v27 E: canal locks ----------
+// Lock gates are heavy timber gates that hold the water back. Build a walled chamber between a lower and an
+// upper stretch of canal, with gates at each end, and a sluice wheel on the bank beside it: turning the wheel
+// shuts the gates, fills (or drains) the chamber to the other canal's level and opens the gate on that side,
+// carrying a boat up or down with it.
+export const LOCK_GATE = 1446, SLUICE_WHEEL = 1447;
+block(LOCK_GATE, { name: 'Lock Gate', sound: 'wood', side: T.LOCK_GATE, top: T.LOCK_GATE_TOP, bottom: T.LOCK_GATE_TOP, hardness: 2.5, tool: 'axe' });
+block(SLUICE_WHEEL, {
+  name: 'Sluice Wheel', sound: 'wood', transparent: true, hardness: 1.5, tool: 'axe',
+  model: [
+    [3, 0, 6, 7, 11, 10, T.LOG_SIDE], [7, 9.25, 7.25, 12.5, 10.75, 8.75, T.IRON], // post and axle
+    [12.5, 5, 7.5, 13.5, 15, 8.5, T.PLANKS], [12.5, 9.5, 3, 13.5, 10.5, 13, T.PLANKS], // spokes
+    [12, 15, 5, 14, 16, 11, T.IRON], [12, 4, 5, 14, 5, 11, T.IRON], [12, 7, 2, 14, 13, 3, T.IRON], [12, 7, 13, 14, 13, 14, T.IRON], // the rim
+    [12, 13, 3, 14, 15, 5, T.IRON], [12, 13, 11, 14, 15, 13, T.IRON], [12, 5, 3, 14, 7, 5, T.IRON], [12, 5, 11, 14, 7, 13, T.IRON],
+  ],
+  boxes: [[3, 0, 3, 14, 16, 13]],
+});
+RECIPES.push(
+  { out: [LOCK_GATE, 2], in: [[PLANKS, 6], [IRON_INGOT, 1]], table: true, metal: IRON_INGOT },
+  { out: [SLUICE_WHEEL, 1], in: [[LOG, 1], [PLANKS, 2], [IRON_INGOT, 2]], table: true, metal: IRON_INGOT },
+);
