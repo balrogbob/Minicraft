@@ -793,9 +793,10 @@ own colour. Hang a **painting** on a wall: it picks the biggest of eight picture
   2 copper, 4 electrum wire) fills one, or anything that runs on one, using 4 power while it charges.
 - When the generators make less than the machines want, everything runs on the share there is: pulverizers and
   chargers slow down, and lamps go out below half. Tap a generator, lamp or wire to see how the network is doing.
+- Hoppers, belts, elevators, ejectors, collectors and carts pass things on just as they are: a flat battery stays
+  flat, a worn tool stays worn, and enchantments stay put.
 - Battery-powered things are made with a battery and keep its charge. When one runs flat it tops itself up from
-  any charged battery you carry. Hoppers, belts, elevators, ejectors, collectors and carts pass things on just as they are:
-  a flat battery stays flat, a worn tool stays worn, and enchantments stay put.
+  any charged battery you carry:
   - The **portable electric lamp** (an electric lamp, a battery and iron): tap with it in hand to switch it on, and
     it lights the way around you from anywhere in your inventory. Its charge lasts about 16 minutes.
   - The **jackhammer** (4 stainless steel, a battery, 2 electrum wire) digs like a stainless steel pickaxe, only
