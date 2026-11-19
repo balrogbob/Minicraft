@@ -28,7 +28,7 @@ import {
   ELECTRIC_RAIL, LIFT, LIFT_REACH, WIRELESS_REACH, CHAINSAW, SAWDUST, SPANNER, GRAPPLE, isBackpack, kineticId, MELTDOWN, REACTOR_POWER, ROD_LIFE, BOOK,
   BOOKSHELF, JOURNAL, FERTILISER, SHELF_DISCOUNT, LEAD_CHEST, FREEZER, ARC_FURNACE, SPENT_ROD, RADIATION_REACH, hazmatId, TESLA_REACH, TESLA_DAMAGE, ELECTRIC_FENCE,
   RAIL_STATION, ZIP_POST, ZIP_LINE, ZIP_REACH, BOAT, BALLOON, CHARCOAL, METEORITE, METEORIC_IRON, metalSword, TRUFFLE,
-  RADIO_TX, RADIO_RX, SORTING_MACHINE, LOCOMOTIVE, FIREPLACE, CHIMNEY, HEARTH_FUEL,
+  RADIO_TX, RADIO_RX, SORTING_MACHINE, LOCOMOTIVE, FIREPLACE, CHIMNEY, HEARTH_FUEL, STABLE,
 } from './blocks.js';
 import { Smoke } from './smoke.js';
 import { createAtlas, createIcons, createCrackCanvases, createWaterCanvas, createHudIcons, paintSeason } from './textures.js';
@@ -547,12 +547,19 @@ async function startWorld(save, opts = {}) {
     await nextFrame();
   }
   // pets come back where you left them (or beside you, if that's far away)
-  for (const [kind, x, y, z, sitting, coat] of save?.pets ?? []) {
-    if (!['wolf', 'camel', 'cat', 'buffalo'].includes(kind) || ![x, y, z].every(Number.isFinite)) continue;
-    const far = Math.hypot(x - player.pos.x, z - player.pos.z) > 40;
-    const opts = Number.isFinite(coat) ? { coat } : undefined;
+  for (const [kind, x, y, z, sitting, coat, h] of save?.pets ?? []) {
+    if (!['wolf', 'camel', 'cat', 'buffalo', 'horse'].includes(kind) || ![x, y, z].every(Number.isFinite)) continue;
+    // a horse kept at a stable waits there, however far away; other pets come to you if they're far off
+    const stabled = kind === 'horse' && typeof h?.stable === 'string';
+    const far = !stabled && Math.hypot(x - player.pos.x, z - player.pos.z) > 40;
+    const opts = { ...(Number.isFinite(coat) ? { coat } : {}), ...(kind === 'horse' && h ? { gait: +h.gait || undefined, leap: +h.leap || undefined } : {}) };
     const m = far ? mobs.spawn(kind, player.pos.x + 1.5, player.pos.y + 0.2, player.pos.z + 1.5, opts) : mobs.spawn(kind, x, y, z, opts);
-    mobs.setTame(m);
+    if (kind !== 'horse' || h?.tame !== false) mobs.setTame(m);
+    if (kind === 'horse') {
+      m.trusted = true;
+      if (stabled) m.stable = h.stable;
+      if (h?.baby > 0) { m.baby = h.baby; m.root.scale.setScalar(m.baseScale * 0.5); }
+    }
     m.sitting = !!sitting && !far;
   }
   $('loading').classList.add('hidden');
@@ -1048,6 +1055,7 @@ function lookName() {
   if (targetMob) {
     const m = targetMob.mob;
     const name = m.spec.name ?? (m.kind === 'villager' ? `Villager (${m.profession ?? 'farmer'})` : capital(m.kind));
+    if (m.spec.horse) return horseLabel(m);
     return m.tame ? `${name} (tame)` : name;
   }
   if (target) {
@@ -2882,15 +2890,75 @@ function renderBossBar() {
 function mountMob(m) {
   ridingMob = m;
   m.ridden = true;
+  m.sitting = false;
   player.vel.set(0, 0, 0);
   sound.mob(m.kind, 0.8);
-  toast('Steer with the joystick (or WASD). Tap to get off.', 2500);
+  if (m.spec.horse) { achieve('horse'); toast(`Steer with the joystick (or WASD), jump to leap. Tap to get off. ${horseStats(m)}`, 3000); }
+  else toast('Steer with the joystick (or WASD). Tap to get off.', 2500);
 }
 function dismount() {
   if (!ridingMob) return;
-  ridingMob.ridden = false;
-  player.spawn(ridingMob.pos.x + 1.1, ridingMob.pos.y + 0.3, ridingMob.pos.z);
+  const m = ridingMob;
+  m.ridden = false;
+  player.spawn(m.pos.x + 1.1, m.pos.y + 0.3, m.pos.z);
   ridingMob = null;
+  // get off a horse near a stable and it goes in and waits there
+  if (m.spec.horse) {
+    const st = stableNear(m.pos.x, m.pos.y, m.pos.z, 12);
+    if (st) { stableHorse(m, st); toast('Your horse settles in at the stable', 1800); }
+    else m.sitting = true;
+  }
+}
+
+// ---------- v27 A: horses and stables ----------
+const HORSE_COATS = { 0x7a4a2a: 'bay', 0x9a5a2e: 'chestnut', 0x2a2420: 'black', 0xe6dfd2: 'white', 0x8c8c8e: 'grey', 0xc8a46a: 'dun' };
+const horseStats = (m) => `Speed ${m.gait.toFixed(1)}, jump ${m.leap.toFixed(1)}`;
+function horseLabel(m) {
+  const coat = HORSE_COATS[m.coat] ?? 'mottled';
+  const who = m.baby > 0 ? 'Foal' : 'Horse';
+  if (!m.tame && !m.trusted) return `${who} (wild, ${coat})`;
+  return `${who} (${coat}${m.tame ? '' : ', trusts you'}) · ${horseStats(m)}`;
+}
+// The nearest stable within r blocks of a point: [x, y, z] or null.
+function stableNear(px, py, pz, r) {
+  let best = null, bd = Infinity;
+  const bx = Math.floor(px), by = Math.floor(py), bz = Math.floor(pz);
+  for (let y = by - 3; y <= by + 3; y++) for (let z = bz - r; z <= bz + r; z++) for (let x = bx - r; x <= bx + r; x++) {
+    if (!BLOCKS[world.get(x, y, z)]?.stable) continue;
+    const d = (x - bx) ** 2 + (z - bz) ** 2;
+    if (d < bd) { bd = d; best = [x, y, z]; }
+  }
+  return best;
+}
+// Put a horse in at a stable: on a free spot beside the manger, waiting there.
+function stableHorse(m, [x, y, z]) {
+  m.stable = `${x},${y},${z}`;
+  m.sitting = true;
+  for (const [dx, dz] of [[0, 1], [1, 0], [0, -1], [-1, 0], [1, 1], [-1, 1], [1, -1], [-1, -1]]) {
+    const fx = x + dx * 2, fz = z + dz * 2;
+    for (const fy of [y, y + 1, y - 1]) {
+      if (!world.isSolid(fx, fy - 1, fz) || world.isSolid(fx, fy, fz) || world.isSolid(fx, fy + 1, fz)) continue;
+      m.pos.set(fx + 0.5, fy, fz + 0.5); m.vel.set(0, 0, 0);
+      m.heading = m.yaw = Math.atan2(x - fx, z - fz);
+      return true;
+    }
+  }
+  return false;
+}
+// Tap a stable: your horses (tame ones anywhere in the loaded world) come home to it, and it tells you about them.
+function useStable(x, y, z) {
+  const key = `${x},${y},${z}`;
+  const mine = mobs.mobs.filter((m) => m.spec.horse && m.tame && !m.dying && m !== ridingMob);
+  let called = 0;
+  for (const m of mine) {
+    if (m.stable === key && Math.hypot(m.pos.x - x, m.pos.z - z) < 4) continue;
+    if (Math.hypot(m.pos.x - x, m.pos.z - z) > 160) continue;
+    if (stableHorse(m, [x, y, z])) called++;
+  }
+  const here = mine.filter((m) => m.stable === key);
+  sound.mob('horse', 0.8);
+  if (!here.length) { toast('No horses here. Saddle a horse you\'ve won over, ride it here and get off nearby.', 3000); return; }
+  toast(`${called ? `${called} horse${called > 1 ? 's' : ''} came home. ` : ''}At this stable: ${here.map((m) => `${HORSE_COATS[m.coat] ?? 'mottled'} (${horseStats(m).toLowerCase()})`).join('; ')}`, 4000);
 }
 function followMount() {
   if (!mobs.mobs.includes(ridingMob)) { ridingMob = null; return; }
@@ -3560,6 +3628,7 @@ function placeInner() {
     if (isCurtain(tid)) { toggleCurtain(tx, ty, tz); return; }
     if (isGate(tid) || isTrapdoor(tid)) { toggleHatch(tx, ty, tz); return; }
     if (BLOCKS[tid].switch === 'lever') { setSwitch(tx, ty, tz, !BLOCKS[tid].on); return; }
+    if (BLOCKS[tid].stable && !(held && isBlock(held.id))) { useStable(tx, ty, tz); return; }
     if (BLOCKS[tid].hearth) {
       if (held && HEARTH_FUEL[held.id]) { feedHearth(tx, ty, tz, held); return; }
       if (!(held && isBlock(held.id))) {
@@ -5644,7 +5713,7 @@ function stepGame(now, dt) {
     bees.update(dt, world, player, { day: lightUniforms.uDay.value, flicker: lightUniforms.uFlicker.value, ambient: lightUniforms.uAmbient.value }, sky.light);
     mobs.sneaking = controls.down && player.onGround; // (deer let you creep up on them)
     mobs.update(dt, player, { day: lightUniforms.uDay.value, flicker: lightUniforms.uFlicker.value, ambient: lightUniforms.uAmbient.value },
-      { difficulty: difficulty(), daylight: sky.light, playerDead: dead, ride: ridingMob && { moveX: controls.moveX, moveZ: controls.moveZ, yaw: player.yaw } });
+      { difficulty: difficulty(), daylight: sky.light, playerDead: dead, ride: ridingMob && { moveX: controls.moveX, moveZ: controls.moveZ, yaw: player.yaw, jump: controls.jump } });
     if (ridingMob) followMount();
   }
   // write edited chunks to storage shortly (1.5 s) after the player stops changing them
@@ -5741,5 +5810,5 @@ window.minicraft = {
   arrows, fishing, kinetics, electric, lightUniforms, bees, catchAt, seasonOf, applySeason, set day(v) { day = v; applySeason(); }, frames, signalAt, setSwitch, logic, machines, carts, minimap, signs, armour, damage, placeRail, getInCart, getOutOfCart,
   get riding() { return riding; }, explode, lightFuse, fuses, clockTime, compassText, place, editSign, closeSign, openInventory, closeInventory, chestMove, lamps, tickLamps, sleepUntilMorning, stations, openStation, closeStation,
   get caneToday() { return caneToday; }, get creative() { return creative; }, set creative(v) { creative = v; applyCreative(); }, toggleFly, wand, useWand, get achieved() { return achieved; }, achieve, worldMap, openMap, closeMap, openGuide, switchSlot, store, saveGame, renderWorlds, openWorlds, exportSlot, get target() { return target; }, set target(v) { target = v; }, applyKeys, renderKeys, camera, get controls() { return controls; }, loose, throwHeld, get waypoints() { return waypoints; }, toggleWaypoint, sortSlots, quickStack, dropMeteor, get meteors() { return meteors; }, weather, openTrade, closeTrade, mountMob, dismount, get ridingMob() { return ridingMob; }, effects, armourWear, useAnvil, rollLoot, settings,
-  get bedSpawn() { return bedSpawn; }, fertilise, openJournal, closeJournal, get packs() { return packs; }, radiationAt, vehicles, boardVehicle, leaveVehicle, get boarded() { return boarded; }, get seated() { return seated; }, crows, onInvSlot, onStationSlot, quickMoveInv, quickMoveStation, usedIn, itemTipHTML, critters, tickPets, get catGiftDay() { return catGiftDay; }, get villageGrowth() { return villageGrowth; }, notePlanting, tickPuzzles, airPumpNear, hearths, tickHearths, feedHearth, chimneyTop, smoke, renderPins, togglePin, lightning, igniteAt, fires, tickFires, tickStorm, growVillage, buildVillageHouse, stallPrice, tickStalls, tickVillages, set catGiftDay(v) { catGiftDay = v; }, get places() { return places; }, get treasures() { return treasures; }, readTreasureMap, tickTreasure, beams, tickBeams, beaconSpots: () => beaconSpots, mistNow, tickSnow, tickExplore, sitOn, standUp, useDisplay, zips, linkZip, startZip, get zipping() { return zipping; }, burnCoal, get health() { return health; }, set health(v) { health = v; }, paintings, placeSwitchRail, signalAt, ailments, armourEnch, openAltar, lairNear, useBed, eat, drinkTea,
+  get bedSpawn() { return bedSpawn; }, fertilise, openJournal, closeJournal, get packs() { return packs; }, radiationAt, vehicles, boardVehicle, leaveVehicle, get boarded() { return boarded; }, get seated() { return seated; }, crows, onInvSlot, onStationSlot, quickMoveInv, quickMoveStation, usedIn, itemTipHTML, critters, tickPets, get catGiftDay() { return catGiftDay; }, get villageGrowth() { return villageGrowth; }, notePlanting, tickPuzzles, airPumpNear, useStable, stableNear, horseLabel, hearths, tickHearths, feedHearth, chimneyTop, smoke, renderPins, togglePin, lightning, igniteAt, fires, tickFires, tickStorm, growVillage, buildVillageHouse, stallPrice, tickStalls, tickVillages, set catGiftDay(v) { catGiftDay = v; }, get places() { return places; }, get treasures() { return treasures; }, readTreasureMap, tickTreasure, beams, tickBeams, beaconSpots: () => beaconSpots, mistNow, tickSnow, tickExplore, sitOn, standUp, useDisplay, zips, linkZip, startZip, get zipping() { return zipping; }, burnCoal, get health() { return health; }, set health(v) { health = v; }, paintings, placeSwitchRail, signalAt, ailments, armourEnch, openAltar, lairNear, useBed, eat, drinkTea,
 };

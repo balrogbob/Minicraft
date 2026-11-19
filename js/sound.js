@@ -279,6 +279,10 @@ export class Sound {
     } else if (kind === 'buffalo') {
       const f = hurt ? p(115, 130) : p(85, 100);
       this.voice({ from: f, to: f * 0.8, dur: hurt ? 0.3 : 0.8, vol: 0.55 * gain, freq: 420, q: 2, attack: 0.08 });
+    } else if (kind === 'horse') {
+      // a whinny: a high wavering neigh that falls away (a snort when bumped)
+      if (hurt) this.noiseBurst({ type: 'bandpass', freq: 900, q: 1.2, dur: 0.25, vol: 0.4 * gain }, 1, 1);
+      else this.voice({ type: 'sawtooth', from: p(620, 700), to: p(300, 340), dur: 0.9, vol: 0.22 * gain, freq: 1800, q: 1.5, attack: 0.05, vibrato: 18 });
     } else if (kind === 'yak') {
       // yaks grunt rather than moo
       const f = hurt ? p(92, 102) : p(66, 76);

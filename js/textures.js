@@ -678,6 +678,12 @@ P[T.CHIMNEY_TOP] = (t) => {
   P[T.BRICKS](t);
   for (let y = 3; y < 13; y++) for (let x = 3; x < 13; x++) t.set(x, y, t.vary([30, 26, 24], 0.12));
 };
+// v27: the side of a stable's manger: planks with hay poking over the top
+P[T.STABLE_SIDE] = (t) => {
+  P[T.PLANKS](t);
+  for (let x = 0; x < TILE; x++) for (let y = 0; y < 3 + (x * 7 % 3); y++) t.set(x, y, t.vary([206, 176, 84], 0.12));
+  for (let x = 0; x < TILE; x++) t.set(x, 9, t.vary([96, 66, 38], 0.08)); // a rail across
+};
 P[T.AWNING] = (t) => { for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) t.set(x, y, t.vary(Math.floor(x / 4) % 2 ? [240, 236, 224] : [200, 44, 44], 0.04)); };
 P[T.TUBE] = (t) => {
   for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
