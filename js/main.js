@@ -5,7 +5,7 @@ import {
   WOOD_PICK, STONE_PICK, WOOD_AXE, STONE_AXE, WOOD_SHOVEL, STONE_SHOVEL,
   BED, BED_FOOT, CHAIR, LAMP, CARPET, CURTAIN, DOOR, SLIME_FUEL, FACING_DIRS, MAX_LAMP_FUEL,
   isBed, isChair, isLamp, isCurtain, isDoor, doorId, IRON_BARS, FLOWER_POT, HANGING_PLANT, WINDOW_BOX, POT_PLANTS, potOf,
-  OVEN, SMELTER, stationKind, maxStack, FISHING_ROD, RAW_FISH, TOOL_TIERS, LOG, LEAVES, SAPLING, WHEAT_3, isLeaves, FRUITS, fruitLeaves, FRUIT_SAPLING, SCARECROW, COOK_POT,
+  OVEN, SMELTER, stationKind, maxStack, FISHING_ROD, RAW_FISH, TOOL_TIERS, LOG, LEAVES, SAPLING, WHEAT_3, isLeaves, FRUITS, fruitLeaves, FRUIT_SAPLING, SCARECROW, COOK_POT, SNOW_LAYER, LIGHTHOUSE_LAMP, EXPLORER_MAP, TREASURE_MAP, STARSTEEL_INGOT, MAX_LIGHT,
   BLAST_SMELTER, CRUSHER, WATER_BUCKET, WATER_WHEEL, isWaterId, isFlowing,
   CHEST, IRON_CHEST, LADDER, SCAFFOLD, SIGN, SIGN_POST, isSign, isSword, ARMOUR_PIECES,
   SAW, TRIP_HAMMER, DRILL, HOPPER, BELT, WINDMILL, BELLOWS, PUMP, FILAMENT_LAMP, MILLSTONE,
@@ -31,7 +31,7 @@ import {
 } from './blocks.js';
 import { createAtlas, createIcons, createCrackCanvases, createWaterCanvas, createHudIcons, paintSeason } from './textures.js';
 import { World, CHUNK, WORLD_SIZE, chunkKey } from './world.js';
-import { localIndex, CHUNK_VOLUME, H } from './terrain.js';
+import { localIndex, CHUNK_VOLUME, H, SEA_LEVEL } from './terrain.js';
 import { ChunkStore } from './store.js';
 import { buildLegacyWorld, LEGACY_W } from './legacy.js';
 import { Sky, DAY_LENGTH } from './sky.js';
@@ -286,6 +286,7 @@ function loadPacks(list, next) {
     }
     if (v.charge > 0) c.charge = +v.charge;
     if (typeof v.note === 'string') c.note = v.note.slice(0, 4000);
+    if (Number.isInteger(v.treasure)) c.treasure = v.treasure;
     packs.set(Math.floor(e[0]), c);
   }
   nextPack = Math.max(1, Math.floor(+next || 0), ...[...packs.keys()].map((k) => k + 1));
@@ -478,6 +479,9 @@ async function startWorld(save, opts = {}) {
   for (const k of Object.keys(effects)) effects[k] = Math.max(0, +save?.effects?.[k] || 0);
   caneToday = Number.isFinite(save?.caneToday) ? save.caneToday : 0;
   waypoints = Array.isArray(save?.waypoints) ? save.waypoints.filter((w) => w && [w.x, w.y, w.z].every(Number.isFinite)).map((w) => ({ x: w.x, y: w.y, z: w.z, name: String(w.name ?? 'Mark').slice(0, 16) })).slice(0, 12) : [];
+  places = Array.isArray(save?.places) ? save.places.filter((p) => p && typeof p.kind === 'string' && [p.x, p.z].every(Number.isFinite)).slice(0, 400) : [];
+  treasures = Array.isArray(save?.treasures) ? save.treasures.filter((t) => t && [t.x, t.z].every(Number.isFinite)) : [];
+  beaconSpots = new Set(Array.isArray(save?.beacons) ? save.beacons.filter((k) => typeof k === 'string') : []);
   if (save?.weather) weather.set(!!save.weather.raining, Math.max(10, +save.weather.timer || 60));
   else weather.set(false);
   creative = !!(save ? save.creative : opts.creative);
@@ -575,6 +579,7 @@ function saveGame() {
     weather: { raining: weather.raining, timer: Math.round(weather.timer) },
     pets: mobs.pets(),
     waypoints,
+    places, treasures, beacons: [...beaconSpots],
     time: sky.time,
     creative,
     flying: player.flying,
@@ -1233,6 +1238,8 @@ function stationSlot(area, i) {
 }
 
 function openStation(x, y, z, cart = null) {
+  const t = !cart && treasures.find((tr) => tr.placed && !tr.found && tr.x === x && tr.y === y && tr.z === z);
+  if (t) { t.found = true; toast('You found the buried treasure!', 2500); sound.ding?.(); achieve('treasure'); }
   const kind = cart ? 'chest' : stationKind(world.get(x, y, z));
   const nIn = cart ? cart.store.inputs.length : STATION_KINDS[kind].inputs;
   if (!cart) stations.get(x, y, z, kind);
@@ -2426,10 +2433,20 @@ const RUIN_LOOT = [
   [metalTool(ironAt, 'pick'), 1, 1, 0.3], [metalTool(ironAt, 'axe'), 1, 1, 0.25], [metalTool(ironAt, 'shovel'), 1, 1, 0.25], [metalSword(ironAt), 1, 1, 0.2],
 ];
 const WRECK_LOOT = [
-  [GOLD_INGOT, 2, 6, 0.8], [COMPASS, 1, 1, 0.45], [MAP, 1, 1, 0.35], [GUNPOWDER, 2, 6, 0.6], [RAW_FISH, 2, 5, 0.6], [SALMON, 1, 3, 0.4], [PAPER, 1, 3, 0.3],
+  [TREASURE_MAP, 1, 1, 0.45], [GOLD_INGOT, 2, 6, 0.8], [COMPASS, 1, 1, 0.45], [MAP, 1, 1, 0.35], [GUNPOWDER, 2, 6, 0.6], [RAW_FISH, 2, 5, 0.6], [SALMON, 1, 3, 0.4], [PAPER, 1, 3, 0.3],
+];
+// a lighthouse keeper's things
+const LIGHTHOUSE_LOOT = [
+  [TREASURE_MAP, 1, 1, 0.7], [EXPLORER_MAP, 1, 1, 0.25], [LANTERN, 1, 2, 0.5], [COMPASS, 1, 1, 0.3], [RAW_FISH, 2, 6, 0.6], [PAPER, 1, 4, 0.4], [COAL, 3, 8, 0.6],
+];
+// buried treasure: a pirate's hoard
+const TREASURE_LOOT = [
+  [GOLD_INGOT, 6, 14, 1], [SILVER_INGOT, 3, 8, 0.6], [CRYSTAL_SHARD, 3, 8, 0.6], [STARSTEEL_INGOT, 1, 2, 0.25], [COMPASS, 1, 1, 0.3], [GUNPOWDER, 2, 6, 0.4],
 ];
 function placeLoot(x, y, z) {
   const cx = Math.floor(x / CHUNK), cz = Math.floor(z / CHUNK), g = world.generator;
+  const l = g.lighthouseAt?.(cx, cz);
+  if (l && Math.abs(l.x - x) <= 2 && Math.abs(l.z - z) <= 2) return LIGHTHOUSE_LOOT;
   const r = g.ruinAt?.(cx, cz), w = g.wreckAt?.(cx, cz);
   if (r && Math.abs(r.x - x) <= 6 && Math.abs(r.z - z) <= 6 && Math.abs(r.y - y) <= 2) return RUIN_LOOT;
   if (w && Math.abs(w.x - x) <= 8 && Math.abs(w.z - z) <= 6 && Math.abs(w.y - y) <= 2) return WRECK_LOOT;
@@ -3236,6 +3253,7 @@ function placeInner() {
   if (held && isBackpack(held.id)) { openBackpack(held); return; }
   if (held?.id === BOOK) { openGuide(); return; }
   if (held?.id === JOURNAL) { openJournal(held); return; }
+  if (held?.id === TREASURE_MAP) { readTreasureMap(held); return; }
   if (held?.id === FERTILISER && target && fertilise(target.x, target.y, target.z)) { inventory.consumeHeld(); return; }
   if (held?.id === GRAPPLE) { if (grapple) releaseGrapple(); else throwGrapple(); return; }
   if (held?.id === SPANNER && target && spannerTurn(target.x, target.y, target.z)) return;
@@ -3594,6 +3612,7 @@ function placeInner() {
   logic.near(world, x, y, z); // (a block put down beside a wire or logic block can change what it gets)
   sound.place(BLOCKS[id].sound);
   inventory.consumeHeld();
+  if (id === LIGHTHOUSE_LAMP) beaconSpots.add(`${x},${y},${z}`);
   if (id === TELEPAD) {
     const p = machines.padPlaced(x, y, z);
     toast(p ? `Teleport pad: paired with the pad at ${p[0]}, ${p[1]}, ${p[2]}` : 'Teleport pad: put down another one to pair it with this', 3000);
@@ -3943,6 +3962,7 @@ function breakBlock(x, y, z) {
   if (isSign(id) || isBed(id)) { dropWaypoint(x, y, z); dropWaypoint(...bedPartnerOr(x, y, z, id)); }
   if (isFrame(id) || isDisplay(id)) { const item = frames.remove(x, y, z); if (item) drops.push([item, 1]); }
   if (id === ZIP_POST) drops.push(...unlinkZips(x, y, z));
+  if (id === LIGHTHOUSE_LAMP) beaconSpots.delete(`${x},${y},${z}`);
   if (stationKind(id)) loose.spill(stations.removeStacks(x, y, z), x, y, z); // whatever was inside spills out
   if (isElectricLamp(id)) electric.signalLamps.delete(`${x},${y},${z}`);
   if (def.machine || def.engine || def.sensor || def.ejector || def.hopper || def.tank || def.farm || def.quarry || def.pad || def.spawner) loose.spill(machines.removeAt(x, y, z).map(([i, n, st]) => ({ id: i, count: n, ...st })), x, y, z); // and whatever was on a belt or in a drill
@@ -4373,6 +4393,7 @@ $('btn-close-guide').addEventListener('click', () => { $('guide').classList.add(
 // ---------- world map ----------
 const worldMap = new WorldMap($('worldmap'), $('bigmap'), minimap, {
   marks: () => waypoints,
+  places: () => [...places, ...treasures.filter((t) => !t.found).map((t) => ({ kind: 'treasure', x: t.x, z: t.z, name: 'X' }))],
   home: () => bedSpawn ?? (world.spawnCache ??= world.generator.findSpawn()),
   toggleMark(x, z, near) {
     if (near) { waypoints = waypoints.filter((w) => w !== near); toast(`Removed ${near.name}`, 1200); sound.click(); return; }
@@ -4589,6 +4610,154 @@ function toggleWaypoint(x, y, z, id) {
 }
 const dropWaypoint = (x, y, z) => { waypoints = waypoints.filter((w) => !(w.x === x && w.y === y && w.z === z)); };
 
+// ---------- v25 C: explorer's map, treasure maps, lighthouse beams, morning fog, settling snow ----------
+// Carrying an explorer's map, the ruins, wrecks, lighthouses, volcanoes and villages you come near are marked on
+// the world map.
+let places = []; // [{ kind, x, z, name }]
+const PLACE_NAMES = { ruin: 'Ruin', wreck: 'Shipwreck', lighthouse: 'Lighthouse', volcano: 'Volcano', village: 'Village' };
+let exploreTimer = 0;
+function tickExplore(dt) {
+  if ((exploreTimer -= dt) > 0) return;
+  exploreTimer = 2;
+  if (!inventory.count(EXPLORER_MAP)) return;
+  const g = world.generator, p = player.pos, pcx = Math.floor(p.x / CHUNK), pcz = Math.floor(p.z / CHUNK);
+  const mark = (kind, x, z, name) => {
+    if (Math.hypot(x - p.x, z - p.z) > 48 || places.some((q) => q.kind === kind && Math.abs(q.x - x) < 8 && Math.abs(q.z - z) < 8)) return;
+    places.push({ kind, x: Math.round(x), z: Math.round(z), name: name ?? PLACE_NAMES[kind] });
+    toast(`Explorer's map: marked ${name ?? `a ${PLACE_NAMES[kind].toLowerCase()}`}`, 2000);
+    sound.pop();
+  };
+  for (let cz = pcz - 3; cz <= pcz + 3; cz++) for (let cx = pcx - 3; cx <= pcx + 3; cx++) {
+    const r = g.ruinAt?.(cx, cz); if (r) mark('ruin', r.x + 3, r.z + 3);
+    const w = g.wreckAt?.(cx, cz); if (w) mark('wreck', w.x + 2, w.z);
+    const l = g.lighthouseAt?.(cx, cz); if (l) mark('lighthouse', l.x, l.z);
+    const v = g.volcanoAt?.(cx, cz); if (v) mark('volcano', v.x, v.z);
+  }
+  const v = g.nearestVillage(p.x, p.z, 1);
+  if (v) mark('village', v.x, v.z, v.name);
+}
+
+// A treasure map, the first time it's read, leads to a chest buried somewhere 120-280 blocks away on dry land.
+// The chest is put in the ground once that part of the world is loaded.
+let treasures = []; // [{ id, x, z, y, placed, found }]
+const pointName = (dx, dz) => ['north', 'north-east', 'east', 'south-east', 'south', 'south-west', 'west', 'north-west'][(Math.round(Math.atan2(dx, -dz) / (Math.PI / 4)) + 8) % 8];
+function readTreasureMap(s) {
+  let t = s.pack > 0 && packs.get(s.pack)?.treasure !== undefined ? treasures.find((tr) => tr.id === packs.get(s.pack).treasure) : null;
+  if (!t) {
+    const g = world.generator;
+    for (let tries = 0; tries < 40 && !t; tries++) {
+      const a = Math.random() * Math.PI * 2, d = 120 + Math.random() * 160;
+      const x = Math.floor(player.pos.x + Math.cos(a) * d), z = Math.floor(player.pos.z + Math.sin(a) * d);
+      if (x < 8 || z < 8 || x >= WORLD_SIZE - 8 || z >= WORLD_SIZE - 8) continue;
+      const h = g.height(x, z);
+      if (h <= SEA_LEVEL + 1 || h >= H - 4) continue;
+      t = { id: treasures.reduce((m, tr) => Math.max(m, tr.id), 0) + 1, x, z, y: null, placed: false, found: false };
+    }
+    if (!t) { toast('The map is too faded to read', 1800); return; }
+    treasures.push(t);
+    s.pack = newPack({ treasure: t.id });
+    inventory.onChange();
+  }
+  if (t.found) { toast('This treasure has been found', 1800); return; }
+  const dx = t.x + 0.5 - player.pos.x, dz = t.z + 0.5 - player.pos.z, d = Math.hypot(dx, dz);
+  toast(d < 3 ? 'X marks the spot: dig here!' : `X marks the spot: ${Math.round(d)} blocks ${pointName(dx, dz)} (it's on your world map)`, 3000);
+  sound.click();
+}
+let treasureTimer = 0;
+function tickTreasure(dt) {
+  if ((treasureTimer -= dt) > 0) return;
+  treasureTimer = 2;
+  for (const t of treasures) {
+    if (t.placed || !world.chunkAt(t.x, t.z)) continue;
+    let y = H - 2;
+    while (y > 1 && !(world.isSolid(t.x, y, t.z) && !isLeaves(world.get(t.x, y, t.z)))) y--;
+    t.y = Math.max(1, y - 2);
+    world.setBlock(t.x, t.y, t.z, CHEST);
+    const st = stations.get(t.x, t.y, t.z, 'chest');
+    TREASURE_LOOT.forEach(([id, a, b, p], i) => { if (Math.random() < p) st.inputs[i * 2] = { id, count: a + Math.floor(Math.random() * (b - a + 1)) }; });
+    t.placed = true;
+  }
+}
+
+// Lighthouse lamps sweep two beams of light round at night.
+let beaconSpots = new Set(); // lamps you've put down: "x,y,z"
+const beams = new Map(); // "x,y,z" -> mesh
+const beamMat = new THREE.MeshBasicMaterial({ color: 0xfff0b8, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide });
+function beamMesh() {
+  const g = new THREE.Group();
+  for (const s of [1, -1]) {
+    const cone = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 3.2, 36, 12, 1, true), beamMat);
+    cone.rotation.z = s * Math.PI / 2;
+    cone.position.x = s * 18.4;
+    g.add(cone);
+  }
+  return g;
+}
+let beamTimer = 0;
+function tickBeams(dt) {
+  const night = Math.max(0, Math.min(1, (0.55 - lightUniforms.uDay.value) * 2.5));
+  beamMat.opacity = night * 0.32;
+  for (const m of beams.values()) { m.rotation.y += dt * 0.9; m.visible = night > 0.02; }
+  if ((beamTimer -= dt) > 0) return;
+  beamTimer = 1;
+  const want = new Set();
+  const g = world.generator, pcx = Math.floor(player.pos.x / CHUNK), pcz = Math.floor(player.pos.z / CHUNK), r = Math.ceil(settings.viewDistance ?? 4) + 2;
+  for (let cz = pcz - r; cz <= pcz + r; cz++) for (let cx = pcx - r; cx <= pcx + r; cx++) {
+    const l = g.lighthouseAt?.(cx, cz);
+    if (l && world.chunkAt(l.x, l.z) && world.get(l.x, l.lamp, l.z) === LIGHTHOUSE_LAMP) want.add(`${l.x},${l.lamp},${l.z}`);
+  }
+  for (const k of [...beaconSpots]) {
+    const [x, y, z] = k.split(',').map(Number);
+    if (!world.chunkAt(x, z)) continue;
+    if (world.get(x, y, z) !== LIGHTHOUSE_LAMP) { beaconSpots.delete(k); continue; }
+    if (Math.hypot(x - player.pos.x, z - player.pos.z) < (r + 2) * CHUNK) want.add(k);
+  }
+  for (const [k, m] of beams) if (!want.has(k)) { scene.remove(m); m.traverse((o) => o.geometry?.dispose()); beams.delete(k); }
+  for (const k of want) {
+    if (beams.has(k)) continue;
+    const [x, y, z] = k.split(',').map(Number), m = beamMesh();
+    m.position.set(x + 0.5, y + 0.45, z + 0.5);
+    scene.add(m);
+    beams.set(k, m);
+  }
+}
+
+// Some mornings, mist lies in the valleys: thickest at dawn, gone by mid-morning, and thinner up high.
+function mistNow() {
+  const hours = (sky.time * 24 + 6) % 24;
+  if (hours < 4.5 || hours > 9.5) return 0;
+  const foggy = ((Math.imul(day + 1, 0x9e3779b1) ^ world.seed) >>> 0) % 100 < 40;
+  if (!foggy || world.generator.biomeAt(Math.floor(player.pos.x), Math.floor(player.pos.z)) === 'desert') return 0;
+  const t = hours < 6.5 ? (hours - 4.5) / 2 : 1 - (hours - 6.5) / 3;
+  const low = Math.max(0.25, Math.min(1, 1 - (player.pos.y - SEA_LEVEL - 10) / 25));
+  return Math.max(0, Math.min(1, t)) * low;
+}
+
+// Snow settles on the ground (and on leaves) under the open sky while it snows, and melts away out of winter
+// (but not in the tundra).
+let snowTimer = 0;
+function tickSnow(dt) {
+  if ((snowTimer -= dt) > 0) return;
+  snowTimer = 0.25;
+  const winter = seasonOf(day) === 3;
+  const snowing = weather.raining && weather.kind === 'snow' && weather.level > 0.3;
+  for (let k = 0; k < 4; k++) {
+    const x = Math.floor(player.pos.x + (Math.random() - 0.5) * 48), z = Math.floor(player.pos.z + (Math.random() - 0.5) * 48);
+    if (!world.chunkAt(x, z)) continue;
+    let y = Math.min(H - 2, Math.floor(player.pos.y) + 24);
+    while (y > Math.floor(player.pos.y) - 24 && world.get(x, y, z) === AIR) y--;
+    const id = world.get(x, y, z);
+    if (id === SNOW_LAYER) {
+      const tundra = world.generator.biomeAt(x, z) === 'tundra';
+      if (!winter && !tundra && Math.random() < 0.5) world.setBlock(x, y, z, AIR);
+      continue;
+    }
+    if (!snowing || world.skyAt(x, y + 1, z) < MAX_LIGHT) continue;
+    const d = BLOCKS[id];
+    if ((d?.shape === 'cube' && d.solid && !d.liquid && !d.station) || isLeaves(id)) world.setBlock(x, y + 1, z, SNOW_LAYER);
+  }
+}
+
 // ---------- seasons ----------
 // The year turns through four seasons of SEASON_DAYS days each. Crops grow fastest in summer and
 // barely at all in winter; leaves turn in autumn and fall in winter, and winter frosts the grass and
@@ -4689,6 +4858,7 @@ function stepGame(now, dt) {
     world.tickPlants(dt);
     world.tickLeaves(dt);
     tickLamps(dt);
+    tickExplore(dt); tickTreasure(dt); tickSnow(dt);
     crows.update(dt, world, player.pos, {
       day: lightUniforms.uDay.value,
       eat: (x, y, z) => world.setBlock(x, y, z, WHEAT_3 - 2), // back to green shoots
@@ -4768,6 +4938,7 @@ function stepGame(now, dt) {
   world.raining = weather.raining && biome !== 'desert';
   sound.weather(paused ? 0 : weather.level, weather.kind);
   const before = sky.time;
+  if (world && worldReady) { tickBeams(paused ? 0 : dt); sky.mist = mistNow(); }
   sky.update(paused ? 0 : dt, eye, lightUniforms.uDay, player.eyeInWater);
   if (sky.time < before) { // the clock wrapped round to sunrise
     day++; caneToday = 0;
@@ -4819,5 +4990,5 @@ window.minicraft = {
   arrows, fishing, kinetics, electric, lightUniforms, bees, catchAt, seasonOf, applySeason, set day(v) { day = v; applySeason(); }, frames, signalAt, setSwitch, logic, machines, carts, minimap, signs, armour, damage, placeRail, getInCart, getOutOfCart,
   get riding() { return riding; }, explode, lightFuse, fuses, clockTime, compassText, place, editSign, closeSign, openInventory, closeInventory, chestMove, lamps, tickLamps, sleepUntilMorning, stations, openStation, closeStation,
   get caneToday() { return caneToday; }, get creative() { return creative; }, set creative(v) { creative = v; applyCreative(); }, toggleFly, wand, useWand, get achieved() { return achieved; }, achieve, worldMap, openMap, closeMap, openGuide, switchSlot, store, saveGame, renderWorlds, openWorlds, exportSlot, get target() { return target; }, set target(v) { target = v; }, applyKeys, renderKeys, camera, get controls() { return controls; }, loose, throwHeld, get waypoints() { return waypoints; }, toggleWaypoint, sortSlots, quickStack, dropMeteor, get meteors() { return meteors; }, weather, openTrade, closeTrade, mountMob, dismount, get ridingMob() { return ridingMob; }, effects, armourWear, useAnvil, rollLoot, settings,
-  get bedSpawn() { return bedSpawn; }, fertilise, openJournal, closeJournal, get packs() { return packs; }, radiationAt, vehicles, boardVehicle, leaveVehicle, get boarded() { return boarded; }, get seated() { return seated; }, crows, sitOn, standUp, useDisplay, zips, linkZip, startZip, get zipping() { return zipping; }, burnCoal, get health() { return health; }, set health(v) { health = v; }, paintings, placeSwitchRail, signalAt, ailments, armourEnch, openAltar, lairNear, useBed, eat, drinkTea,
+  get bedSpawn() { return bedSpawn; }, fertilise, openJournal, closeJournal, get packs() { return packs; }, radiationAt, vehicles, boardVehicle, leaveVehicle, get boarded() { return boarded; }, get seated() { return seated; }, crows, get places() { return places; }, get treasures() { return treasures; }, readTreasureMap, tickTreasure, beams, tickBeams, beaconSpots: () => beaconSpots, mistNow, tickSnow, tickExplore, sitOn, standUp, useDisplay, zips, linkZip, startZip, get zipping() { return zipping; }, burnCoal, get health() { return health; }, set health(v) { health = v; }, paintings, placeSwitchRail, signalAt, ailments, armourEnch, openAltar, lairNear, useBed, eat, drinkTea,
 };

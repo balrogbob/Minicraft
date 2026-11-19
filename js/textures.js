@@ -17,7 +17,7 @@ import {
   SUN_SCARAB, FROST_HEART, EMBER_CORE, SUN_MASK, FROST_CIRCLET, EMBER_CROWN, HONEY_TEA, MUSHROOM_STEW, FISH_PIE, COPY_WAND,
   CRYSTAL_SHARD, HONEY_BOTTLE, HONEYCOMB, SALMON, BAKED_SALMON, ICEFISH, BAKED_ICEFISH, PUFFERFISH, OLD_BOOT,
   BATTERY, PORTABLE_LAMP, JACKHAMMER, JETPACK, ELECTRIC_DRILL, HOVER_BOOTS, NV_GOGGLES, MAGNET_RING, WIND_TURBINE, NICKEL_INGOT, CUPRONICKEL_INGOT,
-  ELECTRIC_RAIL, CHAINSAW, SAWDUST, BOOK, BACKPACK, BIG_BACKPACK, HUGE_BACKPACK, SPANNER, GRAPPLE, URANIUM_INGOT, FUEL_ROD, JOURNAL, FERTILISER, SPENT_ROD, ENRICHED_URANIUM, ENRICHED_ROD, hazmatId, INVAR_INGOT, RAIL_STATION, BOAT, BALLOON, ZIP_LINE, METEORIC_IRON, STARSTEEL_INGOT, starsteelTool, EGG, FRIED_EGG, SADDLE, TRUFFLE, FLOWER_POT, HANGING_PLANT, WINDOW_BOX, APPLE, CHERRIES, ORANGE_FRUIT, APPLE_PIE, CHERRY_PIE, FRUIT_SALAD, ORANGE_JUICE, FISH_SOUP, TRUFFLE_SOUP, BERRY_JAM, COOK_POT, SCARECROW,
+  ELECTRIC_RAIL, CHAINSAW, SAWDUST, BOOK, BACKPACK, BIG_BACKPACK, HUGE_BACKPACK, SPANNER, GRAPPLE, URANIUM_INGOT, FUEL_ROD, JOURNAL, FERTILISER, SPENT_ROD, ENRICHED_URANIUM, ENRICHED_ROD, hazmatId, INVAR_INGOT, RAIL_STATION, BOAT, BALLOON, ZIP_LINE, METEORIC_IRON, STARSTEEL_INGOT, starsteelTool, EGG, FRIED_EGG, SADDLE, TRUFFLE, FLOWER_POT, HANGING_PLANT, WINDOW_BOX, APPLE, CHERRIES, ORANGE_FRUIT, APPLE_PIE, CHERRY_PIE, FRUIT_SALAD, ORANGE_JUICE, FISH_SOUP, TRUFFLE_SOUP, BERRY_JAM, COOK_POT, SCARECROW, EXPLORER_MAP, TREASURE_MAP,
   SALTPETRE, GUNPOWDER, LEAD_SINKER, WEIGHTED_ROD, LEAD_BUCKET, LAVA_BUCKET, GOLD_CLOCK, COMPASS, SILVER_ARROW, MIRROR_LAMP,
 } from './blocks.js';
 
@@ -1191,6 +1191,13 @@ P[T.SACK] = (t) => {
   for (const [x, y] of [[4, 6], [5, 6], [10, 6], [11, 6], [4, 7], [11, 7]]) t.set(x, y, [40, 30, 24]); // eyes
   for (let x = 5; x < 11; x++) t.set(x, 11 + (x === 5 || x === 10 ? -1 : 0), [90, 50, 30]); // a stitched grin
 };
+// v25 C: the lighthouse lamp's glowing heart
+P[T.BEACON] = (t) => {
+  for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+    const d = Math.hypot(x - 7.5, y - 7.5) / 8;
+    t.set(x, y, [255, 250 - d * 40, 200 - d * 110]);
+  }
+};
 // v24 D: the rail station's platform plate
 P[T.RAIL_STOP] = (t) => {
   for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) t.set(x, y, ((x + y) >> 2) % 2 ? [220, 50, 40] : [240, 236, 228]);
@@ -2182,6 +2189,18 @@ ITEM_PAINTERS[SCARECROW] = (ctx) => {
   rect(ctx, 1, 7, 14, 2, [214, 180, 80]); rect(ctx, 5, 6, 6, 6, [200, 166, 70]); // arms, body
   rect(ctx, 5, 2, 6, 4, [206, 184, 140]); px(ctx, 6, 3, [40, 30, 24]); px(ctx, 9, 3, [40, 30, 24]); // head
   rect(ctx, 4, 1, 8, 1, [110, 80, 50]); rect(ctx, 6, 0, 4, 1, [110, 80, 50]); // hat
+};
+// v25 C: an explorer's map (a map with a gold compass rose) and an old treasure map
+ITEM_PAINTERS[EXPLORER_MAP] = (ctx) => {
+  rect(ctx, 1, 2, 14, 12, [226, 214, 172]);
+  for (let y = 3; y < 13; y++) for (let x = 2; x < 14; x++) px(ctx, x, y, Math.sin(x * 0.9) + Math.cos(y * 0.5) > 0.4 ? [120, 168, 84] : [90, 140, 210]);
+  for (const [x, y] of [[4, 5], [10, 4], [6, 10], [11, 10]]) px(ctx, x, y, [60, 40, 30]);
+  rect(ctx, 11, 9, 3, 3, [230, 190, 50]); px(ctx, 12, 8, [230, 190, 50]); px(ctx, 12, 12, [230, 190, 50]); px(ctx, 10, 10, [230, 190, 50]); px(ctx, 14, 10, [230, 190, 50]);
+};
+ITEM_PAINTERS[TREASURE_MAP] = (ctx) => {
+  for (let y = 2; y < 14; y++) for (let x = 1; x < 15; x++) px(ctx, x, y, (x * 3 + y * 5) % 7 ? [214, 190, 140] : [196, 168, 116]);
+  for (const [x, y] of [[3, 11], [4, 10], [5, 10], [6, 9], [8, 8], [9, 7], [10, 6]]) px(ctx, x, y, [120, 80, 50]); // the trail
+  for (let i = 0; i < 4; i++) { px(ctx, 10 + i, 3 + i, [200, 30, 30]); px(ctx, 13 - i, 3 + i, [200, 30, 30]); } // X
 };
 // v25 A: a terracotta pot, a hanging basket of ivy, a window box of flowers
 const potShape = (ctx, x0, y0, w, h) => {

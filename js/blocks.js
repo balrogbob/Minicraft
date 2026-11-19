@@ -140,7 +140,7 @@ export const T = {
   LEAD_CHEST_SIDE: 267, LEAD_CHEST_TOP: 268, LEAD_CHEST_FRONT: 269, CENTRIFUGE_SIDE: 270, CENTRIFUGE_TOP: 271, TESLA: 272, TESLA_TOP: 273,
   FENCE_POST: 274, FENCE_WIRE: 275, FREEZER_SIDE: 276, FREEZER_FRONT: 277, ARC_SIDE: 278, ARC_FRONT: 279, PACKED_ICE: 280, INVAR: 281, RAIL_STOP: 282, BASALT: 283, BASALT_TOP: 284, METEORITE: 285,
   IRON_BARS: 286, POT: 287, IVY: 288, BOX_FLOWERS: 289,
-  FRUIT_LEAVES: 290, FRUIT_RIPE: 293, FRUIT_SAPLING: 296, HAY: 299, SACK: 300, // (fruit tiles: apple, cherry, orange)
+  FRUIT_LEAVES: 290, FRUIT_RIPE: 293, FRUIT_SAPLING: 296, HAY: 299, SACK: 300, BEACON: 301, // (fruit tiles: apple, cherry, orange)
 };
 
 // Ores, deepest-reaching last. tier: the pickaxe tier needed to mine it (see TOOL_TIERS);
@@ -2308,4 +2308,22 @@ RECIPES.push(
   { out: [SCARECROW, 1], in: [[STICK, 3], [WHEAT, 6], [WOOL, 1]], table: true },
   { out: [FRUIT_SALAD, 1], in: [[APPLE, 1], [CHERRIES, 1], [ORANGE_FRUIT, 1]] },
   { out: [ORANGE_JUICE, 1], in: [[ORANGE_FRUIT, 3], [GLASS_BOTTLE, 1]] },
+);
+
+// ---------- v25 C: lighthouses, maps and snow ----------
+// Lighthouses stand on some coasts with a great lamp at the top that sweeps a beam round at night (a lighthouse lamp
+// you make does the same). An explorer's map marks the ruins, wrecks, lighthouses, volcanoes and villages you pass;
+// a treasure map (found in wrecks and lighthouses) leads to a buried chest. In winter, snow settles on the ground.
+export const SNOW_LAYER = 1330, LIGHTHOUSE_LAMP = 1331;
+export const EXPLORER_MAP = 1093, TREASURE_MAP = 1094;
+block(SNOW_LAYER, { name: 'Snow', sound: 'sand', transparent: true, solid: false, hardness: 0.1, tool: 'shovel', drop: 0, model: [[0, 0, 0, 16, 2, 16, T.SNOW]] });
+block(LIGHTHOUSE_LAMP, {
+  name: 'Lighthouse Lamp', sound: 'glass', transparent: true, hardness: 1, light: 15,
+  model: [[3, 0, 3, 13, 2, 13, T.IRON], [4, 2, 4, 12, 12, 12, T.BEACON, true], [3, 12, 3, 13, 14, 13, T.IRON], [7, 14, 7, 9, 16, 9, T.IRON]],
+});
+ITEMS[EXPLORER_MAP] = { name: 'Explorer\'s Map', stack: 1, about: 'marks the places you find' };
+ITEMS[TREASURE_MAP] = { name: 'Treasure Map', stack: 1, about: 'tap to read: X marks the spot' };
+RECIPES.push(
+  { out: [EXPLORER_MAP, 1], in: [[MAP, 1], [COMPASS, 1], [GOLD_INGOT, 1]], table: true },
+  { out: [LIGHTHOUSE_LAMP, 1], in: [[LANTERN, 1], [GLASS, 4], [GOLD_INGOT, 2]], table: true, metal: GOLD_INGOT },
 );

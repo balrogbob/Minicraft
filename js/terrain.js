@@ -12,6 +12,7 @@ import {
   PLANKS, GLASS_PANE, FURN_TABLE, CHEST, TORCH_WALL_W, doorId, slabId, WHEAT_0, BLOCKS,
   LAIRS, CUT_SANDSTONE, TRAP_PLATE, DART_TRAP, FROST_BRICKS, FORT_BRICKS, OBSIDIAN,
   BASALT, BOOKSHELF, TUNGSTEN_ORE, URANIUM_ORE, LOG as MAST,
+  LIGHTHOUSE_LAMP, PAINTED_PLANKS, COLORS, LADDER, FENCE, CLAY_BRICKS,
 } from './blocks.js';
 
 export const CHUNK = 16;
@@ -111,6 +112,7 @@ const LAVA_LEVEL = 6; // deep cave floors at or below this height are flooded wi
 const DUNGEON_CHANCE = 0.025; // chunks with a dungeon room deep underground
 const LAIR_CHANCE = { tomb: 0.03, crypt: 0.03, fortress: 0.012 }; // chunks with a desert tomb, ice crypt or deep fortress
 const FRUIT_TREE_CHANCE = 0.07; // temperate trees that are apple, cherry or orange trees
+const LIGHTHOUSE_CHANCE = 0.12; // coastal chunks with a lighthouse
 const GEODE_CHANCE = 0.045; // chunks with a crystal geode in the rock
 const CAVE_LAKE_LEVEL = 13; // in some cave systems, everything up to here is flooded with water
 const HIVE_CHANCE = 0.08; // temperate trees with a bee hive under their leaves
@@ -364,6 +366,7 @@ export class Generator {
     this.volcano(data, cx, cz, hAt);
     this.ruin(data, cx, cz, hAt);
     this.wreck(data, cx, cz, hAt);
+    this.lighthouse(data, cx, cz);
     return data;
   }
 
@@ -456,6 +459,51 @@ export class Generator {
     }
     for (let y = b + 2; y < Math.min(SEA_LEVEL - 1, b + 2 + 3 + Math.floor(k(0x22, 0, 0, 0) * 4)); y++) set(7, y, 8, MAST); // the broken mast
     set(5, b + 2, 8, LOOT_CHEST);
+  }
+
+  // A lighthouse on a low stretch of coast: a red and white tower with a ladder up inside, a gallery round the
+  // top, and a lamp room. Its lamp is at (x, lamp, z).
+  lighthouseAt(cx, cz) {
+    if (hash3(this.seed ^ 0x3c6ef372, cx, 107, cz) >= LIGHTHOUSE_CHANCE) return null;
+    const x = cx * CHUNK + 8, z = cz * CHUNK + 8;
+    let lo = H, hi = 0;
+    for (let dz = -3; dz <= 3; dz++) for (let dx = -3; dx <= 3; dx++) { const h = this.height(x + dx, z + dz); lo = Math.min(lo, h); hi = Math.max(hi, h); }
+    if (lo <= SEA_LEVEL || hi > SEA_LEVEL + 6 || hi - lo > 3 || hi + 21 >= H) return null;
+    const sea = [[10, 0], [-10, 0], [0, 10], [0, -10], [7, 7], [-7, 7], [7, -7], [-7, -7]].filter(([dx, dz]) => this.height(x + dx, z + dz) < SEA_LEVEL - 1).length;
+    if (sea < 2 || this.biomeAt(x, z) === 'desert' || this.nearVillage(x, z) || this.volcanoAt(cx, cz) || this.ruinAt(cx, cz)) return null;
+    return { x, z, floor: hi, lamp: hi + 16 };
+  }
+  lighthouse(data, cx, cz) {
+    const l = this.lighthouseAt(cx, cz);
+    if (!l) return;
+    const lx0 = 8, lz0 = 8, b = l.floor;
+    const white = PAINTED_PLANKS + COLORS.findIndex((c) => c.key === 'white'), red = PAINTED_PLANKS + COLORS.findIndex((c) => c.key === 'red');
+    const put = (dx, y, dz, id) => { if (y >= 0 && y < H) data[localIndex(lx0 + dx, y, lz0 + dz)] = id; };
+    const ring = (dx, dz, r) => Math.max(Math.abs(dx), Math.abs(dz)) === r && !(Math.abs(dx) === r && Math.abs(dz) === r);
+    for (let dz = -3; dz <= 3; dz++) for (let dx = -3; dx <= 3; dx++) {
+      const inTower = Math.max(Math.abs(dx), Math.abs(dz)) <= 2 && !(Math.abs(dx) === 2 && Math.abs(dz) === 2);
+      if (inTower) {
+        for (let y = b - 3; y <= b; y++) put(dx, y, dz, BRICKS); // footing and floor
+        for (let y = b + 1; y <= b + 14; y++) put(dx, y, dz, ring(dx, dz, 2) ? (Math.floor((y - b - 1) / 3) % 2 ? red : white) : AIR);
+      }
+      // the gallery round the top, with a railing
+      if (Math.max(Math.abs(dx), Math.abs(dz)) <= 3 && !(Math.abs(dx) === 3 && Math.abs(dz) === 3)) {
+        put(dx, b + 15, dz, BRICKS);
+        if (ring(dx, dz, 3)) put(dx, b + 16, dz, FENCE);
+      }
+    }
+    put(0, b + 1, 2, AIR); put(0, b + 2, 2, AIR); // the doorway
+    for (let y = b + 1; y <= b + 15; y++) put(0, y, -1, LADDER); // up the inside, against the far wall
+    put(0, b + 16, -1, AIR);
+    // the lamp room: glass all round, the lamp in the middle, a roof
+    for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) {
+      const mid = !dx && !dz;
+      for (let y = b + 16; y <= b + 17; y++) if (!mid && !(dx === 0 && dz === -1)) put(dx, y, dz, GLASS_PANE);
+      put(dx, b + 18, dz, CLAY_BRICKS);
+    }
+    put(0, b + 16, 0, LIGHTHOUSE_LAMP);
+    put(0, b + 19, 0, CLAY_BRICKS);
+    put(1, b + 1, 1, LOOT_CHEST);
   }
 
   // Glowing mushrooms on the floors of some cave systems.

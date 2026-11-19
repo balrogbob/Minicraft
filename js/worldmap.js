@@ -15,7 +15,7 @@ const MARK_COLORS = ['#ffd84a', '#5ad1ff', '#ff7ad9', '#7dff6a', '#ff9a3c', '#b2
 const UNEXPLORED = '#2b2620';
 
 export class WorldMap {
-  // hooks: { marks(), toggleMark(x, z, near), home(), onClose() }
+  // hooks: { marks(), places(), toggleMark(x, z, near), home(), onClose() }
   constructor(overlay, canvas, minimap, hooks) {
     this.overlay = overlay;
     this.canvas = canvas;
@@ -203,6 +203,20 @@ export class WorldMap {
       ctx.fillStyle = '#000'; ctx.fillRect(hx - 5, hy - 5, 10, 10);
       ctx.fillStyle = '#d82020'; ctx.fillRect(hx - 4, hy - 4, 8, 8);
       label(ctx, 'Home', hx, hy - 9);
+    }
+    // places found with an explorer's map, and buried treasure
+    const ICON = { ruin: ['🏛', '#c8b98a'], wreck: ['⚓', '#7fb0d8'], lighthouse: ['🗼', '#ff6060'], volcano: ['🌋', '#ff9040'], village: ['🏠', '#ffd060'], treasure: ['✖', '#e02020'] };
+    for (const q of this.hooks.places?.() ?? []) {
+      const [qx, qy] = this.toScreen(q.x + 0.5, q.z + 0.5);
+      const [ic, col] = ICON[q.kind] ?? ['•', '#fff'];
+      if (q.kind === 'treasure') {
+        ctx.font = 'bold 20px sans-serif'; ctx.lineWidth = 4; ctx.strokeStyle = '#000'; ctx.strokeText(ic, qx, qy + 7);
+        ctx.fillStyle = col; ctx.fillText(ic, qx, qy + 7);
+      } else {
+        ctx.font = '15px sans-serif'; ctx.fillStyle = col; ctx.fillText(ic, qx, qy + 5);
+        ctx.font = 'bold 11px sans-serif'; label(ctx, q.name, qx, qy - 10);
+      }
+      ctx.font = 'bold 13px sans-serif';
     }
     // waypoints
     this.hooks.marks().forEach((w, i) => {
