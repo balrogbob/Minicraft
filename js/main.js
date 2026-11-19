@@ -27,7 +27,7 @@ import {
   WIRE, INVERTER, DELAY, LATCH, DETECTOR_RAIL, DRIVE_BELT, TREE_FELLER, PLANTER, BREAKER, PLACER, ANIMAL_STATION, EJECTOR, COLLECTOR, BELT_SPLITTER, BELT_SORTER,
   ELECTRIC_RAIL, LIFT, LIFT_REACH, WIRELESS_REACH, CHAINSAW, SAWDUST, SPANNER, GRAPPLE, isBackpack, kineticId, MELTDOWN, REACTOR_POWER, ROD_LIFE, BOOK,
   BOOKSHELF, JOURNAL, FERTILISER, SHELF_DISCOUNT, LEAD_CHEST, FREEZER, ARC_FURNACE, SPENT_ROD, RADIATION_REACH, hazmatId, TESLA_REACH, TESLA_DAMAGE, ELECTRIC_FENCE,
-  RAIL_STATION, ZIP_POST, ZIP_LINE, ZIP_REACH, BOAT, BALLOON, CHARCOAL,
+  RAIL_STATION, ZIP_POST, ZIP_LINE, ZIP_REACH, BOAT, BALLOON, CHARCOAL, METEORITE, METEORIC_IRON, metalSword,
 } from './blocks.js';
 import { createAtlas, createIcons, createCrackCanvases, createWaterCanvas, createHudIcons, paintSeason } from './textures.js';
 import { World, CHUNK, WORLD_SIZE, chunkKey } from './world.js';
@@ -1280,7 +1280,7 @@ function openStation(x, y, z, cart = null) {
     'it makes one, a second at a time, into the output slot: fill it with hoppers or belts and empty it with a hopper underneath.</p>'
     : K.electric ? '<p class="hint">Times are at 1x speed: it runs at 2x with all the electricity it wants. Join it to a generator ' +
     'with electrum wire or cable (or set it right beside one). ' + (kind === 'esmelter' ? 'It needs no fuel.</p>'
-    : kind === 'arc' ? 'It needs no fuel, smelts twice as fast as the electric smelter, and makes invar, which no fire is hot enough for.</p>'
+    : kind === 'arc' ? 'It needs no fuel, smelts twice as fast as the electric smelter, and makes invar and starsteel (from meteoric iron), which no fire is hot enough for.</p>'
     : kind === 'freezer' ? 'Water buckets come back empty. Packed ice cools a reactor better than water, and doesn\'t melt.</p>'
     : kind === 'centrifuge' ? 'Enriched uranium makes fuel rods that burn twice as long. Spent rods slowly give back a little uranium (and stop being waste).</p>'
     : 'It gets half as much again out of everything as the rock crusher, and sometimes one more.</p>')
@@ -2294,9 +2294,27 @@ function lairNear(x, y, z) {
   }
   return null;
 }
+// An old ruined house keeps books, maps and old tools; a shipwreck keeps a sailor's things: gold, a compass, a
+// map, fish and powder.
+const ironAt = TOOL_MATERIALS.findIndex((m) => m.key === 'iron');
+const RUIN_LOOT = [
+  [BOOK, 1, 3, 0.8], [MAP, 1, 1, 0.35], [JOURNAL, 1, 1, 0.25], [PAPER, 2, 6, 0.6], [CRYSTAL_SHARD, 1, 4, 0.5],
+  [metalTool(ironAt, 'pick'), 1, 1, 0.3], [metalTool(ironAt, 'axe'), 1, 1, 0.25], [metalTool(ironAt, 'shovel'), 1, 1, 0.25], [metalSword(ironAt), 1, 1, 0.2],
+];
+const WRECK_LOOT = [
+  [GOLD_INGOT, 2, 6, 0.8], [COMPASS, 1, 1, 0.45], [MAP, 1, 1, 0.35], [GUNPOWDER, 2, 6, 0.6], [RAW_FISH, 2, 5, 0.6], [SALMON, 1, 3, 0.4], [PAPER, 1, 3, 0.3],
+];
+function placeLoot(x, y, z) {
+  const cx = Math.floor(x / CHUNK), cz = Math.floor(z / CHUNK), g = world.generator;
+  const r = g.ruinAt?.(cx, cz), w = g.wreckAt?.(cx, cz);
+  if (r && Math.abs(r.x - x) <= 6 && Math.abs(r.z - z) <= 6 && Math.abs(r.y - y) <= 2) return RUIN_LOOT;
+  if (w && Math.abs(w.x - x) <= 8 && Math.abs(w.z - z) <= 6 && Math.abs(w.y - y) <= 2) return WRECK_LOOT;
+  return null;
+}
 function rollLoot(x, y, z) {
   const out = [];
-  const table = [...LOOT, ...((x !== undefined && LAIR_LOOT[lairNear(x, y, z)?.kind]) || [])];
+  const place = x !== undefined && placeLoot(x, y, z);
+  const table = place || [...LOOT, ...((x !== undefined && LAIR_LOOT[lairNear(x, y, z)?.kind]) || [])];
   for (const [id, a, b, p] of table) if (Math.random() < p) out.push([id, a + Math.floor(Math.random() * (b - a + 1))]);
   return out.length ? out : [[IRON_INGOT, 3]];
 }
@@ -3518,6 +3536,65 @@ function explode(x, y, z, R = BLAST_RADIUS, cause = 'You stood too close to a bl
     else mobs.bump(m, { x: x + 0.5, y, z: z + 0.5 });
   }
 }
+// ---------- meteorites ----------
+// Now and then on a clear night (no more than one a night) a meteorite streaks down somewhere near you. It
+// blasts a crater and leaves a few lumps of meteorite rock in it: mine them (a tungsten pick or better) for
+// meteoric iron, which the arc furnace makes into starsteel, the best metal there is.
+const meteors = [];
+let meteorNight = -1;
+function tickMeteors(dt) {
+  for (let i = meteors.length - 1; i >= 0; i--) {
+    const m = meteors[i];
+    m.t += dt;
+    const k = Math.min(1, m.t / m.fall);
+    m.mesh.position.set(m.from.x + (m.to.x - m.from.x) * k, m.from.y + (m.to.y - m.from.y) * k, m.from.z + (m.to.z - m.from.z) * k);
+    m.trail.position.copy(m.mesh.position);
+    m.trail.scale.setScalar(1 + k * 0.6);
+    if (k < 1) continue;
+    scene.remove(m.mesh, m.trail);
+    meteors.splice(i, 1);
+    landMeteor(m.to.x, m.to.y, m.to.z);
+  }
+  if (paused || dead || !sky.isNight || meteorNight === day || weather.raining) return;
+  if (Math.random() < dt / 600) { meteorNight = day; dropMeteor(); }
+}
+// Drop a meteorite (at (x, z), or somewhere 30-70 blocks away); returns where it'll land, or null.
+function dropMeteor(x, z) {
+  if (x === undefined) {
+    const a = Math.random() * Math.PI * 2, d = 30 + Math.random() * 40;
+    x = Math.floor(player.pos.x + Math.cos(a) * d); z = Math.floor(player.pos.z + Math.sin(a) * d);
+  }
+  if (!world.chunkAt(x, z)) return null;
+  let y = H - 2;
+  while (y > 1 && (world.get(x, y, z) === AIR || BLOCKS[world.get(x, y, z)]?.liquid)) y--;
+  const mesh = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.9, 0.9), new THREE.MeshBasicMaterial({ color: 0xffe0a0 }));
+  const trail = new THREE.Mesh(new THREE.SphereGeometry(1.4, 12, 8), new THREE.MeshBasicMaterial({ color: 0xff8a3a, transparent: true, opacity: 0.45, depthWrite: false }));
+  const from = { x: x + 0.5 - 40, y: H + 40, z: z + 0.5 - 25 }, to = { x: x + 0.5, y: y + 1, z: z + 0.5 };
+  mesh.position.set(from.x, from.y, from.z);
+  scene.add(mesh, trail);
+  meteors.push({ mesh, trail, from, to, t: 0, fall: 3.5 });
+  sound.zap?.(0.25);
+  const dx = x - player.pos.x, dz = z - player.pos.z;
+  toast(`A meteorite streaks across the sky... it's coming down about ${Math.round(Math.hypot(dx, dz) / 10) * 10} blocks ${POINT_NAMES[pointOf(dx, dz)]}!`, 4000);
+  return { x, y: y + 1, z };
+}
+function landMeteor(fx, fy, fz) {
+  const x = Math.floor(fx), y = Math.floor(fy), z = Math.floor(fz);
+  explode(x, y, z, 3, 'A meteorite fell on you.');
+  // the rock that survived the fall, glowing in the bottom of the crater
+  const lumps = 3 + Math.floor(Math.random() * 3), spots = [[0, 0, 0], [1, 0, 0], [-1, 0, 0], [0, 0, 1], [0, 0, -1], [0, 1, 0], [1, 0, 1]];
+  // the floor of the crater at (cx, cz): the first open block above solid ground, searching down from the rim
+  const floorAt = (cx, cz) => { let by = y + 2; while (by > 1 && world.get(cx, by - 1, cz) === AIR) by--; return world.get(cx, by, cz) === AIR ? by : -1; };
+  for (let i = 0; i < lumps; i++) {
+    const [dx, , dz] = spots[i], by = floorAt(x + dx, z + dz);
+    if (by > 0) world.setBlock(x + dx, by, z + dz, METEORITE);
+  }
+  for (const [dx, dz] of [[2, 0], [-2, 0], [0, 2], [0, -2], [2, 2], [-2, -2]]) {
+    const by = floorAt(x + dx, z + dz);
+    if (by > 0 && Math.random() < 0.5) world.setBlock(x + dx, by, z + dz, OBSIDIAN);
+  }
+}
+
 const blasts = [];
 function flashBlast(x, y, z) {
   const mesh = new THREE.Mesh(new THREE.SphereGeometry(1, 16, 12), new THREE.MeshBasicMaterial({ color: 0xffd27a, transparent: true, opacity: 0.85, depthWrite: false }));
@@ -3645,7 +3722,7 @@ function breakBlock(x, y, z) {
   const tool = toolHeld();
   let drops = dropsFor(id, tool);
   if (spannerPack >= 0) drops = [[typeof def.drop === 'number' && def.drop ? def.drop : def.variantOf || id, 1]]; // taken up with a spanner
-  if (id === LOOT_CHEST) drops.push(...rollLoot());
+  if (id === LOOT_CHEST) drops.push(...rollLoot(x, y, z));
   if (tool === ELECTRIC_DRILL && def.hardness > 0) drawCharge(inventory.held(), CHARGE_USE.drill);
   if (tool === JACKHAMMER && def.hardness > 0) {
     // the jackhammer uses a little charge for each block, and now and then shakes some dust off an ore as well
@@ -4449,6 +4526,7 @@ function stepGame(now, dt) {
   kinetics.update(paused ? 0 : dt, world, { day: lightUniforms.uDay.value, flicker: lightUniforms.uFlicker.value, ambient: lightUniforms.uAmbient.value });
   for (const [x, y, z] of kinetics.dropped.splice(0)) loose.spawn({ id: DRIVE_BELT, count: 1 }, { x: x + 0.5, y: y + 0.5, z: z + 0.5 }, { x: 0, y: 2, z: 0 }, 0.5); // a drive belt that came off
   tickBlasts(dt);
+  tickMeteors(dt);
   minimap.show(!paused && inventory.heldId() === MAP);
   minimap.update(world, player, bedSpawn ?? (world.spawnCache ??= world.generator.findSpawn()), waypoints);
   worldMap.draw();
@@ -4533,6 +4611,6 @@ window.minicraft = {
   get poisoned() { return poisoned; }, get dead() { return dead; }, get air() { return air; }, set air(v) { air = v; },
   arrows, fishing, kinetics, electric, lightUniforms, bees, catchAt, seasonOf, applySeason, set day(v) { day = v; applySeason(); }, frames, signalAt, setSwitch, logic, machines, carts, minimap, signs, armour, damage, placeRail, getInCart, getOutOfCart,
   get riding() { return riding; }, explode, lightFuse, fuses, clockTime, compassText, place, editSign, closeSign, openInventory, closeInventory, chestMove, lamps, tickLamps, sleepUntilMorning, stations, openStation, closeStation,
-  get caneToday() { return caneToday; }, get creative() { return creative; }, set creative(v) { creative = v; applyCreative(); }, toggleFly, wand, useWand, get achieved() { return achieved; }, achieve, worldMap, openMap, closeMap, openGuide, switchSlot, store, saveGame, renderWorlds, openWorlds, exportSlot, get target() { return target; }, set target(v) { target = v; }, applyKeys, renderKeys, camera, get controls() { return controls; }, loose, throwHeld, get waypoints() { return waypoints; }, toggleWaypoint, sortSlots, weather, openTrade, closeTrade, mountMob, dismount, get ridingMob() { return ridingMob; }, effects, armourWear, useAnvil, rollLoot, settings,
+  get caneToday() { return caneToday; }, get creative() { return creative; }, set creative(v) { creative = v; applyCreative(); }, toggleFly, wand, useWand, get achieved() { return achieved; }, achieve, worldMap, openMap, closeMap, openGuide, switchSlot, store, saveGame, renderWorlds, openWorlds, exportSlot, get target() { return target; }, set target(v) { target = v; }, applyKeys, renderKeys, camera, get controls() { return controls; }, loose, throwHeld, get waypoints() { return waypoints; }, toggleWaypoint, sortSlots, dropMeteor, get meteors() { return meteors; }, weather, openTrade, closeTrade, mountMob, dismount, get ridingMob() { return ridingMob; }, effects, armourWear, useAnvil, rollLoot, settings,
   get bedSpawn() { return bedSpawn; }, fertilise, openJournal, closeJournal, get packs() { return packs; }, radiationAt, vehicles, boardVehicle, leaveVehicle, get boarded() { return boarded; }, zips, linkZip, startZip, get zipping() { return zipping; }, burnCoal, get health() { return health; }, set health(v) { health = v; }, paintings, placeSwitchRail, signalAt, ailments, armourEnch, openAltar, lairNear, useBed, eat, drinkTea,
 };

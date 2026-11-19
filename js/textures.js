@@ -17,7 +17,7 @@ import {
   SUN_SCARAB, FROST_HEART, EMBER_CORE, SUN_MASK, FROST_CIRCLET, EMBER_CROWN, HONEY_TEA, MUSHROOM_STEW, FISH_PIE, COPY_WAND,
   CRYSTAL_SHARD, HONEY_BOTTLE, HONEYCOMB, SALMON, BAKED_SALMON, ICEFISH, BAKED_ICEFISH, PUFFERFISH, OLD_BOOT,
   BATTERY, PORTABLE_LAMP, JACKHAMMER, JETPACK, ELECTRIC_DRILL, HOVER_BOOTS, NV_GOGGLES, MAGNET_RING, WIND_TURBINE, NICKEL_INGOT, CUPRONICKEL_INGOT,
-  ELECTRIC_RAIL, CHAINSAW, SAWDUST, BOOK, BACKPACK, BIG_BACKPACK, HUGE_BACKPACK, SPANNER, GRAPPLE, URANIUM_INGOT, FUEL_ROD, JOURNAL, FERTILISER, SPENT_ROD, ENRICHED_URANIUM, ENRICHED_ROD, hazmatId, INVAR_INGOT, RAIL_STATION, BOAT, BALLOON, ZIP_LINE,
+  ELECTRIC_RAIL, CHAINSAW, SAWDUST, BOOK, BACKPACK, BIG_BACKPACK, HUGE_BACKPACK, SPANNER, GRAPPLE, URANIUM_INGOT, FUEL_ROD, JOURNAL, FERTILISER, SPENT_ROD, ENRICHED_URANIUM, ENRICHED_ROD, hazmatId, INVAR_INGOT, RAIL_STATION, BOAT, BALLOON, ZIP_LINE, METEORIC_IRON, STARSTEEL_INGOT, starsteelTool,
   SALTPETRE, GUNPOWDER, LEAD_SINKER, WEIGHTED_ROD, LEAD_BUCKET, LAVA_BUCKET, GOLD_CLOCK, COMPASS, SILVER_ARROW, MIRROR_LAMP,
 } from './blocks.js';
 
@@ -1102,6 +1102,20 @@ P[T.PACKED_ICE] = (t) => {
   for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) t.set(x, y, t.vary([140, 180, 230], 0.08));
   for (let i = 0; i < 4; i++) { let x = t.r() * 16, y = t.r() * 16; for (let k = 0; k < 5; k++) { t.set(x | 0, y | 0, [200, 226, 250]); x += 1; y += t.r() < 0.5 ? 1 : -1; } }
 };
+// v24 E: volcanic basalt (columns on the sides, a cracked top), and the meteorite's glowing rock
+P[T.BASALT] = (t) => {
+  for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) t.set(x, y, t.vary(x % 5 === 0 ? [36, 36, 40] : [62, 62, 68], 0.08));
+  t.speckle([84, 82, 88], 0.08, 0.05);
+};
+P[T.BASALT_TOP] = (t) => {
+  t.fill([60, 60, 66], 0.08);
+  for (let i = 0; i < 16; i++) { t.set(i, (i * 7) % 16, [34, 34, 38]); t.set((i * 5 + 3) % 16, i, [34, 34, 38]); }
+};
+P[T.METEORITE] = (t) => {
+  t.fill([52, 44, 50], 0.18);
+  t.speckle([120, 130, 170], 0.14, 0.08); // flecks of meteoric iron
+  t.speckle([255, 150, 60], 0.05, 0.1); // still glowing
+};
 // v24 D: the rail station's platform plate
 P[T.RAIL_STOP] = (t) => {
   for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) t.set(x, y, ((x + y) >> 2) % 2 ? [220, 50, 40] : [240, 236, 228]);
@@ -1259,10 +1273,11 @@ const METAL_COLORS = {
   [TUNGSTEN_INGOT]: [124, 120, 152], [BRONZE_INGOT]: [198, 146, 72], [ELECTRUM_INGOT]: [236, 218, 140],
   [STAINLESS_INGOT]: [210, 218, 224], [STEEL_INGOT]: [146, 154, 166], [AL_BRONZE_INGOT]: [226, 186, 100],
   [NICKEL_INGOT]: [190, 200, 176], [CUPRONICKEL_INGOT]: [214, 170, 140], [URANIUM_INGOT]: [126, 214, 72],
-  [INVAR_INGOT]: [168, 176, 170],
+  [INVAR_INGOT]: [168, 176, 170], [STARSTEEL_INGOT]: [150, 170, 230],
 };
 const dim = (c, k) => c.map((v) => Math.round(v * k));
 for (const m of TOOL_MATERIALS) MAT[m.key] = [METAL_COLORS[m.ingot], dim(METAL_COLORS[m.ingot], 0.62)];
+MAT.starsteel = [[170, 190, 250], [90, 100, 170]];
 const HANDLE = [[120, 85, 45], [80, 55, 28]];
 
 function px(ctx, x, y, c) {
@@ -1672,6 +1687,11 @@ function swordPainter(mat) {
   };
 }
 ITEM_PAINTERS[WOOD_SWORD] = swordPainter('wood');
+for (const kind of ['pick', 'axe', 'shovel']) ITEM_PAINTERS[starsteelTool(kind)] = toolPainter(kind, 'starsteel');
+ITEM_PAINTERS[starsteelTool('sword')] = swordPainter('starsteel');
+ITEM_PAINTERS[METEORIC_IRON] = (ctx) => { // a rough lump of space metal
+  for (let y = 4; y < 13; y++) for (let x = 3; x < 13; x++) if ((x - 8) ** 2 + (y - 8.5) ** 2 * 1.3 < 22) px(ctx, x, y, (x * 7 + y * 3) % 5 ? [96, 100, 124] : [170, 180, 220]);
+};
 ITEM_PAINTERS[STONE_SWORD] = swordPainter('stone');
 TOOL_MATERIALS.forEach((m, i) => { ITEM_PAINTERS[metalSword(i)] = swordPainter(m.key); });
 const ARMOUR_COLORS = {

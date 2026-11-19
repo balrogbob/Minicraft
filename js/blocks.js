@@ -138,7 +138,7 @@ export const T = {
   REACTOR_SIDE: 261, REACTOR_SIDE_HOT: 262, REACTOR_TOP: 263,
   BOOKSHELF: 264, COMPOST_SIDE: 265, COMPOST_TOP: 266,
   LEAD_CHEST_SIDE: 267, LEAD_CHEST_TOP: 268, LEAD_CHEST_FRONT: 269, CENTRIFUGE_SIDE: 270, CENTRIFUGE_TOP: 271, TESLA: 272, TESLA_TOP: 273,
-  FENCE_POST: 274, FENCE_WIRE: 275, FREEZER_SIDE: 276, FREEZER_FRONT: 277, ARC_SIDE: 278, ARC_FRONT: 279, PACKED_ICE: 280, INVAR: 281, RAIL_STOP: 282,
+  FENCE_POST: 274, FENCE_WIRE: 275, FREEZER_SIDE: 276, FREEZER_FRONT: 277, ARC_SIDE: 278, ARC_FRONT: 279, PACKED_ICE: 280, INVAR: 281, RAIL_STOP: 282, BASALT: 283, BASALT_TOP: 284, METEORITE: 285,
 };
 
 // Ores, deepest-reaching last. tier: the pickaxe tier needed to mine it (see TOOL_TIERS);
@@ -160,7 +160,7 @@ export const ORES = [
 
 // Tool tiers: a block with `tier` n only drops (and only breaks quickly) with a tool of tier n or more.
 export const TOOL_TIERS = {
-  1: 'wooden', 2: 'stone', 3: 'copper-class', 4: 'iron-class', 5: 'stainless steel', 6: 'tungsten',
+  1: 'wooden', 2: 'stone', 3: 'copper-class', 4: 'iron-class', 5: 'stainless steel', 6: 'tungsten', 7: 'starsteel',
 };
 
 // Metal tool materials. Copper, tin, zinc and aluminium are a little better than stone; the alloys
@@ -2159,4 +2159,31 @@ RECIPES.push(
   { out: [ZIP_LINE, 2], in: [[STRING, 6], [IRON_INGOT, 1]], table: true, metal: IRON_INGOT },
   { out: [BOAT, 1], in: [[PLANKS, 5], [STICK, 2]], table: true },
   { out: [BALLOON, 1], in: [[WOOL, 12], [STRING, 8], [PLANKS, 4], [IRON_INGOT, 2], [LANTERN, 1]], table: true, metal: IRON_INGOT },
+);
+
+// ---------- v24 E: volcanoes, ruins, shipwrecks and meteorites ----------
+// Volcanoes are cones of basalt with a lava-filled crater, rich in deep ores. Meteorites fall at night (see
+// main.js) and leave meteoric iron, which the arc furnace makes into starsteel: the best tools of all.
+export const BASALT = 1285, METEORITE = 1286;
+export const METEORIC_IRON = 1070, STARSTEEL_INGOT = 1071, STARSTEEL_TOOLS = 1072; // 1072..1075: pick, axe, shovel, sword
+export const starsteelTool = (kind) => STARSTEEL_TOOLS + ['pick', 'axe', 'shovel', 'sword'].indexOf(kind);
+block(BASALT, { name: 'Basalt', side: T.BASALT, top: T.BASALT_TOP, bottom: T.BASALT_TOP, hardness: 2.5, tool: 'pick', needsTool: true });
+block(METEORITE, {
+  name: 'Meteorite', tex: T.METEORITE, hardness: 6, tool: 'pick', needsTool: true, tier: 5, light: 3,
+  drop: () => [[METEORIC_IRON, 1 + (Math.random() < 0.4 ? 1 : 0)]],
+});
+ITEMS[METEORIC_IRON] = { name: 'Meteoric Iron' };
+ITEMS[STARSTEEL_INGOT] = { name: 'Starsteel Ingot', ingot: true };
+['pick', 'axe', 'shovel'].forEach((kind, i) => {
+  ITEMS[STARSTEEL_TOOLS + i] = {
+    name: `Starsteel ${KIND_NAMES[kind]}`, mat: 'starsteel', wearMax: 3000, repair: STARSTEEL_INGOT,
+    tool: { type: kind, speed: 18, tier: 7, damage: KIND_DAMAGE[kind] + 7 },
+  };
+});
+ITEMS[starsteelTool('sword')] = { name: 'Starsteel Sword', mat: 'starsteel', wearMax: 3000, repair: STARSTEEL_INGOT, tool: { type: 'sword', speed: 1, tier: 0, damage: 16 } };
+RECIPES.push(
+  { out: [starsteelTool('pick'), 1], in: [[STARSTEEL_INGOT, 3], [STICK, 2]], table: true, metal: STARSTEEL_INGOT },
+  { out: [starsteelTool('axe'), 1], in: [[STARSTEEL_INGOT, 3], [STICK, 2]], table: true, metal: STARSTEEL_INGOT },
+  { out: [starsteelTool('shovel'), 1], in: [[STARSTEEL_INGOT, 1], [STICK, 2]], table: true, metal: STARSTEEL_INGOT },
+  { out: [starsteelTool('sword'), 1], in: [[STARSTEEL_INGOT, 2], [STICK, 1]], table: true, metal: STARSTEEL_INGOT },
 );
