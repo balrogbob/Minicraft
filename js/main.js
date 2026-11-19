@@ -27,7 +27,7 @@ import {
   WIRE, INVERTER, DELAY, LATCH, DETECTOR_RAIL, DRIVE_BELT, TREE_FELLER, PLANTER, BREAKER, PLACER, ANIMAL_STATION, EJECTOR, COLLECTOR, BELT_SPLITTER, BELT_SORTER,
   ELECTRIC_RAIL, LIFT, LIFT_REACH, WIRELESS_REACH, CHAINSAW, SAWDUST, SPANNER, GRAPPLE, isBackpack, kineticId, MELTDOWN, REACTOR_POWER, ROD_LIFE, BOOK,
   BOOKSHELF, JOURNAL, FERTILISER, SHELF_DISCOUNT, LEAD_CHEST, FREEZER, ARC_FURNACE, SPENT_ROD, RADIATION_REACH, hazmatId, TESLA_REACH, TESLA_DAMAGE, ELECTRIC_FENCE,
-  RAIL_STATION, ZIP_POST, ZIP_LINE, ZIP_REACH, BOAT, BALLOON, CHARCOAL, METEORITE, METEORIC_IRON, metalSword,
+  RAIL_STATION, ZIP_POST, ZIP_LINE, ZIP_REACH, BOAT, BALLOON, CHARCOAL, METEORITE, METEORIC_IRON, metalSword, TRUFFLE,
 } from './blocks.js';
 import { createAtlas, createIcons, createCrackCanvases, createWaterCanvas, createHudIcons, paintSeason } from './textures.js';
 import { World, CHUNK, WORLD_SIZE, chunkKey } from './world.js';
@@ -501,10 +501,11 @@ async function startWorld(save, opts = {}) {
     await nextFrame();
   }
   // pets come back where you left them (or beside you, if that's far away)
-  for (const [kind, x, y, z, sitting] of save?.pets ?? []) {
-    if (!['wolf', 'camel'].includes(kind) || ![x, y, z].every(Number.isFinite)) continue;
+  for (const [kind, x, y, z, sitting, coat] of save?.pets ?? []) {
+    if (!['wolf', 'camel', 'cat', 'buffalo'].includes(kind) || ![x, y, z].every(Number.isFinite)) continue;
     const far = Math.hypot(x - player.pos.x, z - player.pos.z) > 40;
-    const m = far ? mobs.spawn(kind, player.pos.x + 1.5, player.pos.y + 0.2, player.pos.z + 1.5) : mobs.spawn(kind, x, y, z);
+    const opts = Number.isFinite(coat) ? { coat } : undefined;
+    const m = far ? mobs.spawn(kind, player.pos.x + 1.5, player.pos.y + 0.2, player.pos.z + 1.5, opts) : mobs.spawn(kind, x, y, z, opts);
     mobs.setTame(m);
     m.sitting = !!sitting && !far;
   }
@@ -2490,12 +2491,14 @@ function dismount() {
 }
 function followMount() {
   if (!mobs.mobs.includes(ridingMob)) { ridingMob = null; return; }
-  player.pos.set(ridingMob.pos.x, ridingMob.pos.y + 1.55, ridingMob.pos.z);
+  player.pos.set(ridingMob.pos.x, ridingMob.pos.y + (ridingMob.spec.seat ?? 1.55), ridingMob.pos.z);
   player.vel.set(0, 0, 0);
   player.onGround = true;
   player.updateWaterState();
 }
 mobs.onPetKill = (drops) => giveDrops(drops);
+// a hen's egg, or a truffle a pig has rooted up, left on the ground for you to pick up
+mobs.onLay = (m, id) => loose.spawn({ id, count: 1 }, { x: m.pos.x, y: m.pos.y + 0.3, z: m.pos.z }, { x: 0, y: 1.5, z: 0 }, 0.3);
 
 // ---------- the wandering trader ----------
 // Turns up now and then on a fine day with four offers, rolled from these: what you give -> what you get.
@@ -2504,7 +2507,7 @@ const TRADES = [
   [[WOOL, 8], [SILVER_INGOT, 2]], [[BREAD, 6], [GUNPOWDER, 4]], [[RAW_FISH, 8], [NIGHT_TEA, 1]],
   [[SAND, 32], [STAINLESS_INGOT, 1]], [[FEATHER, 6], [SILVER_ARROW, 6]], [[IRON_INGOT, 4], [TUNGSTEN_INGOT, 1]],
   [[COAL, 16], [STEEL_INGOT, 2]], [[BERRIES, 12], [HEAL_TEA, 1]], [[SUGAR_CANE, 16], [COPPER_INGOT, 4]],
-  [[CORNFLOWER, 4], [HASTE_TEA, 1]], [[COPPER_INGOT, 8], [IRON_SHIELD, 1]],
+  [[CORNFLOWER, 4], [HASTE_TEA, 1]], [[TRUFFLE, 3], [GOLD_INGOT, 2]], [[COPPER_INGOT, 8], [IRON_SHIELD, 1]],
 ];
 mobs.onTraderSpawn = (m) => {
   const pool = [...TRADES];

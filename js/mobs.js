@@ -7,7 +7,7 @@
 // They aren't saved: they're spawned fresh around wherever you are.
 import * as THREE from 'three';
 import { AIR, WATER, LEAVES, LOG, GRASS, SAND, DIRT, WOOL, BUCKET, MILK_BUCKET, SLIME_BUCKET, FEATHER, COAL, COBBLE, ARROW, HIDE, SNOW_GRASS, SNOW, KING_CROWN, GOLD_INGOT, MOSSY_BRICKS, RAW_FISH, BAKED_FISH, WHEAT, SALMON, BAKED_SALMON, ICEFISH, BAKED_ICEFISH,
-  SUN_SCARAB, FROST_HEART, EMBER_CORE, SUN_MASK, FROST_CIRCLET, EMBER_CROWN, SILVER_INGOT, OBSIDIAN, STRING, BLOCKS, LAVA, SEEDS, BERRIES } from './blocks.js';
+  SUN_SCARAB, FROST_HEART, EMBER_CORE, SUN_MASK, FROST_CIRCLET, EMBER_CROWN, SILVER_INGOT, OBSIDIAN, STRING, BLOCKS, LAVA, SEEDS, BERRIES, EGG, TRUFFLE, SADDLE } from './blocks.js';
 import { SEA_LEVEL, H } from './terrain.js';
 import { skyBrightness, lightBrightness } from './world.js';
 import { THORN_SPEED, THORN_GRAVITY } from './arrows.js';
@@ -127,10 +127,14 @@ const SPECIES = {
 
   buffalo: {
     w: 1.25, h: 1.85, speed: 1.1, fleeSpeed: 4.5, sink: 1.15, stride: 5, legSwing: 0.45,
-    group: [2, 4], cap: 6, avoidWater: true, grazes: true,
-    build(b, root) {
-      const fur = 0x4b3323, mane = 0x3a2617, dark = 0x24170e, horn = 0xd8cdb5;
-      const parts = { legs: [] };
+    group: [2, 4], cap: 6, avoidWater: true, grazes: true, rideable: true, saddles: true, seat: 1.45,
+    coats: [0x4b3323, 0x4b3323, 0x6a4a2e, 0x2a2420, 0xd0c6b4],
+    build(b, root, opts = {}) {
+      const fur = opts.coat ?? pick(this.coats), mane = new THREE.Color(fur).multiplyScalar(0.78).getHex(), dark = new THREE.Color(fur).multiplyScalar(0.5).getHex(), horn = 0xd8cdb5;
+      const parts = { legs: [], coat: fur };
+      parts.saddle = b.box(root, [1.0, 0.14, 0.7], 0x7a3a1a, [0, 1.55, -0.1]);
+      parts.saddle.visible = false;
+      parts.tame = (on) => { parts.saddle.visible = on; };
       b.box(root, [1.0, 0.85, 1.1], fur, [0, 1.05, -0.4]); // hindquarters
       b.box(root, [1.2, 1.1, 0.95], mane, [0, 1.15, 0.42]); // shaggy shoulders
       b.box(root, [0.9, 0.3, 0.7], mane, [0, 1.82, 0.32]); // hump
@@ -160,10 +164,11 @@ const SPECIES = {
   alpaca: {
     w: 0.8, h: 2.15, speed: 1.3, fleeSpeed: 4.2, sink: 1.35, stride: 6.5, legSwing: 0.5,
     group: [2, 3], cap: 6, avoidWater: true, grazes: true, wool: true,
-    build(b, root) {
-      const coat = pick([0xf1ece1, 0xf1ece1, 0xdcc09a, 0x8e5d3d, 0xa29c94, 0x3d3530]);
+    coats: [0xf1ece1, 0xf1ece1, 0xdcc09a, 0x8e5d3d, 0xa29c94, 0x3d3530],
+    build(b, root, opts = {}) {
+      const coat = opts.coat ?? pick(this.coats);
       const legColor = new THREE.Color(coat).multiplyScalar(0.85).getHex();
-      const parts = { legs: [], fleece: [], tufts: [] };
+      const parts = { legs: [], fleece: [], tufts: [], coat };
       parts.fleece.push(b.box(root, [0.72, 0.66, 1.05], coat, [0, 1.0, 0])); // body
       parts.fleece.push(b.box(root, [0.3, 0.8, 0.3], coat, [0, 1.55, 0.42])); // neck
       const head = parts.head = b.pivot(root, [0, 1.92, 0.46]);
@@ -196,12 +201,13 @@ const SPECIES = {
   yak: {
     w: 1.1, h: 1.75, speed: 1.0, fleeSpeed: 4.0, sink: 1.05, stride: 5.5, legSwing: 0.4,
     group: [2, 3], cap: 5, avoidWater: true, grazes: true, milk: true,
-    build(b, root) {
-      const coat = pick([0x2e2722, 0x2e2722, 0x4a3628, 0xe6e0d4]);
+    coats: [0x2e2722, 0x2e2722, 0x4a3628, 0xe6e0d4],
+    build(b, root, opts = {}) {
+      const coat = opts.coat ?? pick(this.coats);
       const shag = new THREE.Color(coat).multiplyScalar(0.78).getHex();
       const white = coat === 0xe6e0d4;
       const horn = 0xe9e2cf;
-      const parts = { legs: [] };
+      const parts = { legs: [], coat };
       b.box(root, [1.0, 0.8, 1.5], coat, [0, 1.05, 0]); // body
       b.box(root, [1.12, 0.42, 1.58], shag, [0, 0.62, 0]); // long hair hanging down like a skirt
       b.box(root, [0.9, 0.35, 0.6], coat, [0, 1.58, 0.35]); // shoulder hump
@@ -423,9 +429,10 @@ const SPECIES = {
   wolf: {
     w: 0.6, h: 0.85, speed: 1.4, chaseSpeed: 5.2, followSpeed: 5, fleeSpeed: 4.5, sink: 0.6, stride: 11, legSwing: 0.6,
     group: [1, 3], cap: 4, avoidWater: true, grazes: false, fights: true, tames: [RAW_FISH, BAKED_FISH, SALMON, BAKED_SALMON, ICEFISH, BAKED_ICEFISH],
-    build(b, root) {
-      const fur = pick([0x8a8a8e, 0x9c9a96, 0x6e6c6a, 0xd8d6d2]), pale = 0xd2d0cc, dark = 0x3a3a3c;
-      const parts = { legs: [] };
+    coats: [0x8a8a8e, 0x9c9a96, 0x6e6c6a, 0xd8d6d2],
+    build(b, root, opts = {}) {
+      const fur = opts.coat ?? pick(this.coats), pale = 0xd2d0cc, dark = 0x3a3a3c;
+      const parts = { legs: [], coat: fur };
       b.box(root, [0.42, 0.38, 0.86], fur, [0, 0.55, -0.02]);
       b.box(root, [0.5, 0.42, 0.32], fur, [0, 0.6, 0.26]); // shaggy ruff
       const head = parts.head = b.pivot(root, [0, 0.72, 0.44]);
@@ -475,6 +482,94 @@ const SPECIES = {
       const tail = parts.tail = b.pivot(root, [0, 1.5, -0.7]);
       b.box(tail, [0.08, 0.5, 0.08], dark, [0, -0.25, 0]);
       parts.tame = (on) => { parts.saddle.visible = on; };
+      return parts;
+    },
+  },
+
+  // v24: cats (tame one with fish and it follows you about), chickens (they lay eggs) and pigs (they root up truffles)
+  cat: {
+    w: 0.45, h: 0.6, speed: 1.3, followSpeed: 5, fleeSpeed: 5, sink: 0.4, stride: 12, legSwing: 0.6,
+    group: [1, 1], cap: 2, avoidWater: true, grazes: false, tames: [RAW_FISH, BAKED_FISH, SALMON, BAKED_SALMON, ICEFISH, BAKED_ICEFISH],
+    coats: [0xd8862e, 0xd8862e, 0x2a2626, 0x8a8682, 0xeeeae2, 0x6a4a30],
+    build(b, root, opts = {}) {
+      const fur = opts.coat ?? pick(this.coats), pale = new THREE.Color(fur).lerp(new THREE.Color(0xffffff), 0.4).getHex();
+      const dark = new THREE.Color(fur).multiplyScalar(0.6).getHex();
+      const parts = { legs: [], coat: fur };
+      b.box(root, [0.28, 0.26, 0.62], fur, [0, 0.36, 0]);
+      for (const z of [-0.14, 0.02, 0.18]) b.box(root, [0.29, 0.04, 0.06], dark, [0, 0.48, z]); // tabby stripes
+      const head = parts.head = b.pivot(root, [0, 0.46, 0.32]);
+      b.box(head, [0.26, 0.22, 0.22], fur, [0, 0.04, 0.06]);
+      b.box(head, [0.12, 0.08, 0.06], pale, [0, -0.02, 0.18]); // muzzle
+      for (const sx of [-1, 1]) {
+        b.box(head, [0.07, 0.08, 0.04], fur, [sx * 0.08, 0.19, 0.04]); // ears
+        b.box(head, [0.04, 0.04, 0.02], 0x6ac040, [sx * 0.07, 0.07, 0.175], true); // green eyes
+      }
+      parts.collar = b.box(root, [0.3, 0.05, 0.08], 0x2a6ad8, [0, 0.42, 0.28]);
+      parts.collar.visible = false;
+      for (const [x, z] of [[-0.08, 0.22], [0.08, 0.22], [-0.08, -0.22], [0.08, -0.22]]) {
+        const leg = b.pivot(root, [x, 0.24, z]);
+        b.box(leg, [0.08, 0.24, 0.08], fur, [0, -0.12, 0]);
+        parts.legs.push(leg);
+      }
+      const tail = parts.tail = b.pivot(root, [0, 0.46, -0.3]);
+      b.box(tail, [0.06, 0.06, 0.4], fur, [0, 0.08, -0.18]);
+      parts.tail.rotation.x = 0.6;
+      parts.tame = (on) => { parts.collar.visible = on; };
+      return parts;
+    },
+  },
+
+  chicken: {
+    w: 0.4, h: 0.7, speed: 1.0, fleeSpeed: 3.6, sink: 0.2, stride: 12, legSwing: 0.7,
+    group: [2, 4], cap: 7, avoidWater: true, grazes: true, lays: [EGG, 180, 360],
+    coats: [0xf4f0e6, 0xf4f0e6, 0xb06a32, 0x3a3230, 0xd8b070],
+    build(b, root, opts = {}) {
+      const coat = opts.coat ?? pick(this.coats), wing = new THREE.Color(coat).multiplyScalar(0.82).getHex();
+      const parts = { legs: [], coat };
+      const torso = parts.torso = b.pivot(root, [0, 0, 0]);
+      b.box(torso, [0.32, 0.3, 0.42], coat, [0, 0.38, 0]);
+      b.box(torso, [0.2, 0.2, 0.12], wing, [0, 0.5, -0.24]); // tail feathers
+      for (const s of [-1, 1]) b.box(torso, [0.05, 0.2, 0.3], wing, [s * 0.18, 0.4, -0.02]);
+      const head = parts.head = b.pivot(torso, [0, 0.52, 0.2]);
+      b.box(head, [0.18, 0.22, 0.16], coat, [0, 0.1, 0.02]);
+      b.box(head, [0.08, 0.06, 0.1], 0xe8a020, [0, 0.1, 0.14]); // beak
+      b.box(head, [0.05, 0.1, 0.12], 0xd02a2a, [0, 0.25, 0.02]); // comb
+      b.box(head, [0.05, 0.08, 0.04], 0xd02a2a, [0, 0.02, 0.12]); // wattle
+      for (const s of [-1, 1]) b.box(head, [0.02, 0.04, 0.04], 0x111111, [s * 0.09, 0.14, 0.06]);
+      for (const s of [-1, 1]) {
+        const leg = b.pivot(root, [s * 0.08, 0.23, 0]);
+        b.box(leg, [0.04, 0.22, 0.04], 0xe8a020, [0, -0.11, 0]);
+        b.box(leg, [0.1, 0.02, 0.12], 0xe8a020, [0, -0.22, 0.03]);
+        parts.legs.push(leg);
+      }
+      return parts;
+    },
+  },
+
+  pig: {
+    w: 0.8, h: 0.85, speed: 1.0, fleeSpeed: 3.8, sink: 0.6, stride: 9, legSwing: 0.5,
+    group: [2, 3], cap: 5, avoidWater: true, grazes: true, lays: [TRUFFLE, 300, 600],
+    coats: [0xeaa0a0, 0xeaa0a0, 0xd89070, 0x4a3a36, 0xe8d8d0],
+    build(b, root, opts = {}) {
+      const coat = opts.coat ?? pick(this.coats), dark = new THREE.Color(coat).multiplyScalar(0.8).getHex();
+      const parts = { legs: [], coat };
+      b.box(root, [0.62, 0.52, 0.95], coat, [0, 0.58, 0]);
+      const head = parts.head = b.pivot(root, [0, 0.64, 0.48]);
+      b.box(head, [0.46, 0.42, 0.34], coat, [0, 0.02, 0.14]);
+      b.box(head, [0.22, 0.16, 0.08], dark, [0, -0.06, 0.34]); // snout
+      for (const sx of [-1, 1]) {
+        b.box(head, [0.04, 0.04, 0.02], 0x3a2020, [sx * 0.05, -0.06, 0.385]); // nostrils
+        b.box(head, [0.12, 0.12, 0.04], dark, [sx * 0.16, 0.24, 0.06]); // ears
+        b.box(head, [0.04, 0.05, 0.03], 0x111111, [sx * 0.14, 0.1, 0.31]);
+      }
+      for (const [x, z] of [[-0.18, 0.3], [0.18, 0.3], [-0.18, -0.3], [0.18, -0.3]]) {
+        const leg = b.pivot(root, [x, 0.32, z]);
+        b.box(leg, [0.16, 0.32, 0.16], coat, [0, -0.16, 0]);
+        b.box(leg, [0.17, 0.05, 0.17], 0x5a3a30, [0, -0.3, 0]);
+        parts.legs.push(leg);
+      }
+      const tail = parts.tail = b.pivot(root, [0, 0.72, -0.48]);
+      b.box(tail, [0.05, 0.12, 0.05], dark, [0, 0, -0.03]);
       return parts;
     },
   },
@@ -574,9 +669,10 @@ const SPECIES = {
 // Breeding: what each animal can be fed to look for a mate. Two of a kind that have both been fed find each
 // other and have a young one, which grows up over GROW_TIME; then they need BREED_REST before they'll breed
 // again. They won't when there are already CROWD of their kind close by.
-const BREED_FOOD = { duck: [SEEDS], buffalo: [WHEAT], alpaca: [WHEAT], yak: [WHEAT], camel: [WHEAT], newt: [BERRIES] };
+const BREED_FOOD = { duck: [SEEDS], buffalo: [WHEAT], alpaca: [WHEAT], yak: [WHEAT], camel: [WHEAT], newt: [BERRIES], chicken: [SEEDS], pig: [BERRIES, WHEAT] };
 for (const [k, f] of Object.entries(BREED_FOOD)) SPECIES[k].breeds = f;
 SPECIES.wolf.breeds = SPECIES.wolf.tames;
+SPECIES.cat.breeds = SPECIES.cat.tames;
 export const LOVE_TIME = 30, BREED_REST = 300, GROW_TIME = 300, CROWD = 12;
 let heartTexture = null;
 function heartSprite() {
@@ -654,6 +750,8 @@ class Mob {
     const b = new Builder(this.material, this.glowMaterial);
     this.root = new THREE.Group();
     this.parts = this.spec.build(b, this.root, opts);
+    this.coat = this.parts.coat; // passed on to its young
+    if (this.spec.lays) this.layFor = rand(this.spec.lays[1] * 0.3, this.spec.lays[2]);
     this.baseScale = this.root.scale.x;
     this.geometries = b.geometries;
   }
@@ -730,7 +828,7 @@ export class MobManager {
     if (this.nearWater(x, s.y, z)) return { kinds: ['duck', 'newt'], y };
     if (s.id !== GRASS) return null;
     if (s.y >= SEA_LEVEL + 12) return { kinds: ['alpaca', 'yak', 'yak'], y };
-    if (s.y >= SEA_LEVEL + 2) return { kinds: ['buffalo'], y };
+    if (s.y >= SEA_LEVEL + 2) return { kinds: ['buffalo', 'buffalo', 'chicken', 'chicken', 'pig', 'cat'], y };
     return null;
   }
 
@@ -973,6 +1071,11 @@ export class MobManager {
       if (m.featherFor > 0) m.featherFor -= dt;
       if (m.hideFor > 0) m.hideFor -= dt;
       if (m.slimeFor > 0) m.slimeFor -= dt;
+      // a hen lays an egg now and then, and a pig roots up a truffle
+      if (m.spec.lays && !(m.baby > 0) && (m.layFor -= dt) <= 0) {
+        m.layFor = rand(m.spec.lays[1], m.spec.lays[2]);
+        if (m.onGround) { this.onLay?.(m, m.spec.lays[0]); if (dist < 16) this.sound?.mob(m.kind, 0.6); }
+      }
     }
   }
 
@@ -1322,6 +1425,15 @@ export class MobManager {
       return { give, take, said: '' };
     }
     if (m.spec.trader) return { give, take, said: '', trade: true };
+    if (m.spec.saddles && m.tame) return { give, take, said: '', ride: true };
+    if (m.spec.saddles && held === SADDLE) {
+      if (m.baby > 0) return { give, take, said: `This ${m.kind} is too young for a saddle` };
+      take.push([SADDLE, 1]);
+      this.setTame(m);
+      m.sitting = true; // a saddled buffalo stays put until you ride it
+      this.sound?.mob(m.kind, 0.9);
+      return { give, take, said: `You saddle the ${m.kind}: tap it to ride` };
+    }
     if (m.spec.breeds?.includes(held) && (!m.spec.tames || m.tame)) {
       const said = this.feed(m);
       if (said) return { give, take, said };
@@ -1334,16 +1446,16 @@ export class MobManager {
         if (m.spec.rideable) return { give, take, said: '', ride: true };
         m.sitting = !m.sitting;
         m.state = 'idle';
-        return { give, take, said: m.sitting ? 'Your wolf sits and waits here' : 'Your wolf follows you again' };
+        return { give, take, said: m.sitting ? `Your ${m.kind} sits and waits here` : `Your ${m.kind} follows you again` };
       }
       if (m.spec.tames.includes(held)) {
         take.push([held, 1]);
         this.sound?.mob(m.kind, 0.9);
         if (Math.random() < 0.4) {
           this.setTame(m);
-          return { give, take, said: m.spec.rideable ? 'The camel trusts you now: tap it to ride' : 'The wolf is your friend now: it follows you and fights night creatures. Tap it to make it stay.' };
+          return { give, take, said: m.spec.rideable ? 'The camel trusts you now: tap it to ride' : m.kind === 'cat' ? 'The cat is your friend now: it follows you about. Tap it to make it stay.' : 'The wolf is your friend now: it follows you and fights night creatures. Tap it to make it stay.' };
         }
-        return { give, take, said: m.spec.rideable ? 'The camel munches the wheat… and wants more' : 'The wolf gulps the fish… and eyes you warily' };
+        return { give, take, said: m.spec.rideable ? 'The camel munches the wheat… and wants more' : `The ${m.kind} gulps the fish… and eyes you warily` };
       }
     }
     this.bump(m, from);
@@ -1411,10 +1523,12 @@ export class MobManager {
     for (const p of [m, best]) { p.love = 0; p.breedFor = BREED_REST; p.state = 'idle'; p.timer = rand(2, 4); }
     const crowd = this.mobs.filter((o) => o.kind === m.kind && !o.dying && Math.hypot(o.pos.x - m.pos.x, o.pos.z - m.pos.z) < 8).length;
     if (crowd >= CROWD) return;
-    const baby = this.spawn(m.kind, (m.pos.x + best.pos.x) / 2, Math.max(m.pos.y, best.pos.y), (m.pos.z + best.pos.z) / 2);
+    // the young one takes its coat from one parent or the other (and once in a while has a coat of its own)
+    const coat = m.spec.coats && Math.random() < 0.9 ? pick([m.coat, best.coat]) : undefined;
+    const baby = this.spawn(m.kind, (m.pos.x + best.pos.x) / 2, Math.max(m.pos.y, best.pos.y), (m.pos.z + best.pos.z) / 2, { coat });
     baby.baby = GROW_TIME;
     baby.root.scale.setScalar(baby.baseScale * 0.5);
-    if (m.tame && best.tame) this.setTame(baby);
+    if (m.tame && best.tame && !m.spec.saddles) this.setTame(baby);
     this.sound?.mob(m.kind, 1.3);
     this.onBred?.(baby);
   }
@@ -1425,8 +1539,8 @@ export class MobManager {
     m.parts.tame?.(true);
   }
 
-  // Pets to save: [kind, x, y, z, sitting].
-  pets() { return this.mobs.filter((m) => m.tame && !m.dying).map((m) => [m.kind, +m.pos.x.toFixed(2), +m.pos.y.toFixed(2), +m.pos.z.toFixed(2), !!m.sitting]); }
+  // Pets to save: [kind, x, y, z, sitting, coat].
+  pets() { return this.mobs.filter((m) => m.tame && !m.dying).map((m) => [m.kind, +m.pos.x.toFixed(2), +m.pos.y.toFixed(2), +m.pos.z.toFixed(2), !!m.sitting, m.coat ?? null]); }
 
   // The player hits a night creature for `amount`. It gets knocked back, flashes, and hunts the
   // player for a while (even on Peaceful). Returns its drops if that hit defeated it.

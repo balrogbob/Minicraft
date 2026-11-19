@@ -17,7 +17,7 @@ import {
   SUN_SCARAB, FROST_HEART, EMBER_CORE, SUN_MASK, FROST_CIRCLET, EMBER_CROWN, HONEY_TEA, MUSHROOM_STEW, FISH_PIE, COPY_WAND,
   CRYSTAL_SHARD, HONEY_BOTTLE, HONEYCOMB, SALMON, BAKED_SALMON, ICEFISH, BAKED_ICEFISH, PUFFERFISH, OLD_BOOT,
   BATTERY, PORTABLE_LAMP, JACKHAMMER, JETPACK, ELECTRIC_DRILL, HOVER_BOOTS, NV_GOGGLES, MAGNET_RING, WIND_TURBINE, NICKEL_INGOT, CUPRONICKEL_INGOT,
-  ELECTRIC_RAIL, CHAINSAW, SAWDUST, BOOK, BACKPACK, BIG_BACKPACK, HUGE_BACKPACK, SPANNER, GRAPPLE, URANIUM_INGOT, FUEL_ROD, JOURNAL, FERTILISER, SPENT_ROD, ENRICHED_URANIUM, ENRICHED_ROD, hazmatId, INVAR_INGOT, RAIL_STATION, BOAT, BALLOON, ZIP_LINE, METEORIC_IRON, STARSTEEL_INGOT, starsteelTool,
+  ELECTRIC_RAIL, CHAINSAW, SAWDUST, BOOK, BACKPACK, BIG_BACKPACK, HUGE_BACKPACK, SPANNER, GRAPPLE, URANIUM_INGOT, FUEL_ROD, JOURNAL, FERTILISER, SPENT_ROD, ENRICHED_URANIUM, ENRICHED_ROD, hazmatId, INVAR_INGOT, RAIL_STATION, BOAT, BALLOON, ZIP_LINE, METEORIC_IRON, STARSTEEL_INGOT, starsteelTool, EGG, FRIED_EGG, SADDLE, TRUFFLE,
   SALTPETRE, GUNPOWDER, LEAD_SINKER, WEIGHTED_ROD, LEAD_BUCKET, LAVA_BUCKET, GOLD_CLOCK, COMPASS, SILVER_ARROW, MIRROR_LAMP,
 } from './blocks.js';
 
@@ -2066,6 +2066,16 @@ ITEM_PAINTERS[NV_GOGGLES] = (ctx) => {
 // v23 gear
 ITEM_PAINTERS[ELECTRIC_RAIL] = railIcon([214, 186, 80]);
 ITEM_PAINTERS[RAIL_STATION] = (ctx) => { for (let y = 1; y < 15; y++) for (let x = 2; x < 14; x++) px(ctx, x, y, ((x + y) >> 2) % 2 ? [220, 50, 40] : [240, 236, 228]); railIcon([150, 154, 162])(ctx); };
+// v24 F: farm animals' things
+const blob = (ctx, cx, cy, rx, ry, c, c2) => { for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) { const d = ((x + 0.5 - cx) / rx) ** 2 + ((y + 0.5 - cy) / ry) ** 2; if (d < 1) px(ctx, x, y, c2 && d > 0.6 && x > cx ? c2 : c); } };
+ITEM_PAINTERS[EGG] = (ctx) => { blob(ctx, 8, 8.5, 4.5, 6, [244, 232, 210], [214, 196, 168]); px(ctx, 6, 5, [255, 252, 244]); };
+ITEM_PAINTERS[FRIED_EGG] = (ctx) => { blob(ctx, 8, 8, 7, 6, [250, 248, 240], [226, 222, 212]); blob(ctx, 8, 8, 2.6, 2.6, [250, 186, 40]); };
+ITEM_PAINTERS[TRUFFLE] = (ctx) => { blob(ctx, 8, 9, 5.5, 5, [70, 52, 40], [50, 36, 28]); for (const [x, y] of [[6, 7], [9, 8], [7, 11], [10, 11]]) px(ctx, x, y, [110, 86, 66]); };
+ITEM_PAINTERS[SADDLE] = (ctx) => {
+  for (let x = 2; x < 14; x++) for (let y = 6; y < 10; y++) px(ctx, x, y + (x < 4 || x > 11 ? -1 : 0), y === 6 ? [160, 90, 50] : [122, 60, 28]);
+  for (let y = 10; y < 15; y++) { px(ctx, 7, y, [90, 60, 40]); px(ctx, 8, y, [90, 60, 40]); } // strap
+  for (const x of [6, 9]) px(ctx, x, 14, [200, 200, 206]); // stirrup
+};
 ITEM_PAINTERS[BOAT] = (ctx) => {
   rect(ctx, 1, 8, 14, 3, [160, 106, 60]); rect(ctx, 3, 11, 10, 2, [138, 90, 50]); rect(ctx, 0, 6, 2, 3, [160, 106, 60]); rect(ctx, 14, 6, 2, 3, [160, 106, 60]);
   rect(ctx, 2, 9, 12, 1, [110, 72, 40]); for (let k = 0; k < 6; k++) px(ctx, 4 + k, 7 - (k >> 1), [106, 68, 38]); // an oar

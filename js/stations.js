@@ -12,6 +12,7 @@ import {
   GRAVEL, FLINT, FLINT_DUST, CLAY_BALL, CLAY_DUST, BRICK, FIRE_CLAY, FIRE_BRICK, oreDust, HIDE, LEATHER,
   LAVA_BUCKET, LEAD_BUCKET, SALTPETRE, SANDSTONE, WHEAT, SUGAR_CANE, COAL_DUST, PLATE_METALS, PLATES, TUNGSTEN_INGOT, FILAMENT,
   SAPLING, ELECTRIC_ITEMS, chargeCap, GLASS_BOTTLE, NIGHT_TEA, HASTE_TEA, FIRE_TEA, HEAL_TEA, BERRIES, CORNFLOWER, DANDELION, POPPY, CACTUS, LAVENDER, DAISY, CAULDRON,
+  EGG, FRIED_EGG,
 } from './blocks.js';
 
 // A recipe ingredient can be one id or a list of alternatives (coal or charcoal).
@@ -36,6 +37,8 @@ export const STATION_KINDS = {
       { out: [COOKIE, 9], in: [[FLOUR, 3], [SUGAR, 3], [BUTTER, 1]], tools: [MILK_BUCKET], time: 8 },
       { out: [BREAD, 1], in: [[FLOUR, 3]], time: 6 },
       { out: [BAKED_FISH, 1], in: [[RAW_FISH, 1]], time: 5 },
+      { out: [FRIED_EGG, 1], in: [[EGG, 1]], time: 4 },
+      { out: [CAKE, 1], in: [[FLOUR, 3], [SUGAR, 2], [EGG, 2]], time: 10 },
       { out: [BAKED_SALMON, 1], in: [[SALMON, 1]], time: 5 },
       { out: [MUSHROOM_STEW, 1], in: [[GLOW_MUSHROOM, 3], [BUTTER, 1]], time: 8 },
       ...[BAKED_FISH, BAKED_SALMON, BAKED_ICEFISH].map((f) => ({ out: [FISH_PIE, 1], in: [[f, 1], [FLOUR, 2], [BUTTER, 1]], time: 10 })),

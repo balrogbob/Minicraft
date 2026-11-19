@@ -2187,3 +2187,14 @@ RECIPES.push(
   { out: [starsteelTool('shovel'), 1], in: [[STARSTEEL_INGOT, 1], [STICK, 2]], table: true, metal: STARSTEEL_INGOT },
   { out: [starsteelTool('sword'), 1], in: [[STARSTEEL_INGOT, 2], [STICK, 1]], table: true, metal: STARSTEEL_INGOT },
 );
+
+// ---------- v24 F: farm animals ----------
+// Hens lay eggs and pigs root up truffles (see mobs.js); a saddle lets you ride a buffalo.
+export const EGG = 1079, FRIED_EGG = 1080, SADDLE = 1081, TRUFFLE = 1082;
+ITEMS[EGG] = { name: 'Egg', stack: 16 };
+ITEMS[FRIED_EGG] = { name: 'Fried Egg', food: 5 };
+ITEMS[SADDLE] = { name: 'Saddle', stack: 1 };
+ITEMS[TRUFFLE] = { name: 'Truffle', food: 4 };
+RECIPES.push(
+  { out: [SADDLE, 1], in: [[LEATHER, 3], [STRING, 2], [IRON_INGOT, 1]], table: true, metal: IRON_INGOT },
+);
