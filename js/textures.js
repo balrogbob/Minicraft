@@ -17,7 +17,7 @@ import {
   SUN_SCARAB, FROST_HEART, EMBER_CORE, SUN_MASK, FROST_CIRCLET, EMBER_CROWN, HONEY_TEA, MUSHROOM_STEW, FISH_PIE, COPY_WAND,
   CRYSTAL_SHARD, HONEY_BOTTLE, HONEYCOMB, SALMON, BAKED_SALMON, ICEFISH, BAKED_ICEFISH, PUFFERFISH, OLD_BOOT,
   BATTERY, PORTABLE_LAMP, JACKHAMMER, JETPACK, ELECTRIC_DRILL, HOVER_BOOTS, NV_GOGGLES, MAGNET_RING, WIND_TURBINE, NICKEL_INGOT, CUPRONICKEL_INGOT,
-  ELECTRIC_RAIL, CHAINSAW, SAWDUST, BOOK, BACKPACK, BIG_BACKPACK, HUGE_BACKPACK, SPANNER, GRAPPLE, URANIUM_INGOT, FUEL_ROD, JOURNAL, FERTILISER, SPENT_ROD, ENRICHED_URANIUM, ENRICHED_ROD, hazmatId, INVAR_INGOT, RAIL_STATION, BOAT, BALLOON, ZIP_LINE, METEORIC_IRON, STARSTEEL_INGOT, starsteelTool, EGG, FRIED_EGG, SADDLE, TRUFFLE, FLOWER_POT, HANGING_PLANT, WINDOW_BOX, APPLE, CHERRIES, ORANGE_FRUIT, APPLE_PIE, CHERRY_PIE, FRUIT_SALAD, ORANGE_JUICE, FISH_SOUP, TRUFFLE_SOUP, BERRY_JAM, COOK_POT, SCARECROW, EXPLORER_MAP, TREASURE_MAP, BEESWAX,
+  ELECTRIC_RAIL, CHAINSAW, SAWDUST, BOOK, BACKPACK, BIG_BACKPACK, HUGE_BACKPACK, SPANNER, GRAPPLE, URANIUM_INGOT, FUEL_ROD, JOURNAL, FERTILISER, SPENT_ROD, ENRICHED_URANIUM, ENRICHED_ROD, hazmatId, INVAR_INGOT, RAIL_STATION, BOAT, BALLOON, ZIP_LINE, METEORIC_IRON, STARSTEEL_INGOT, starsteelTool, EGG, FRIED_EGG, SADDLE, TRUFFLE, FLOWER_POT, HANGING_PLANT, WINDOW_BOX, APPLE, CHERRIES, ORANGE_FRUIT, APPLE_PIE, CHERRY_PIE, FRUIT_SALAD, ORANGE_JUICE, FISH_SOUP, TRUFFLE_SOUP, BERRY_JAM, COOK_POT, SCARECROW, EXPLORER_MAP, TREASURE_MAP, BEESWAX, CABLE_CAR,
   SALTPETRE, GUNPOWDER, LEAD_SINKER, WEIGHTED_ROD, LEAD_BUCKET, LAVA_BUCKET, GOLD_CLOCK, COMPASS, SILVER_ARROW, MIRROR_LAMP,
 } from './blocks.js';
 
@@ -535,6 +535,35 @@ Object.assign(P, {
   },
 });
 for (let f = 0; f < 4; f++) P[T.BELT0 + f] = (t) => arrowTile(t, f);
+// v25 E: a belt crossing (rollers both ways, a brass plate in the middle), a farm controller's dial face,
+// a pneumatic tube (a glass duct banded with copper)
+P[T.BELT_CROSS] = (t) => {
+  for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+    const edge = (x < 1 || x > 14) && (y < 1 || y > 14), plate = Math.abs(x - 7.5) < 3 && Math.abs(y - 7.5) < 3;
+    const stripe = (x > 4 && x < 11) !== (y > 4 && y < 11) && ((x + y) % 3 === 0);
+    t.set(x, y, t.vary(edge ? [60, 60, 64] : plate ? [196, 160, 70] : stripe ? [140, 140, 136] : [44, 42, 40], 0.06));
+  }
+};
+const farmFace = (on) => (t) => {
+  P[T.PLANKS](t);
+  for (let y = 3; y < 13; y++) for (let x = 3; x < 13; x++) t.set(x, y, [50, 56, 50]);
+  for (let x = 4; x < 12; x++) { const h = [3, 5, 6, 4, 7, 6, 5, 3][x - 4]; for (let y = 12 - h; y < 12; y++) t.set(x, y, on ? [230, 200, 60] : [90, 160, 70]); }
+  t.set(7, 14, on ? [255, 80, 60] : [90, 40, 30]); t.set(8, 14, on ? [255, 80, 60] : [90, 40, 30]);
+};
+P[T.FARM_CTRL] = farmFace(false);
+P[T.FARM_CTRL_ON] = farmFace(true);
+P[T.TUBE] = (t) => {
+  for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+    const band = y < 2 || y > 13, rim = x < 1 || x > 14;
+    if (band) t.set(x, y, t.vary([200, 120, 70], 0.06)); else if (rim) t.set(x, y, [150, 190, 200]); else if ((x === 4 || x === 11) && y % 4) t.set(x, y, [225, 245, 252]); else t.set(x, y, [0, 0, 0], 0);
+  }
+};
+P[T.TUBE_END] = (t) => {
+  for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+    const d = Math.max(Math.abs(x - 7.5), Math.abs(y - 7.5));
+    if (d > 6.5) t.set(x, y, t.vary([200, 120, 70], 0.06)); else if (d > 5.5) t.set(x, y, [150, 190, 200]); else t.set(x, y, [0, 0, 0], 0);
+  }
+};
 
 // ----- tundra and desert -----
 Object.assign(P, {
@@ -2215,6 +2244,12 @@ ITEM_PAINTERS[TREASURE_MAP] = (ctx) => {
   for (let y = 2; y < 14; y++) for (let x = 1; x < 15; x++) px(ctx, x, y, (x * 3 + y * 5) % 7 ? [214, 190, 140] : [196, 168, 116]);
   for (const [x, y] of [[3, 11], [4, 10], [5, 10], [6, 9], [8, 8], [9, 7], [10, 6]]) px(ctx, x, y, [120, 80, 50]); // the trail
   for (let i = 0; i < 4; i++) { px(ctx, 10 + i, 3 + i, [200, 30, 30]); px(ctx, 13 - i, 3 + i, [200, 30, 30]); } // X
+};
+// v25 E: a cable car gondola
+ITEM_PAINTERS[CABLE_CAR] = (ctx) => {
+  rect(ctx, 0, 1, 16, 1, [80, 80, 86]); rect(ctx, 7, 1, 2, 4, [120, 120, 126]);
+  rect(ctx, 2, 5, 12, 9, [200, 40, 40]); rect(ctx, 3, 6, 4, 4, [170, 210, 230]); rect(ctx, 9, 6, 4, 4, [170, 210, 230]);
+  rect(ctx, 2, 13, 12, 1, [120, 24, 24]);
 };
 // v25 D: a cake of beeswax
 ITEM_PAINTERS[BEESWAX] = (ctx) => {

@@ -140,7 +140,7 @@ export const T = {
   LEAD_CHEST_SIDE: 267, LEAD_CHEST_TOP: 268, LEAD_CHEST_FRONT: 269, CENTRIFUGE_SIDE: 270, CENTRIFUGE_TOP: 271, TESLA: 272, TESLA_TOP: 273,
   FENCE_POST: 274, FENCE_WIRE: 275, FREEZER_SIDE: 276, FREEZER_FRONT: 277, ARC_SIDE: 278, ARC_FRONT: 279, PACKED_ICE: 280, INVAR: 281, RAIL_STOP: 282, BASALT: 283, BASALT_TOP: 284, METEORITE: 285,
   IRON_BARS: 286, POT: 287, IVY: 288, BOX_FLOWERS: 289,
-  FRUIT_LEAVES: 290, FRUIT_RIPE: 293, FRUIT_SAPLING: 296, HAY: 299, SACK: 300, BEACON: 301, APIARY_SIDE: 302, APIARY_FRONT: 303, APIARY_FULL: 304, APIARY_TOP: 305, // (fruit tiles: apple, cherry, orange)
+  FRUIT_LEAVES: 290, FRUIT_RIPE: 293, FRUIT_SAPLING: 296, HAY: 299, SACK: 300, BEACON: 301, APIARY_SIDE: 302, APIARY_FRONT: 303, APIARY_FULL: 304, APIARY_TOP: 305, BELT_CROSS: 306, FARM_CTRL: 307, FARM_CTRL_ON: 308, TUBE: 309, TUBE_END: 310, // (fruit tiles: apple, cherry, orange)
 };
 
 // Ores, deepest-reaching last. tier: the pickaxe tier needed to mine it (see TOOL_TIERS);
@@ -249,7 +249,7 @@ function block(id, o) {
     lift: !!o.lift, reactor: !!o.reactor, // v23: lifts and reactors (see electric.js and main.js)
     postTex: o.postTex ?? null, armTex: o.armTex ?? null, // a fence's own post and rail tiles (an electric fence)
     shock: !!o.shock, tesla: !!o.tesla, zip: !!o.zip, // v24: electric fences, tesla coils, zipline posts (see main.js)
-    fruit: o.fruit ?? null, scarecrow: !!o.scarecrow, apiary: !!o.apiary, // v25: { kind, ripe } on a fruit tree's leaves; scarecrows keep crows off crops
+    fruit: o.fruit ?? null, scarecrow: !!o.scarecrow, apiary: !!o.apiary, crossing: !!o.crossing, tube: !!o.tube, // v25: { kind, ripe } on a fruit tree's leaves; scarecrows keep crows off crops
     farm: o.farm ?? null, // 'feller' | 'planter' | 'breaker' | 'placer' | 'ranch' | 'net' (see machines.js)
   };
 }
@@ -2351,4 +2351,37 @@ RECIPES.push(
   { out: [APIARY, 1], in: [[PLANKS, 8], [HONEYCOMB, 3], [GLASS, 1]], table: true },
   { out: [BEESWAX, 1], in: [[HONEYCOMB, 1]] },
   { out: [CANDLE_BLOCK, 3], in: [[BEESWAX, 2], [STRING, 1]] },
+);
+
+// ---------- v25 E: belt crossings, farm controllers, pneumatic tubes, cable cars ----------
+// A belt crossing passes whatever a belt brings it straight on across, so two lines of belts can cross.
+// A farm controller watches the wheat within FARM_REACH blocks: it signals once half of it is ripe (to set
+// harvesters going), and tapping it gives a report on the field.
+// Pneumatic tubes whisk things from wherever they're put in (by a belt, hopper or ejector) through the tubes joined
+// to them, in any direction, up and down too, to the nearest chest or machine at the other end. Item frames on a
+// tube next to a chest make it take only those things.
+// A cable car (held, tapping a zipline post) carries you along the line in a little gondola at an even speed,
+// uphill as well as down.
+export const BELT_CROSSING = 1339, FARM_CONTROLLER = 1340, // 1341 = signalling
+  TUBE = 1342;
+export const CABLE_CAR = 1096;
+export const FARM_REACH = 7;
+block(BELT_CROSSING, {
+  name: 'Belt Crossing', sound: 'wool', hardness: 0.8, tool: 'axe', transparent: true, crossing: true,
+  model: [[0, 0, 0, 16, 4, 16, { top: T.BELT_CROSS, side: T.LOG_SIDE, bottom: T.PLANKS }]], boxes: [[0, 0, 0, 16, 4, 16]],
+});
+for (let k = 0; k < 2; k++) {
+  block(FARM_CONTROLLER + k, {
+    name: 'Farm Controller', sound: 'wood', hardness: 1.5, tool: 'axe', side: k ? T.FARM_CTRL_ON : T.FARM_CTRL, top: T.PLANKS, bottom: T.PLANKS,
+    sensor: 'farm', switch: 'farm', on: !!k, flip: FARM_CONTROLLER + 1 - k, light: k ? 4 : 0,
+    variantOf: k ? FARM_CONTROLLER : 0, drop: FARM_CONTROLLER,
+  });
+}
+block(TUBE, { name: 'Pneumatic Tube', sound: 'glass', hardness: 0.6, transparent: true, tube: true, side: T.TUBE, top: T.TUBE_END, bottom: T.TUBE_END });
+ITEMS[CABLE_CAR] = { name: 'Cable Car', stack: 1, about: 'tap a zipline post to ride the line, uphill too' };
+RECIPES.push(
+  { out: [BELT_CROSSING, 1], in: [[BELT, 2], [IRON_INGOT, 1]], table: true },
+  { out: [FARM_CONTROLLER, 1], in: [[COPPER_INGOT, 2], [WIRE, 1], [WHEAT, 4], [PLANKS, 2]], table: true, metal: COPPER_INGOT },
+  { out: [TUBE, 6], in: [[GLASS, 4], [COPPER_INGOT, 1]], table: true, metal: COPPER_INGOT },
+  { out: [CABLE_CAR, 1], in: [[IRON_INGOT, 4], [GLASS, 2], [PLANKS, 3]], table: true, metal: IRON_INGOT },
 );

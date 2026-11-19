@@ -5,7 +5,7 @@ import {
   WOOD_PICK, STONE_PICK, WOOD_AXE, STONE_AXE, WOOD_SHOVEL, STONE_SHOVEL,
   BED, BED_FOOT, CHAIR, LAMP, CARPET, CURTAIN, DOOR, SLIME_FUEL, FACING_DIRS, MAX_LAMP_FUEL,
   isBed, isChair, isLamp, isCurtain, isDoor, doorId, IRON_BARS, FLOWER_POT, HANGING_PLANT, WINDOW_BOX, POT_PLANTS, potOf,
-  OVEN, SMELTER, stationKind, maxStack, FISHING_ROD, RAW_FISH, TOOL_TIERS, LOG, LEAVES, SAPLING, WHEAT_3, isLeaves, FRUITS, fruitLeaves, FRUIT_SAPLING, SCARECROW, COOK_POT, SNOW_LAYER, LIGHTHOUSE_LAMP, EXPLORER_MAP, TREASURE_MAP, STARSTEEL_INGOT, MAX_LIGHT, APIARY, MAX_APIARY, BEESWAX, CANDLE_BLOCK,
+  OVEN, SMELTER, stationKind, maxStack, FISHING_ROD, RAW_FISH, TOOL_TIERS, LOG, LEAVES, SAPLING, WHEAT_3, isLeaves, FRUITS, fruitLeaves, FRUIT_SAPLING, SCARECROW, COOK_POT, SNOW_LAYER, LIGHTHOUSE_LAMP, EXPLORER_MAP, TREASURE_MAP, STARSTEEL_INGOT, MAX_LIGHT, APIARY, MAX_APIARY, BEESWAX, CANDLE_BLOCK, CABLE_CAR, FARM_REACH,
   BLAST_SMELTER, CRUSHER, WATER_BUCKET, WATER_WHEEL, isWaterId, isFlowing,
   CHEST, IRON_CHEST, LADDER, SCAFFOLD, SIGN, SIGN_POST, isSign, isSword, ARMOUR_PIECES,
   SAW, TRIP_HAMMER, DRILL, HOPPER, BELT, WINDMILL, BELLOWS, PUMP, FILAMENT_LAMP, MILLSTONE,
@@ -310,6 +310,22 @@ let boarded = null; // the boat or balloon you're in
 let seated = null; // the chair you're sitting on: { x, y, z }
 let targetVehicle = null; // { v, t } when the crosshair is on a boat or balloon
 let zipping = null; // sliding along a zipline
+// a cable car: a little red gondola that hangs from the line and carries you along it at an even speed
+const CABLE_SPEED = 5;
+const gondola = (() => {
+  const g = new THREE.Group(), red = new THREE.MeshBasicMaterial({ color: 0xc82828 }), dark = new THREE.MeshBasicMaterial({ color: 0x5a5a60 });
+  const glass = new THREE.MeshBasicMaterial({ color: 0xa8d4e8, transparent: true, opacity: 0.35 });
+  const box = (w, h, d, m, x, y, z) => { const b = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m); b.position.set(x, y, z); g.add(b); };
+  box(1.3, 0.12, 1.3, red, 0, 0, 0); // floor
+  box(1.36, 0.1, 1.36, red, 0, 2.05, 0); // roof
+  for (const [x, z] of [[-0.63, -0.63], [0.63, -0.63], [-0.63, 0.63], [0.63, 0.63]]) box(0.08, 2, 0.08, red, x, 1.03, z);
+  for (const [w, d, x, z] of [[1.3, 0.04, 0, -0.64], [1.3, 0.04, 0, 0.64], [0.04, 1.3, -0.64, 0], [0.04, 1.3, 0.64, 0]]) { box(w, 0.6, d, red, x, 0.35, z); box(w, 1.2, d, glass, x, 1.25, z); }
+  box(0.08, 0.7, 0.08, dark, 0, 2.45, 0); box(0.5, 0.12, 0.2, dark, 0, 2.8, 0); // hanger and wheels
+  g.userData.mats = [red, dark, glass].map((m) => [m, m.color.clone()]);
+  g.visible = false;
+  scene.add(g);
+  return g;
+})();
 machines.frames = frames; machines.carts = carts; machines.loose = loose;
 machines.throwItem = (stack, pos, vel) => loose.spawn(stack, pos, vel, 0.5);
 // An auto-crafter makes what the item frame on it shows: the first recipe for that thing.
@@ -441,7 +457,7 @@ async function startWorld(save, opts = {}) {
   loadZips(save?.zips);
   riding = null;
   ridingMob = null;
-  boarded = null; zipping = null; seated = null;
+  boarded = null; zipping = null; gondola.visible = false; seated = null;
   arrows.reset();
   lastSwing = 0;
   applyViewDistance();
@@ -3131,7 +3147,7 @@ function unlinkZips(x, y, z) {
   for (const l of gone) { scene.remove(l.line); l.line.geometry.dispose(); zips.splice(zips.indexOf(l), 1); }
   return gone.length ? [[ZIP_LINE, gone.length]] : [];
 }
-function startZip(x, y, z) {
+function startZip(x, y, z, cable = false) {
   const lines = zipsAt(x, y, z);
   if (!lines.length) { toast('That post has no zipline: join it to another with a zipline rope', 2000); return; }
   // the line that runs most nearly the way you're looking
@@ -3139,24 +3155,29 @@ function startZip(x, y, z) {
   const other = (l) => (l.ends[0] === x && l.ends[1] === y && l.ends[2] === z ? l.ends.slice(3) : l.ends.slice(0, 3));
   const best = lines.map((l) => ({ l, to: other(l) })).sort((a, b) => zipTop(...b.to).sub(here).normalize().dot(look) - zipTop(...a.to).sub(here).normalize().dot(look))[0];
   const from = here, to = zipTop(...best.to);
-  zipping = { from, to, end: best.to, len: from.distanceTo(to), d: 0, speed: 4 };
+  zipping = { from, to, end: best.to, len: from.distanceTo(to), d: 0, speed: cable ? CABLE_SPEED : 4, cable };
+  if (cable) { gondola.visible = true; toast('Off you go! (sneak to get out)', 1800); }
   sound.swish?.();
 }
-function letGoZip() { zipping = null; player.vel.set(0, 0, 0); }
+function letGoZip() { zipping = null; gondola.visible = false; player.vel.set(0, 0, 0); }
 function tickZip(dt) {
   const z = zipping;
   if (controls.down || dead) { letGoZip(); return; }
   const drop = (z.from.y - z.to.y) / Math.max(1, z.len);
-  z.speed = Math.max(4, Math.min(16, z.speed + drop * 14 * dt));
+  if (!z.cable) z.speed = Math.max(4, Math.min(16, z.speed + drop * 14 * dt));
   z.d = Math.min(z.len, z.d + z.speed * dt);
   const k = z.d / z.len, p = z.from.clone().lerp(z.to, k);
-  p.y -= Math.sin(k * Math.PI) * z.len * 0.03 + 2.0; // hanging under the rope
+  p.y -= Math.sin(k * Math.PI) * z.len * 0.03 + (z.cable ? 2.9 : 2.0); // hanging under the rope (in the gondola, lower)
   player.pos.copy(p);
+  if (z.cable) {
+    const lit = Math.max(0.3, lightUniforms.uDay.value);
+    for (const [m, c] of gondola.userData.mats) m.color.copy(c).multiplyScalar(lit);
+    gondola.position.set(p.x, p.y - 0.06, p.z); gondola.rotation.y = Math.atan2(z.to.x - z.from.x, z.to.z - z.from.z); }
   player.vel.set(0, 0, 0);
   fallTop = null;
   if (z.d < z.len) return;
   // off at the far post: step down beside it, back toward where you came from
-  zipping = null;
+  zipping = null; gondola.visible = false;
   const [ex, ey, ez] = z.end, back = z.from.clone().sub(z.to).setY(0).normalize();
   let fx = Math.floor(ex + 0.5 + back.x * 1.1), fz = Math.floor(ez + 0.5 + back.z * 1.1), fy = ey;
   while (fy < ey + 4 && (world.isSolid(fx, fy, fz) || world.isSolid(fx, fy + 1, fz))) fy++;
@@ -3247,6 +3268,7 @@ function placeInner() {
   if (held && ITEMS[held.id]?.vehicle && putVehicle(ITEMS[held.id].vehicle)) { inventory.consumeHeld(); return; }
   if (held?.id === ZIP_LINE && target?.id === ZIP_POST) { linkZip(target.x, target.y, target.z); return; }
   if (held?.id === GRAPPLE && target?.id === ZIP_POST) { startZip(target.x, target.y, target.z); return; }
+  if (held?.id === CABLE_CAR && target?.id === ZIP_POST) { startZip(target.x, target.y, target.z, true); return; }
   if (targetMob) { hitMob(); return; }
   if ((held?.id === MINECART || held?.id === STORAGE_CART) && target && isRail(target.id)) {
     if (carts.add(world, target.x, target.y, target.z, player.lookDir(), held.id === STORAGE_CART)) { inventory.consumeHeld(); sound.place('stone'); }
@@ -3397,6 +3419,12 @@ function placeInner() {
     if (BLOCKS[tid].sensor === 'meter' && handFree) {
       sound.click();
       toast(machines.toggleMeter(tx, ty, tz) ? `Power meter: signals while there's power to spare. ${electric.statusAt(tx, ty, tz)}` : `Power meter: signals while the grid is short of power. ${electric.statusAt(tx, ty, tz)}`, 3000);
+      return;
+    }
+    if (BLOCKS[tid].sensor === 'farm' && handFree) {
+      const r = machines.farmReport(world, tx, ty, tz);
+      sound.click();
+      toast(r.total ? `Farm controller: ${r.total} wheat within ${FARM_REACH} blocks, ${r.ripe} ripe and ${r.growing} growing. It signals once half is ripe.` : `Farm controller: no wheat within ${FARM_REACH} blocks`, 3500);
       return;
     }
     if (BLOCKS[tid].sensor === 'daylight' && handFree) {
