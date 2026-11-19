@@ -205,7 +205,7 @@ export class WorldMap {
       label(ctx, 'Home', hx, hy - 9);
     }
     // places found with an explorer's map, and buried treasure
-    const ICON = { ruin: ['🏛', '#c8b98a'], wreck: ['⚓', '#7fb0d8'], lighthouse: ['🗼', '#ff6060'], volcano: ['🌋', '#ff9040'], village: ['🏠', '#ffd060'], treasure: ['✖', '#e02020'] };
+    const ICON = { ruin: ['🏛', '#c8b98a'], wreck: ['⚓', '#7fb0d8'], lighthouse: ['🗼', '#ff6060'], volcano: ['🌋', '#ff9040'], village: ['🏠', '#ffd060'], temple: ['🔱', '#40c8b8'], island: ['☁', '#e8f0ff'], treasure: ['✖', '#e02020'] };
     for (const q of this.hooks.places?.() ?? []) {
       const [qx, qy] = this.toScreen(q.x + 0.5, q.z + 0.5);
       const [ic, col] = ICON[q.kind] ?? ['•', '#fff'];

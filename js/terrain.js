@@ -13,6 +13,7 @@ import {
   LAIRS, CUT_SANDSTONE, TRAP_PLATE, DART_TRAP, FROST_BRICKS, FORT_BRICKS, OBSIDIAN,
   BASALT, BOOKSHELF, TUNGSTEN_ORE, URANIUM_ORE, LOG as MAST,
   LIGHTHOUSE_LAMP, PAINTED_PLANKS, COLORS, LADDER, FENCE, CLAY_BRICKS,
+  SEA_BRICK, SEA_LANTERN, VAULT_GATE, SKY_STONE, LEVER, PRESSURE_PLATE, dyedWool,
 } from './blocks.js';
 
 export const CHUNK = 16;
@@ -121,6 +122,9 @@ const VILLAGE_CHANCE = 0.09; // ...in about this share of them
 const VOLCANO_CHANCE = 0.004; // land chunks with a small volcano
 const RUIN_CHANCE = 0.03; // flat grassy chunks with the ruins of an old stone house
 const WRECK_CHANCE = 0.06; // sea chunks with a shipwreck on the bed
+const TEMPLE_CHANCE = 0.15; // deep sea chunks with a sunken temple (half buried in the sea bed)
+const ISLAND_CHANCE = 0.015; // lowland chunks with an island floating high above
+export const PLATE_COLORS = ['red', 'yellow', 'blue'];
 const smoothstep = (t) => { t = Math.max(0, Math.min(1, t)); return t * t * (3 - 2 * t); };
 const VEIN_CELL = 4; // metal ore veins: at most one small blob per 4x4x4 cell of stone // columns of height data kept around a chunk for trees and water checks
 
@@ -367,6 +371,8 @@ export class Generator {
     this.ruin(data, cx, cz, hAt);
     this.wreck(data, cx, cz, hAt);
     this.lighthouse(data, cx, cz);
+    this.temple(data, cx, cz);
+    this.island(data, cx, cz);
     return data;
   }
 
@@ -504,6 +510,94 @@ export class Generator {
     put(0, b + 16, 0, LIGHTHOUSE_LAMP);
     put(0, b + 19, 0, CLAY_BRICKS);
     put(1, b + 1, 1, LOOT_CHEST);
+  }
+
+  // A sunken temple on the deep sea bed: a hall of sea bricks lit by sea lanterns, with a vault at the back. Three
+  // levers on the vault wall open its gate when each matches the lamp above it (lit: on; dark: off).
+  templeAt(cx, cz) {
+    const r = (n) => hash3(this.seed ^ 0x51ed270b, cx, n, cz);
+    if (r(109) >= TEMPLE_CHANCE || this.wreckAt(cx, cz)) return null;
+    const x0 = cx * CHUNK, z0 = cz * CHUNK;
+    let hi = 0;
+    for (let z = z0 + 3; z <= z0 + 11; z++) for (let x = x0 + 3; x <= x0 + 11; x++) hi = Math.max(hi, this.height(x, z));
+    if (hi > SEA_LEVEL - 5 || hi < 8) return null;
+    const b = hi - 3; // sunk into the bed, its roof a little under the waves
+    let code = [r(110) < 0.5, r(111) < 0.5, r(112) < 0.5];
+    if (!code.some(Boolean)) code = [true, false, true];
+    return {
+      x: x0 + 7, y: b, z: z0 + 7, code,
+      levers: [[x0 + 5, b + 2, z0 + 7], [x0 + 7, b + 3, z0 + 7], [x0 + 9, b + 2, z0 + 7]],
+      gate: [[x0 + 7, b + 1, z0 + 8], [x0 + 7, b + 2, z0 + 8]], chest: [x0 + 7, b + 1, z0 + 10],
+    };
+  }
+  temple(data, cx, cz) {
+    const t = this.templeAt(cx, cz);
+    if (!t) return;
+    const b = t.y, x0 = cx * CHUNK, z0 = cz * CHUNK;
+    const put = (lx, y, lz, id) => { if (y > 0 && y < SEA_LEVEL) data[localIndex(lx, y, lz)] = id; };
+    for (let lz = 3; lz <= 11; lz++) for (let lx = 3; lx <= 11; lx++) {
+      const wall = lx === 3 || lx === 11 || lz === 3 || lz === 11;
+      for (let y = b - 1; y > b - 6; y--) { const id = data[localIndex(lx, y, lz)]; if (id !== WATER && id !== SAND && id !== AIR) break; put(lx, y, lz, SEA_BRICK); }
+      put(lx, b, lz, SEA_BRICK);
+      for (let y = b + 1; y <= b + 5; y++) put(lx, y, lz, wall || lz === 8 ? SEA_BRICK : WATER);
+      put(lx, b + 6, lz, (lx === 5 || lx === 9) && (lz === 5 || lz === 10) ? SEA_LANTERN : SEA_BRICK);
+    }
+    // the doorway, and a cutting through the sea bed down to it
+    for (let lz = 0; lz <= 3; lz++) for (let lx = 6; lx <= 8; lx++) for (let y = b + 1; y <= b + 5; y++) if (lz < 3 || (lx === 7 && y <= b + 2)) put(lx, y, lz, WATER);
+    put(3, b + 3, 6, SEA_LANTERN); put(11, b + 3, 6, SEA_LANTERN);
+    for (const [gx, gy, gz] of t.gate) put(gx - x0, gy, gz - z0, VAULT_GATE);
+    t.levers.forEach(([lx, ly, lz], i) => {
+      put(lx - x0, ly, lz - z0, LEVER + 2); // on the vault wall, facing out of it, off
+      put(lx - x0, ly + 2, lz - z0 + 1, t.code[i] ? SEA_LANTERN : SEA_BRICK); // its lamp, up on the wall
+    });
+    put(t.chest[0] - x0, t.chest[1], t.chest[2] - z0, LOOT_CHEST);
+  }
+
+  // A sky island: a lump of land floating high over low ground, with a tree and a little vault of sky stone. Three
+  // pressure plates on coloured wool open the vault when they're stepped on in the order its wall shows.
+  islandAt(cx, cz) {
+    const r = (n) => hash3(this.seed ^ 0x6b43a9b5, cx, n, cz);
+    if (r(113) >= ISLAND_CHANCE || this.templeAt(cx, cz) || this.lighthouseAt(cx, cz)) return null;
+    const x0 = cx * CHUNK, z0 = cz * CHUNK;
+    let hi = 0;
+    for (let z = z0 + 2; z <= z0 + 14; z += 2) for (let x = x0 + 2; x <= x0 + 14; x += 2) hi = Math.max(hi, this.height(x, z));
+    if (hi > 40 || this.nearVillage(x0 + 8, z0 + 8)) return null;
+    const top = 51 + Math.floor(r(114) * 4);
+    const perms = [[0, 1, 2], [0, 2, 1], [1, 0, 2], [1, 2, 0], [2, 0, 1], [2, 1, 0]];
+    const order = perms[Math.floor(r(115) * 6)];
+    return {
+      x: x0 + 8, y: top, z: z0 + 8, top, order,
+      plates: [[x0 + 5, top + 1, z0 + 10], [x0 + 8, top + 1, z0 + 11], [x0 + 11, top + 1, z0 + 10]], // red, yellow, blue
+      gate: [[x0 + 9, top + 1, z0 + 6], [x0 + 9, top + 2, z0 + 6]], chest: [x0 + 9, top + 1, z0 + 5],
+    };
+  }
+  island(data, cx, cz) {
+    const t = this.islandAt(cx, cz);
+    if (!t) return;
+    const top = t.top, x0 = cx * CHUNK, z0 = cz * CHUNK;
+    const put = (lx, y, lz, id) => { if (y > 0 && y < H && lx >= 0 && lz >= 0 && lx < CHUNK && lz < CHUNK) data[localIndex(lx, y, lz)] = id; };
+    for (let lz = 1; lz <= 15; lz++) for (let lx = 1; lx <= 15; lx++) {
+      const d = Math.hypot(lx - 8, lz - 8) + hash3(this.seed, x0 + lx, 3021, z0 + lz) * 0.8;
+      if (d > 6.2) continue;
+      const depth = Math.floor((6.2 - d) * 1.4) + 1;
+      for (let y = top - depth; y <= top; y++) put(lx, y, lz, y === top ? GRASS : y >= top - 2 ? DIRT : STONE);
+    }
+    // the tree
+    for (let y = top + 1; y <= top + 4; y++) put(4, y, 6, LOG);
+    for (let dz = -2; dz <= 2; dz++) for (let dx = -2; dx <= 2; dx++) for (let y = top + 3; y <= top + 5; y++) {
+      if (Math.abs(dx) + Math.abs(dz) + (y - top - 3) > 3 || (!dx && !dz && y < top + 5)) continue;
+      put(4 + dx, y, 6 + dz, LEAVES);
+    }
+    // the vault: 3 x 3 of sky stone, its gate facing the plates, the order shown in wool over the gate
+    for (let lz = 4; lz <= 6; lz++) for (let lx = 8; lx <= 10; lx++) {
+      for (let y = top + 1; y <= top + 3; y++) put(lx, y, lz, lx === 9 && lz === 5 && y < top + 3 ? AIR : SKY_STONE);
+      put(lx, top + 4, lz, SKY_STONE);
+    }
+    for (const [gx, gy, gz] of t.gate) put(gx - x0, gy, gz - z0, VAULT_GATE);
+    put(t.chest[0] - x0, t.chest[1], t.chest[2] - z0, LOOT_CHEST);
+    const wool = (k) => dyedWool(COLORS.findIndex((c) => c.key === PLATE_COLORS[k]));
+    t.order.forEach((k, i) => put(8 + i, top + 3, 6, wool(k)));
+    t.plates.forEach(([px, py, pz], k) => { put(px - x0, py - 1, pz - z0, wool(k)); put(px - x0, py, pz - z0, PRESSURE_PLATE); });
   }
 
   // Glowing mushrooms on the floors of some cave systems.

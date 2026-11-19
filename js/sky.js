@@ -105,7 +105,7 @@ export class Sky {
       const deep = new THREE.Color(0.08, 0.22, 0.55).multiplyScalar(0.4 + 0.6 * light);
       this.scene.background = deep;
       this.scene.fog.color.copy(deep);
-      this.scene.fog.near = 1; this.scene.fog.far = 20;
+      this.scene.fog.near = 1; this.scene.fog.far = this.diving ? 44 : 20; // (a diving helmet's glass helps you see)
     } else {
       this.scene.background = this.skyColor;
       this.scene.fog.color.copy(this.skyColor);

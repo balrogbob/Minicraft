@@ -17,7 +17,7 @@ import {
   SUN_SCARAB, FROST_HEART, EMBER_CORE, SUN_MASK, FROST_CIRCLET, EMBER_CROWN, HONEY_TEA, MUSHROOM_STEW, FISH_PIE, COPY_WAND,
   CRYSTAL_SHARD, HONEY_BOTTLE, HONEYCOMB, SALMON, BAKED_SALMON, ICEFISH, BAKED_ICEFISH, PUFFERFISH, OLD_BOOT,
   BATTERY, PORTABLE_LAMP, JACKHAMMER, JETPACK, ELECTRIC_DRILL, HOVER_BOOTS, NV_GOGGLES, MAGNET_RING, WIND_TURBINE, NICKEL_INGOT, CUPRONICKEL_INGOT,
-  ELECTRIC_RAIL, CHAINSAW, SAWDUST, BOOK, BACKPACK, BIG_BACKPACK, HUGE_BACKPACK, SPANNER, GRAPPLE, URANIUM_INGOT, FUEL_ROD, JOURNAL, FERTILISER, SPENT_ROD, ENRICHED_URANIUM, ENRICHED_ROD, hazmatId, INVAR_INGOT, RAIL_STATION, BOAT, BALLOON, ZIP_LINE, METEORIC_IRON, STARSTEEL_INGOT, starsteelTool, EGG, FRIED_EGG, SADDLE, TRUFFLE, FLOWER_POT, HANGING_PLANT, WINDOW_BOX, APPLE, CHERRIES, ORANGE_FRUIT, APPLE_PIE, CHERRY_PIE, FRUIT_SALAD, ORANGE_JUICE, FISH_SOUP, TRUFFLE_SOUP, BERRY_JAM, COOK_POT, SCARECROW, EXPLORER_MAP, TREASURE_MAP, BEESWAX, CABLE_CAR, COIN, CARROT, POTATO, BAKED_POTATO, PUMPKIN_SEEDS, PUMPKIN_PIE, GRAPES, GRAPE_JUICE, WINE, FINE_WINE, CURDS, CHEESE, AGED_CHEESE,
+  ELECTRIC_RAIL, CHAINSAW, SAWDUST, BOOK, BACKPACK, BIG_BACKPACK, HUGE_BACKPACK, SPANNER, GRAPPLE, URANIUM_INGOT, FUEL_ROD, JOURNAL, FERTILISER, SPENT_ROD, ENRICHED_URANIUM, ENRICHED_ROD, hazmatId, INVAR_INGOT, RAIL_STATION, BOAT, BALLOON, ZIP_LINE, METEORIC_IRON, STARSTEEL_INGOT, starsteelTool, EGG, FRIED_EGG, SADDLE, TRUFFLE, FLOWER_POT, HANGING_PLANT, WINDOW_BOX, APPLE, CHERRIES, ORANGE_FRUIT, APPLE_PIE, CHERRY_PIE, FRUIT_SALAD, ORANGE_JUICE, FISH_SOUP, TRUFFLE_SOUP, BERRY_JAM, COOK_POT, SCARECROW, EXPLORER_MAP, TREASURE_MAP, BEESWAX, CABLE_CAR, COIN, CARROT, POTATO, BAKED_POTATO, PUMPKIN_SEEDS, PUMPKIN_PIE, GRAPES, GRAPE_JUICE, WINE, FINE_WINE, CURDS, CHEESE, AGED_CHEESE, DIVING_HELMET, FLIPPERS, PEARL,
   SALTPETRE, GUNPOWDER, LEAD_SINKER, WEIGHTED_ROD, LEAD_BUCKET, LAVA_BUCKET, GOLD_CLOCK, COMPASS, SILVER_ARROW, MIRROR_LAMP,
 } from './blocks.js';
 
@@ -613,6 +613,31 @@ P[T.BARREL_TOP] = (t) => {
   for (const [x, y] of [[7, 7], [8, 7], [7, 8], [8, 8]]) t.set(x, y, [70, 46, 24]);
 };
 P[T.CHEESE] = (t) => { for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) t.set(x, y, t.vary((x * 7 + y * 3) % 11 === 0 ? [214, 180, 70] : [244, 214, 110], 0.05)); };
+P[T.SEA_BRICK] = (t) => {
+  for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+    const mortar = y % 8 === 7 || (x + (Math.floor(y / 8) % 2) * 8) % 16 === 15;
+    t.set(x, y, mortar ? t.vary([40, 80, 80], 0.1) : t.vary((x * 3 + y * 5) % 7 === 0 ? [70, 150, 140] : [88, 170, 158], 0.1));
+  }
+};
+P[T.SEA_LANTERN] = (t) => {
+  for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+    const edge = x === 0 || y === 0 || x === 15 || y === 15, d = Math.hypot(x - 7.5, y - 7.5);
+    t.set(x, y, edge ? [120, 190, 180] : t.vary(d < 4 ? [240, 255, 250] : [196, 236, 226], 0.06));
+  }
+};
+P[T.VAULT] = (t) => {
+  for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+    const bar = x % 4 === 1 || y === 1 || y === 14;
+    t.set(x, y, bar ? t.vary([120, 112, 96], 0.08) : t.vary([56, 52, 46], 0.08));
+  }
+  for (const [x, y] of [[7, 7], [8, 7], [7, 8], [8, 8]]) t.set(x, y, [214, 176, 60]);
+};
+P[T.SKY_STONE] = (t) => { for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) t.set(x, y, t.vary((x + y * 2) % 9 === 0 ? [206, 214, 232] : [232, 236, 246], 0.04)); };
+P[T.AIR_PUMP] = (t) => {
+  for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) t.set(x, y, t.vary(x === 0 || x === 15 || y === 0 || y === 15 ? [90, 90, 96] : [150, 150, 158], 0.05));
+  for (let y = 3; y < 13; y++) for (let x = 4; x < 12; x++) t.set(x, y, t.vary(y % 2 ? [110, 74, 44] : [140, 96, 58], 0.05)); // the bellows
+  for (let x = 6; x < 10; x++) t.set(x, 2, [196, 120, 60]);
+};
 P[T.AWNING] = (t) => { for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) t.set(x, y, t.vary(Math.floor(x / 4) % 2 ? [240, 236, 224] : [200, 44, 44], 0.04)); };
 P[T.TUBE] = (t) => {
   for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
@@ -2340,6 +2365,18 @@ const cheeseWedge = (c, rind) => (ctx) => {
 };
 ITEM_PAINTERS[CHEESE] = cheeseWedge([244, 214, 110], [220, 180, 70]);
 ITEM_PAINTERS[AGED_CHEESE] = cheeseWedge([226, 180, 70], [150, 100, 40]);
+// v26 E: diving gear and pearls
+ITEM_PAINTERS[DIVING_HELMET] = (ctx) => {
+  for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) { const d = Math.hypot(x - 7.5, y - 7.5); if (d < 7) px(ctx, x, y, d > 5.8 ? [150, 90, 40] : [200, 126, 60]); }
+  for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) { const d = Math.hypot(x - 7.5, y - 7); if (d < 3.4) px(ctx, x, y, d > 2.6 ? [120, 70, 30] : [170, 210, 230]); }
+  px(ctx, 6, 6, [240, 250, 255]); rect(ctx, 3, 13, 10, 2, [110, 110, 120]);
+};
+ITEM_PAINTERS[FLIPPERS] = (ctx) => {
+  for (const ox of [1, 8]) { rect(ctx, ox + 1, 2, 4, 5, [60, 90, 120]); rect(ctx, ox, 7, 6, 4, [40, 140, 170]); rect(ctx, ox - 0, 11, 7, 3, [40, 140, 170]); for (let k = 0; k < 3; k++) px(ctx, ox + 1 + k * 2, 13, [20, 100, 130]); }
+};
+ITEM_PAINTERS[PEARL] = (ctx) => {
+  for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) { const d = Math.hypot(x - 7.5, y - 7.5); if (d < 4.5) px(ctx, x, y, d < 1.5 && x < 8 ? [255, 255, 255] : d > 3.6 ? [200, 196, 210] : [236, 232, 240]); }
+};
 // v26: a silver coin
 ITEM_PAINTERS[COIN] = (ctx) => {
   for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) {

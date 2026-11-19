@@ -140,7 +140,7 @@ export const T = {
   LEAD_CHEST_SIDE: 267, LEAD_CHEST_TOP: 268, LEAD_CHEST_FRONT: 269, CENTRIFUGE_SIDE: 270, CENTRIFUGE_TOP: 271, TESLA: 272, TESLA_TOP: 273,
   FENCE_POST: 274, FENCE_WIRE: 275, FREEZER_SIDE: 276, FREEZER_FRONT: 277, ARC_SIDE: 278, ARC_FRONT: 279, PACKED_ICE: 280, INVAR: 281, RAIL_STOP: 282, BASALT: 283, BASALT_TOP: 284, METEORITE: 285,
   IRON_BARS: 286, POT: 287, IVY: 288, BOX_FLOWERS: 289,
-  FRUIT_LEAVES: 290, FRUIT_RIPE: 293, FRUIT_SAPLING: 296, HAY: 299, SACK: 300, BEACON: 301, APIARY_SIDE: 302, APIARY_FRONT: 303, APIARY_FULL: 304, APIARY_TOP: 305, BELT_CROSS: 306, FARM_CTRL: 307, FARM_CTRL_ON: 308, TUBE: 309, TUBE_END: 310, AWNING: 311, FIRE: 312, CARROT_0: 313, POTATO_0: 317, STEM_0: 321, PUMPKIN_SIDE: 324, PUMPKIN_TOP: 325, JACK_FACE: 326, TRELLIS: 327, VINE_0: 328, BARREL_SIDE: 331, BARREL_TOP: 332, CHEESE: 333, // (fruit tiles: apple, cherry, orange)
+  FRUIT_LEAVES: 290, FRUIT_RIPE: 293, FRUIT_SAPLING: 296, HAY: 299, SACK: 300, BEACON: 301, APIARY_SIDE: 302, APIARY_FRONT: 303, APIARY_FULL: 304, APIARY_TOP: 305, BELT_CROSS: 306, FARM_CTRL: 307, FARM_CTRL_ON: 308, TUBE: 309, TUBE_END: 310, AWNING: 311, FIRE: 312, CARROT_0: 313, POTATO_0: 317, STEM_0: 321, PUMPKIN_SIDE: 324, PUMPKIN_TOP: 325, JACK_FACE: 326, TRELLIS: 327, VINE_0: 328, BARREL_SIDE: 331, BARREL_TOP: 332, CHEESE: 333, SEA_BRICK: 334, SEA_LANTERN: 335, VAULT: 336, SKY_STONE: 337, AIR_PUMP: 338, // (fruit tiles: apple, cherry, orange)
 };
 
 // Ores, deepest-reaching last. tier: the pickaxe tier needed to mine it (see TOOL_TIERS);
@@ -2487,4 +2487,25 @@ RECIPES.push(
   { out: [WINE_PRESS, 1], in: [[PLANKS, 6], [LOG, 3], [IRON_INGOT, 1]], table: true, metal: IRON_INGOT },
   { out: [CHEESE_PRESS, 1], in: [[PLANKS, 6], [LOG, 3], [IRON_INGOT, 1], [STRING, 1]], table: true, metal: IRON_INGOT },
   { out: [BARREL, 1], in: [[PLANKS, 6], [IRON_INGOT, 1]], table: true, metal: IRON_INGOT },
+);
+
+// ---------- v26 E: sunken temples, sky islands and diving gear ----------
+// Temples of sea brick stand on the deep sea bed, and little islands float high over the lowlands. Each keeps
+// its treasure behind a vault gate that only its puzzle opens (see main.js). A diving helmet makes your breath
+// last five times as long, and an air pump keeps it topped up while you're near; flippers make you swim fast.
+export const SEA_BRICK = 1368, SEA_LANTERN = 1369, VAULT_GATE = 1370, SKY_STONE = 1371, AIR_PUMP = 1372;
+export const DIVING_HELMET = 1110, FLIPPERS = 1111, PEARL = 1112;
+block(SEA_BRICK, { name: 'Sea Bricks', tex: T.SEA_BRICK, hardness: 2.5, tool: 'pick', needsTool: true });
+block(SEA_LANTERN, { name: 'Sea Lantern', tex: T.SEA_LANTERN, hardness: 1, tool: 'pick', light: 15, sound: 'glass' });
+block(VAULT_GATE, { name: 'Vault Gate', tex: T.VAULT, hardness: Infinity, blastproof: true, drop: 0 });
+block(SKY_STONE, { name: 'Sky Stone', tex: T.SKY_STONE, hardness: 2, tool: 'pick', needsTool: true });
+block(AIR_PUMP, { name: 'Air Pump', tex: T.AIR_PUMP, side: T.AIR_PUMP, top: T.IRON, bottom: T.IRON, hardness: 2, tool: 'pick', sound: 'metal' });
+ITEMS[DIVING_HELMET] = { name: 'Diving Helmet', stack: 1, armour: { piece: 0, points: 2 }, wearMax: 400, repair: COPPER_INGOT, guards: 'water', about: 'hold your breath five times as long; an air pump nearby keeps you breathing' };
+ITEMS[FLIPPERS] = { name: 'Flippers', stack: 1, armour: { piece: 3, points: 1 }, wearMax: 400, repair: LEATHER, guards: 'swim', about: 'swim much faster' };
+ITEMS[PEARL] = { name: 'Pearl', stack: 32, about: 'villagers pay well for these' };
+RECIPES.push(
+  { out: [DIVING_HELMET, 1], in: [[COPPER_INGOT, 5], [GLASS, 2]], table: true, metal: COPPER_INGOT },
+  { out: [FLIPPERS, 1], in: [[LEATHER, 4], [SLIME_FUEL, 1]], table: true },
+  { out: [AIR_PUMP, 1], in: [[IRON_INGOT, 4], [COPPER_INGOT, 2], [LEATHER, 2], [PIPE, 1]], table: true, metal: IRON_INGOT },
+  { out: [SEA_LANTERN, 1], in: [[GLASS, 2], [PEARL, 1]], table: true },
 );

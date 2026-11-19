@@ -5,7 +5,7 @@ import {
   WOOD_PICK, STONE_PICK, WOOD_AXE, STONE_AXE, WOOD_SHOVEL, STONE_SHOVEL,
   BED, BED_FOOT, CHAIR, LAMP, CARPET, CURTAIN, DOOR, SLIME_FUEL, FACING_DIRS, MAX_LAMP_FUEL,
   isBed, isChair, isLamp, isCurtain, isDoor, doorId, IRON_BARS, FLOWER_POT, HANGING_PLANT, WINDOW_BOX, POT_PLANTS, potOf,
-  OVEN, SMELTER, stationKind, maxStack, FISHING_ROD, RAW_FISH, TOOL_TIERS, LOG, LEAVES, SAPLING, WHEAT_3, isLeaves, FRUITS, fruitLeaves, FRUIT_SAPLING, SCARECROW, COOK_POT, SNOW_LAYER, LIGHTHOUSE_LAMP, EXPLORER_MAP, TREASURE_MAP, STARSTEEL_INGOT, MAX_LIGHT, APIARY, MAX_APIARY, BEESWAX, CANDLE_BLOCK, CABLE_CAR, FARM_REACH, MARKET_STALL, COIN, GLASS_PANE, FURN_TABLE, GRAVEL, FIRE, isFlammable, isCrop, GRAPES, TRELLIS, GRAPE_VINE, PUMPKIN_SEEDS, CARROT, POTATO, AGING, WINE, FINE_WINE, CHEESE, AGED_CHEESE,
+  OVEN, SMELTER, stationKind, maxStack, FISHING_ROD, RAW_FISH, TOOL_TIERS, LOG, LEAVES, SAPLING, WHEAT_3, isLeaves, FRUITS, fruitLeaves, FRUIT_SAPLING, SCARECROW, COOK_POT, SNOW_LAYER, LIGHTHOUSE_LAMP, EXPLORER_MAP, TREASURE_MAP, STARSTEEL_INGOT, MAX_LIGHT, APIARY, MAX_APIARY, BEESWAX, CANDLE_BLOCK, CABLE_CAR, FARM_REACH, MARKET_STALL, COIN, GLASS_PANE, FURN_TABLE, GRAVEL, FIRE, isFlammable, isCrop, GRAPES, TRELLIS, GRAPE_VINE, PUMPKIN_SEEDS, CARROT, POTATO, AGING, WINE, FINE_WINE, CHEESE, AGED_CHEESE, VAULT_GATE, AIR_PUMP, PEARL, DIVING_HELMET, FLIPPERS, SEA_LANTERN,
   BLAST_SMELTER, CRUSHER, WATER_BUCKET, WATER_WHEEL, isWaterId, isFlowing,
   CHEST, IRON_CHEST, LADDER, SCAFFOLD, SIGN, SIGN_POST, isSign, isSword, ARMOUR_PIECES,
   SAW, TRIP_HAMMER, DRILL, HOPPER, BELT, WINDMILL, BELLOWS, PUMP, FILAMENT_LAMP, MILLSTONE,
@@ -871,8 +871,12 @@ function updateHealth(dt, wasGround, prevY) {
     if (fall > 3.5 && hurt > 0) damage(hurt, 'You fell from a high place.');
   }
   // drowning
+  player.swimMul = guarded('swim') ? 1.9 : 1; // flippers
+  sky.diving = guarded('water');
   if (player.eyeInWater) {
-    air = Math.max(0, air - dt);
+    // a diving helmet: breath lasts five times as long, and an air pump near you keeps it topped up
+    if (sky.diving && airPumpNear(dt)) air = Math.min(MAX_AIR, air + dt * 2);
+    else air = Math.max(0, air - dt / (sky.diving ? 5 : 1));
     if (air <= 0 && (timers.drown += dt) >= 1) { timers.drown = 0; damage(2, 'You drowned.'); }
   } else {
     air = Math.min(MAX_AIR, air + dt * 5);
@@ -2607,6 +2611,12 @@ const RUIN_LOOT = [
   [BOOK, 1, 3, 0.8], [MAP, 1, 1, 0.35], [JOURNAL, 1, 1, 0.25], [PAPER, 2, 6, 0.6], [CRYSTAL_SHARD, 1, 4, 0.5],
   [metalTool(ironAt, 'pick'), 1, 1, 0.3], [metalTool(ironAt, 'axe'), 1, 1, 0.25], [metalTool(ironAt, 'shovel'), 1, 1, 0.25], [metalSword(ironAt), 1, 1, 0.2],
 ];
+const TEMPLE_LOOT = [
+  [PEARL, 1, 3, 0.9], [COIN, 4, 12, 0.8], [GOLD_INGOT, 2, 5, 0.6], [SEA_LANTERN, 1, 3, 0.5], [DIVING_HELMET, 1, 1, 0.3], [FLIPPERS, 1, 1, 0.3], [TREASURE_MAP, 1, 1, 0.3],
+];
+const SKY_LOOT = [
+  [STARSTEEL_INGOT, 1, 2, 0.4], [COIN, 6, 14, 0.8], [FEATHER, 4, 10, 0.6], [GOLD_INGOT, 2, 4, 0.5], [HASTE_TEA, 1, 1, 0.4], [EXPLORER_MAP, 1, 1, 0.3], [PEARL, 1, 1, 0.3],
+];
 const WRECK_LOOT = [
   [TREASURE_MAP, 1, 1, 0.45], [GOLD_INGOT, 2, 6, 0.8], [COMPASS, 1, 1, 0.45], [MAP, 1, 1, 0.35], [GUNPOWDER, 2, 6, 0.6], [RAW_FISH, 2, 5, 0.6], [SALMON, 1, 3, 0.4], [PAPER, 1, 3, 0.3],
 ];
@@ -2620,6 +2630,9 @@ const TREASURE_LOOT = [
 ];
 function placeLoot(x, y, z) {
   const cx = Math.floor(x / CHUNK), cz = Math.floor(z / CHUNK), g = world.generator;
+  const tp = g.templeAt?.(cx, cz), il = g.islandAt?.(cx, cz);
+  if (tp && tp.chest[0] === x && tp.chest[1] === y && tp.chest[2] === z) return TEMPLE_LOOT;
+  if (il && il.chest[0] === x && il.chest[1] === y && il.chest[2] === z) return SKY_LOOT;
   const l = g.lighthouseAt?.(cx, cz);
   if (l && Math.abs(l.x - x) <= 2 && Math.abs(l.z - z) <= 2) return LIGHTHOUSE_LOOT;
   const r = g.ruinAt?.(cx, cz), w = g.wreckAt?.(cx, cz);
@@ -4825,7 +4838,7 @@ const dropWaypoint = (x, y, z) => { waypoints = waypoints.filter((w) => !(w.x ==
 // Carrying an explorer's map, the ruins, wrecks, lighthouses, volcanoes and villages you come near are marked on
 // the world map.
 let places = []; // [{ kind, x, z, name }]
-const PLACE_NAMES = { ruin: 'Ruin', wreck: 'Shipwreck', lighthouse: 'Lighthouse', volcano: 'Volcano', village: 'Village' };
+const PLACE_NAMES = { ruin: 'Ruin', wreck: 'Shipwreck', lighthouse: 'Lighthouse', volcano: 'Volcano', village: 'Village', temple: 'Sunken Temple', island: 'Sky Island' };
 let exploreTimer = 0;
 function tickExplore(dt) {
   if ((exploreTimer -= dt) > 0) return;
@@ -4843,6 +4856,8 @@ function tickExplore(dt) {
     const w = g.wreckAt?.(cx, cz); if (w) mark('wreck', w.x + 2, w.z);
     const l = g.lighthouseAt?.(cx, cz); if (l) mark('lighthouse', l.x, l.z);
     const v = g.volcanoAt?.(cx, cz); if (v) mark('volcano', v.x, v.z);
+    const tp = g.templeAt?.(cx, cz); if (tp) mark('temple', tp.x, tp.z);
+    const il = g.islandAt?.(cx, cz); if (il) mark('island', il.x, il.z);
   }
   const v = g.nearestVillage(p.x, p.z, 1);
   if (v) mark('village', v.x, v.z, v.name);
@@ -5107,7 +5122,7 @@ function placeHouse({ x, y, z, door }) {
 // What villagers pay at a stall: [how many they take, coins]. Food by how filling it is, metal well, and
 // building stuff cheaply.
 function stallPrice(id) {
-  if (id === FINE_WINE || id === AGED_CHEESE) return [1, 6]; // the best things villagers can buy
+  if (id === FINE_WINE || id === AGED_CHEESE || id === PEARL) return [1, 6]; // the best things villagers can buy
   if (id === WINE || id === CHEESE) return [1, 3];
   const food = foodValue(id);
   if (food) return food >= 6 ? [1, 2] : food >= 3 ? [1, 1] : [2, 1];
@@ -5165,6 +5180,63 @@ function tickVillages(dt) {
     if (d < 64) { sound.ding(Math.max(0.15, 1 - d / 64)); setTimeout(() => sound.ding(Math.max(0.15, 1 - d / 64) * 0.8), 700); toast(`The bell rings in ${v.name}: the villagers are up and about`, 2600); }
   }
   tickStalls(dt);
+}
+
+// ---------- v26 E: temple and sky-island puzzles, diving ----------
+// A sunken temple's vault opens when each of its three levers matches the lamp above it (lit: on, dark: off).
+// A sky island's opens when you step on its plates in the order of the wool over the vault's gate.
+let puzzleTimer = 0;
+const islandSteps = new Map(); // island "x,z" -> plate indexes stepped on so far
+let lastPlate = null;
+function openVault(gate, water, msg) {
+  for (const [x, y, z] of gate) world.setBlock(x, y, z, water ? WATER : AIR);
+  sound.boom(0.4); setTimeout(() => sound.ding(0.6), 300);
+  toast(msg, 3000);
+  achieve('vault');
+}
+function tickPuzzles(dt) {
+  if ((puzzleTimer -= dt) > 0) return;
+  puzzleTimer = 0.2;
+  const g = world.generator, pcx = Math.floor(player.pos.x / CHUNK), pcz = Math.floor(player.pos.z / CHUNK);
+  const fx = Math.floor(player.pos.x), fy = Math.floor(player.pos.y + 0.05), fz = Math.floor(player.pos.z);
+  for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) {
+    const t = g.templeAt(pcx + dx, pcz + dz);
+    if (t && world.chunkAt(t.x, t.z) && world.get(...t.gate[0]) === VAULT_GATE) {
+      const ok = t.levers.every(([x, y, z], i) => { const d = BLOCKS[world.get(x, y, z)]; return d?.switch === 'lever' && d.on === t.code[i]; });
+      if (ok) openVault(t.gate, true, 'With a deep grinding, the vault gate sinks into the floor');
+    }
+    const il = g.islandAt(pcx + dx, pcz + dz);
+    if (il && world.chunkAt(il.x, il.z) && world.get(...il.gate[0]) === VAULT_GATE) {
+      const k = il.plates.findIndex(([x, y, z]) => x === fx && y === fy && z === fz);
+      const key = `${il.x},${il.z}`;
+      if (k < 0) { if (lastPlate === key) lastPlate = null; continue; }
+      if (lastPlate === key) continue; // still standing on it
+      lastPlate = key;
+      const steps = [...(islandSteps.get(key) ?? []), k];
+      if (il.order[steps.length - 1] !== k) {
+        islandSteps.set(key, []);
+        if (sound.ready) sound.tone(140, 0.35, 0.25, 'square', 90);
+        toast('Clunk. The plates reset: that wasn\'t the right order', 2000);
+      } else if (steps.length === 3) {
+        islandSteps.delete(key);
+        openVault(il.gate, false, 'Click, click, click... and the vault gate slides away');
+      } else {
+        islandSteps.set(key, steps);
+        sound.click();
+      }
+    }
+  }
+}
+let pumpTimer = 0, pumpNear = false;
+function airPumpNear(dt) {
+  if ((pumpTimer -= dt) > 0) return pumpNear;
+  pumpTimer = 1;
+  pumpNear = false;
+  const px = Math.floor(player.pos.x), py = Math.floor(player.pos.y), pz = Math.floor(player.pos.z);
+  for (let y = py; y <= Math.min(H - 1, py + 24) && !pumpNear; y++) for (let dz = -12; dz <= 12 && !pumpNear; dz++) for (let dx = -12; dx <= 12; dx++) {
+    if (world.get(px + dx, y, pz + dz) === AIR_PUMP) { pumpNear = true; break; }
+  }
+  return pumpNear;
 }
 
 // ---------- v26 C: crop rotation ----------
@@ -5355,7 +5427,7 @@ function stepGame(now, dt) {
     world.tickPlants(dt);
     world.tickLeaves(dt);
     tickLamps(dt);
-    tickExplore(dt); tickTreasure(dt); tickSnow(dt); tickVillages(dt); tickStorm(dt); tickFires(dt);
+    tickExplore(dt); tickTreasure(dt); tickSnow(dt); tickVillages(dt); tickStorm(dt); tickFires(dt); tickPuzzles(dt);
     crows.update(dt, world, player.pos, {
       day: lightUniforms.uDay.value,
       eat: (x, y, z) => world.setBlock(x, y, z, WHEAT_3 - 2), // back to green shoots
@@ -5497,5 +5569,5 @@ window.minicraft = {
   arrows, fishing, kinetics, electric, lightUniforms, bees, catchAt, seasonOf, applySeason, set day(v) { day = v; applySeason(); }, frames, signalAt, setSwitch, logic, machines, carts, minimap, signs, armour, damage, placeRail, getInCart, getOutOfCart,
   get riding() { return riding; }, explode, lightFuse, fuses, clockTime, compassText, place, editSign, closeSign, openInventory, closeInventory, chestMove, lamps, tickLamps, sleepUntilMorning, stations, openStation, closeStation,
   get caneToday() { return caneToday; }, get creative() { return creative; }, set creative(v) { creative = v; applyCreative(); }, toggleFly, wand, useWand, get achieved() { return achieved; }, achieve, worldMap, openMap, closeMap, openGuide, switchSlot, store, saveGame, renderWorlds, openWorlds, exportSlot, get target() { return target; }, set target(v) { target = v; }, applyKeys, renderKeys, camera, get controls() { return controls; }, loose, throwHeld, get waypoints() { return waypoints; }, toggleWaypoint, sortSlots, quickStack, dropMeteor, get meteors() { return meteors; }, weather, openTrade, closeTrade, mountMob, dismount, get ridingMob() { return ridingMob; }, effects, armourWear, useAnvil, rollLoot, settings,
-  get bedSpawn() { return bedSpawn; }, fertilise, openJournal, closeJournal, get packs() { return packs; }, radiationAt, vehicles, boardVehicle, leaveVehicle, get boarded() { return boarded; }, get seated() { return seated; }, crows, onInvSlot, onStationSlot, quickMoveInv, quickMoveStation, usedIn, itemTipHTML, critters, tickPets, get catGiftDay() { return catGiftDay; }, get villageGrowth() { return villageGrowth; }, notePlanting, lightning, igniteAt, fires, tickFires, tickStorm, growVillage, buildVillageHouse, stallPrice, tickStalls, tickVillages, set catGiftDay(v) { catGiftDay = v; }, get places() { return places; }, get treasures() { return treasures; }, readTreasureMap, tickTreasure, beams, tickBeams, beaconSpots: () => beaconSpots, mistNow, tickSnow, tickExplore, sitOn, standUp, useDisplay, zips, linkZip, startZip, get zipping() { return zipping; }, burnCoal, get health() { return health; }, set health(v) { health = v; }, paintings, placeSwitchRail, signalAt, ailments, armourEnch, openAltar, lairNear, useBed, eat, drinkTea,
+  get bedSpawn() { return bedSpawn; }, fertilise, openJournal, closeJournal, get packs() { return packs; }, radiationAt, vehicles, boardVehicle, leaveVehicle, get boarded() { return boarded; }, get seated() { return seated; }, crows, onInvSlot, onStationSlot, quickMoveInv, quickMoveStation, usedIn, itemTipHTML, critters, tickPets, get catGiftDay() { return catGiftDay; }, get villageGrowth() { return villageGrowth; }, notePlanting, tickPuzzles, airPumpNear, lightning, igniteAt, fires, tickFires, tickStorm, growVillage, buildVillageHouse, stallPrice, tickStalls, tickVillages, set catGiftDay(v) { catGiftDay = v; }, get places() { return places; }, get treasures() { return treasures; }, readTreasureMap, tickTreasure, beams, tickBeams, beaconSpots: () => beaconSpots, mistNow, tickSnow, tickExplore, sitOn, standUp, useDisplay, zips, linkZip, startZip, get zipping() { return zipping; }, burnCoal, get health() { return health; }, set health(v) { health = v; }, paintings, placeSwitchRail, signalAt, ailments, armourEnch, openAltar, lairNear, useBed, eat, drinkTea,
 };
