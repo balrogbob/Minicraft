@@ -2308,8 +2308,8 @@ function place() {
   if (held?.id === COPY_WAND) { useWand(); return; }
   if (held?.id === DRIVE_BELT) { useDriveBelt(); return; }
   // tap a belt or hopper with an item (not a block, or a tool) to put it in: one on a belt, the lot into a hopper
-  if (target && held && !isBlock(held.id) && !ITEMS[held.id]?.tool && !held.wear && !held.ench?.length && (BLOCKS[target.id].belt || BLOCKS[target.id].hopper || BLOCKS[target.id].elevator)) {
-    const n = machines.insert(world, stations, target.x, target.y, target.z, held.id, BLOCKS[target.id].belt ? 1 : held.count, false);
+  if (target && held && !isBlock(held.id) && !ITEMS[held.id]?.tool && (BLOCKS[target.id].belt || BLOCKS[target.id].hopper || BLOCKS[target.id].elevator)) {
+    const n = machines.insert(world, stations, target.x, target.y, target.z, held, BLOCKS[target.id].belt ? 1 : held.count, false);
     if (n) { takeFromHeld(n); sound.place('wool'); } else toast(BLOCKS[target.id].belt ? 'The belt is full there' : 'That hopper has nowhere to put it', 1500);
     return;
   }
@@ -2858,7 +2858,7 @@ function breakBlock(x, y, z) {
   if (isSign(id) || isBed(id)) { dropWaypoint(x, y, z); dropWaypoint(...bedPartnerOr(x, y, z, id)); }
   if (isFrame(id)) { const item = frames.remove(x, y, z); if (item) drops.push([item, 1]); }
   if (stationKind(id)) loose.spill(stations.removeStacks(x, y, z), x, y, z); // whatever was inside spills out
-  if (def.machine || def.engine || def.sensor || def.ejector || def.hopper || def.tank || def.farm) loose.spill(machines.removeAt(x, y, z).map(([i, n]) => ({ id: i, count: n })), x, y, z); // and whatever was on a belt or in a drill
+  if (def.machine || def.engine || def.sensor || def.ejector || def.hopper || def.tank || def.farm) loose.spill(machines.removeAt(x, y, z).map(([i, n, st]) => ({ id: i, count: n, ...st })), x, y, z); // and whatever was on a belt or in a drill
   if (isBed(id)) {
     // either half takes the whole bed with it
     const [ox, oy, oz] = bedPartner(x, y, z);
@@ -3632,7 +3632,7 @@ function stepGame(now, dt) {
     machines.tick(paused ? 0 : dt, world, kinetics, stations, { day: lightUniforms.uDay.value, flicker: lightUniforms.uFlicker.value, ambient: lightUniforms.uAmbient.value });
     electric.update(paused ? 0 : dt, world, kinetics, stations, { setBlock: (x, y, z, id) => world.setBlock(x, y, z, id) });
     loose.update(paused || dead ? 0 : dt, world, {
-      player, pickup: pickUpLoose, insert: (x, y, z, id, n) => machines.insert(world, stations, x, y, z, id, n, false),
+      player, pickup: pickUpLoose, insert: (x, y, z, item, n) => machines.insert(world, stations, x, y, z, item, n, false),
       light: { day: lightUniforms.uDay.value, flicker: lightUniforms.uFlicker.value, ambient: lightUniforms.uAmbient.value },
     });
   } catch (err) { reportError(err); }
