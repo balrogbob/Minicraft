@@ -1172,7 +1172,25 @@ export class World {
     const tileUV = 1 / ATLAS_COLS;
     const inset = 0.5 / TILE; // keep samples inside the tile
     const clampUV = (t) => Math.min(1 - inset, Math.max(inset, t));
-    for (const [x0, y0, z0, x1, y1, z1, tiles, glow] of def.model) {
+    for (const [x0, y0, z0, x1, y1, z1, tiles, glow, kind] of def.model) {
+      if (kind === 'cross') {
+        // a plant: two sprites crossed through this box, the whole tile on each
+        const tu = (tiles % ATLAS_COLS) * tileUV, tv0 = 1 - Math.floor(tiles / ATLAS_COLS) * tileUV - tileUV, b2 = toLinear(0.88);
+        const [ax, az, bx, bz, ya, yb] = [x0 / 16, z0 / 16, x1 / 16, z1 / 16, y0 / 16, y1 / 16];
+        for (const [p1, q1, p2, q2] of [[ax, az, bx, bz], [bx, az, ax, bz]]) {
+          for (const [cx, cy, cz, u, v] of [[p1, ya, q1, 0, 0], [p2, ya, q2, 1, 0], [p2, yb, q2, 1, 1], [p1, yb, q1, 0, 1]]) {
+            pos.push(x + cx, y + cy, z + cz);
+            uv.push(tu + clampUV(u) * tileUV, tv0 + clampUV(v) * tileUV);
+            col.push(b2, b2, b2);
+            tl.push(glow ? 1 : torch);
+            sl.push(glow ? 1 : sky);
+          }
+          index.push(vcount, vcount + 1, vcount + 2, vcount, vcount + 2, vcount + 3);
+          index.push(vcount, vcount + 2, vcount + 1, vcount, vcount + 3, vcount + 2);
+          vcount += 4;
+        }
+        continue;
+      }
       const lo = [x0 / 16, y0 / 16, z0 / 16], size = [(x1 - x0) / 16, (y1 - y0) / 16, (z1 - z0) / 16];
       for (const f of FACES) {
         const tile = typeof tiles === 'number' ? tiles : f.d === 1 ? (f.s > 0 ? tiles.top : tiles.bottom) : tiles.side;

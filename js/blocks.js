@@ -139,6 +139,7 @@ export const T = {
   BOOKSHELF: 264, COMPOST_SIDE: 265, COMPOST_TOP: 266,
   LEAD_CHEST_SIDE: 267, LEAD_CHEST_TOP: 268, LEAD_CHEST_FRONT: 269, CENTRIFUGE_SIDE: 270, CENTRIFUGE_TOP: 271, TESLA: 272, TESLA_TOP: 273,
   FENCE_POST: 274, FENCE_WIRE: 275, FREEZER_SIDE: 276, FREEZER_FRONT: 277, ARC_SIDE: 278, ARC_FRONT: 279, PACKED_ICE: 280, INVAR: 281, RAIL_STOP: 282, BASALT: 283, BASALT_TOP: 284, METEORITE: 285,
+  IRON_BARS: 286, POT: 287, IVY: 288, BOX_FLOWERS: 289,
 };
 
 // Ores, deepest-reaching last. tier: the pickaxe tier needed to mine it (see TOOL_TIERS);
@@ -338,13 +339,13 @@ export const FACING_DIRS = [[0, 1], [-1, 0], [0, -1], [1, 0]];
 
 // Rotate a model by quarter turns about the block's vertical centre line.
 function rotateModel(model, turns) {
-  return model.map(([x0, y0, z0, x1, y1, z1, tiles, glow]) => {
+  return model.map(([x0, y0, z0, x1, y1, z1, tiles, ...rest]) => {
     let ax = x0, az = z0, bx = x1, bz = z1;
     for (let k = 0; k < turns; k++) {
       [ax, az] = [16 - az, ax];
       [bx, bz] = [16 - bz, bx];
     }
-    return [Math.min(ax, bx), y0, Math.min(az, bz), Math.max(ax, bx), y1, Math.max(az, bz), tiles, glow];
+    return [Math.min(ax, bx), y0, Math.min(az, bz), Math.max(ax, bx), y1, Math.max(az, bz), tiles, ...rest];
   });
 }
 
@@ -2197,4 +2198,47 @@ ITEMS[SADDLE] = { name: 'Saddle', stack: 1 };
 ITEMS[TRUFFLE] = { name: 'Truffle', food: 4 };
 RECIPES.push(
   { out: [SADDLE, 1], in: [[LEATHER, 3], [STRING, 2], [IRON_INGOT, 1]], table: true, metal: IRON_INGOT },
+);
+
+// ---------- v25 A: decoration ----------
+// Iron bars (a pane of iron), flower pots (tap one holding a flower, sapling, glowcap or cactus to plant it),
+// hanging baskets of ivy, and window boxes. Chairs can be sat on, and shelves and tables show what you put on
+// them (see main.js and frames.js).
+export const IRON_BARS = 1287, FLOWER_POT = 1288, HANGING_PLANT = 1304, WINDOW_BOX = 1305; // pot: 1288..1296, box: 1305..1308
+// what grows in a pot, by variant (0 is an empty pot)
+export const POT_PLANTS = [0, POPPY, DANDELION, CORNFLOWER, LAVENDER, DAISY, SAPLING, GLOW_MUSHROOM, CACTUS];
+export const potOf = (id) => (id >= FLOWER_POT && id < FLOWER_POT + POT_PLANTS.length ? id - FLOWER_POT : -1);
+block(IRON_BARS, {
+  name: 'Iron Bars', shape: 'pane', sound: 'stone', hardness: 2, tool: 'pick', transparent: true,
+  model: [[0, 0, 7, 16, 16, 9, T.IRON_BARS]], paneTex: T.IRON_BARS,
+});
+const POT_BOX = [[5, 0, 5, 11, 6, 11, T.POT], [5.6, 5, 5.6, 10.4, 5.6, 10.4, T.DIRT]];
+POT_PLANTS.forEach((plant, k) => {
+  const tile = plant && BLOCKS[plant].side;
+  const grown = !plant ? [] : plant === CACTUS ? [[6.5, 5.6, 6.5, 9.5, 13, 9.5, { side: T.CACTUS_SIDE, top: T.CACTUS_TOP, bottom: T.CACTUS_TOP }]]
+    : [[3, 5.6, 3, 13, 15.6, 13, tile, plant === GLOW_MUSHROOM, 'cross']];
+  block(FLOWER_POT + k, {
+    name: 'Flower Pot', sound: 'stone', transparent: true, solid: false, hardness: 0.3, model: [...POT_BOX, ...grown],
+    variantOf: k ? FLOWER_POT : 0, drop: k ? () => [[FLOWER_POT, 1], [plant, 1]] : FLOWER_POT, light: plant === GLOW_MUSHROOM ? 7 : 0,
+  });
+});
+// a basket of ivy, hung from the underside of a block on three cords
+block(HANGING_PLANT, {
+  name: 'Hanging Basket', sound: 'grass', transparent: true, solid: false, hardness: 0.3,
+  model: [
+    [4, 6, 4, 12, 9, 12, T.POT], [4.5, 8.6, 4.5, 11.5, 9.1, 11.5, T.DIRT],
+    [7.7, 9, 4.3, 8.3, 16, 4.9, T.IRON], [4.3, 9, 11.1, 4.9, 16, 11.7, T.IRON], [11.1, 9, 11.1, 11.7, 16, 11.7, T.IRON],
+    [2, 0, 2, 14, 12, 14, T.IVY, false, 'cross'],
+  ],
+});
+// a trough of flowers along the outside of a window sill: it hangs on the face you tap
+const BOX_MODEL = [[0, 0, 10, 16, 5, 16, wood], [0.5, 4, 10.5, 15.5, 4.6, 15.5, T.DIRT], [0, 3.5, 10, 16, 11, 16, T.BOX_FLOWERS, false, 'cross']];
+for (let f = 0; f < 4; f++) {
+  block(WINDOW_BOX + f, { ...furniture, name: 'Window Box', solid: false, model: rotateModel(BOX_MODEL, f), variantOf: f ? WINDOW_BOX : 0, drop: WINDOW_BOX, facing: f });
+}
+RECIPES.push(
+  { out: [IRON_BARS, 16], in: [[IRON_INGOT, 6]], table: true, metal: IRON_INGOT },
+  { out: [FLOWER_POT, 1], in: [[BRICK, 3]] },
+  { out: [HANGING_PLANT, 1], in: [[FLOWER_POT, 1], [STRING, 2], [IRON_INGOT, 1], [LEAVES, 4]], table: true, metal: IRON_INGOT },
+  { out: [WINDOW_BOX, 1], in: [[PLANKS, 3], [DIRT, 1], [[POPPY, DANDELION, CORNFLOWER, LAVENDER, DAISY], 3]], table: true },
 );

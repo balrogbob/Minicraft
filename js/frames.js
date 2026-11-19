@@ -3,7 +3,10 @@
 // What each frame holds is kept here by position (and saved with the world); the item is drawn as a
 // flat picture in the frame, lit like the blocks around it.
 import * as THREE from 'three';
-import { BLOCKS, FACING_DIRS, isFrame } from './blocks.js';
+import { BLOCKS, FACING_DIRS, isFrame, SHELF, FURN_TABLE } from './blocks.js';
+
+// Shelves and tables show one thing standing on top of them.
+export const isDisplay = (id) => id === SHELF || id === FURN_TABLE;
 import { skyBrightness, lightBrightness } from './world.js';
 
 const key = (x, y, z) => `${x},${y},${z}`;
@@ -46,14 +49,15 @@ export class Frames {
         const [x, y, z] = k.split(',').map(Number);
         if (!world.chunkAt(x, z)) continue;
         const id = world.get(x, y, z);
-        if (!isFrame(id)) { this.items.delete(k); continue; }
+        if (!isFrame(id) && !isDisplay(id)) { this.items.delete(k); continue; }
         this.panels.set(k, this.make(x, y, z, id, item));
       }
     }
     for (const [k, p] of this.panels) {
       const [x, y, z] = k.split(',').map(Number);
-      const sun = light.day * skyBrightness(world.skyAt(x, y, z));
-      const t = lightBrightness(world.lightAt(x, y, z)) * light.flicker;
+      const ly = p.top ? y + 1 : y; // (a shelf is solid: light it from above)
+      const sun = light.day * skyBrightness(world.skyAt(x, ly, z));
+      const t = lightBrightness(world.lightAt(x, ly, z)) * light.flicker;
       p.mesh.material.color.setRGB(Math.max(sun, t, light.ambient), Math.max(sun, t * 0.86, light.ambient), Math.max(sun, t * 0.66, light.ambient));
     }
   }
@@ -64,6 +68,14 @@ export class Frames {
       tex = new THREE.TextureLoader().load(this.icons[item] ?? '');
       tex.magFilter = THREE.NearestFilter; tex.minFilter = THREE.NearestFilter; tex.colorSpace = THREE.SRGBColorSpace;
       this.textures.set(item, tex);
+    }
+    if (isDisplay(id)) {
+      // standing on top, always turned toward you
+      const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, alphaTest: 0.5 }));
+      sprite.scale.set(0.55, 0.55, 1);
+      sprite.position.set(x + 0.5, y + 1 + 0.27, z + 0.5);
+      this.scene.add(sprite);
+      return { mesh: sprite, item, id, top: true };
     }
     const mat = new THREE.MeshBasicMaterial({ map: tex, alphaTest: 0.5, polygonOffset: true, polygonOffsetFactor: -1 });
     const mesh = new THREE.Mesh(new THREE.PlaneGeometry(9 / 16, 9 / 16), mat);
@@ -77,7 +89,7 @@ export class Frames {
 
   drop(k, p) {
     this.scene.remove(p.mesh);
-    p.mesh.geometry.dispose();
+    if (!p.top) p.mesh.geometry.dispose(); // (sprites share one geometry)
     p.mesh.material.dispose();
     this.panels.delete(k);
   }

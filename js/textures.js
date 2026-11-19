@@ -17,7 +17,7 @@ import {
   SUN_SCARAB, FROST_HEART, EMBER_CORE, SUN_MASK, FROST_CIRCLET, EMBER_CROWN, HONEY_TEA, MUSHROOM_STEW, FISH_PIE, COPY_WAND,
   CRYSTAL_SHARD, HONEY_BOTTLE, HONEYCOMB, SALMON, BAKED_SALMON, ICEFISH, BAKED_ICEFISH, PUFFERFISH, OLD_BOOT,
   BATTERY, PORTABLE_LAMP, JACKHAMMER, JETPACK, ELECTRIC_DRILL, HOVER_BOOTS, NV_GOGGLES, MAGNET_RING, WIND_TURBINE, NICKEL_INGOT, CUPRONICKEL_INGOT,
-  ELECTRIC_RAIL, CHAINSAW, SAWDUST, BOOK, BACKPACK, BIG_BACKPACK, HUGE_BACKPACK, SPANNER, GRAPPLE, URANIUM_INGOT, FUEL_ROD, JOURNAL, FERTILISER, SPENT_ROD, ENRICHED_URANIUM, ENRICHED_ROD, hazmatId, INVAR_INGOT, RAIL_STATION, BOAT, BALLOON, ZIP_LINE, METEORIC_IRON, STARSTEEL_INGOT, starsteelTool, EGG, FRIED_EGG, SADDLE, TRUFFLE,
+  ELECTRIC_RAIL, CHAINSAW, SAWDUST, BOOK, BACKPACK, BIG_BACKPACK, HUGE_BACKPACK, SPANNER, GRAPPLE, URANIUM_INGOT, FUEL_ROD, JOURNAL, FERTILISER, SPENT_ROD, ENRICHED_URANIUM, ENRICHED_ROD, hazmatId, INVAR_INGOT, RAIL_STATION, BOAT, BALLOON, ZIP_LINE, METEORIC_IRON, STARSTEEL_INGOT, starsteelTool, EGG, FRIED_EGG, SADDLE, TRUFFLE, FLOWER_POT, HANGING_PLANT, WINDOW_BOX,
   SALTPETRE, GUNPOWDER, LEAD_SINKER, WEIGHTED_ROD, LEAD_BUCKET, LAVA_BUCKET, GOLD_CLOCK, COMPASS, SILVER_ARROW, MIRROR_LAMP,
 } from './blocks.js';
 
@@ -1116,6 +1116,37 @@ P[T.METEORITE] = (t) => {
   t.speckle([120, 130, 170], 0.14, 0.08); // flecks of meteoric iron
   t.speckle([255, 150, 60], 0.05, 0.1); // still glowing
 };
+// v25 A: iron bars, flower pots, ivy and window-box flowers
+P[T.IRON_BARS] = (t) => {
+  for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+    const bar = x % 5 === 2 || x % 5 === 3, rail = y === 1 || y === 2 || y === 13 || y === 14;
+    if (bar || rail) t.set(x, y, t.vary(bar && x % 5 === 2 ? [118, 118, 124] : [86, 86, 92], 0.06));
+  }
+};
+P[T.POT] = (t) => {
+  for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) t.set(x, y, t.vary(y < 3 ? [196, 104, 62] : [176, 88, 52], 0.06));
+  for (let x = 0; x < TILE; x++) t.set(x, 3, [140, 66, 38]); // under the rim
+};
+P[T.IVY] = (t) => {
+  // trailing strands of ivy, hanging down from the top
+  for (const [x0, len] of [[2, 14], [5, 11], [8, 16], [11, 12], [13, 15]]) {
+    for (let y = 0; y < len; y++) {
+      const x = x0 + (Math.sin(y * 0.8 + x0) > 0.4 ? 1 : 0);
+      t.set(x, y, t.vary([50, 110, 40], 0.15));
+      if (y % 3 === 1) { t.set(x - 1, y, t.vary([70, 140, 50], 0.2)); t.set(x + 1, y + 1, t.vary([60, 128, 46], 0.2)); }
+    }
+  }
+};
+P[T.BOX_FLOWERS] = (t) => {
+  const heads = [[220, 40, 40], [250, 210, 50], [80, 110, 230], [170, 110, 210], [245, 245, 240]];
+  for (let k = 0; k < 6; k++) {
+    const x = 1 + k * 2.6 | 0, top = 5 + (k * 5) % 4;
+    for (let y = top; y < TILE; y++) t.set(x, y, t.vary([60, 130, 46], 0.15));
+    t.set(x + 1, top + 4, [70, 145, 50]);
+    const c = heads[k % heads.length];
+    for (const [dx, dy] of [[0, -1], [-1, 0], [1, 0], [0, 1], [0, 0]]) t.set(x + dx, top - 1 + dy, dx || dy ? t.vary(c, 0.08) : [250, 220, 90]);
+  }
+};
 // v24 D: the rail station's platform plate
 P[T.RAIL_STOP] = (t) => {
   for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) t.set(x, y, ((x + y) >> 2) % 2 ? [220, 50, 40] : [240, 236, 228]);
@@ -2071,6 +2102,30 @@ const blob = (ctx, cx, cy, rx, ry, c, c2) => { for (let y = 0; y < 16; y++) for 
 ITEM_PAINTERS[EGG] = (ctx) => { blob(ctx, 8, 8.5, 4.5, 6, [244, 232, 210], [214, 196, 168]); px(ctx, 6, 5, [255, 252, 244]); };
 ITEM_PAINTERS[FRIED_EGG] = (ctx) => { blob(ctx, 8, 8, 7, 6, [250, 248, 240], [226, 222, 212]); blob(ctx, 8, 8, 2.6, 2.6, [250, 186, 40]); };
 ITEM_PAINTERS[TRUFFLE] = (ctx) => { blob(ctx, 8, 9, 5.5, 5, [70, 52, 40], [50, 36, 28]); for (const [x, y] of [[6, 7], [9, 8], [7, 11], [10, 11]]) px(ctx, x, y, [110, 86, 66]); };
+// v25 A: a terracotta pot, a hanging basket of ivy, a window box of flowers
+const potShape = (ctx, x0, y0, w, h) => {
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const inset = y > 1 ? Math.floor((y - 1) / 3) : 0;
+    if (x < inset || x >= w - inset) continue;
+    px(ctx, x0 + x, y0 + y, y < 2 ? [200, 108, 64] : x === inset ? [150, 72, 42] : [180, 90, 54]);
+  }
+};
+ITEM_PAINTERS[FLOWER_POT] = (ctx) => { potShape(ctx, 3, 7, 10, 8); for (let x = 4; x < 12; x++) px(ctx, x, 7, [90, 62, 40]); };
+ITEM_PAINTERS[HANGING_PLANT] = (ctx) => {
+  for (let y = 0; y < 6; y++) { px(ctx, 8, y, [120, 120, 126]); px(ctx, 8 - (6 - y) / 2 | 0, y + 1, [120, 120, 126]); px(ctx, 8 + (6 - y) / 2 | 0, y + 1, [120, 120, 126]); }
+  potShape(ctx, 4, 6, 8, 5);
+  for (const [x, y0, len] of [[3, 6, 8], [5, 8, 7], [11, 7, 7], [12, 5, 9], [8, 10, 5]]) for (let y = y0; y < y0 + len && y < 16; y++) px(ctx, x + (y % 3 === 0 ? 1 : 0), y, y % 2 ? [56, 120, 44] : [76, 150, 54]);
+};
+ITEM_PAINTERS[WINDOW_BOX] = (ctx) => {
+  for (let y = 10; y < 15; y++) for (let x = 1; x < 15; x++) px(ctx, x, y, y === 10 ? [176, 136, 84] : [146, 108, 64]);
+  const heads = [[220, 40, 40], [250, 210, 50], [80, 110, 230], [170, 110, 210], [245, 245, 240]];
+  for (let k = 0; k < 5; k++) {
+    const x = 2 + k * 3, top = 4 + (k % 2) * 2;
+    for (let y = top + 1; y < 10; y++) px(ctx, x, y, [60, 130, 46]);
+    for (const [dx, dy] of [[0, -1], [-1, 0], [1, 0], [0, 1]]) px(ctx, x + dx, top + dy, heads[k]);
+    px(ctx, x, top, [250, 220, 90]);
+  }
+};
 ITEM_PAINTERS[SADDLE] = (ctx) => {
   for (let x = 2; x < 14; x++) for (let y = 6; y < 10; y++) px(ctx, x, y + (x < 4 || x > 11 ? -1 : 0), y === 6 ? [160, 90, 50] : [122, 60, 28]);
   for (let y = 10; y < 15; y++) { px(ctx, 7, y, [90, 60, 40]); px(ctx, 8, y, [90, 60, 40]); } // strap
@@ -2145,7 +2200,17 @@ function drawIsoModel(ctx, atlas, model) {
   const S = (x, y, z) => [4 + 28 * x + 28 * (1 - z), 18 + 14 * x - 14 * (1 - z) + 28 * (1 - y)];
   const boxes = [...model].sort((a, b) => (a[0] + a[3] + a[1] + a[4] + a[2] + a[5]) - (b[0] + b[3] + b[1] + b[4] + b[2] + b[5]));
   const k = 1 / 16;
-  for (const [x0, y0, z0, x1, y1, z1, tiles] of boxes) {
+  for (const [x0, y0, z0, x1, y1, z1, tiles, , kind] of boxes) {
+    if (kind === 'cross') {
+      // a plant: the whole tile, standing up through the middle of its box and facing you
+      const zm = (z0 + z1) / 2 * k, [ox, oy] = S(x0 * k, y1 * k, zm), [rx, ry] = S(x1 * k, y1 * k, zm), [bx, by] = S(x0 * k, y0 * k, zm);
+      ctx.save();
+      ctx.imageSmoothingEnabled = false;
+      ctx.setTransform((rx - ox) / TILE, (ry - oy) / TILE, (bx - ox) / TILE, (by - oy) / TILE, ox, oy);
+      ctx.drawImage(atlas, (tiles % ATLAS_COLS) * TILE, Math.floor(tiles / ATLAS_COLS) * TILE, TILE, TILE, 0, 0, TILE, TILE);
+      ctx.restore();
+      continue;
+    }
     const tileOf = (f) => (typeof tiles === 'number' ? tiles : tiles[f]);
     const face = (tile, m, sx, sy, sw, sh, shadeAmt) => {
       if (sw <= 0 || sh <= 0) return;

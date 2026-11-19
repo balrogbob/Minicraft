@@ -4,7 +4,7 @@ import {
   GRASS, DIRT, SAND, CHURN, SUGAR_CANE, BREAD, ITEMS, BOW, ARROW, BUCKET,
   WOOD_PICK, STONE_PICK, WOOD_AXE, STONE_AXE, WOOD_SHOVEL, STONE_SHOVEL,
   BED, BED_FOOT, CHAIR, LAMP, CARPET, CURTAIN, DOOR, SLIME_FUEL, FACING_DIRS, MAX_LAMP_FUEL,
-  isBed, isChair, isLamp, isCurtain, isDoor, doorId,
+  isBed, isChair, isLamp, isCurtain, isDoor, doorId, IRON_BARS, FLOWER_POT, HANGING_PLANT, WINDOW_BOX, POT_PLANTS, potOf,
   OVEN, SMELTER, stationKind, maxStack, FISHING_ROD, RAW_FISH, TOOL_TIERS, LOG, LEAVES, SAPLING,
   BLAST_SMELTER, CRUSHER, WATER_BUCKET, WATER_WHEEL, isWaterId, isFlowing,
   CHEST, IRON_CHEST, LADDER, SCAFFOLD, SIGN, SIGN_POST, isSign, isSword, ARMOUR_PIECES,
@@ -53,7 +53,7 @@ import { Machines } from './machines.js';
 import { Carts, railBeyond } from './carts.js';
 import { Vehicles } from './vehicles.js';
 import { MiniMap } from './minimap.js';
-import { Frames } from './frames.js';
+import { Frames, isDisplay } from './frames.js';
 import { Weather } from './weather.js';
 import { Bees } from './bees.js';
 import { Paintings, paintingCells } from './paintings.js';
@@ -302,6 +302,7 @@ const weather = new Weather(scene);
 const bees = new Bees(scene, sound);
 let ridingMob = null; // the camel you're riding
 let boarded = null; // the boat or balloon you're in
+let seated = null; // the chair you're sitting on: { x, y, z }
 let targetVehicle = null; // { v, t } when the crosshair is on a boat or balloon
 let zipping = null; // sliding along a zipline
 machines.frames = frames; machines.carts = carts; machines.loose = loose;
@@ -435,7 +436,7 @@ async function startWorld(save, opts = {}) {
   loadZips(save?.zips);
   riding = null;
   ridingMob = null;
-  boarded = null; zipping = null;
+  boarded = null; zipping = null; seated = null;
   arrows.reset();
   lastSwing = 0;
   applyViewDistance();
@@ -828,7 +829,7 @@ function respawnPlayer() {
 //   a well-fed player (hunger 16+) heals a point every 3 s, using up a little hunger.
 function updateHealth(dt, wasGround, prevY) {
   // falling: track the highest point since leaving the ground (including where this step started)
-  if (riding || ridingMob || boarded || zipping || player.flying || player.thrusting || player.hovering || player.inWater || player.inLava || player.climbing || player.onGround && wasGround) fallTop = null;
+  if (riding || ridingMob || boarded || zipping || seated || player.flying || player.thrusting || player.hovering || player.inWater || player.inLava || player.climbing || player.onGround && wasGround) fallTop = null;
   if (!player.onGround && !player.inWater) fallTop = Math.max(fallTop ?? prevY, prevY, player.pos.y);
   else if (player.onGround && !wasGround && fallTop === null && !player.inWater) fallTop = prevY;
   if (player.onGround && !wasGround && fallTop !== null) {
@@ -2866,6 +2867,61 @@ function useFrame(x, y, z, held) {
   sound.place('wood');
 }
 
+// ---------- v25 A: shelves and tables, flower pots, chairs ----------
+// Tap the top of a shelf or table holding something (not a block) to stand it there; tap it again to take it back.
+function useDisplay(x, y, z, held) {
+  const item = frames.get(x, y, z);
+  if (item) { frames.remove(x, y, z); giveDrops([[item, 1]]); return; }
+  if (world.get(x, y + 1, z) !== AIR) { toast('There\'s no room on top of it', 1500); return; }
+  if (held.wear || held.ench || held.pack || held.on) { toast('Only plain things stand on a shelf', 1500); return; }
+  frames.set(x, y, z, held.id);
+  inventory.consumeHeld();
+  sound.place('wood');
+}
+// Tap an empty flower pot holding a flower, sapling, glowcap or cactus to plant it; tap a planted pot to take it out.
+function usePot(x, y, z, id, held) {
+  const k = potOf(id);
+  if (k > 0) {
+    world.setBlock(x, y, z, FLOWER_POT);
+    giveDrops([[POT_PLANTS[k], 1]]);
+    sound.breakBlock('grass');
+    return true;
+  }
+  const j = POT_PLANTS.indexOf(held?.id ?? -1);
+  if (j <= 0) { if (!held || !isBlock(held.id)) { toast('Tap the pot holding a flower, sapling, glowcap or cactus to plant it', 2500); return true; } return false; }
+  world.setBlock(x, y, z, FLOWER_POT + j);
+  inventory.consumeHeld();
+  sound.place('grass');
+  return true;
+}
+// Sit on a chair: you face the way it faces until you move or jump.
+function sitOn(x, y, z) {
+  if (world.isSolid(x, y + 1, z)) { toast('There\'s no room to sit there', 1500); return; }
+  seated = { x, y, z };
+  const [dx, dz] = FACING_DIRS[BLOCKS[world.get(x, y, z)].facing];
+  player.yaw = Math.atan2(-dx, -dz);
+  player.vel.set(0, 0, 0);
+  sound.place('wood');
+  toast('Move or jump to get up', 1500);
+}
+function standUp() {
+  const s = seated;
+  seated = null;
+  if (!s) return;
+  const [dx, dz] = FACING_DIRS[BLOCKS[world.get(s.x, s.y, s.z)]?.facing ?? 0];
+  const fx = s.x + dx, fz = s.z + dz;
+  if (!world.isSolid(fx, s.y, fz) && !world.isSolid(fx, s.y + 1, fz)) player.spawn(fx + 0.5, s.y, fz + 0.5);
+  else player.spawn(s.x + 0.5, s.y + 1, s.z + 0.5);
+}
+function followSeat() {
+  const s = seated;
+  if (!isChair(world.get(s.x, s.y, s.z)) || controls.jump || Math.abs(controls.moveX) + Math.abs(controls.moveZ) > 0.3) { standUp(); return; }
+  player.pos.set(s.x + 0.5, s.y - 0.3, s.z + 0.5);
+  player.vel.set(0, 0, 0);
+  player.onGround = true;
+  player.updateWaterState();
+}
+
 // ---------- rails and minecarts ----------
 // A rail you place joins up to two rails beside it (or a block higher or lower, as a slope), preferring
 // ones already pointing at it, and they bend round to meet it.
@@ -3190,6 +3246,9 @@ function placeInner() {
     if (BLOCKS[tid].logic && !(held && isBlock(held.id))) { useLogic(tx, ty, tz, BLOCKS[tid]); return; }
     if (BLOCKS[tid].switch === 'button') { setSwitch(tx, ty, tz, true); pressedButtons.set(lampKey(tx, ty, tz), 1.5); return; }
     if (isFrame(tid)) { useFrame(tx, ty, tz, held); return; }
+    if (isDisplay(tid) && target.ny === 1 && (frames.get(tx, ty, tz) || (held && !isBlock(held.id)))) { useDisplay(tx, ty, tz, held); return; }
+    if (isChair(tid) && !(held && isBlock(held.id))) { sitOn(tx, ty, tz); return; }
+    if (potOf(tid) >= 0 && usePot(tx, ty, tz, tid, held)) return;
     if (BLOCKS[tid].hive >= 0 && (held?.id === GLASS_BOTTLE || !held || !isBlock(held.id))) {
       const lv = BLOCKS[tid].hive;
       if (held?.id === GLASS_BOTTLE && lv >= MAX_HONEY) {
@@ -3407,6 +3466,14 @@ function placeInner() {
     world.setBlock(x, y, z, BED_FOOT + f);
     world.setBlock(hx, y, hz, BED + f);
     sound.place('wool');
+    inventory.consumeHeld();
+    return;
+  } else if (id === HANGING_PLANT || id === WINDOW_BOX) {
+    // a basket hangs under a block; a window box hangs on the side of one
+    const up = id === HANGING_PLANT;
+    if (there !== AIR || !BLOCKS[target.id].solid || (up ? target.ny !== -1 : target.ny !== 0)) { toast(up ? 'A hanging basket hangs from the underside of a block' : 'A window box hangs on the side of a block'); return; }
+    world.setBlock(x, y, z, up ? id : id + FACING_DIRS.findIndex(([dx, dz]) => dx === -target.nx && dz === -target.nz));
+    sound.place('grass');
     inventory.consumeHeld();
     return;
   } else if (id === LANTERN || id === CHANDELIER) {
@@ -3855,7 +3922,7 @@ function breakBlock(x, y, z) {
   if (isLamp(id)) lamps.delete(lampKey(x, y, z));
   if (isSign(id)) signs.remove(x, y, z);
   if (isSign(id) || isBed(id)) { dropWaypoint(x, y, z); dropWaypoint(...bedPartnerOr(x, y, z, id)); }
-  if (isFrame(id)) { const item = frames.remove(x, y, z); if (item) drops.push([item, 1]); }
+  if (isFrame(id) || isDisplay(id)) { const item = frames.remove(x, y, z); if (item) drops.push([item, 1]); }
   if (id === ZIP_POST) drops.push(...unlinkZips(x, y, z));
   if (stationKind(id)) loose.spill(stations.removeStacks(x, y, z), x, y, z); // whatever was inside spills out
   if (isElectricLamp(id)) electric.signalLamps.delete(`${x},${y},${z}`);
@@ -4591,6 +4658,7 @@ function stepGame(now, dt) {
       { day: lightUniforms.uDay.value, flicker: lightUniforms.uFlicker.value, ambient: lightUniforms.uAmbient.value }, { fuel: burnCoal });
     if (riding) followCart();
     else if (boarded) followVehicle();
+    else if (seated) followSeat();
     else if (zipping) tickZip(dt);
     else if (ridingMob) followMount();
     else if (tickGrapple(dt) || tickLift(dt)) { /* carried by the hook or a lift */ }
@@ -4726,5 +4794,5 @@ window.minicraft = {
   arrows, fishing, kinetics, electric, lightUniforms, bees, catchAt, seasonOf, applySeason, set day(v) { day = v; applySeason(); }, frames, signalAt, setSwitch, logic, machines, carts, minimap, signs, armour, damage, placeRail, getInCart, getOutOfCart,
   get riding() { return riding; }, explode, lightFuse, fuses, clockTime, compassText, place, editSign, closeSign, openInventory, closeInventory, chestMove, lamps, tickLamps, sleepUntilMorning, stations, openStation, closeStation,
   get caneToday() { return caneToday; }, get creative() { return creative; }, set creative(v) { creative = v; applyCreative(); }, toggleFly, wand, useWand, get achieved() { return achieved; }, achieve, worldMap, openMap, closeMap, openGuide, switchSlot, store, saveGame, renderWorlds, openWorlds, exportSlot, get target() { return target; }, set target(v) { target = v; }, applyKeys, renderKeys, camera, get controls() { return controls; }, loose, throwHeld, get waypoints() { return waypoints; }, toggleWaypoint, sortSlots, quickStack, dropMeteor, get meteors() { return meteors; }, weather, openTrade, closeTrade, mountMob, dismount, get ridingMob() { return ridingMob; }, effects, armourWear, useAnvil, rollLoot, settings,
-  get bedSpawn() { return bedSpawn; }, fertilise, openJournal, closeJournal, get packs() { return packs; }, radiationAt, vehicles, boardVehicle, leaveVehicle, get boarded() { return boarded; }, zips, linkZip, startZip, get zipping() { return zipping; }, burnCoal, get health() { return health; }, set health(v) { health = v; }, paintings, placeSwitchRail, signalAt, ailments, armourEnch, openAltar, lairNear, useBed, eat, drinkTea,
+  get bedSpawn() { return bedSpawn; }, fertilise, openJournal, closeJournal, get packs() { return packs; }, radiationAt, vehicles, boardVehicle, leaveVehicle, get boarded() { return boarded; }, get seated() { return seated; }, sitOn, standUp, useDisplay, zips, linkZip, startZip, get zipping() { return zipping; }, burnCoal, get health() { return health; }, set health(v) { health = v; }, paintings, placeSwitchRail, signalAt, ailments, armourEnch, openAltar, lairNear, useBed, eat, drinkTea,
 };
