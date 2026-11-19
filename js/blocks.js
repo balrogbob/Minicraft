@@ -129,6 +129,7 @@ export const T = {
   GLOW_LAMP: 196, // 196..205: a glow lamp in each colour
   PILLAR_SIDE: 206, PILLAR_TOP: 207, SAND_PILLAR_SIDE: 208, SAND_PILLAR_TOP: 209, CANDLE: 210,
   WIRE_OFF: 211, WIRE_ON: 212, LOGIC_BASE: 213, EJECTOR_FRONT: 214, CRAFTER_FRONT: 215, TANK_WATER: 216, PLANTER_FRONT: 217, PLACER_FRONT: 218, RANCH_SIDE: 219, NET: 220,
+  ELWIRE_OFF: 221, ELWIRE_ON: 222, GEN_SIDE: 223, GEN_TOP: 224, CHARGER_TOP: 225, CHARGER_SIDE: 226, PULV_FRONT: 227, PULV_SIDE: 228, ELAMP_OFF: 229, ELAMP_ON: 230,
 };
 
 // Ores, deepest-reaching last. tier: the pickaxe tier needed to mine it (see TOOL_TIERS);
@@ -232,6 +233,7 @@ function block(id, o) {
     sorts: o.sorts ?? null, // a belt that sends things off to the side: 'split' (left and right in turn) | 'sort' (matches go left)
     ejector: !!o.ejector, collector: !!o.collector, elevator: !!o.elevator, // more automation (see machines.js)
     tank: !!o.tank, valve: !!o.valve, sprinkler: !!o.sprinkler, // liquids (see machines.js)
+    electric: o.electric ?? null, // { role: 'wire' | 'gen' | 'use', draw, speed }: joined up by electrum wire (see electric.js)
     farm: o.farm ?? null, // 'feller' | 'planter' | 'breaker' | 'placer' | 'ranch' | 'net' (see machines.js)
   };
 }
@@ -1727,4 +1729,75 @@ RECIPES.push(
   { out: [PLACER, 1], in: [[COBBLE, 5], [IRON_INGOT, 2], [HOPPER, 1]], table: true, metal: IRON_INGOT },
   { out: [ANIMAL_STATION, 1], in: [[PLANKS, 6], [IRON_INGOT, 2], [BUCKET, 1], [WHEAT, 4]], table: true, metal: IRON_INGOT },
   { out: [FISH_NET, 1], in: [[STRING, 6], [STICK, 2]], table: true },
+);
+
+// ---------- electricity: electrum wire, generators, batteries, chargers, pulverizers, electric lamps ----------
+// A generator turned by a shaft makes electricity (GEN_POWER for each 1x it turns at). Electrum wire carries
+// it to the machines joined to the wire (or set right beside a generator or each other): electric lamps,
+// pulverizers and battery chargers. Electrum wire also carries signals, just like copper wire, and joins
+// up with it. Batteries (and the things built round one) hold CHARGE units: a charger fills them.
+export const ELECTRUM_WIRE = 1200, // 1201 = carrying a signal
+  GENERATOR = 1202,
+  CHARGER = 1203,
+  PULVERIZER = 1204, // 1204..1207: + facing
+  ELECTRIC_LAMP = 1208; // 1209 = lit
+export const BATTERY = 1031, PORTABLE_LAMP = 1032, JACKHAMMER = 1033, JETPACK = 1034;
+export const GEN_POWER = 4; // electricity a generator makes at 1x
+export const ELECTRIC_DRAW = { lamp: 1, pulverizer: 6, charger: 4 }; // what each machine takes while it works
+export const CHARGE_RATE = 5; // charge put into a battery for each power a charger gets, each second
+// how much charge things take: a portable lamp each second it's on, a jackhammer for each block, a jetpack
+// each second it's thrusting
+export const CHARGE_USE = { lamp: 1, jackhammer: 5, jetpack: 30 };
+for (let k = 0; k < 2; k++) {
+  const on = !!k, t = on ? T.ELWIRE_ON : T.ELWIRE_OFF;
+  block(ELECTRUM_WIRE + k, {
+    name: 'Electrum Wire', shape: 'wire', sound: 'stone', hardness: 0.2, transparent: true, solid: false, switch: 'wire', on, floor: true,
+    logic: 'wire', flip: ELECTRUM_WIRE + 1 - k, light: on ? 3 : 0, variantOf: k ? ELECTRUM_WIRE : 0, drop: ELECTRUM_WIRE,
+    electric: { role: 'wire' },
+    model: [[6.5, 0, 0, 9.5, 1, 16, t], [0, 0, 6.5, 16, 1, 9.5, t]],
+  });
+}
+block(GENERATOR, {
+  name: 'Generator', sound: 'stone', hardness: 2.5, tool: 'pick', side: T.GEN_SIDE, top: T.GEN_TOP, bottom: T.GEN_TOP,
+  machine: { load: GEN_POWER }, electric: { role: 'gen' },
+});
+block(CHARGER, {
+  name: 'Battery Charger', sound: 'stone', hardness: 2, tool: 'pick', side: T.CHARGER_SIDE, top: T.CHARGER_TOP, bottom: T.IRON,
+  station: 'charger', stationBase: CHARGER, electric: { role: 'use', draw: ELECTRIC_DRAW.charger },
+});
+for (let f = 0; f < 4; f++) {
+  block(PULVERIZER + f, {
+    name: 'Electric Pulverizer', station: 'pulverizer', side: T.PULV_SIDE, top: T.STAINLESS, bottom: T.STAINLESS, front: T.PULV_FRONT,
+    facing: f, hardness: 3, tool: 'pick', variantOf: f ? PULVERIZER : 0, drop: PULVERIZER, stationBase: PULVERIZER,
+    electric: { role: 'use', draw: ELECTRIC_DRAW.pulverizer, speed: 2 },
+  });
+}
+for (let k = 0; k < 2; k++) {
+  const lit = !!k, glass = lit ? T.ELAMP_ON : T.ELAMP_OFF;
+  block(ELECTRIC_LAMP + k, {
+    name: 'Electric Lamp', sound: 'glass', hardness: 0.8, transparent: true, solid: false, light: lit ? 20 : 0, lit,
+    model: [[4, 0, 4, 12, 2, 12, T.IRON], [5, 2, 5, 11, 10, 11, glass], [6, 10, 6, 10, 11, 10, T.ELECTRUM]],
+    variantOf: k ? ELECTRIC_LAMP : 0, drop: ELECTRIC_LAMP, electric: { role: 'use', draw: ELECTRIC_DRAW.lamp },
+  });
+}
+export const isElectricLamp = (id) => id === ELECTRIC_LAMP || id === ELECTRIC_LAMP + 1;
+// Battery-powered things: their charge used is kept as `wear` (out of `charge`), but unlike a tool's wear
+// it never breaks them: they just stop working until they're charged again.
+ITEMS[BATTERY] = { name: 'Battery', stack: 1, charge: 1000 };
+ITEMS[PORTABLE_LAMP] = { name: 'Portable Electric Lamp', stack: 1, charge: 1000, handLamp: true };
+ITEMS[JACKHAMMER] = { name: 'Jackhammer', stack: 1, charge: 1000, tool: { type: 'pick', speed: 13, tier: 5, damage: 4 } };
+ITEMS[JETPACK] = { name: 'Electric Jetpack', stack: 1, charge: 1500, armour: { piece: 1, points: 1, mat: 'jetpack' } };
+export const chargeCap = (id) => ITEMS[id]?.charge ?? 0;
+export const chargeLeft = (s) => (s && chargeCap(s.id) ? Math.max(0, chargeCap(s.id) - (s.wear ?? 0)) : 0);
+export const ELECTRIC_ITEMS = [BATTERY, PORTABLE_LAMP, JACKHAMMER, JETPACK];
+RECIPES.push(
+  { out: [ELECTRUM_WIRE, 8], in: [[ELECTRUM_INGOT, 1]], table: true, metal: ELECTRUM_INGOT },
+  { out: [GENERATOR, 1], in: [[IRON_INGOT, 4], [COPPER_INGOT, 4], [ELECTRUM_WIRE, 2]], table: true, metal: ELECTRUM_WIRE },
+  { out: [BATTERY, 1], in: [[LEAD_INGOT, 8], [SLIME_BUCKET, 1]], also: [[BUCKET, 1]], table: true, metal: LEAD_INGOT },
+  { out: [CHARGER, 1], in: [[IRON_INGOT, 3], [COPPER_INGOT, 2], [ELECTRUM_WIRE, 4]], table: true, metal: ELECTRUM_WIRE },
+  { out: [PULVERIZER, 1], in: [[STAINLESS_INGOT, 4], [ELECTRUM_INGOT, 1], [FLINT, 1], [PIPE, 1], [CHEST, 1]], table: true, metal: ELECTRUM_INGOT },
+  { out: [ELECTRIC_LAMP, 1], in: [[[IRON_INGOT, BRONZE_INGOT, COPPER_INGOT], 1], [GLASS, 1], [ELECTRUM_INGOT, 1]], table: true, metal: ELECTRUM_INGOT },
+  { out: [PORTABLE_LAMP, 1], in: [[ELECTRIC_LAMP, 1], [BATTERY, 1], [IRON_INGOT, 1]], table: true, metal: ELECTRIC_LAMP },
+  { out: [JACKHAMMER, 1], in: [[STAINLESS_INGOT, 4], [BATTERY, 1], [ELECTRUM_WIRE, 2]], table: true, metal: ELECTRUM_WIRE },
+  { out: [JETPACK, 1], in: [[STAINLESS_INGOT, 4], [BATTERY, 2], [ELECTRUM_WIRE, 4], [LEATHER, 2]], table: true, metal: ELECTRUM_WIRE },
 );

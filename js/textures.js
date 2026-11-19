@@ -16,6 +16,7 @@ import {
   BERRIES, GLASS_BOTTLE, NIGHT_TEA, HASTE_TEA, FIRE_TEA, HEAL_TEA, WOOD_SHIELD, IRON_SHIELD, KING_CROWN,
   SUN_SCARAB, FROST_HEART, EMBER_CORE, SUN_MASK, FROST_CIRCLET, EMBER_CROWN, HONEY_TEA, MUSHROOM_STEW, FISH_PIE, COPY_WAND,
   CRYSTAL_SHARD, HONEY_BOTTLE, HONEYCOMB, SALMON, BAKED_SALMON, ICEFISH, BAKED_ICEFISH, PUFFERFISH, OLD_BOOT,
+  BATTERY, PORTABLE_LAMP, JACKHAMMER, JETPACK,
   SALTPETRE, GUNPOWDER, LEAD_SINKER, WEIGHTED_ROD, LEAD_BUCKET, LAVA_BUCKET, GOLD_CLOCK, COMPASS, SILVER_ARROW, MIRROR_LAMP,
 } from './blocks.js';
 
@@ -878,6 +879,53 @@ P[T.RANCH_SIDE] = (t) => {
 P[T.NET] = (t) => {
   for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) t.set(x, y, [0, 0, 0], 0);
   for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) if ((x + y) % 4 === 0 || (x - y + 16) % 4 === 0) t.set(x, y, [222, 210, 170]);
+};
+// electricity: electrum wire, a generator's copper coils, a charger, a pulverizer's intake, electric lamp glass
+P[T.ELWIRE_OFF] = (t) => { for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) t.set(x, y, t.vary((x + y) % 4 ? [196, 168, 70] : [230, 210, 120], 0.06)); };
+P[T.ELWIRE_ON] = (t) => { for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) t.set(x, y, t.vary((x + y) % 4 ? [255, 226, 90] : [255, 252, 200], 0.05)); };
+P[T.GEN_SIDE] = (t) => {
+  P[T.IRON](t);
+  for (let y = 3; y < 13; y++) for (let x = 2; x < 14; x++) t.set(x, y, t.vary(y % 2 ? [196, 106, 52] : [150, 76, 36], 0.05)); // coils
+  for (let y = 3; y < 13; y++) { t.set(2, y, [70, 72, 80]); t.set(13, y, [70, 72, 80]); }
+  t.set(7, 1, [240, 216, 110]); t.set(8, 1, [240, 216, 110]);
+};
+P[T.GEN_TOP] = (t) => {
+  P[T.IRON](t);
+  for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+    const d = Math.hypot(x - 7.5, y - 7.5);
+    if (d < 5.5 && d > 2) t.set(x, y, t.vary(d > 4 ? [150, 76, 36] : [196, 106, 52], 0.05));
+    else if (d <= 2) t.set(x, y, [90, 92, 100]);
+  }
+};
+P[T.CHARGER_SIDE] = (t) => {
+  P[T.IRON](t);
+  for (let x = 3; x < 13; x++) t.set(x, 5, [60, 62, 70]);
+  for (const [x, c] of [[4, [90, 220, 90]], [7, [230, 210, 80]], [10, [220, 80, 60]]]) { t.set(x, 9, c); t.set(x + 1, 9, c); t.set(x, 10, c); t.set(x + 1, 10, c); }
+};
+P[T.CHARGER_TOP] = (t) => {
+  P[T.IRON](t);
+  for (let y = 4; y < 12; y++) for (let x = 5; x < 11; x++) t.set(x, y, x === 5 || x === 10 || y === 4 || y === 11 ? [60, 62, 70] : [36, 36, 42]);
+  for (let x = 6; x < 10; x++) t.set(x, 5, [230, 210, 120]);
+};
+P[T.PULV_SIDE] = (t) => {
+  P[T.STAINLESS](t);
+  for (let y = 6; y < 10; y++) for (let x = 0; x < TILE; x++) if ((x + y) % 3 === 0) t.set(x, y, [120, 126, 136]);
+  for (let x = 0; x < TILE; x++) t.set(x, 12, [214, 186, 80]);
+};
+P[T.PULV_FRONT] = (t) => {
+  P[T.STAINLESS](t);
+  for (let y = 3; y < 13; y++) for (let x = 3; x < 13; x++) {
+    const teeth = (x + y) % 3 === 0;
+    t.set(x, y, x === 3 || x === 12 || y === 3 || y === 12 ? [90, 94, 104] : teeth ? [170, 174, 186] : [34, 34, 40]);
+  }
+  t.set(13, 1, [90, 220, 90]); t.set(14, 1, [90, 220, 90]);
+};
+P[T.ELAMP_OFF] = (t) => {
+  for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) t.set(x, y, t.vary([170, 186, 196], 0.04));
+  for (let y = 3; y < 13; y++) { t.set(7, y, [120, 110, 90]); t.set(8, y, [120, 110, 90]); }
+};
+P[T.ELAMP_ON] = (t) => {
+  for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) t.set(x, y, t.vary(Math.hypot(x - 7.5, y - 7.5) < 4 ? [255, 255, 236] : [255, 244, 190], 0.03));
 };
 P[T.LOGIC_BASE] = (t) => {
   for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) t.set(x, y, t.vary([172, 172, 168], 0.04));
@@ -1768,6 +1816,30 @@ ITEM_PAINTERS[SWITCH_RAIL] = (ctx) => {
   rect(ctx, 11, 6, 5, 2, [150, 154, 162]); rect(ctx, 12, 9, 4, 2, [150, 154, 162]); rect(ctx, 6, 6, 3, 3, [210, 40, 30]);
 };
 ITEM_PAINTERS[LOADER_RAIL] = (ctx) => { railIcon([150, 154, 162])(ctx); rect(ctx, 5, 5, 6, 6, IRON_C); rect(ctx, 6, 6, 4, 4, [70, 72, 80]); };
+
+// battery-powered things: a lead battery with an electrum cap; a hand lamp; a jackhammer; a jetpack
+ITEM_PAINTERS[BATTERY] = (ctx) => {
+  rect(ctx, 4, 3, 8, 12, [84, 92, 118]); rect(ctx, 5, 4, 6, 10, [104, 112, 138]);
+  rect(ctx, 6, 1, 4, 2, [230, 204, 100]); rect(ctx, 5, 7, 6, 3, [110, 200, 70]);
+  rect(ctx, 7, 7, 2, 3, [240, 240, 240]);
+};
+ITEM_PAINTERS[PORTABLE_LAMP] = (ctx) => {
+  rect(ctx, 6, 0, 4, 2, [150, 150, 156]); rect(ctx, 5, 2, 6, 1, [118, 122, 130]);
+  rect(ctx, 5, 3, 6, 7, [255, 244, 190]); rect(ctx, 7, 4, 2, 5, [255, 255, 240]);
+  rect(ctx, 4, 10, 8, 5, [84, 92, 118]); rect(ctx, 5, 11, 6, 1, [230, 204, 100]);
+};
+ITEM_PAINTERS[JACKHAMMER] = (ctx) => {
+  rect(ctx, 3, 1, 10, 2, [60, 60, 66]); rect(ctx, 2, 1, 2, 4, [60, 60, 66]); rect(ctx, 12, 1, 2, 4, [60, 60, 66]); // handles
+  rect(ctx, 5, 3, 6, 7, [196, 200, 210]); rect(ctx, 6, 4, 4, 2, [84, 92, 118]); rect(ctx, 6, 7, 4, 1, [230, 204, 100]);
+  rect(ctx, 7, 10, 2, 5, [150, 154, 164]); px(ctx, 7, 15, [110, 114, 124]);
+};
+ITEM_PAINTERS[JETPACK] = (ctx) => {
+  rect(ctx, 2, 2, 5, 10, [196, 200, 210]); rect(ctx, 9, 2, 5, 10, [196, 200, 210]);
+  rect(ctx, 3, 3, 3, 8, [170, 174, 186]); rect(ctx, 10, 3, 3, 8, [170, 174, 186]);
+  rect(ctx, 6, 4, 4, 6, [84, 92, 118]); rect(ctx, 7, 5, 2, 1, [230, 204, 100]);
+  rect(ctx, 3, 12, 3, 2, [80, 80, 86]); rect(ctx, 10, 12, 3, 2, [80, 80, 86]);
+  rect(ctx, 3, 14, 3, 2, [255, 170, 60]); rect(ctx, 10, 14, 3, 2, [255, 170, 60]);
+};
 
 // An isometric drawing of a model block (furniture, stairs, fences...) for blocks with no painted icon,
 // matching drawIsoBlock: +z faces to the left, +x faces to the right.

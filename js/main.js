@@ -22,6 +22,7 @@ import {
   TINTS, WALL, LANTERN, HANGING_LANTERN, CHANDELIER, PAINTING, ART, isWall,
   ENCHANT_ALTAR, LAIRS, ENCHANTS, hasEnch, HONEY_TEA, CRYSTAL_BLOCK, SUN_SCARAB, FROST_HEART, EMBER_CORE, OBSIDIAN, SANDSTONE,
   STICK, STRING, PAPER, CAKE, COOKIE, LEATHER, FISHING_ROD as ROD, WEIGHTED_ROD as WROD, SEEDS, FLOUR, BUTTER, COPY_WAND,
+  ELECTRUM_WIRE, PULVERIZER, BATTERY, PORTABLE_LAMP, JACKHAMMER, JETPACK, CHARGE_USE, chargeCap, chargeLeft, ORES, oreDust,
   WIRE, INVERTER, DELAY, LATCH, DETECTOR_RAIL, DRIVE_BELT, TREE_FELLER, PLANTER, BREAKER, PLACER, ANIMAL_STATION, EJECTOR, COLLECTOR, BELT_SPLITTER, BELT_SORTER,
 } from './blocks.js';
 import { createAtlas, createIcons, createCrackCanvases, createWaterCanvas, createHudIcons, paintSeason } from './textures.js';
@@ -42,6 +43,7 @@ import { ArrowManager } from './arrows.js';
 import { Stations, STATION_KINDS, isFuel } from './stations.js';
 import { Fishing } from './fishing.js';
 import { Kinetics } from './kinetics.js';
+import { Electric } from './electric.js';
 import { Signs } from './signs.js';
 import { Machines } from './machines.js';
 import { Carts, railBeyond } from './carts.js';
@@ -54,7 +56,7 @@ import { Logic } from './logic.js';
 
 // v2 = the 16k x 16k streaming world (player state here, edited chunks in IndexedDB).
 // v1 = the old 128 x 128 world, migrated into the middle of the big world on first launch.
-const GAME_VERSION = '20'; // shown in the menu; bump with each release
+const GAME_VERSION = '21'; // shown in the menu; bump with each release
 const SAVE_KEY = 'minicraft-save-v2';
 const LEGACY_SAVE_KEY = 'minicraft-save-v1';
 const SETTINGS_KEY = 'minicraft-settings-v1';
@@ -112,16 +114,18 @@ const material = new THREE.MeshBasicMaterial({ map: atlas, vertexColors: true, a
 // daylight is a uniform set by the sky, so nights darken everything the sun reaches,
 // caves stay dark all day, and torches glow wherever they are.
 const AMBIENT = 0.03; // linear; just enough to make out cave walls without a torch
-const lightUniforms = { uDay: { value: 1 }, uFlicker: { value: 1 }, uAmbient: { value: AMBIENT }, uTints: { value: TINTS.map((c) => new THREE.Vector3(...c)) } };
+const lightUniforms = { uHand: { value: new THREE.Vector4(0, 0, 0, 0) }, uDay: { value: 1 }, uFlicker: { value: 1 }, uAmbient: { value: AMBIENT }, uTints: { value: TINTS.map((c) => new THREE.Vector3(...c)) } };
 function addTorchLight(mat) {
   mat.onBeforeCompile = (shader) => {
     Object.assign(shader.uniforms, lightUniforms);
     // torch light comes in as brightness + 2 x its colour (see TINTS): decoded here, per vertex
-    shader.vertexShader = `attribute float torch;\nattribute float sky;\nvarying vec3 vTorchC;\nvarying float vSky;\nuniform vec3 uTints[${TINTS.length}];\n` + shader.vertexShader
-      .replace('#include <color_vertex>', '#include <color_vertex>\nfloat tintI = floor(torch * 0.5);\nvTorchC = (torch - tintI * 2.0) * uTints[int(tintI)];\nvSky = sky;');
-    shader.fragmentShader = 'uniform float uDay;\nuniform float uFlicker;\nuniform float uAmbient;\nvarying vec3 vTorchC;\nvarying float vSky;\n' + shader.fragmentShader
+    // (and a portable lamp you carry lights what's within HAND_REACH of you: uHand is where it is, and how bright)
+    shader.vertexShader = `attribute float torch;\nattribute float sky;\nvarying vec3 vTorchC;\nvarying float vSky;\nvarying vec3 vWorldP;\nuniform vec3 uTints[${TINTS.length}];\n` + shader.vertexShader
+      .replace('#include <color_vertex>', '#include <color_vertex>\nfloat tintI = floor(torch * 0.5);\nvTorchC = (torch - tintI * 2.0) * uTints[int(tintI)];\nvSky = sky;\nvWorldP = (modelMatrix * vec4(position, 1.0)).xyz;');
+    shader.fragmentShader = 'uniform float uDay;\nuniform float uFlicker;\nuniform float uAmbient;\nuniform vec4 uHand;\nvarying vec3 vTorchC;\nvarying float vSky;\nvarying vec3 vWorldP;\n' + shader.fragmentShader
       .replace('#include <color_fragment>',
-        '#include <color_fragment>\ndiffuseColor.rgb *= max(vec3(max(uDay * vSky, uAmbient)), vTorchC * uFlicker);');
+        '#include <color_fragment>\nfloat hl = uHand.w * pow(clamp(1.0 - distance(vWorldP, uHand.xyz) / 13.0, 0.0, 1.0), 1.4);\n' +
+        'diffuseColor.rgb *= max(max(vec3(max(uDay * vSky, uAmbient)), vTorchC * uFlicker), vec3(hl, hl * 0.96, hl * 0.86));');
   };
 }
 addTorchLight(material);
@@ -227,7 +231,8 @@ let bedSpawn = null; // { x, y, z } of the bed you last used: where you respawn
 const lamps = new Map();
 const stations = new Stations(); // what's inside each oven and smelter
 const kinetics = new Kinetics(scene, atlas); // water wheels, shafts and gears, and what they drive
-const powerAt = (x, y, z) => kinetics.powerAt(x, y, z);
+const electric = new Electric(); // generators, electrum wire and the machines that run on electricity
+const powerAt = (x, y, z) => kinetics.powerAt(x, y, z) || electric.speedAt(x, y, z);
 const signs = new Signs(scene); // what's written on each sign
 const machines = new Machines(scene, icons); // pumps, drills, hoppers and belts
 const loose = new ItemDrops(scene, (id) => machines.makeSprite(id)); // items lying on the ground
@@ -526,8 +531,8 @@ function showItemName() {
 function slotHTML(s) {
   if (!s) return '';
   let bar = '';
-  if (s.wear > 0 && maxWear(s.id)) {
-    const left = Math.max(0, 1 - s.wear / maxWear(s.id));
+  if (s.wear > 0 && (maxWear(s.id) || chargeCap(s.id))) {
+    const left = Math.max(0, 1 - s.wear / (maxWear(s.id) || chargeCap(s.id))); // (or, for battery-powered things, the charge left)
     bar = `<span class="wear"><i style="--w:${Math.round(left * 100)}%;--wc:hsl(${Math.round(left * 120)},70%,45%)"></i></span>`;
   }
   return `<img src="${icons[s.id]}" alt=""${s.ench?.length ? ' class="enchanted"' : ''}><span class="count">${s.count > 1 ? s.count : ''}</span>${bar}`;
@@ -733,7 +738,7 @@ function respawnPlayer() {
 //   a well-fed player (hunger 16+) heals a point every 3 s, using up a little hunger.
 function updateHealth(dt, wasGround, prevY) {
   // falling: track the highest point since leaving the ground (including where this step started)
-  if (riding || ridingMob || player.flying || player.inWater || player.inLava || player.climbing || player.onGround && wasGround) fallTop = null;
+  if (riding || ridingMob || player.flying || player.thrusting || player.inWater || player.inLava || player.climbing || player.onGround && wasGround) fallTop = null;
   if (!player.onGround && !player.inWater) fallTop = Math.max(fallTop ?? prevY, prevY, player.pos.y);
   else if (player.onGround && !wasGround && fallTop === null && !player.inWater) fallTop = prevY;
   if (player.onGround && !wasGround && fallTop !== null) {
@@ -866,6 +871,7 @@ function itemTipHTML(s) {
   if (def?.armour?.points) bits.push(`${def.armour.points} armour`);
   const mw = maxWear(s.id);
   if (mw) bits.push(`${Math.max(0, Math.round(100 - (s.wear ?? 0) / mw * 100))}% left`);
+  if (chargeCap(s.id)) bits.push(`${Math.round(chargeLeft(s) / chargeCap(s.id) * 100)}% charged${s.on ? ' · switched on' : ''}`);
   const ench = (s.ench ?? []).map((k) => ENCHANTS[k]?.name).filter(Boolean);
   return `<b>${itemName(s.id)}</b>${s.count > 1 ? ` × ${s.count}` : ''}` +
     (ench.length ? `<span class="ench">${ench.join(', ')}</span>` : '') + (bits.length ? `<span>${bits.join(' · ')}</span>` : '');
@@ -1026,8 +1032,10 @@ function renderInventory() {
     btn.disabled = !canMake;
     btn.addEventListener('click', () => {
       if (!r.in.every(([id, n]) => countOf(id) >= n)) return;
+      const charge = batteriesTaken(r);
       for (const [id, n] of r.in) takeOf(id, n);
-      let lost = inventory.add(r.out[0], r.out[1]);
+      const cap = chargeCap(r.out[0]);
+      let lost = cap ? inventory.addItem({ id: r.out[0], count: 1, ...(charge < cap ? { wear: cap - charge } : {}) }) : inventory.add(r.out[0], r.out[1]);
       for (const [id, n] of r.also ?? []) lost += inventory.add(id, n);
       if (lost) toast('Inventory full');
       sound.pop();
@@ -1067,6 +1075,13 @@ $('btn-chest-sort').addEventListener('click', () => { const st = currentStation(
 // A recipe ingredient can be one id or a list of alternatives (coal or charcoal).
 const idsOf = (spec) => (Array.isArray(spec) ? spec : [spec]);
 const countOf = (spec) => idsOf(spec).reduce((t, id) => t + inventory.count(id), 0);
+// The charge in the batteries a recipe uses up (the ones inventory.remove takes: from the last slot back),
+// which goes into what it makes. (A new battery comes flat.)
+function batteriesTaken(r) {
+  let n = r.in.find(([id]) => id === BATTERY)?.[1] ?? 0, charge = 0;
+  for (let i = SLOTS - 1; i >= 0 && n > 0; i--) if (inventory.slots[i]?.id === BATTERY) { charge += chargeLeft(inventory.slots[i]); n--; }
+  return charge;
+}
 function takeOf(spec, n) {
   for (const id of idsOf(spec)) {
     const k = Math.min(n, inventory.count(id));
@@ -1159,10 +1174,14 @@ function openStation(x, y, z, cart = null) {
     const tools = (r.tools ?? []).map((id) => `<span class="ing tool" title="${itemName(id)} (not used up)"><img src="${icons[id]}" alt="">kept</span>`).join('');
     return `<div class="recipe">${ing}${tools}<span class="arrow">→</span><img class="outimg" src="${icons[r.out[0]]}" alt="">` +
       `<span class="name">${r.out[1] > 1 ? r.out[1] + ' × ' : ''}${itemName(r.out[0])}</span></div>`;
-  }).join('') + (K.holder ? `<p class="hint">${kind === 'planter' ? 'Put saplings in (or feed them in with a hopper): it plants one on the grass or dirt in front of it whenever there\'s room.'
+  }).join('') + (kind === 'charger' ? '<p class="hint">Put in a battery, or anything that runs on one (a portable lamp, jackhammer or jetpack): ' +
+    'it charges while it has electricity. Join it to a generator with electrum wire, or set it right beside one.</p>'
+    : K.holder ? `<p class="hint">${kind === 'planter' ? 'Put saplings in (or feed them in with a hopper): it plants one on the grass or dirt in front of it whenever there\'s room.'
     : 'Put empty buckets in for milking yaks, and wheat to feed the animals (their coats grow back faster). What it gets comes out of its back, into a chest, hopper or belt.'}</p>`
     : K.crafter ? '<p class="hint">Hang an item frame on it showing what to make. Whenever the ingredients are inside, ' +
     'it makes one, a second at a time, into the output slot: fill it with hoppers or belts and empty it with a hopper underneath.</p>'
+    : K.electric ? '<p class="hint">Times are at 1x speed: it runs at 2x with all the electricity it wants. Join it to a generator ' +
+    'with electrum wire (or set it right beside one). It gets half as much again out of everything as the rock crusher, and sometimes one more.</p>'
     : K.powered ? '<p class="hint">Times are at 1x speed. Drive it with a water wheel or windmill by turning a shaft or gear ' +
     'against any face; gear it up for more speed.' + (kind === 'crusher' ? ' Ore dust smelts into ingots, so crushing ore doubles what you get.' : '') + '</p>'
     : '<p class="hint">Fuel, in items cooked per piece: log or planks 1, stick ½, coal or charcoal 10, ' +
@@ -1195,6 +1214,13 @@ function renderStation() {
   }
   const r = stations.recipeFor(st, `${openStationAt.x},${openStationAt.y},${openStationAt.z}`);
   $('st-progress').style.width = `${r ? Math.min(100, (st.progress / r.time) * 100) : 0}%`;
+  if (st.kind === 'charger') {
+    const s = st.inputs[0], { x, y, z } = openStationAt;
+    $('st-progress').style.width = s && chargeCap(s.id) ? `${chargeLeft(s) / chargeCap(s.id) * 100}%` : '0%';
+    $('st-status').textContent = !s ? `Put a battery in. ${electric.statusAt(x, y, z)}` : !s.wear ? `${itemName(s.id)}: fully charged` :
+      `${itemName(s.id)}: ${Math.floor(chargeLeft(s) / chargeCap(s.id) * 100)}% charged. ${electric.statusAt(x, y, z)}`;
+    return;
+  }
   if (K.holder) {
     $('st-status').textContent = st.kind === 'ranch' ? `${machines.drillStatus(openStationAt.x, openStationAt.y, openStationAt.z)}` : `${st.inputs.filter(Boolean).reduce((t, s) => t + s.count, 0)} saplings to plant`;
     return;
@@ -1206,7 +1232,7 @@ function renderStation() {
   }
   if (STATION_KINDS[st.kind].powered) {
     const { x, y, z } = openStationAt;
-    const power = kinetics.statusAt(x, y, z);
+    const power = K.electric ? electric.statusAt(x, y, z) : kinetics.statusAt(x, y, z);
     const verb = STATION_KINDS[st.kind].verb;
     $('st-status').textContent = r && st.speed > 0 ? `${verb} ${itemName(idsOf(r.in[0][0])[0]).toLowerCase()}… ${power}` : `${r ? '' : 'Put something in. '}${power}`;
     return;
@@ -1275,6 +1301,8 @@ function onStationSlot(area, i) {
   const from = stationSlot(fromArea, fromI), to = stationSlot(area, i);
   const a = from.get(), b = to.get();
   if (!a || area === 'out') { renderStation(); return; } // nothing can be put into the result slot
+  const K = STATION_KINDS[st.kind];
+  if (area === 'in' && K?.accepts && !K.accepts.includes(a.id)) { toast(`The ${K.name.toLowerCase()} won't take ${itemName(a.id).toLowerCase()}`); renderStation(); return; }
   if (area === 'fuel' && !isFuel(a.id)) { toast(`${itemName(a.id)} won't burn`); renderStation(); return; }
   if (fromArea === 'fuel' && b && !isFuel(b.id)) { renderStation(); return; }
   if (b && b.id === a.id) {
@@ -1546,7 +1574,7 @@ function wearOutHeld(n) {
 function wearArmour(k = -1, n = 1) {
   if (!settings.wear) return;
   for (let i = 0; i < 5; i++) {
-    if (!armour[i] || (k >= 0 ? i !== k : i === 4)) continue;
+    if (!armour[i] || !maxWear(armour[i]) || (k >= 0 ? i !== k : i === 4)) continue; // (a jetpack doesn't wear)
     if (armourEnch[i]?.includes('sturdy') && Math.random() < 0.5) continue;
     armourWear[i] += n;
     if (armourWear[i] >= maxWear(armour[i])) {
@@ -1567,6 +1595,60 @@ function shieldBlocks(from, amount) {
   sound.place('stone');
   toast('Blocked!', 600);
   return true;
+}
+// ---------- battery-powered things ----------
+// A portable lamp, jackhammer or jetpack uses its own charge first, then tops itself up from a battery you're
+// carrying (as much as it'll take), so spare batteries keep them going.
+const JACK_DUST = 0.15; // the chance the jackhammer shakes a dust off an ore too
+let chargeShown = 0; // seconds until the slots' charge bars are redrawn
+function topUp(s) {
+  for (const b of inventory.slots) {
+    if (!s.wear) break;
+    if (!b || b === s || b.id !== BATTERY || !chargeLeft(b)) continue;
+    const k = Math.min(chargeLeft(b), s.wear);
+    b.wear = (b.wear ?? 0) + k; s.wear -= k;
+    if (s.wear <= 1e-9) delete s.wear;
+    inventory.onChange();
+  }
+}
+// Has it (or a battery you carry) any charge?
+const hasCharge = (s) => creative || chargeLeft(s) > 1e-9 || inventory.slots.some((b) => b && b !== s && b.id === BATTERY && chargeLeft(b) > 1e-9);
+// Use n charge from it; false if there isn't that much.
+function drawCharge(s, n) {
+  if (creative) return true;
+  if (chargeLeft(s) < n) topUp(s);
+  if (chargeLeft(s) < n) { if (s.wear !== chargeCap(s.id)) { s.wear = chargeCap(s.id); inventory.onChange(); } return false; }
+  s.wear = (s.wear ?? 0) + n;
+  return true;
+}
+// What's in hand, as far as digging goes: a flat jackhammer is no better than your bare hands.
+function toolHeld() {
+  const s = inventory.held();
+  return s && chargeCap(s.id) && !hasCharge(s) ? 0 : s?.id ?? 0;
+}
+function switchHandLamp(s) {
+  if (!s.on && !hasCharge(s)) { toast('The portable lamp is flat: charge it in a battery charger', 2000); return; }
+  s.on = !s.on;
+  sound.click();
+  toast(s.on ? 'Portable lamp on: it lights your way wherever you carry it' : 'Portable lamp off', 1500);
+  inventory.onChange();
+}
+function tickBatteryGear(dt) {
+  // the jetpack (worn in place of a chestplate) thrusts while you hold jump in the air
+  const jet = armour[1] === JETPACK ? { id: JETPACK, ...(armourWear[1] ? { wear: armourWear[1] } : {}) } : null;
+  if (jet && player.thrusting && !drawCharge(jet, CHARGE_USE.jetpack * dt)) toast('Your jetpack has run flat', 1500);
+  if (jet) armourWear[1] = jet.wear ?? 0;
+  player.jetpack = !!jet && hasCharge(jet);
+  // a portable lamp that's switched on lights the way from anywhere in your inventory
+  const lamp = inventory.slots.find((s) => s?.id === PORTABLE_LAMP && s.on);
+  let shine = 0;
+  if (lamp) {
+    if (drawCharge(lamp, CHARGE_USE.lamp * dt)) shine = 0.95;
+    else { lamp.on = false; toast('Your portable lamp has run flat', 2000); inventory.onChange(); }
+  }
+  lightUniforms.uHand.value.set(player.pos.x, player.pos.y + 1.4, player.pos.z, shine);
+  // (redraw the charge bars now and then while things are using it)
+  if ((jet && player.thrusting) || lamp) { if ((chargeShown -= dt) <= 0) { chargeShown = 1; inventory.onChange(); } }
 }
 function useAnvil() {
   const s = inventory.held();
@@ -2016,6 +2098,7 @@ function useLogic(x, y, z, d) {
   if (d.logic === 'delay') { toast(`Delay block: passes its signal on after ${logic.cycleDelay(x, y, z)} s`, 2000); return; }
   if (d.logic === 'latch') { setSwitch(x, y, z, !d.on); toast(`Latch: ${d.on ? 'off' : 'on'} (flips each time its signal comes on)`, 2000); return; }
   if (d.logic === 'inverter') { toast(`Inverter: ${d.on ? 'on: it gets no signal' : 'off: it gets a signal'}`, 2000); return; }
+  if (d.electric) { toast(`Electrum wire: ${d.on ? 'carrying a signal' : 'no signal'}. ${electric.statusAt(x, y, z)}`, 2500); return; }
   toast(`Copper wire: ${d.on ? 'carrying a signal' : 'no signal'}`, 1500);
 }
 
@@ -2327,6 +2410,12 @@ function place() {
       toast(full ? 'Storage gauge: signals when what it watches is full' : 'Storage gauge: signals while what it watches holds anything', 2500);
       return;
     }
+    if (BLOCKS[tid].electric && !(held && isBlock(held.id))) {
+      // a generator or an electric lamp: how its electricity is doing
+      const gen = BLOCKS[tid].electric.role === 'gen';
+      toast(`${BLOCKS[tid].name}: ${electric.statusAt(tx, ty, tz)}${gen ? `. Its shaft: ${kinetics.statusAt(tx, ty, tz)}` : ''}`, 3000);
+      return;
+    }
     if (BLOCKS[tid].machine || BLOCKS[tid].kinetic) {
       // tap a machine (or a wheel or windmill) to see how it's running
       const what = BLOCKS[tid];
@@ -2346,6 +2435,7 @@ function place() {
   if (held?.id === LEAD_BUCKET || held?.id === LAVA_BUCKET) { useLeadBucket(held.id); return; }
   if (held && (foodValue(held.id) || ITEMS[held.id]?.drink)) { eat(held.id); return; }
   if (held && ITEMS[held.id]?.tea) { drinkTea(held.id); return; }
+  if (held?.id === PORTABLE_LAMP) { switchHandLamp(held); return; }
   if (held && ITEMS[held.id]?.armour) { wearHeld(); return; }
   if (!target || !held) return;
   // ladders and scaffolding tapped with more of the same grow upward from the top of the column
@@ -2463,13 +2553,14 @@ function place() {
     sound.place('stone');
     inventory.consumeHeld();
     return;
-  } else if (id === WIRE || id === INVERTER || id === DELAY || id === LATCH || id === DETECTOR_RAIL) {
+  } else if (id === WIRE || id === ELECTRUM_WIRE || id === INVERTER || id === DELAY || id === LATCH || id === DETECTOR_RAIL) {
     // wire and logic blocks lie on top of a block; logic blocks pass their signal on the way you're looking
     if (there !== AIR || target.ny !== 1 || !BLOCKS[target.id].solid || BLOCKS[target.id].shape !== 'cube') {
-      toast(`${BLOCKS[id].name}${id === WIRE ? '' : 's'} go${id === WIRE ? 'es' : ''} on top of a full block`); return;
+      const wire = id === WIRE || id === ELECTRUM_WIRE;
+      toast(`${BLOCKS[id].name}${wire ? '' : 's'} go${wire ? 'es' : ''} on top of a full block`); return;
     }
     if (id === DETECTOR_RAIL) id += facingTowardPlayer(x, z) % 2;
-    else if (id !== WIRE) id += (facingTowardPlayer(x, z) + 2) % 4;
+    else if (id !== WIRE && id !== ELECTRUM_WIRE) id += (facingTowardPlayer(x, z) + 2) % 4;
     world.setBlock(x, y, z, id);
     logic.near(world, x, y, z);
     signalChanged(x, y, z);
@@ -2504,7 +2595,7 @@ function place() {
     if (there !== AIR || !world.isSolid(x, y - 1, z)) { toast(`${BLOCKS[id].name}s need something solid underneath`); return; }
   } else {
     // chairs face you; curtains hang across your line of sight
-    if ([CHAIR, OVEN, SMELTER, BLAST_SMELTER, CRUSHER, CHEST, IRON_CHEST, SAW, TRIP_HAMMER].includes(id)) id += facingTowardPlayer(x, z); // the front faces you
+    if ([CHAIR, OVEN, SMELTER, BLAST_SMELTER, CRUSHER, PULVERIZER, CHEST, IRON_CHEST, SAW, TRIP_HAMMER].includes(id)) id += facingTowardPlayer(x, z); // the front faces you
     else if (id === DRILL) id += player.pitch < -0.75 ? 4 : (facingTowardPlayer(x, z) + 2) % 4; // drills the way you're looking
     else if ([OBSERVER, GAUGE, HARVESTER, EJECTOR, TREE_FELLER, PLANTER, BREAKER, PLACER].includes(id)) id += (facingTowardPlayer(x, z) + 2) % 4; // looks (or reaps) the way you're looking
     else if (id === STEAM_ENGINE || id === ANIMAL_STATION) id += facingTowardPlayer(x, z); // its firebox door faces you
@@ -2721,7 +2812,7 @@ function updateBreaking(dt) {
   }
   const key = `${target.x},${target.y},${target.z}`;
   if (key !== breakState.key) { breakState.key = key; breakState.progress = 0; }
-  const held = inventory.heldId();
+  const held = toolHeld();
   const t = breakTime(target.id, held);
   if (!isFinite(t)) { crack.visible = false; return; }
   if (creative) breakState.progress += dt / 0.12; // creative: everything breaks at once (one block every so often)
@@ -2747,8 +2838,14 @@ function breakBlock(x, y, z) {
   const def = BLOCKS[id];
   if (!def || id === AIR) return;
   sound.breakBlock(def.sound);
-  let drops = dropsFor(id, inventory.heldId());
+  const tool = toolHeld();
+  let drops = dropsFor(id, tool);
   if (id === LOOT_CHEST) drops.push(...rollLoot());
+  if (tool === JACKHAMMER && def.hardness > 0) {
+    // the jackhammer uses a little charge for each block, and now and then shakes some dust off an ore as well
+    drawCharge(inventory.held(), CHARGE_USE.jackhammer);
+    if (drops.length && ORES.some((o) => o.id === id && o.ingot) && Math.random() < JACK_DUST) drops.push([oreDust(id), 1]);
+  }
   if (ITEMS[inventory.heldId()]?.tool?.type === def.tool && def.hardness > 0) wearOutHeld(1);
   if (isDoor(id)) {
     // either half takes the whole door with it
@@ -3498,6 +3595,7 @@ function stepGame(now, dt) {
     tickBoss(dt);
     tickHazards(dt);
     tickAilments(dt);
+    tickBatteryGear(dt);
     renderBossBar();
     updateHunger(dt);
     updateHealth(dt, wasGround, prevY);
@@ -3532,6 +3630,7 @@ function stepGame(now, dt) {
   worldMap.draw();
   try {
     machines.tick(paused ? 0 : dt, world, kinetics, stations, { day: lightUniforms.uDay.value, flicker: lightUniforms.uFlicker.value, ambient: lightUniforms.uAmbient.value });
+    electric.update(paused ? 0 : dt, world, kinetics, stations, { setBlock: (x, y, z, id) => world.setBlock(x, y, z, id) });
     loose.update(paused || dead ? 0 : dt, world, {
       player, pickup: pickUpLoose, insert: (x, y, z, id, n) => machines.insert(world, stations, x, y, z, id, n, false),
       light: { day: lightUniforms.uDay.value, flicker: lightUniforms.uFlicker.value, ambient: lightUniforms.uAmbient.value },
@@ -3605,7 +3704,7 @@ window.minicraft = {
   get paused() { return paused; },
   get health() { return health; }, set health(v) { health = v; renderHealth(); },
   get poisoned() { return poisoned; }, get dead() { return dead; }, get air() { return air; }, set air(v) { air = v; },
-  arrows, fishing, kinetics, bees, catchAt, seasonOf, applySeason, set day(v) { day = v; applySeason(); }, frames, signalAt, setSwitch, logic, machines, carts, minimap, signs, armour, damage, placeRail, getInCart, getOutOfCart,
+  arrows, fishing, kinetics, electric, lightUniforms, bees, catchAt, seasonOf, applySeason, set day(v) { day = v; applySeason(); }, frames, signalAt, setSwitch, logic, machines, carts, minimap, signs, armour, damage, placeRail, getInCart, getOutOfCart,
   get riding() { return riding; }, explode, lightFuse, fuses, clockTime, compassText, place, editSign, closeSign, openInventory, closeInventory, chestMove, lamps, tickLamps, sleepUntilMorning, stations, openStation, closeStation,
   get caneToday() { return caneToday; }, get creative() { return creative; }, set creative(v) { creative = v; applyCreative(); }, toggleFly, wand, useWand, get achieved() { return achieved; }, achieve, worldMap, openMap, closeMap, openGuide, switchSlot, store, saveGame, renderWorlds, openWorlds, exportSlot, get target() { return target; }, set target(v) { target = v; }, applyKeys, renderKeys, camera, get controls() { return controls; }, loose, throwHeld, get waypoints() { return waypoints; }, toggleWaypoint, sortSlots, weather, openTrade, closeTrade, mountMob, dismount, get ridingMob() { return ridingMob; }, effects, armourWear, useAnvil, rollLoot, settings,
   get bedSpawn() { return bedSpawn; }, paintings, placeSwitchRail, signalAt, ailments, armourEnch, openAltar, lairNear, useBed, eat, drinkTea,
