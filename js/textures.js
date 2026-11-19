@@ -17,7 +17,7 @@ import {
   SUN_SCARAB, FROST_HEART, EMBER_CORE, SUN_MASK, FROST_CIRCLET, EMBER_CROWN, HONEY_TEA, MUSHROOM_STEW, FISH_PIE, COPY_WAND,
   CRYSTAL_SHARD, HONEY_BOTTLE, HONEYCOMB, SALMON, BAKED_SALMON, ICEFISH, BAKED_ICEFISH, PUFFERFISH, OLD_BOOT,
   BATTERY, PORTABLE_LAMP, JACKHAMMER, JETPACK, ELECTRIC_DRILL, HOVER_BOOTS, NV_GOGGLES, MAGNET_RING, WIND_TURBINE, NICKEL_INGOT, CUPRONICKEL_INGOT,
-  ELECTRIC_RAIL, CHAINSAW, SAWDUST, BOOK, BACKPACK, BIG_BACKPACK, HUGE_BACKPACK, SPANNER, GRAPPLE, URANIUM_INGOT, FUEL_ROD, JOURNAL, FERTILISER, SPENT_ROD, ENRICHED_URANIUM, ENRICHED_ROD, hazmatId, INVAR_INGOT, RAIL_STATION, BOAT, BALLOON, ZIP_LINE, METEORIC_IRON, STARSTEEL_INGOT, starsteelTool, EGG, FRIED_EGG, SADDLE, TRUFFLE, FLOWER_POT, HANGING_PLANT, WINDOW_BOX, APPLE, CHERRIES, ORANGE_FRUIT, APPLE_PIE, CHERRY_PIE, FRUIT_SALAD, ORANGE_JUICE, FISH_SOUP, TRUFFLE_SOUP, BERRY_JAM, COOK_POT, SCARECROW, EXPLORER_MAP, TREASURE_MAP, BEESWAX, CABLE_CAR, COIN, CARROT, POTATO, BAKED_POTATO, PUMPKIN_SEEDS, PUMPKIN_PIE, GRAPES, GRAPE_JUICE, WINE, FINE_WINE, CURDS, CHEESE, AGED_CHEESE, DIVING_HELMET, FLIPPERS, PEARL,
+  ELECTRIC_RAIL, CHAINSAW, SAWDUST, BOOK, BACKPACK, BIG_BACKPACK, HUGE_BACKPACK, SPANNER, GRAPPLE, URANIUM_INGOT, FUEL_ROD, JOURNAL, FERTILISER, SPENT_ROD, ENRICHED_URANIUM, ENRICHED_ROD, hazmatId, INVAR_INGOT, RAIL_STATION, BOAT, BALLOON, ZIP_LINE, METEORIC_IRON, STARSTEEL_INGOT, starsteelTool, EGG, FRIED_EGG, SADDLE, TRUFFLE, FLOWER_POT, HANGING_PLANT, WINDOW_BOX, APPLE, CHERRIES, ORANGE_FRUIT, APPLE_PIE, CHERRY_PIE, FRUIT_SALAD, ORANGE_JUICE, FISH_SOUP, TRUFFLE_SOUP, BERRY_JAM, COOK_POT, SCARECROW, EXPLORER_MAP, TREASURE_MAP, BEESWAX, CABLE_CAR, COIN, CARROT, POTATO, BAKED_POTATO, PUMPKIN_SEEDS, PUMPKIN_PIE, GRAPES, GRAPE_JUICE, WINE, FINE_WINE, CURDS, CHEESE, AGED_CHEESE, DIVING_HELMET, FLIPPERS, PEARL, LOCOMOTIVE,
   SALTPETRE, GUNPOWDER, LEAD_SINKER, WEIGHTED_ROD, LEAD_BUCKET, LAVA_BUCKET, GOLD_CLOCK, COMPASS, SILVER_ARROW, MIRROR_LAMP,
 } from './blocks.js';
 
@@ -637,6 +637,21 @@ P[T.AIR_PUMP] = (t) => {
   for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) t.set(x, y, t.vary(x === 0 || x === 15 || y === 0 || y === 15 ? [90, 90, 96] : [150, 150, 158], 0.05));
   for (let y = 3; y < 13; y++) for (let x = 4; x < 12; x++) t.set(x, y, t.vary(y % 2 ? [110, 74, 44] : [140, 96, 58], 0.05)); // the bellows
   for (let x = 6; x < 10; x++) t.set(x, 2, [196, 120, 60]);
+};
+const radioFace = (lit) => (t) => {
+  for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) t.set(x, y, t.vary(x === 0 || x === 15 || y === 0 || y === 15 ? [70, 60, 50] : [150, 112, 70], 0.05));
+  for (let y = 3; y < 10; y++) for (let x = 2; x < 9; x++) t.set(x, y, (x + y) % 2 ? [60, 52, 44] : [90, 80, 66]); // the speaker grille
+  for (let y = 4; y < 7; y++) for (let x = 10; x < 14; x++) t.set(x, y, lit ? [255, 200, 90] : [96, 70, 40]); // the dial
+  t.set(12, 9, [200, 200, 200]); t.set(12, 11, [200, 200, 200]);
+};
+P[T.RADIO] = radioFace(false); P[T.RADIO_ON] = radioFace(true);
+P[T.SORTBOX] = (t) => {
+  for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) t.set(x, y, t.vary(x === 0 || x === 15 || y === 0 || y === 15 ? [80, 82, 90] : [140, 144, 152], 0.05));
+  for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) { const d = Math.hypot(x - 7.5, y - 7.5); if (d < 4.5) t.set(x, y, d > 3.4 ? [190, 160, 70] : [40, 40, 46]); }
+};
+P[T.SORTBOX_TOP] = (t) => {
+  P[T.SORTBOX](t);
+  for (const [x, y] of [[2, 2], [13, 2], [2, 13], [13, 13]]) t.set(x, y, [210, 60, 50]);
 };
 P[T.AWNING] = (t) => { for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) t.set(x, y, t.vary(Math.floor(x / 4) % 2 ? [240, 236, 224] : [200, 44, 44], 0.04)); };
 P[T.TUBE] = (t) => {
@@ -2376,6 +2391,13 @@ ITEM_PAINTERS[FLIPPERS] = (ctx) => {
 };
 ITEM_PAINTERS[PEARL] = (ctx) => {
   for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) { const d = Math.hypot(x - 7.5, y - 7.5); if (d < 4.5) px(ctx, x, y, d < 1.5 && x < 8 ? [255, 255, 255] : d > 3.6 ? [200, 196, 210] : [236, 232, 240]); }
+};
+// v26 F: a little green locomotive
+ITEM_PAINTERS[LOCOMOTIVE] = (ctx) => {
+  rect(ctx, 1, 6, 9, 5, [50, 120, 70]); rect(ctx, 9, 3, 5, 8, [170, 40, 40]); rect(ctx, 10, 4, 3, 3, [190, 220, 240]);
+  rect(ctx, 3, 2, 2, 4, [40, 40, 44]); rect(ctx, 0, 11, 15, 1, [60, 60, 66]);
+  for (const x of [2, 6, 11]) { rect(ctx, x, 12, 3, 3, [30, 30, 34]); px(ctx, x + 1, 13, [150, 150, 160]); }
+  px(ctx, 0, 8, [255, 230, 120]);
 };
 // v26: a silver coin
 ITEM_PAINTERS[COIN] = (ctx) => {

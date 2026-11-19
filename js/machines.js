@@ -127,6 +127,7 @@ export class Machines {
     this.counterN = new Map(); // item counter "x,y,z" -> how many things for each pulse (8 if not set)
     this.meterSpare = new Set(); // power meters set to signal when there's power to spare
     this.dayInvert = new Set(); // daylight sensors set to signal by day
+    this.radioCh = new Map(); // radio "x,y,z" -> channel 2..8 (1 isn't stored)
     this.quarries = new Map(); // "x,y,z" -> { i: cell in the layer, y: the layer, progress, held: [[id, n]], done, status }
     this.spawners = new Map(); // "x,y,z" -> seconds to its next creature
     this.pads = new Map(); // teleport pad "x,y,z" -> the "x,y,z" of its partner, or null while it waits for one
@@ -152,7 +153,7 @@ export class Machines {
     for (const items of this.lifts.values()) for (const it of items) this.dropSprite(it);
     this.lifts.clear();
     this.tanks.clear();
-    this.counts.clear(); this.counterN.clear(); this.meterSpare.clear(); this.dayInvert.clear();
+    this.counts.clear(); this.counterN.clear(); this.meterSpare.clear(); this.dayInvert.clear(); this.radioCh.clear();
     this.quarries.clear(); this.spawners.clear(); this.pads.clear(); this.progIndex.clear();
   }
 
@@ -201,6 +202,7 @@ export class Machines {
       return this.insert(world, stations, x + dir[0], y, z + dir[2], item, n, fuel, depth + 1, dir);
     }
     if (def.tube) return this.intoTube(world, stations, x, y, z, item, n, depth, dir);
+    if (def.sortbox) return this.intoSorter(world, stations, x, y, z, item, n, depth, dir);
     const kind = stationKind(bid);
     if (kind) {
       const K = STATION_KINDS[kind];
@@ -453,6 +455,9 @@ export class Machines {
   counterText(x, y, z) { const k = key(x, y, z); return `${this.counts.get(k) ?? 0} of ${this.counterN.get(k) ?? 8}`; }
 
   toggleMeter(x, y, z) { const k = key(x, y, z); if (this.meterSpare.has(k)) this.meterSpare.delete(k); else this.meterSpare.add(k); return this.meterSpare.has(k); }
+  // A radio's channel (1-8), and tapping it to step to the next.
+  radioChannel(x, y, z) { return this.radioCh.get(key(x, y, z)) ?? 1; }
+  nextChannel(x, y, z) { const c = this.radioChannel(x, y, z) % 8 + 1; if (c === 1) this.radioCh.delete(key(x, y, z)); else this.radioCh.set(key(x, y, z), c); return c; }
   toggleDaylight(x, y, z) { const k = key(x, y, z); if (this.dayInvert.has(k)) this.dayInvert.delete(k); else this.dayInvert.add(k); return this.dayInvert.has(k); }
 
   // A teleport pad was put down: it pairs with the oldest pad still waiting for a partner.
@@ -932,7 +937,17 @@ export class Machines {
     }
     if ((this.sensorTimer -= dt) > 0) return;
     this.sensorTimer = 0.1;
+    // radios: which channels a transmitter is sending on
+    const onAir = new Set();
+    for (const [x, y, z, def] of sensors) if (def.sensor === 'radiotx' && this.signalAt?.(x, y, z)) onAir.add(this.radioChannel(x, y, z));
+    this.onAir = onAir;
     for (const [x, y, z, def] of sensors) {
+      if (def.sensor === 'radiotx') continue;
+      if (def.sensor === 'radio') {
+        const want = onAir.has(this.radioChannel(x, y, z));
+        if (want !== def.on) this.onSwitch?.(x, y, z, want);
+        continue;
+      }
       const [dx, dz] = FACING_DIRS[def.facing];
       const fx = x + dx, fz = z + dz, k = key(x, y, z);
       if (def.sensor === 'observer') {
@@ -1071,7 +1086,7 @@ export class Machines {
         if (!def) continue;
         if (def.tube) { prev.set(ok, key(tx, ty, tz)); queue.push([ox, oy, oz]); continue; }
         if (def.hopper || def.crossing || (filter?.length && !filter.includes(id))) continue;
-        if (!stationKind(world.get(ox, oy, oz)) && !def.belt && !def.elevator && !def.rail?.loader) continue;
+        if (!stationKind(world.get(ox, oy, oz)) && !def.belt && !def.elevator && !def.rail?.loader && !def.sortbox) continue;
         const k = this.insert(world, stations, ox, oy, oz, item, n, false, depth + 1, [ex, ey, ez]);
         if (k <= 0) continue;
         // show it flying along the tubes
@@ -1079,6 +1094,29 @@ export class Machines {
         for (let at = key(tx, ty, tz); at; at = prev.get(at)) path.unshift(unkey(at));
         if (this.tubeFx.length < 40) this.tubeFx.push({ id, path, d: 0, sprite: null });
         return k;
+      }
+    }
+    return 0;
+  }
+
+  // A sorting machine: out along the tube (on any side but the one it came in by) whose item frames show it; or,
+  // failing that, along a tube with no frames.
+  intoSorter(world, stations, x, y, z, item, n, depth, dir) {
+    const id = idOf(item);
+    const D6 = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]];
+    const outs = [];
+    for (const [ex, ey, ez] of D6) {
+      if (dir && ex === -dir[0] && ey === -dir[1] && ez === -dir[2]) continue; // (not back the way it came)
+      const tx = x + ex, ty = y + ey, tz = z + ez;
+      if (!BLOCKS[world.get(tx, ty, tz)]?.tube) continue;
+      const filter = this.frames?.around(world, tx, ty, tz) ?? [];
+      outs.push({ t: [tx, ty, tz], d: [ex, ey, ez], match: filter.includes(id), open: !filter.length });
+    }
+    for (const want of ['match', 'open']) {
+      for (const o of outs) {
+        if (!o[want]) continue;
+        const k = this.intoTube(world, stations, ...o.t, item, n, depth + 1, o.d);
+        if (k > 0) return k;
       }
     }
     return 0;
@@ -1130,7 +1168,7 @@ export class Machines {
     this.ejectors.delete(k); this.ejectStacks.delete(k); this.split.delete(k); this.tanks.delete(k);
     for (const [id, n] of this.quarries.get(k)?.held ?? []) out.push([id, n]);
     this.quarries.delete(k); this.spawners.delete(k); this.counts.delete(k); this.counterN.delete(k);
-    this.meterSpare.delete(k); this.dayInvert.delete(k); this.progIndex.delete(k);
+    this.meterSpare.delete(k); this.dayInvert.delete(k); this.radioCh.delete(k); this.progIndex.delete(k);
     if (this.pads.has(k)) {
       // its partner waits for a new one
       const p = this.pads.get(k);
@@ -1168,6 +1206,7 @@ export class Machines {
       counters: [...new Set([...this.counts.keys(), ...this.counterN.keys()])].map((k) => [k, this.counts.get(k) ?? 0, this.counterN.get(k) ?? 8]),
       meterSpare: [...this.meterSpare],
       dayInvert: [...this.dayInvert],
+      radioCh: [...this.radioCh],
       quarries: [...this.quarries].map(([k, q]) => [k, q.i, q.y, q.done ? 1 : 0, q.held]),
       pads: [...this.pads],
       progIndex: [...this.progIndex].map(([k, p]) => [k, p.i, p.sig ? 1 : 0]),
@@ -1202,6 +1241,7 @@ export class Machines {
     }
     for (const k of o?.meterSpare ?? []) if (typeof k === 'string') this.meterSpare.add(k);
     for (const k of o?.dayInvert ?? []) if (typeof k === 'string') this.dayInvert.add(k);
+    for (const e of o?.radioCh ?? []) if (Array.isArray(e) && typeof e[0] === 'string' && e[1] >= 2 && e[1] <= 8) this.radioCh.set(e[0], e[1] | 0);
     for (const [k, i, y, done, held] of o?.quarries ?? []) {
       if (typeof k !== 'string') continue;
       this.quarries.set(k, { i: Math.max(0, i | 0), y: y | 0, done: !!done, progress: 0, status: '', held: Array.isArray(held) ? held.filter((h) => h?.[0] > 0 && h[1] > 0) : [] });

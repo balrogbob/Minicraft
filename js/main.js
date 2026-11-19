@@ -28,6 +28,7 @@ import {
   ELECTRIC_RAIL, LIFT, LIFT_REACH, WIRELESS_REACH, CHAINSAW, SAWDUST, SPANNER, GRAPPLE, isBackpack, kineticId, MELTDOWN, REACTOR_POWER, ROD_LIFE, BOOK,
   BOOKSHELF, JOURNAL, FERTILISER, SHELF_DISCOUNT, LEAD_CHEST, FREEZER, ARC_FURNACE, SPENT_ROD, RADIATION_REACH, hazmatId, TESLA_REACH, TESLA_DAMAGE, ELECTRIC_FENCE,
   RAIL_STATION, ZIP_POST, ZIP_LINE, ZIP_REACH, BOAT, BALLOON, CHARCOAL, METEORITE, METEORIC_IRON, metalSword, TRUFFLE,
+  RADIO_TX, RADIO_RX, SORTING_MACHINE, LOCOMOTIVE,
 } from './blocks.js';
 import { createAtlas, createIcons, createCrackCanvases, createWaterCanvas, createHudIcons, paintSeason } from './textures.js';
 import { World, CHUNK, WORLD_SIZE, chunkKey } from './world.js';
@@ -296,6 +297,13 @@ const signs = new Signs(scene); // what's written on each sign
 const machines = new Machines(scene, icons); // pumps, drills, hoppers and belts
 const loose = new ItemDrops(scene, (id) => machines.makeSprite(id)); // items lying on the ground
 const carts = new Carts(scene); // minecarts on rails
+carts.onLoco = (c, what) => {
+  const d = Math.hypot(c.pos.x - player.pos.x, c.pos.y - player.pos.y, c.pos.z - player.pos.z);
+  const g = riding === c ? 1 : Math.max(0, 1 - d / 40);
+  if (what === 'chuff') sound.chuff(g * 0.8);
+  else if (what === 'hoot') sound.hoot(g);
+  else if (what === 'couple') sound.place('stone');
+};
 const vehicles = new Vehicles(scene); // boats and balloons
 const crows = new Crows(scene); // after ripe wheat (see birds.js)
 const critters = new Critters(scene, sound); // owls, bats and fireflies
@@ -1023,7 +1031,11 @@ function showSlotTip(i) {
 }
 const capital = (t) => t.charAt(0).toUpperCase() + t.slice(1);
 function lookName() {
-  if (targetCart) return targetCart.cart.store ? 'Storage Cart' : 'Minecart';
+  if (targetCart) {
+    const c = targetCart.cart, l = c.loco;
+    if (l) return `Locomotive${l.burn > 0 || l.coal > 0 ? ` (coal: ${l.coal}${l.burn > 0 ? ` + ${Math.ceil(l.burn)}s` : ''})` : ' (no coal)'}${c.towed?.length ? `, pulling ${c.towed.length}` : ''}`;
+    return (c.store ? 'Storage Cart' : 'Minecart') + (c.tow ? ' (coupled)' : '');
+  }
   if (targetVehicle) return targetVehicle.v.kind === 'boat' ? 'Boat' : 'Hot-Air Balloon';
   if (targetMob) {
     const m = targetMob.mob;
@@ -3432,6 +3444,15 @@ function placeInner() {
   if (zipping) { letGoZip(); return; }
   if (targetCart) {
     const c = targetCart.cart;
+    if (c.loco && (held?.id === COAL || held?.id === CHARCOAL)) {
+      // stoke the locomotive's firebox
+      const n = held.count;
+      c.loco.coal += n; c.loco.running = true;
+      takeFromHeld(n);
+      sound.crackle(1);
+      toast(`The locomotive has ${c.loco.coal} coal${c.loco.burn > 0 ? ' and a fire going' : ''}`, 1800);
+      return;
+    }
     if (c.store) { sound.click(); openStation(c.x, c.y, c.z, c); } else getInCart(c);
     return;
   }
@@ -3441,6 +3462,13 @@ function placeInner() {
   if (held?.id === GRAPPLE && target?.id === ZIP_POST) { startZip(target.x, target.y, target.z); return; }
   if (held?.id === CABLE_CAR && target?.id === ZIP_POST) { startZip(target.x, target.y, target.z, true); return; }
   if (targetMob) { hitMob(); return; }
+  if (held?.id === LOCOMOTIVE && target && isRail(target.id)) {
+    if (carts.add(world, target.x, target.y, target.z, player.lookDir(), false, true)) {
+      inventory.consumeHeld(); sound.place('stone');
+      toast('Tap the locomotive with coal to fire it up', 2500);
+    }
+    return;
+  }
   if ((held?.id === MINECART || held?.id === STORAGE_CART) && target && isRail(target.id)) {
     if (carts.add(world, target.x, target.y, target.z, player.lookDir(), held.id === STORAGE_CART)) { inventory.consumeHeld(); sound.place('stone'); }
     return;
@@ -3469,6 +3497,12 @@ function placeInner() {
     if (isCurtain(tid)) { toggleCurtain(tx, ty, tz); return; }
     if (isGate(tid) || isTrapdoor(tid)) { toggleHatch(tx, ty, tz); return; }
     if (BLOCKS[tid].switch === 'lever') { setSwitch(tx, ty, tz, !BLOCKS[tid].on); return; }
+    if ((BLOCKS[tid].sensor === 'radio' || BLOCKS[tid].sensor === 'radiotx') && !(held && isBlock(held.id))) {
+      const ch = machines.nextChannel(tx, ty, tz);
+      sound.click();
+      toast(`${BLOCKS[tid].sensor === 'radio' ? 'Radio receiver' : 'Radio transmitter'}: channel ${ch}`, 1500);
+      return;
+    }
     if (BLOCKS[tid].logic && !(held && isBlock(held.id))) { useLogic(tx, ty, tz, BLOCKS[tid]); return; }
     if (BLOCKS[tid].switch === 'button') { setSwitch(tx, ty, tz, true); pressedButtons.set(lampKey(tx, ty, tz), 1.5); return; }
     if (isFrame(tid)) { useFrame(tx, ty, tz, held); return; }
@@ -4079,7 +4113,8 @@ function updateBreaking(dt) {
       carts.remove(c);
       targetCart = null;
       breakState.cart = 0;
-      giveDrops([[c.store ? STORAGE_CART : MINECART, 1], ...(c.store?.inputs ?? []).filter(Boolean).map((it) => [it.id, it.count])]);
+      giveDrops([[c.loco ? LOCOMOTIVE : c.store ? STORAGE_CART : MINECART, 1], ...(c.loco?.coal ? [[COAL, c.loco.coal]] : []),
+        ...(c.store?.inputs ?? []).filter(Boolean).map((it) => [it.id, it.count])]);
     }
     crack.visible = false;
     return;

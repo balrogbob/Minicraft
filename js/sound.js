@@ -123,6 +123,13 @@ export class Sound {
   // fire crackling
   crackle(gain = 1) { if (this.ready && gain > 0.01) this.noiseBurst({ type: 'bandpass', freq: 2400, q: 1.5, dur: 0.08, vol: 0.25 }, gain, 1 + Math.random() * 0.5); }
 
+  // a steam locomotive: a puff of steam, and its whistle
+  chuff(gain = 1) { if (this.ready && gain > 0.01) this.noiseBurst({ type: 'bandpass', freq: 700, q: 0.7, dur: 0.18, vol: 0.35 }, gain, 1); }
+  hoot(gain = 1) {
+    if (!this.ready || gain <= 0.01) return;
+    for (const [f, v] of [[587, 0.12], [740, 0.09], [880, 0.06]]) this.voice({ type: 'triangle', from: f, to: f * 0.99, dur: 0.9, vol: v * gain, freq: 3000, attack: 0.04 });
+  }
+
   // a village bell: a bright strike with a long ring
   ding(gain = 1) {
     if (!this.ready || gain <= 0.01) return;

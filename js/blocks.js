@@ -140,7 +140,7 @@ export const T = {
   LEAD_CHEST_SIDE: 267, LEAD_CHEST_TOP: 268, LEAD_CHEST_FRONT: 269, CENTRIFUGE_SIDE: 270, CENTRIFUGE_TOP: 271, TESLA: 272, TESLA_TOP: 273,
   FENCE_POST: 274, FENCE_WIRE: 275, FREEZER_SIDE: 276, FREEZER_FRONT: 277, ARC_SIDE: 278, ARC_FRONT: 279, PACKED_ICE: 280, INVAR: 281, RAIL_STOP: 282, BASALT: 283, BASALT_TOP: 284, METEORITE: 285,
   IRON_BARS: 286, POT: 287, IVY: 288, BOX_FLOWERS: 289,
-  FRUIT_LEAVES: 290, FRUIT_RIPE: 293, FRUIT_SAPLING: 296, HAY: 299, SACK: 300, BEACON: 301, APIARY_SIDE: 302, APIARY_FRONT: 303, APIARY_FULL: 304, APIARY_TOP: 305, BELT_CROSS: 306, FARM_CTRL: 307, FARM_CTRL_ON: 308, TUBE: 309, TUBE_END: 310, AWNING: 311, FIRE: 312, CARROT_0: 313, POTATO_0: 317, STEM_0: 321, PUMPKIN_SIDE: 324, PUMPKIN_TOP: 325, JACK_FACE: 326, TRELLIS: 327, VINE_0: 328, BARREL_SIDE: 331, BARREL_TOP: 332, CHEESE: 333, SEA_BRICK: 334, SEA_LANTERN: 335, VAULT: 336, SKY_STONE: 337, AIR_PUMP: 338, // (fruit tiles: apple, cherry, orange)
+  FRUIT_LEAVES: 290, FRUIT_RIPE: 293, FRUIT_SAPLING: 296, HAY: 299, SACK: 300, BEACON: 301, APIARY_SIDE: 302, APIARY_FRONT: 303, APIARY_FULL: 304, APIARY_TOP: 305, BELT_CROSS: 306, FARM_CTRL: 307, FARM_CTRL_ON: 308, TUBE: 309, TUBE_END: 310, AWNING: 311, FIRE: 312, CARROT_0: 313, POTATO_0: 317, STEM_0: 321, PUMPKIN_SIDE: 324, PUMPKIN_TOP: 325, JACK_FACE: 326, TRELLIS: 327, VINE_0: 328, BARREL_SIDE: 331, BARREL_TOP: 332, CHEESE: 333, SEA_BRICK: 334, SEA_LANTERN: 335, VAULT: 336, SKY_STONE: 337, AIR_PUMP: 338, RADIO: 339, RADIO_ON: 340, SORTBOX: 341, SORTBOX_TOP: 342, // (fruit tiles: apple, cherry, orange)
 };
 
 // Ores, deepest-reaching last. tier: the pickaxe tier needed to mine it (see TOOL_TIERS);
@@ -250,6 +250,7 @@ function block(id, o) {
     postTex: o.postTex ?? null, armTex: o.armTex ?? null, // a fence's own post and rail tiles (an electric fence)
     shock: !!o.shock, tesla: !!o.tesla, zip: !!o.zip, // v24: electric fences, tesla coils, zipline posts (see main.js)
     fruit: o.fruit ?? null, scarecrow: !!o.scarecrow, apiary: !!o.apiary, crossing: !!o.crossing, tube: !!o.tube, // v25: { kind, ripe } on a fruit tree's leaves; scarecrows keep crows off crops
+    sortbox: !!o.sortbox, // v26: a sorting machine (see machines.js)
     crop: o.crop ?? null, // v26: { kind, stage, ripe, seed } for the newer crops (carrots, potatoes, pumpkin vines, grapes)
     farm: o.farm ?? null, // 'feller' | 'planter' | 'breaker' | 'placer' | 'ranch' | 'net' (see machines.js)
   };
@@ -2508,4 +2509,32 @@ RECIPES.push(
   { out: [FLIPPERS, 1], in: [[LEATHER, 4], [SLIME_FUEL, 1]], table: true },
   { out: [AIR_PUMP, 1], in: [[IRON_INGOT, 4], [COPPER_INGOT, 2], [LEATHER, 2], [PIPE, 1]], table: true, metal: IRON_INGOT },
   { out: [SEA_LANTERN, 1], in: [[GLASS, 2], [PEARL, 1]], table: true },
+);
+
+// ---------- v26 F: radios, the sorting machine, locomotives ----------
+// A radio transmitter sends the signal it's given on its channel (1-8: tap it to change); every receiver on the
+// same channel, anywhere in the loaded world, gives a signal. A sorting machine sends what goes into it out
+// along up to six pneumatic tubes: each tube with item frames hung on it takes what they show, and a tube with
+// none takes everything else. A locomotive burns coal and pulls the carts behind it along the rails, stopping
+// a moment at each rail station.
+export const RADIO_TX = 1373, RADIO_RX = 1374, SORTING_MACHINE = 1376; // 1375 = a receiver that's signalling
+export const LOCOMOTIVE = 1113;
+const radioModel = (lamp) => [
+  [2, 0, 2, 14, 8, 14, { side: lamp, top: T.IRON, bottom: T.IRON }],
+  [7.5, 8, 7.5, 8.5, 16, 8.5, T.IRON], [6.5, 15, 6.5, 9.5, 16, 9.5, T.IRON], // the aerial
+];
+block(RADIO_TX, { name: 'Radio Transmitter', sound: 'metal', hardness: 1.5, tool: 'pick', transparent: true, sensor: 'radiotx', model: radioModel(T.RADIO), boxes: [[2, 0, 2, 14, 8, 14]] });
+for (let k = 0; k < 2; k++) {
+  block(RADIO_RX + k, {
+    name: 'Radio Receiver', sound: 'metal', hardness: 1.5, tool: 'pick', transparent: true, sensor: 'radio', switch: 'radio', on: !!k, flip: RADIO_RX + 1 - k,
+    light: k ? 5 : 0, model: radioModel(k ? T.RADIO_ON : T.RADIO), boxes: [[2, 0, 2, 14, 8, 14]], variantOf: k ? RADIO_RX : 0, drop: RADIO_RX,
+  });
+}
+block(SORTING_MACHINE, { name: 'Sorting Machine', sound: 'metal', hardness: 2, tool: 'pick', side: T.SORTBOX, top: T.SORTBOX_TOP, bottom: T.SORTBOX_TOP, sortbox: true });
+ITEMS[LOCOMOTIVE] = { name: 'Locomotive', stack: 1, about: 'put it on a rail and tap it with coal: it pulls the carts behind it' };
+RECIPES.push(
+  { out: [RADIO_TX, 1], in: [[COPPER_INGOT, 3], [WIRE, 2], [GLASS, 1]], table: true, metal: COPPER_INGOT },
+  { out: [RADIO_RX, 1], in: [[COPPER_INGOT, 3], [WIRE, 2], [GLASS, 1]], table: true, metal: COPPER_INGOT },
+  { out: [SORTING_MACHINE, 1], in: [[TUBE, 3], [IRON_INGOT, 3], [ITEM_FRAME, 1]], table: true, metal: IRON_INGOT },
+  { out: [LOCOMOTIVE, 1], in: [[MINECART, 1], [IRON_INGOT, 6], [STEAM_ENGINE, 1]], table: true, metal: IRON_INGOT },
 );
