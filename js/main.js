@@ -22,7 +22,7 @@ import {
   TINTS, WALL, LANTERN, HANGING_LANTERN, CHANDELIER, PAINTING, ART, isWall,
   ENCHANT_ALTAR, LAIRS, ENCHANTS, hasEnch, HONEY_TEA, CRYSTAL_BLOCK, SUN_SCARAB, FROST_HEART, EMBER_CORE, OBSIDIAN, SANDSTONE,
   STICK, STRING, PAPER, CAKE, COOKIE, LEATHER, FISHING_ROD as ROD, WEIGHTED_ROD as WROD, SEEDS, FLOUR, BUTTER, COPY_WAND,
-  WIRE, INVERTER, DELAY, LATCH, DETECTOR_RAIL, EJECTOR, COLLECTOR, BELT_SPLITTER, BELT_SORTER,
+  WIRE, INVERTER, DELAY, LATCH, DETECTOR_RAIL, DRIVE_BELT, EJECTOR, COLLECTOR, BELT_SPLITTER, BELT_SORTER,
 } from './blocks.js';
 import { createAtlas, createIcons, createCrackCanvases, createWaterCanvas, createHudIcons, paintSeason } from './textures.js';
 import { World, CHUNK, WORLD_SIZE, chunkKey } from './world.js';
@@ -335,6 +335,8 @@ async function startWorld(save, opts = {}) {
   };
   mobs.reset(world); bees.clear(); shownSeason = -1;
   kinetics.clear();
+  kinetics.load(save?.kinetics);
+  beltStart = null;
   for (const [k, f] of fuses) removeFuse(k, f);
   signs.load(save?.signs);
   frames.load(save?.frames);
@@ -465,6 +467,7 @@ function saveGame() {
     frames: frames.serialize(),
     machines: machines.serialize(),
     logic: logic.serialize(),
+    kinetics: kinetics.serialize(),
     carts: carts.serialize(),
     armour: [...armour],
     armourWear: [...armourWear],
@@ -1926,7 +1929,7 @@ function feeds(x, y, z, nx, ny, nz, noWire) {
     // a logic block only signals the block in front of it
     if (d.directed) return nx + FACING_DIRS[d.facing][0] === x && ny === y && nz + FACING_DIRS[d.facing][1] === z;
     // (an observer or gauge doesn't power the block it's watching, or it would set itself off again)
-    return !(d.sensor && nx + FACING_DIRS[d.facing][0] === x && ny === y && nz + FACING_DIRS[d.facing][1] === z);
+    return !((d.sensor === 'observer' || d.sensor === 'gauge') && nx + FACING_DIRS[d.facing][0] === x && ny === y && nz + FACING_DIRS[d.facing][1] === z);
   }
   if (!d?.solid || d.shape !== 'cube') return false;
   // a switch fixed to this block passes its signal through it
@@ -1981,6 +1984,21 @@ function signalChanged(x, y, z) {
       if (on !== d.open) toggleDoor(cx, cy, cz, true);
     }
   }
+}
+
+// A drive belt: tap a shaft or gear, then another on a parallel axle, to link them.
+let beltStart = null;
+function useDriveBelt() {
+  if (!target || !BLOCKS[target.id].kinetic) { toast('Tap a shaft or gear, then another one, to link them with the drive belt'); beltStart = null; return; }
+  const here = [target.x, target.y, target.z];
+  if (!beltStart || beltStart.join() === here.join()) { beltStart = here; sound.click(); toast('Now tap the shaft or gear to link it to (up to 8 blocks away)', 2500); return; }
+  const why = kinetics.canBelt(beltStart, here);
+  if (why) { toast(why, 2500); beltStart = null; return; }
+  kinetics.addBelt(beltStart, here);
+  beltStart = null;
+  inventory.consumeHeld();
+  sound.place('wool');
+  toast('Linked with a drive belt', 1500);
 }
 
 // Tap a logic block: a delay block goes on to its next setting, a latch flips over, and the others say
@@ -2197,6 +2215,7 @@ function place() {
     return;
   }
   if (held?.id === COPY_WAND) { useWand(); return; }
+  if (held?.id === DRIVE_BELT) { useDriveBelt(); return; }
   // tap a belt or hopper with an item (not a block, or a tool) to put it in: one on a belt, the lot into a hopper
   if (target && held && !isBlock(held.id) && !ITEMS[held.id]?.tool && !held.wear && !held.ench?.length && (BLOCKS[target.id].belt || BLOCKS[target.id].hopper || BLOCKS[target.id].elevator)) {
     const n = machines.insert(world, stations, target.x, target.y, target.z, held.id, BLOCKS[target.id].belt ? 1 : held.count, false);
@@ -3477,6 +3496,7 @@ function stepGame(now, dt) {
   if (world.unsaved.size !== unsavedCount) { unsavedCount = world.unsaved.size; lastEditAt = now; }
   if (unsavedCount && now - lastEditAt > 1500 && worldReady) { world.saveChunks(); unsavedCount = 0; }
   kinetics.update(paused ? 0 : dt, world, { day: lightUniforms.uDay.value, flicker: lightUniforms.uFlicker.value, ambient: lightUniforms.uAmbient.value });
+  for (const [x, y, z] of kinetics.dropped.splice(0)) loose.spawn({ id: DRIVE_BELT, count: 1 }, { x: x + 0.5, y: y + 0.5, z: z + 0.5 }, { x: 0, y: 2, z: 0 }, 0.5); // a drive belt that came off
   tickBlasts(dt);
   minimap.show(!paused && inventory.heldId() === MAP);
   minimap.update(world, player, bedSpawn ?? (world.spawnCache ??= world.generator.findSpawn()), waypoints);

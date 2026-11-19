@@ -12,7 +12,7 @@ import {
   PLATE_METALS, PLATES,
   PIPE, SPOUT, BELT, HOPPER, WINDMILL, FILAMENT, DRILL_BIT,
   RAIL, POWERED_RAIL, CACTUS, MINECART, MAP, PAPER,
-  COLORS, DYE, CLUTCH, STORAGE_CART, LOADER_RAIL, SWITCH_RAIL, PAINTED_DOOR, PAINTING,
+  COLORS, DYE, CLUTCH, DRIVE_BELT, FLYWHEEL, GEAR_SHIFT, STORAGE_CART, LOADER_RAIL, SWITCH_RAIL, PAINTED_DOOR, PAINTING,
   BERRIES, GLASS_BOTTLE, NIGHT_TEA, HASTE_TEA, FIRE_TEA, HEAL_TEA, WOOD_SHIELD, IRON_SHIELD, KING_CROWN,
   SUN_SCARAB, FROST_HEART, EMBER_CORE, SUN_MASK, FROST_CIRCLET, EMBER_CROWN, HONEY_TEA, MUSHROOM_STEW, FISH_PIE, COPY_WAND,
   CRYSTAL_SHARD, HONEY_BOTTLE, HONEYCOMB, SALMON, BAKED_SALMON, ICEFISH, BAKED_ICEFISH, PUFFERFISH, OLD_BOOT,
@@ -1706,6 +1706,21 @@ ITEM_PAINTERS[COPY_WAND] = (ctx) => {
 ITEM_PAINTERS[CLUTCH] = (ctx) => {
   rect(ctx, 0, 7, 16, 3, [150, 150, 150]); rect(ctx, 0, 7, 16, 1, [180, 180, 180]);
   rect(ctx, 5, 3, 6, 11, IRON_C); rect(ctx, 7, 2, 2, 13, [104, 110, 134]); rect(ctx, 5, 3, 6, 1, [160, 164, 172]);
+};
+ITEM_PAINTERS[FLYWHEEL] = (ctx) => {
+  rect(ctx, 0, 7, 16, 3, [150, 150, 150]);
+  rect(ctx, 5, 0, 6, 16, [110, 110, 114]); rect(ctx, 6, 1, 4, 14, [140, 140, 146]); rect(ctx, 7, 6, 2, 4, [80, 80, 86]);
+};
+ITEM_PAINTERS[GEAR_SHIFT] = (ctx) => {
+  rect(ctx, 0, 7, 16, 3, [150, 150, 150]);
+  rect(ctx, 3, 4, 3, 9, [130, 130, 136]); rect(ctx, 9, 1, 3, 15, [130, 130, 136]); rect(ctx, 6, 6, 3, 5, IRON_C);
+  for (const y of [2, 5, 11, 14]) px(ctx, 12, y, [170, 170, 176]);
+};
+ITEM_PAINTERS[DRIVE_BELT] = (ctx) => {
+  for (let i = 0; i < 16; i++) {
+    const a = (i / 16) * Math.PI * 2;
+    rect(ctx, Math.round(7.5 + Math.cos(a) * 6), Math.round(7.5 + Math.sin(a) * 4), 2, 2, i % 2 ? [92, 62, 40] : [120, 84, 54]);
+  }
 };
 ITEM_PAINTERS[STORAGE_CART] = (ctx) => {
   ITEM_PAINTERS[MINECART](ctx);

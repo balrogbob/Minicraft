@@ -199,7 +199,7 @@ export class Machines {
 
   tick(dt, world, kinetics, stations, light) {
     // gather the machines in the loaded world
-    this.world = world;
+    this.world = world; this.kinetics = kinetics;
     const pumps = [], drills = [], lamps = [], hoppers = [], sensors = [], harvesters = [], engines = [], ejectors = [], collectors = [];
     for (const c of world.chunks.values()) {
       for (const li of c.machines) {
@@ -543,6 +543,10 @@ export class Machines {
         const now = world.get(fx, y, fz), was = this.seen.get(k);
         this.seen.set(k, now);
         if (was !== undefined && was !== now && !this.pulses.has(k)) { this.pulses.set(k, PULSE); this.onSwitch?.(x, y, z, true); }
+      } else if (def.sensor === 'tacho') {
+        // a tachometer signals while its network is stopped or overloaded
+        const want = !(this.kinetics?.powerAt(x, y, z) > 0);
+        if (want !== def.on) this.onSwitch?.(x, y, z, want);
       } else {
         const want = this.holds(world, stations, fx, y, fz, this.gaugeFull.has(k));
         if (want !== def.on) this.onSwitch?.(x, y, z, want);

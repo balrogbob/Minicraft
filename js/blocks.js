@@ -1620,3 +1620,40 @@ RECIPES.push(
   { out: [ELEVATOR, 4], in: [[PLANKS, 4], [BUCKET, 1], [LEATHER, 2]], table: true, metal: LEATHER },
   { out: [AUTO_CRAFTER, 1], in: [[TABLE, 1], [IRON_INGOT, 4], [kineticId('gear', 1), 1]], table: true, metal: IRON_INGOT },
 );
+
+// ---------- power: drive belts, flywheels, tachometers and gear shifts ----------
+// A drive belt (an item) links two shafts or gears on parallel axles up to 8 blocks apart: tap one with it,
+// then the other, and they turn together. A flywheel joins up like a shaft and stores spin while the
+// network has power to spare, then gives it back when the power drops, so a network keeps running for a
+// while after its wheels stop. A tachometer, driven like a machine (it takes no load), shows the speed
+// and load when you tap it, and gives a signal while its network is stopped or overloaded. A gear shift
+// joins like a shaft, but the far (+) end turns twice as fast as the near end while it gets a signal.
+export const DRIVE_BELT = 1030,
+  FLYWHEEL = 1150, // 1150..1152: + axis
+  GEAR_SHIFT = 1153, // 1153..1155: + axis
+  TACHOMETER = 1156; // 1157 = signalling
+export const BELT_REACH = 8;
+ITEMS[DRIVE_BELT] = { name: 'Drive Belt', about: 'tap two shafts on parallel axles to link them' };
+for (let a = 0; a < 3; a++) {
+  block(FLYWHEEL + a, {
+    ...kineticShape, name: 'Flywheel', sound: 'stone', tool: 'pick', hardness: 2, variantOf: a ? FLYWHEEL : 0, drop: FLYWHEEL,
+    kinetic: { part: 'flywheel', mat: 1, axis: a },
+  });
+  block(GEAR_SHIFT + a, {
+    ...kineticShape, name: 'Gear Shift', sound: 'stone', tool: 'pick', hardness: 1.5, variantOf: a ? GEAR_SHIFT : 0, drop: GEAR_SHIFT,
+    kinetic: { part: 'shift', mat: 1, axis: a },
+  });
+}
+for (let k = 0; k < 2; k++) {
+  block(TACHOMETER + k, {
+    name: 'Tachometer', hardness: 1.5, tool: 'pick', sound: 'stone', side: k ? T.GAUGE_FACE_ON : T.GAUGE_FACE, top: T.IRON, bottom: T.IRON,
+    machine: { load: 0 }, sensor: 'tacho', switch: 'tacho', on: !!k, flip: TACHOMETER + 1 - k, light: k ? 4 : 0,
+    variantOf: k ? TACHOMETER : 0, drop: TACHOMETER,
+  });
+}
+RECIPES.push(
+  { out: [DRIVE_BELT, 1], in: [[LEATHER, 2], [STICK, 1]], table: true, metal: LEATHER },
+  { out: [FLYWHEEL, 1], in: [[STONE, 6], [IRON_INGOT, 2], [kineticId('shaft', 1), 1]], table: true, metal: IRON_INGOT },
+  { out: [GEAR_SHIFT, 1], in: [[kineticId('gear', 1), 2], [kineticId('large', 1), 1], [IRON_INGOT, 1]], table: true, metal: IRON_INGOT },
+  { out: [TACHOMETER, 1], in: [[COPPER_INGOT, 2], [GLASS, 1], [kineticId('shaft', 0), 1]], table: true, metal: COPPER_INGOT },
+);
