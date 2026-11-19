@@ -93,6 +93,10 @@ It is designed for Android tablets (touch controls) but also plays with keyboard
 - More automation: a **programmable crafter**, **item counters**, **teleport pads** (for things and for you) and a
   **quarry**; **monster spawners** in dungeons for mob farms; **nickel** and **cupronickel**; and a low hum from
   the machines working around you
+- Power and gear: **geothermal generators** beside lava, a **wireless charger**, **electric rails**, a **lift**
+  between floors, **uranium** and a **nuclear reactor** that needs cooling (or melts down), a **chainsaw** that
+  gives **sawdust** for **paper** and **books**, **backpacks** in three sizes, a **spanner** that turns machines and
+  picks them up with what's in them, a **grappling hook**, and **animal breeding**
 - **Three world slots** with export to a file and import, a **creative mode** (flying, every block, instant
   breaking and a **copy wand**), rebindable keys, a field-of-view slider, a full-screen **world map** with
   waypoints, and **22 achievements** with an in-game guide
@@ -271,6 +275,7 @@ Without a good enough pickaxe an ore breaks slowly and drops nothing.
 | Gold ore | 1–16 | iron-class | gold ingot |
 | Tungsten ore | 1–9 (deep) | stainless steel | tungsten ingot |
 | Nickel ore | 4–36 | copper-class | nickel ingot |
+| Uranium ore | 1–14 (deep) | stainless steel | uranium ingot (for fuel rods) |
 
 Alloys, made in the smelter (coal or charcoal here is an ingredient, not the fuel):
 
@@ -859,6 +864,29 @@ own colour. Hang a **painting** on a wall: it picks the biggest of eight picture
   hopper or belt. It takes 10 power, and half a second a block with all of it. It leaves machines, liquids and
   bedrock alone. Tap it to see how far it's got.
 
+#### Geothermal, wireless charging, electric rails and lifts
+
+- A **geothermal generator** (a generator, 4 obsidian, 2 stainless steel, a pipe) makes 2 power for every side of
+  it that touches lava, day and night.
+- A **wireless charger** (a battery charger, 2 crystal shards, 2 cupronickel, gold) tops up the battery-powered
+  things in your inventory while you're within 8 blocks of it, using 6 power while it charges.
+- **Electric rails** (6 from 6 powered rails and 2 electrum wire) speed carts along much faster than powered rails,
+  using 2 power each while a cart is on them.
+- A **lift** (4 stainless steel, an electric motor, 2 cupronickel, a pressure plate) carries you to the next lift
+  straight above or below it, up to 48 blocks, through floors. Stand on it and jump to go up, or sneak to go down.
+  It takes 4 power while it's carrying you.
+
+#### Uranium and the reactor
+
+**Uranium ore** is found deep down (Y 1–14) and needs a stainless steel pickaxe. Smelt it (or crush it first) for
+uranium ingots: 3 uranium and 2 stainless steel make a **fuel rod**, which lasts 10 minutes in a reactor.
+
+The **reactor** (8 stainless steel, 8 lead, 2 tungsten, 2 generators, 2 glass) holds up to 4 fuel rods and makes
+12 power for each. Each rod also heats it up. It cools itself a little, and much more for every side that touches
+water: a reactor with water round it runs cool. Tap it to see how hot it is. Above 70 it glows red and an alarm
+sounds; give it a signal (a lever, say) to stop it while it cools. Left at 100 it **melts down**: a huge explosion
+that leaves a pool of lava where it stood, taking its rods with it.
+
 #### Mob farms
 
 Every new dungeon has a **monster spawner** in a corner. While you're within 20 blocks it brings out a creature
@@ -868,6 +896,28 @@ falls where they die: walk them off a ledge or into cactus, and catch the drops 
 pickaxe (or better) takes a spawner with it.
 
 Machines make a low hum while they turn, and electric ones a faint buzz, so you can hear a busy workshop.
+
+### Tools and gear
+
+- The **chainsaw** (3 stainless steel, a battery, 2 electrum wire, 2 iron) cuts like the best axe and fells whole
+  trees, using 3 charge a log, and gives you **sawdust** as well as the logs.
+- 4 sawdust and a water bucket make 4 **paper** (you keep the bucket); 6 paper and a buffalo hide make a **book**,
+  which opens the guide.
+- **Backpacks** hold things you carry: a backpack (6 leather, 2 string) has 9 slots, an iron-framed one (8 leather,
+  4 iron, 2 string) 18, and a stainless steel one (8 leather, 4 stainless steel, 2 hides) 27. Tap with one in hand to
+  open it. A backpack can't go in a backpack.
+- The **spanner** (3 steel): tap a machine with it to turn it to face the next way; hold it on a machine to pick it
+  up with everything in it (and its charge), ready to put down somewhere else just as it was.
+- The **grappling hook** (3 iron, 8 string): tap with it in hand to shoot it at a block up to 24 away, and it pulls
+  you there and holds you. Jump to climb up onto the block, sneak or tap again to let go.
+
+### Animal breeding
+
+Feed two animals of the same kind their food and they look for a mate (hearts show over them): seeds for ducks,
+wheat for buffalo, alpacas, yaks and camels, berries for newts, and a fish for tame wolves. A young one appears,
+growing up over 5 minutes, and the pair won't breed again for 5 more. A baby of tame parents is tame. An **animal
+station** with 2 or more of a kind's food in it feeds pairs nearby, so a pen keeps itself stocked. Animals won't
+breed when there are 12 or more about.
 
 ### Worlds, creative mode, the map and achievements
 

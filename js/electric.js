@@ -10,12 +10,19 @@
 //  - each machine takes its draw (ELECTRIC_DRAW) while it has work: a lamp while it's on, a pulverizer or
 //    electric smelter while it has something to work on, a charger while what's in it isn't full, a motor
 //    while it has something to turn, a teleport pad while it isn't full, a quarry while it's digging;
-//  - grid batteries soak up what's spare (up to STORE_RATE each) and give it back when the network's short.
+//  - grid batteries soak up what's spare (up to STORE_RATE each) and give it back when the network's short;
+//  - a geothermal generator makes GEO_POWER for each face against lava; a reactor makes REACTOR_POWER for
+//    each fuel rod burning in it (none while it gets a signal: its control rods are in). A reactor heats up
+//    as its rods burn, and cools by itself a little and by each face it has against water; at MELTDOWN heat
+//    it blows up;
+//  - a wireless charger tops up the battery things you carry while you're near it, and electric rails and
+//    lifts take power while a cart is on them, or while they carry you.
 // When there's less than the machines want, everything runs on the share there is: a pulverizer works that
 // much slower, a charger fills that much slower, a motor gives that much less, and lamps go out below half.
 import {
   BLOCKS, GEN_POWER, ELECTRIC_LAMP, CHARGE_RATE, chargeCap, stationKind, MAX_LIGHT, SOLAR_POWER, STORE_CAP, STORE_RATE,
-  PAD_CAP, PAD_PLAYER, TELEPAD,
+  PAD_CAP, PAD_PLAYER, TELEPAD, LAVA, GEO_POWER, REACTOR, REACTOR_POWER, REACTOR_HEAT, REACTOR_COOL, WATER_COOL, REACTOR_HOT,
+  MELTDOWN, FUEL_ROD, ROD_LIFE,
 } from './blocks.js';
 import { STATION_KINDS } from './stations.js';
 import { CHUNK, SEA_LEVEL } from './terrain.js';
@@ -41,6 +48,7 @@ export class Electric {
     this.nets = []; // { supply, demand, share, gens, users, stores, stored, parts }
     this.store = new Map(); // grid battery or teleport pad "x,y,z" -> power-seconds held
     this.signalLamps = new Set(); // electric lamps switched to come on only with a signal
+    this.heat = new Map(); // reactor "x,y,z" -> heat (MELTDOWN blows it up)
     this.timer = 0;
     this.hooks = {};
   }
@@ -52,6 +60,8 @@ export class Electric {
     const said = this.hooks.wants?.(n);
     if (said !== undefined) return said;
     if (def.pad) return (this.store.get(k) ?? 0) < PAD_CAP;
+    if (n.wireless) return !!this.hooks.wireless?.(n, 0);
+    if (def.rail || def.lift) return false; // (main.js says when one's in use)
     if (def.kinetic) {
       // a motor: while there's something on its shafts to turn
       const m = kinetics.nodes.get(k);
@@ -65,7 +75,20 @@ export class Electric {
     return !!stations.recipeFor(st);
   }
 
-  made(n, world, kinetics) {
+  // How many fuel rods are burning in a reactor (none while it gets a signal).
+  rodsIn(n, stations) {
+    if (this.hooks.signalAt?.(n.x, n.y, n.z)) return 0;
+    const st = stations.map.get(key(n.x, n.y, n.z));
+    return st ? st.inputs.filter((s) => s?.id === FUEL_ROD && (s.wear ?? 0) < ROD_LIFE).length : 0;
+  }
+
+  made(n, world, kinetics, stations) {
+    if (n.geo) {
+      let faces = 0;
+      for (const [dx, dy, dz] of SIDES) if (world.get(n.x + dx, n.y + dy, n.z + dz) === LAVA) faces++;
+      return GEO_POWER * faces;
+    }
+    if (n.reactor) return REACTOR_POWER * this.rodsIn(n, stations);
     if (n.solar) {
       if (world.skyAt(n.x, n.y, n.z) < MAX_LIGHT - 1) return 0; // under a roof
       const day = Math.max(0, ((this.hooks.daylight?.() ?? 1) - 0.3) / 0.7);
@@ -92,6 +115,11 @@ export class Electric {
       const [x, , z] = k.split(',').map(Number);
       if (world.chunkAt(x, z)) this.store.delete(k);
     }
+    for (const k of this.heat.keys()) {
+      if (nodes.get(k)?.reactor) continue;
+      const [x, , z] = k.split(',').map(Number);
+      if (world.chunkAt(x, z)) this.heat.delete(k);
+    }
     const nets = [];
     for (const start of nodes.values()) {
       if (start.net !== null) continue;
@@ -116,7 +144,7 @@ export class Electric {
       }
       const stores = [];
       for (const n of net.parts) {
-        if (n.role === 'gen') { n.made = this.made(n, world, kinetics); net.supply += n.made; net.gens++; }
+        if (n.role === 'gen') { n.made = this.made(n, world, kinetics, stations); net.supply += n.made; net.gens++; }
         else if (n.role === 'use') { net.users++; n.want = this.wants(n, stations, kinetics); if (n.want) net.demand += n.draw; }
         else if (n.role === 'store') { stores.push(n); net.stores++; net.stored += this.store.get(key(n.x, n.y, n.z)) ?? 0; }
       }
@@ -167,11 +195,19 @@ export class Electric {
     const n = this.nodes.get(key(x, y, z));
     if (!n) return 'Not connected';
     const net = this.nets[n.net];
+    if (n.reactor) {
+      const heat = this.heat.get(key(x, y, z)) ?? 0;
+      if (heat >= REACTOR_HOT && n.made) return `Heat ${Math.round(heat / MELTDOWN * 100)}%! DANGER: cool it with more water, take rods out or give it a signal. Making ${fmt(n.made)} power`;
+      if (heat >= REACTOR_HOT) return `Heat ${Math.round(heat / MELTDOWN * 100)}%: stopped, and cooling down (water round it cools it faster)`;
+      if (!n.made) return `Heat ${Math.round(heat / MELTDOWN * 100)}%. ${this.hooks.signalAt?.(x, y, z) ? 'Stopped: a signal has its control rods in' : 'Idle: put fuel rods in'}`;
+    }
     if (n.role === 'gen' && !n.made) {
-      return n.solar ? 'Dark: a solar panel needs open sky and daylight' : n.wind ? 'Becalmed: a wind turbine needs the 8 blocks around it clear'
+      return n.geo ? 'Cold: a geothermal generator needs lava against it' : n.solar ? 'Dark: a solar panel needs open sky and daylight' : n.wind ? 'Becalmed: a wind turbine needs the 8 blocks around it clear'
         : 'Still: turn a shaft or gear against it to make electricity';
     }
-    let pre = n.role === 'gen' ? `Making ${fmt(n.made)} power. ` : '';
+    let pre = '';
+    if (n.reactor) pre = `Heat ${Math.round((this.heat.get(key(x, y, z)) ?? 0) / MELTDOWN * 100)}%. `;
+    if (n.role === 'gen') pre += `Making ${fmt(n.made)} power. `;
     if (n.role === 'store') {
       const e = this.store.get(key(x, y, z)) ?? 0;
       pre = `${Math.round(e / STORE_CAP * 100)}% full${n.flow > 1e-6 ? `, charging at ${fmt(n.flow)}` : n.flow < -1e-6 ? `, giving ${fmt(-n.flow)}` : ''}. `;
@@ -222,6 +258,8 @@ export class Electric {
         if (e >= PAD_CAP - 1e-6) n.want = false;
         continue;
       }
+      // wireless chargers fill what you carry
+      if (n.wireless) { if (!hooks.wireless?.(n, n.draw * share * CHARGE_RATE * dt)) n.want = false; continue; }
       // chargers fill what's in them
       if (stationKind(n.id) !== 'charger') continue;
       const s = stations.map.get(k)?.inputs[0];
@@ -229,6 +267,8 @@ export class Electric {
       s.wear = Math.max(0, s.wear - n.draw * share * CHARGE_RATE * dt);
       if (!s.wear) { delete s.wear; n.want = false; }
     }
+    // reactors burn their rods and heat up
+    for (const n of this.nodes.values()) if (n.reactor) this.tickReactor(n, dt, world, stations, hooks);
     // pads show when they've enough to send you
     for (const n of this.nodes.values()) {
       if (!BLOCKS[n.id].pad) continue;
@@ -237,8 +277,41 @@ export class Electric {
     }
   }
 
+  // A reactor's rods burn down while they make power, heating it; water touching it carries heat away.
+  // hooks.meltdown(x, y, z) when it gets too hot; hooks.alarm(x, y, z) every second or so while it's hot.
+  tickReactor(n, dt, world, stations, hooks) {
+    const k = key(n.x, n.y, n.z);
+    let rods = 0;
+    if (n.made > 0) {
+      const st = stations.map.get(k);
+      for (let i = 0; st && i < st.inputs.length; i++) {
+        const s = st.inputs[i];
+        if (s?.id !== FUEL_ROD) continue;
+        rods++;
+        s.wear = (s.wear ?? 0) + dt;
+        if (s.wear >= ROD_LIFE) { st.inputs[i] = null; this.timer = 0; } // burnt out
+      }
+    }
+    let water = 0;
+    for (const [dx, dy, dz] of SIDES) if (world.isWater(n.x + dx, n.y + dy, n.z + dz)) water++;
+    const heat = Math.max(0, (this.heat.get(k) ?? 0) + (rods * REACTOR_HEAT - REACTOR_COOL - water * WATER_COOL) * dt);
+    if (heat >= MELTDOWN) {
+      this.heat.delete(k);
+      this.timer = 0;
+      hooks.meltdown?.(n.x, n.y, n.z);
+      return;
+    }
+    if (heat > 0) this.heat.set(k, heat); else this.heat.delete(k);
+    const hot = heat >= REACTOR_HOT;
+    if (hot !== (n.id === REACTOR + 1)) { n.id = REACTOR + (hot ? 1 : 0); hooks.setBlock(n.x, n.y, n.z, n.id); }
+    if (hot && (n.alarm = (n.alarm ?? 0) - dt) <= 0) { n.alarm = 1; hooks.alarm?.(n.x, n.y, n.z, heat / MELTDOWN); }
+  }
+
   serialize() {
-    return { store: [...this.store].map(([k, v]) => [k, Math.round(v * 10) / 10]), signalLamps: [...this.signalLamps] };
+    return {
+      store: [...this.store].map(([k, v]) => [k, Math.round(v * 10) / 10]), signalLamps: [...this.signalLamps],
+      heat: [...this.heat].map(([k, v]) => [k, Math.round(v * 10) / 10]),
+    };
   }
 
   load(o) {
@@ -247,6 +320,10 @@ export class Electric {
       if (Array.isArray(e) && typeof e[0] === 'string' && Number.isFinite(e[1])) this.store.set(e[0], Math.max(0, Math.min(STORE_CAP, e[1])));
     }
     for (const k of Array.isArray(o?.signalLamps) ? o.signalLamps : []) if (typeof k === 'string') this.signalLamps.add(k);
+    this.heat.clear();
+    for (const e of Array.isArray(o?.heat) ? o.heat : []) {
+      if (Array.isArray(e) && typeof e[0] === 'string' && Number.isFinite(e[1])) this.heat.set(e[0], Math.max(0, Math.min(MELTDOWN - 1, e[1])));
+    }
     this.timer = 0;
   }
 }

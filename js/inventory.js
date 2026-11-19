@@ -52,7 +52,7 @@ export class Inventory {
 
   // Add a whole stack (keeping how worn it is). Returns how many did not fit.
   addItem(s) {
-    if (!s.wear && !s.ench) return this.add(s.id, s.count);
+    if (!s.wear && !s.ench && !s.pack) return this.add(s.id, s.count);
     const i = this.slots.findIndex((x) => !x);
     if (i < 0) return s.count;
     this.slots[i] = { ...s };
@@ -83,7 +83,7 @@ export class Inventory {
   moveSlot(a, b) {
     if (a === b) return;
     const A = this.slots[a], B = this.slots[b];
-    if (A && B && A.id === B.id) {
+    if (A && B && A.id === B.id && !A.pack && !B.pack) {
       const k = Math.min(A.count, maxStack(A.id) - B.count);
       B.count += k; A.count -= k;
       if (!A.count) this.slots[a] = null;
@@ -99,7 +99,7 @@ export class Inventory {
     if (!o || !Array.isArray(o.slots)) return;
     for (let i = 0; i < SLOTS; i++) {
       const s = o.slots[i];
-      this.slots[i] = s && s.id && s.count > 0 ? { id: s.id, count: s.count, ...(s.wear > 0 ? { wear: s.wear } : {}), ...(Array.isArray(s.ench) && s.ench.length ? { ench: s.ench.filter((e) => typeof e === 'string') } : {}) } : null;
+      this.slots[i] = s && s.id && s.count > 0 ? { id: s.id, count: s.count, ...(s.wear > 0 ? { wear: s.wear } : {}), ...(Array.isArray(s.ench) && s.ench.length ? { ench: s.ench.filter((e) => typeof e === 'string') } : {}), ...(s.on === true ? { on: true } : {}), ...(s.pack > 0 ? { pack: Math.floor(s.pack) } : {}) } : null;
     }
     this.selected = Math.min(8, Math.max(0, o.selected | 0));
     this.onChange();

@@ -134,6 +134,8 @@ export const T = {
   DAYSENSE_TOP: 238, DAYSENSE_TOP_ON: 239, ESMELT_FRONT: 240, ESMELT_SIDE: 241, NICKEL_ORE: 242, CABLE: 243, SPAWNER: 244,
   PCRAFT_TOP: 245, PCRAFT_SIDE: 246, COUNTER_FRONT: 247, COUNTER_FRONT_ON: 248, TELEPAD: 249, TELEPAD_ON: 250, QUARRY_FRONT: 251,
   QUARRY_SIDE: 252, TURBINE: 253,
+  GEO_SIDE: 254, GEO_TOP: 255, WCHARGE_SIDE: 256, WCHARGE_TOP: 257, ELEVATOR_TOP: 258, ELEVATOR_SIDE: 259, URANIUM_ORE: 260,
+  REACTOR_SIDE: 261, REACTOR_SIDE_HOT: 262, REACTOR_TOP: 263,
 };
 
 // Ores, deepest-reaching last. tier: the pickaxe tier needed to mine it (see TOOL_TIERS);
@@ -239,6 +241,7 @@ function block(id, o) {
     tank: !!o.tank, valve: !!o.valve, sprinkler: !!o.sprinkler, // liquids (see machines.js)
     electric: o.electric ?? null, // { role: 'wire' | 'cable' | 'gen' | 'use' | 'store' | 'meter', draw, speed, solar, wind }: joined up by electrum wire (see electric.js)
     spawner: !!o.spawner, counter: !!o.counter, quarry: !!o.quarry, pad: !!o.pad, // v22 machines (see machines.js)
+    lift: !!o.lift, reactor: !!o.reactor, // v23: lifts and reactors (see electric.js and main.js)
     farm: o.farm ?? null, // 'feller' | 'planter' | 'breaker' | 'placer' | 'ranch' | 'net' (see machines.js)
   };
 }
@@ -268,7 +271,7 @@ ORES.forEach((o, i) => block(o.id, {
   name: o.name, tex: T.ORE0 + i, hardness: o.hardness, tool: 'pick', needsTool: true, tier: o.tier,
   drop: o.drop ? () => [[o.drop, 1 + (Math.random() < 0.4 ? 1 : 0)]] : o.id,
 }));
-export const isOre = (id) => (id >= IRON_ORE && id <= TUNGSTEN_ORE) || id === NICKEL_ORE;
+export const isOre = (id) => (id >= IRON_ORE && id <= TUNGSTEN_ORE) || id === NICKEL_ORE || id === URANIUM_ORE;
 // cold and dry places
 block(SNOW_GRASS, { name: 'Snowy Grass', sound: 'grass', top: T.SNOW, bottom: T.DIRT, side: T.SNOW_GRASS_SIDE, hardness: 0.9, tool: 'shovel', drop: DIRT });
 block(SNOW, { name: 'Snow', sound: 'sand', tex: T.SNOW, hardness: 0.5, tool: 'shovel' });
@@ -529,9 +532,8 @@ export const RAIL_SHAPES = [
 ];
 export const POWERED_RAIL = RAIL + 10;
 const RAIL_IRON = T.IRON, TIE = T.PLANKS;
-function railModel({ ends, slope = -1, powered }) {
-  const boxes = [];
-  const rail = powered ? T.GOLD : RAIL_IRON;
+function railModel({ ends, slope = -1, powered }, metal) {
+  const rail = metal ?? (powered ? T.GOLD : RAIL_IRON);
   if (slope >= 0) {
     // a staircase of ties and rail pieces climbing toward +z, turned to face the slope
     const steps = [];
@@ -579,7 +581,9 @@ RAIL_SHAPES.forEach((shape, k) => {
   });
 });
 export const isRail = (id) => !!BLOCKS[id]?.rail;
+// powered: false, true (a shaft-driven powered rail) or 'electric' (an electric rail: see the v23 section)
 export const railId = (ends, slope = -1, powered = false) => {
+  if (powered === 'electric') return ELECTRIC_RAIL + (ends[0] % 2);
   if (powered) return POWERED_RAIL + (ends[0] % 2);
   const k = RAIL_SHAPES.findIndex((s) => !s.powered && (s.slope ?? -1) === slope &&
     ((s.ends[0] === ends[0] && s.ends[1] === ends[1]) || (s.ends[0] === ends[1] && s.ends[1] === ends[0])));
@@ -1930,4 +1934,91 @@ RECIPES.push(
   { out: [HOVER_BOOTS, 1], in: [[BATTERY, 1], [LEATHER, 4], [ALUMINIUM_INGOT, 2], [ELECTRUM_WIRE, 2]], table: true, metal: BATTERY },
   { out: [NV_GOGGLES, 1], in: [[BATTERY, 1], [GLASS, 2], [LEATHER, 2], [CRYSTAL_SHARD, 1]], table: true, metal: BATTERY },
   { out: [MAGNET_RING, 1], in: [[BATTERY, 1], [NICKEL_INGOT, 2], [IRON_INGOT, 2]], table: true, metal: NICKEL_INGOT },
+);
+
+// ---------- v23: geothermal power, wireless chargers, electric rails, lifts, uranium and reactors, gear ----------
+// A geothermal generator makes GEO_POWER for each face it has against lava. A wireless charger tops up the
+// battery things you carry while you're within WIRELESS_REACH of it. An electric rail is a powered rail run
+// off the grid instead of a shaft. A lift carries you up (jump) or down (sneak) to the next lift in the same
+// column. A reactor burns fuel rods (REACTOR_POWER each) and heats up as it does; water touching it cools
+// it, and a signal pushes its control rods in to stop it. If it gets to MELTDOWN heat, it blows up.
+export const GEOTHERMAL = 1240,
+  WIRELESS_CHARGER = 1241,
+  ELECTRIC_RAIL = 1242, // 1243 = along x
+  LIFT = 1244,
+  URANIUM_ORE = 1245,
+  REACTOR = 1246; // 1247 = running hot
+export const CHAINSAW = 1042, SAWDUST = 1043, BOOK = 1044, BACKPACK = 1045, BIG_BACKPACK = 1046, HUGE_BACKPACK = 1047,
+  SPANNER = 1048, GRAPPLE = 1049, URANIUM_INGOT = 1050, URANIUM_DUST = 1051, FUEL_ROD = 1052;
+Object.assign(ELECTRIC_DRAW, { wireless: 6, rail: 2, lift: 4 });
+Object.assign(CHARGE_USE, { chainsaw: 3 });
+export const GEO_POWER = 2; // for each face of a geothermal generator against lava
+export const WIRELESS_REACH = 8;
+export const LIFT_REACH = 48; // how far up or down a lift looks for the next one
+export const REACTOR_POWER = 12; // for each fuel rod burning in a reactor
+export const ROD_LIFE = 600; // seconds a fuel rod burns
+export const REACTOR_HEAT = 1.5; // heat a second from each burning rod
+export const REACTOR_COOL = 0.5, WATER_COOL = 1.2; // heat a second lost by itself, and to each face against water
+export const REACTOR_HOT = 70, MELTDOWN = 100;
+
+ORES.push({ id: URANIUM_ORE, name: 'Uranium Ore', ingot: URANIUM_INGOT, tier: 5, hardness: 5, y: [1, 14], chance: 0.02, color: [126, 214, 72], tile: T.URANIUM_ORE, dust: URANIUM_DUST, burn: 8 });
+block(URANIUM_ORE, { name: 'Uranium Ore', tex: T.URANIUM_ORE, hardness: 5, tool: 'pick', needsTool: true, tier: 5, light: 2 });
+ITEMS[URANIUM_INGOT] = { name: 'Uranium Ingot', ingot: true };
+ITEMS[URANIUM_DUST] = { name: 'Uranium Dust', dust: ORES[ORES.length - 1] };
+ITEMS[FUEL_ROD] = { name: 'Fuel Rod', stack: 1, wearMax: ROD_LIFE };
+
+block(GEOTHERMAL, { ...plain, name: 'Geothermal Generator', hardness: 3, side: T.GEO_SIDE, top: T.GEO_TOP, bottom: T.GEO_TOP, electric: { role: 'gen', geo: true } });
+block(WIRELESS_CHARGER, {
+  ...plain, name: 'Wireless Charger', side: T.WCHARGE_SIDE, top: T.WCHARGE_TOP, bottom: T.IRON, light: 2,
+  electric: { role: 'use', draw: ELECTRIC_DRAW.wireless, wireless: true },
+});
+for (let k = 0; k < 2; k++) {
+  const shape = { ends: k ? [1, 3] : [0, 2], powered: true };
+  block(ELECTRIC_RAIL + k, {
+    name: 'Electric Rail', sound: 'stone', transparent: true, solid: false, hardness: 0.7, tool: 'pick',
+    model: railModel(shape, T.ELECTRUM), rail: { ends: shape.ends, slope: -1, powered: true, electric: true },
+    variantOf: k ? ELECTRIC_RAIL : 0, drop: ELECTRIC_RAIL, electric: { role: 'use', draw: ELECTRIC_DRAW.rail },
+  });
+}
+block(LIFT, {
+  ...plain, name: 'Lift', side: T.ELEVATOR_SIDE, top: T.ELEVATOR_TOP, bottom: T.IRON, lift: true,
+  electric: { role: 'use', draw: ELECTRIC_DRAW.lift },
+});
+for (let k = 0; k < 2; k++) {
+  block(REACTOR + k, {
+    ...plain, name: 'Reactor', hardness: 6, side: k ? T.REACTOR_SIDE_HOT : T.REACTOR_SIDE, top: T.REACTOR_TOP, bottom: T.REACTOR_TOP,
+    station: 'reactor', reactor: true, blastproof: true, light: k ? 9 : 2, variantOf: k ? REACTOR : 0, drop: REACTOR,
+    electric: { role: 'gen', reactor: true },
+  });
+}
+
+// gear: the chainsaw (a battery axe that brings down a tree and gives sawdust besides), backpacks (hold
+// things, and carry them about: tap one to open it), the spanner (turns machines round, and takes them up
+// with what's inside them), the grappling hook (pulls you to the block it catches on) and the book (the guide)
+ITEMS[CHAINSAW] = { name: 'Chainsaw', stack: 1, charge: 1500, chainsaw: true, tool: { type: 'axe', speed: 14, tier: 5, damage: 5 } };
+ITEMS[SAWDUST] = { name: 'Sawdust' };
+ITEMS[BOOK] = { name: 'Book', stack: 16, book: true };
+ITEMS[BACKPACK] = { name: 'Leather Backpack', stack: 1, backpack: 9 };
+ITEMS[BIG_BACKPACK] = { name: 'Iron-Framed Backpack', stack: 1, backpack: 18 };
+ITEMS[HUGE_BACKPACK] = { name: 'Stainless Steel Backpack', stack: 1, backpack: 27 };
+ITEMS[SPANNER] = { name: 'Spanner', stack: 1, spanner: true };
+ITEMS[GRAPPLE] = { name: 'Grappling Hook', stack: 1, wearMax: 120, grapple: true };
+ELECTRIC_ITEMS.push(CHAINSAW);
+export const isBackpack = (id) => !!ITEMS[id]?.backpack;
+
+RECIPES.push(
+  { out: [GEOTHERMAL, 1], in: [[GENERATOR, 1], [OBSIDIAN, 4], [STAINLESS_INGOT, 2], [PIPE, 1]], table: true, metal: GENERATOR },
+  { out: [WIRELESS_CHARGER, 1], in: [[CHARGER, 1], [CRYSTAL_SHARD, 2], [CUPRONICKEL_INGOT, 2], [GOLD_INGOT, 1]], table: true, metal: CHARGER },
+  { out: [ELECTRIC_RAIL, 6], in: [[POWERED_RAIL, 6], [ELECTRUM_WIRE, 2]], table: true, metal: ELECTRUM_WIRE },
+  { out: [LIFT, 1], in: [[STAINLESS_INGOT, 4], [ELECTRIC_MOTOR, 1], [CUPRONICKEL_INGOT, 2], [PRESSURE_PLATE, 1]], table: true, metal: ELECTRIC_MOTOR },
+  { out: [FUEL_ROD, 1], in: [[URANIUM_INGOT, 3], [STAINLESS_INGOT, 2]], table: true, metal: URANIUM_INGOT },
+  { out: [REACTOR, 1], in: [[STAINLESS_INGOT, 8], [LEAD_INGOT, 8], [TUNGSTEN_INGOT, 2], [GENERATOR, 2], [GLASS, 2]], table: true, metal: TUNGSTEN_INGOT },
+  { out: [CHAINSAW, 1], in: [[STAINLESS_INGOT, 3], [BATTERY, 1], [ELECTRUM_WIRE, 2], [IRON_INGOT, 2]], table: true, metal: BATTERY },
+  { out: [PAPER, 4], in: [[SAWDUST, 4], [WATER_BUCKET, 1]], also: [[BUCKET, 1]], table: true },
+  { out: [BOOK, 1], in: [[PAPER, 6], [HIDE, 1]], table: true },
+  { out: [BACKPACK, 1], in: [[LEATHER, 6], [STRING, 2]], table: true },
+  { out: [BIG_BACKPACK, 1], in: [[LEATHER, 8], [IRON_INGOT, 4], [STRING, 2]], table: true, metal: IRON_INGOT },
+  { out: [HUGE_BACKPACK, 1], in: [[LEATHER, 8], [STAINLESS_INGOT, 4], [HIDE, 2]], table: true, metal: STAINLESS_INGOT },
+  { out: [SPANNER, 1], in: [[STEEL_INGOT, 3]], table: true, metal: STEEL_INGOT },
+  { out: [GRAPPLE, 1], in: [[IRON_INGOT, 3], [STRING, 8]], table: true, metal: IRON_INGOT },
 );
