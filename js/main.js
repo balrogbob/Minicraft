@@ -31,7 +31,7 @@ import {
   RADIO_TX, RADIO_RX, SORTING_MACHINE, LOCOMOTIVE, FIREPLACE, CHIMNEY, HEARTH_FUEL, STABLE,
   SNOWMAN, FIREWORK, PUMPKIN, JACK_O_LANTERN, EGG, POPPY, DANDELION, DAISY, LAVENDER,
   ONION, BEANS, TOMATO, HERBS, CIDER, VINTAGE_CIDER, BERRY_WINE, FINE_BERRY_WINE,
-  KILN, ROPE_LADDER, ROPE_BRIDGE, BRIDGE_RAIL, LOCK_GATE, SLUICE_WHEEL,
+  KILN, ROPE_LADDER, ROPE_BRIDGE, BRIDGE_RAIL, LOCK_GATE, SLUICE_WHEEL, STALACTITE, STALAGMITE,
 } from './blocks.js';
 import { Smoke } from './smoke.js';
 import { Fireworks } from './fireworks.js';
@@ -463,7 +463,7 @@ async function startWorld(save, opts = {}) {
     const drops = dropsFor(LEAVES, 0); // (fruit trees' leaves too: not their fruit, which you'd pick)
     if (drops.length) giveDrops(drops);
   };
-  mobs.reset(world); bees.clear(); crows.clear(); critters.clear(); fires.clear(); hearths.clear(); smoke.clear(); fireworks.clear(); openGates.clear(); lockJobs.length = 0; strikeIn = 20; catGiftDay = -1; bellDay = -1; villageGrowth = new Map(); shownSeason = -1;
+  mobs.reset(world); bees.clear(); crows.clear(); critters.clear(); fires.clear(); hearths.clear(); smoke.clear(); fireworks.clear(); openGates.clear(); lockJobs.length = 0; clearRocks(); strikeIn = 20; catGiftDay = -1; bellDay = -1; villageGrowth = new Map(); shownSeason = -1;
   kinetics.clear();
   kinetics.load(save?.kinetics);
   beltStart = null;
@@ -4457,6 +4457,9 @@ function treeAbove(x, y, z) {
 // Things resting on a block that was just removed pop off into the inventory: torches standing on
 // it or hanging from it, wheat growing on it, and a whole column of sugar cane above it.
 function dropUnsupported(x, y, z) {
+  // a stalactite hanging from it comes down; a stalagmite standing on it pops off
+  if (BLOCKS[world.get(x, y - 1, z)]?.stalactite) loosenStalactite(x, y - 1, z, 0.25);
+  if (world.get(x, y + 1, z) === STALAGMITE) { world.setBlock(x, y + 1, z, AIR); giveDrops([[STALAGMITE, 1]]); }
   // a bridge's rope rails go with its deck; a rope ladder rolls up from where it was cut (or lost its hold)
   if (BLOCKS[world.get(x, y + 1, z)]?.name === 'Rope Rail') world.setBlock(x, y + 1, z, AIR);
   if (BLOCKS[world.get(x, y - 1, z)]?.ropeLadder) rollUpRope(x, y - 1, z);
@@ -5641,6 +5644,64 @@ function tickLocks(dt) {
   }
 }
 
+
+// ---------- v27 F: falling stalactites ----------
+// Walk under a stalactite in the dark and now and then one cracks and comes down. Dig out the rock one hangs
+// from and it falls too. It hurts (a helmet helps), and shatters where it lands.
+const shaking = []; // stalactites about to fall: { x, y, z, wait }
+const fallingRocks = []; // { mesh, x, y, z, vy }
+const rockGeo = new THREE.ConeGeometry(0.2, 0.9, 6).rotateX(Math.PI);
+const rockMat = new THREE.MeshLambertMaterial({ color: 0xa08c74 });
+let rockTimer = 0, rockWarned = false;
+function loosenStalactite(x, y, z, wait = 0.8) {
+  if (shaking.some((s) => s.x === x && s.y === y && s.z === z)) return;
+  shaking.push({ x, y, z, wait });
+  const d = Math.hypot(x + 0.5 - player.pos.x, y - player.pos.y, z + 0.5 - player.pos.z);
+  if (d < 16) { sound.crackle(1 - d / 16); smoke.puff(x + 0.5, y + 0.9, z + 0.5, { grey: 0.6, size: 0.25, life: 1.2, rise: -0.4, spread: 0.4 }); }
+  if (d < 6 && !rockWarned) { rockWarned = true; toast('Crack! Something overhead is coming loose: look out', 2200); }
+}
+function clearRocks() { for (const r of fallingRocks) scene.remove(r.mesh); fallingRocks.length = 0; shaking.length = 0; }
+function tickStalactites(dt) {
+  for (let i = shaking.length - 1; i >= 0; i--) {
+    const s = shaking[i];
+    if ((s.wait -= dt) > 0) continue;
+    shaking.splice(i, 1);
+    if (!BLOCKS[world.get(s.x, s.y, s.z)]?.stalactite) continue;
+    world.setBlock(s.x, s.y, s.z, AIR);
+    const mesh = new THREE.Mesh(rockGeo, rockMat);
+    mesh.position.set(s.x + 0.5, s.y + 0.5, s.z + 0.5);
+    scene.add(mesh);
+    fallingRocks.push({ mesh, x: s.x + 0.5, y: s.y + 0.5, z: s.z + 0.5, vy: 0 });
+  }
+  for (let i = fallingRocks.length - 1; i >= 0; i--) {
+    const r = fallingRocks[i];
+    r.vy -= 22 * dt; r.y += r.vy * dt;
+    r.mesh.position.y = r.y;
+    const p = player.pos, tip = r.y - 0.45;
+    const hit = Math.abs(p.x - r.x) < 0.6 && Math.abs(p.z - r.z) < 0.6 && tip <= p.y + 1.8 && tip >= p.y - 0.2;
+    const landed = world.isSolid(Math.floor(r.x), Math.floor(tip), Math.floor(r.z)) || world.isWater(Math.floor(r.x), Math.floor(tip), Math.floor(r.z)) || tip < 0;
+    if (!hit && !landed) continue;
+    scene.remove(r.mesh);
+    fallingRocks.splice(i, 1);
+    const d = Math.hypot(r.x - p.x, r.y - p.y, r.z - p.z);
+    if (d < 20) sound.breakBlock('stone');
+    if (hit) damage(armoured(4), 'Struck by a falling stalactite');
+    else if (Math.random() < 0.5) loose.spawn(STALACTITE, { x: r.x, y: Math.floor(tip) + 1.1, z: r.z }, { x: 0, y: 2, z: 0 }, 0);
+  }
+  if ((rockTimer -= dt) > 0) return;
+  rockTimer = 0.5;
+  const px = Math.floor(player.pos.x), py = Math.floor(player.pos.y + 1.6), pz = Math.floor(player.pos.z);
+  if (dead || creative || world.skyAt(px, py, pz) >= 4) return;
+  for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) {
+    for (let y = py + 1; y < py + 10; y++) {
+      const id = world.get(px + dx, y, pz + dz);
+      if (id === AIR) continue;
+      if (BLOCKS[id]?.stalactite && Math.random() < 0.05) loosenStalactite(px + dx, y, pz + dz);
+      break;
+    }
+  }
+}
+
 // ---------- v26 E: temple and sky-island puzzles, diving ----------
 // A sunken temple's vault opens when each of its three levers matches the lamp above it (lit: on, dark: off).
 // A sky island's opens when you step on its plates in the order of the wool over the vault's gate.
@@ -5951,7 +6012,7 @@ function stepGame(now, dt) {
     world.tickPlants(dt);
     world.tickLeaves(dt);
     tickLamps(dt);
-    tickExplore(dt); tickTreasure(dt); tickLocks(dt); tickSnow(dt); tickVillages(dt); tickStorm(dt); tickFires(dt); tickPuzzles(dt); tickHearths(dt);
+    tickExplore(dt); tickTreasure(dt); tickLocks(dt); tickStalactites(dt); tickSnow(dt); tickVillages(dt); tickStorm(dt); tickFires(dt); tickPuzzles(dt); tickHearths(dt);
     crows.update(dt, world, player.pos, {
       day: lightUniforms.uDay.value,
       eat: (x, y, z) => world.setBlock(x, y, z, WHEAT_3 - 2), // back to green shoots
@@ -6093,5 +6154,5 @@ window.minicraft = {
   arrows, fishing, kinetics, electric, lightUniforms, bees, catchAt, seasonOf, applySeason, set day(v) { day = v; applySeason(); }, frames, signalAt, setSwitch, logic, machines, carts, minimap, signs, armour, damage, placeRail, getInCart, getOutOfCart,
   get riding() { return riding; }, explode, lightFuse, fuses, clockTime, compassText, place, editSign, closeSign, openInventory, closeInventory, chestMove, lamps, tickLamps, sleepUntilMorning, stations, openStation, closeStation,
   get caneToday() { return caneToday; }, get creative() { return creative; }, set creative(v) { creative = v; applyCreative(); }, toggleFly, wand, useWand, get achieved() { return achieved; }, achieve, worldMap, openMap, closeMap, openGuide, switchSlot, store, saveGame, renderWorlds, openWorlds, exportSlot, get target() { return target; }, set target(v) { target = v; }, applyKeys, renderKeys, camera, get controls() { return controls; }, loose, throwHeld, get waypoints() { return waypoints; }, toggleWaypoint, sortSlots, quickStack, dropMeteor, get meteors() { return meteors; }, weather, openTrade, closeTrade, mountMob, dismount, get ridingMob() { return ridingMob; }, effects, armourWear, useAnvil, rollLoot, settings,
-  get bedSpawn() { return bedSpawn; }, fertilise, openJournal, closeJournal, get packs() { return packs; }, radiationAt, vehicles, boardVehicle, leaveVehicle, get boarded() { return boarded; }, get seated() { return seated; }, crows, onInvSlot, onStationSlot, quickMoveInv, quickMoveStation, usedIn, itemTipHTML, critters, tickPets, get catGiftDay() { return catGiftDay; }, get villageGrowth() { return villageGrowth; }, notePlanting, tickPuzzles, airPumpNear, useStable, stableNear, horseLabel, workLock, findLock, tickLocks, openGates, lockJobs, hangRopeLadder, layBridge, rollUpRope, fireworks, ringBell, requestFor, festivalToday, repOf, addRep, tradeCost, tickFestival, villageEntry, hearths, tickHearths, feedHearth, chimneyTop, smoke, renderPins, togglePin, lightning, igniteAt, fires, tickFires, tickStorm, growVillage, buildVillageHouse, stallPrice, tickStalls, tickVillages, set catGiftDay(v) { catGiftDay = v; }, get places() { return places; }, get treasures() { return treasures; }, readTreasureMap, tickTreasure, beams, tickBeams, beaconSpots: () => beaconSpots, mistNow, tickSnow, tickExplore, sitOn, standUp, useDisplay, zips, linkZip, startZip, get zipping() { return zipping; }, burnCoal, get health() { return health; }, set health(v) { health = v; }, paintings, placeSwitchRail, signalAt, ailments, armourEnch, openAltar, lairNear, useBed, eat, drinkTea,
+  get bedSpawn() { return bedSpawn; }, fertilise, openJournal, closeJournal, get packs() { return packs; }, radiationAt, vehicles, boardVehicle, leaveVehicle, get boarded() { return boarded; }, get seated() { return seated; }, crows, onInvSlot, onStationSlot, quickMoveInv, quickMoveStation, usedIn, itemTipHTML, critters, tickPets, get catGiftDay() { return catGiftDay; }, get villageGrowth() { return villageGrowth; }, notePlanting, tickPuzzles, airPumpNear, useStable, stableNear, horseLabel, tickStalactites, loosenStalactite, fallingRocks, shaking, workLock, findLock, tickLocks, openGates, lockJobs, hangRopeLadder, layBridge, rollUpRope, fireworks, ringBell, requestFor, festivalToday, repOf, addRep, tradeCost, tickFestival, villageEntry, hearths, tickHearths, feedHearth, chimneyTop, smoke, renderPins, togglePin, lightning, igniteAt, fires, tickFires, tickStorm, growVillage, buildVillageHouse, stallPrice, tickStalls, tickVillages, set catGiftDay(v) { catGiftDay = v; }, get places() { return places; }, get treasures() { return treasures; }, readTreasureMap, tickTreasure, beams, tickBeams, beaconSpots: () => beaconSpots, mistNow, tickSnow, tickExplore, sitOn, standUp, useDisplay, zips, linkZip, startZip, get zipping() { return zipping; }, burnCoal, get health() { return health; }, set health(v) { health = v; }, paintings, placeSwitchRail, signalAt, ailments, armourEnch, openAltar, lairNear, useBed, eat, drinkTea,
 };

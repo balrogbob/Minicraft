@@ -4,6 +4,7 @@
 import * as THREE from 'three';
 import { AIR, GRASS, BLOCKS, isLeaves, MAX_LIGHT } from './blocks.js';
 
+const MAX_WORMS = 240;
 const MAX_OWLS = 2, MAX_BATS = 5, MAX_FLIES = 48;
 const rand = (a, b) => a + Math.random() * (b - a);
 
@@ -72,12 +73,22 @@ export class Critters {
     }));
     this.flyPoints.frustumCulled = false;
     scene.add(this.flyPoints);
+    // glow-worms: specks of blue-green light on the roofs of caves
+    this.worms = [];
+    const wgeo = new THREE.BufferGeometry();
+    wgeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(MAX_WORMS * 3), 3));
+    wgeo.setAttribute('color', new THREE.BufferAttribute(new Float32Array(MAX_WORMS * 3), 3));
+    this.wormPoints = new THREE.Points(wgeo, new THREE.PointsMaterial({
+      size: 0.16, map: this.flyPoints.material.map, vertexColors: true, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false,
+    }));
+    this.wormPoints.frustumCulled = false;
+    scene.add(this.wormPoints);
   }
 
   clear() {
     for (const o of this.owls) this.scene.remove(o.mesh.g);
     for (const b of this.bats) this.scene.remove(b.mesh.g);
-    this.owls = []; this.bats = []; this.flies = [];
+    this.owls = []; this.bats = []; this.flies = []; this.worms = [];
   }
 
   // A leafy treetop with open air above it near p (a place an owl would sit), or null.
@@ -141,6 +152,21 @@ export class Critters {
         }
       }
       if (!warm) for (const f of this.flies) f.life = Math.min(f.life, rand(0, 4));
+      // glow-worms: clusters on the rock over your head when you're down in the dark
+      if (underground) {
+        for (let k = 0; k < 6 && this.worms.length < MAX_WORMS - 12; k++) {
+          const x = Math.floor(p.x + rand(-14, 14)), z = Math.floor(p.z + rand(-14, 14));
+          for (let y = Math.floor(p.y) + 1; y < Math.floor(p.y) + 12; y++) {
+            const id = world.get(x, y, z);
+            if (id === AIR) continue;
+            if (BLOCKS[id]?.solid && world.skyAt(x, y - 1, z) === 0 && world.lightAt(x, y - 1, z) < 6) {
+              for (let n = 0; n < 10; n++) this.worms.push({ pos: new THREE.Vector3(x + Math.random(), y - 0.04 - Math.random() * 0.25, z + Math.random()), ph: rand(0, 6.28), life: rand(40, 90) });
+            }
+            break;
+          }
+        }
+      }
+      for (const g of this.worms) if (!underground || g.pos.distanceTo(p) > 26) g.life = Math.min(g.life, rand(0, 3));
     }
 
     // owls fly in to a perch, sit and hoot, turn their heads to watch you, and fly off when you come close or day breaks
@@ -205,5 +231,16 @@ export class Critters {
       col.setXYZ(i, 0.8 * blink, 1.0 * blink, 0.3 * blink);
     }
     pos.needsUpdate = true; col.needsUpdate = true;
+    // glow-worms: a slow shimmer
+    const wpos = this.wormPoints.geometry.attributes.position, wcol = this.wormPoints.geometry.attributes.color;
+    for (let i = this.worms.length - 1; i >= 0; i--) if ((this.worms[i].life -= dt) <= 0) this.worms.splice(i, 1);
+    for (let i = 0; i < MAX_WORMS; i++) {
+      const g = this.worms[i];
+      if (!g) { wpos.setXYZ(i, 0, -1000, 0); wcol.setXYZ(i, 0, 0, 0); continue; }
+      wpos.setXYZ(i, g.pos.x, g.pos.y, g.pos.z);
+      const b = (0.55 + 0.45 * Math.sin(time * 0.8 + g.ph)) * Math.min(1, g.life / 3);
+      wcol.setXYZ(i, 0.25 * b, 0.85 * b, 1.0 * b);
+    }
+    wpos.needsUpdate = true; wcol.needsUpdate = true;
   }
 }

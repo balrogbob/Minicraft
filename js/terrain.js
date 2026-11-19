@@ -9,7 +9,7 @@ import {
   LAVA, SALTPETRE_ORE, SNOW_GRASS, SNOW, ICE, SANDSTONE, CACTUS, FLOWERS,
   BRICKS, MOSSY_BRICKS, COBBLE, BOSS_SHRINE, LOOT_CHEST, BERRY_BUSH, SPAWNER,
   GLOW_MUSHROOM, CRYSTAL_BLOCK, CRYSTAL_CLUSTER, GEODE_SHELL, BEE_HIVE, MAX_HONEY, VILLAGE_BELL,
-  PLANKS, GLASS_PANE, FURN_TABLE, CHEST, TORCH_WALL_W, doorId, slabId, WHEAT_0, BLOCKS, CARROT_CROP, POTATO_CROP, ONION_CROP, BEAN_CROP, TOMATO_CROP, HERB_CROP,
+  PLANKS, GLASS_PANE, FURN_TABLE, CHEST, TORCH_WALL_W, doorId, slabId, WHEAT_0, BLOCKS, CARROT_CROP, POTATO_CROP, ONION_CROP, BEAN_CROP, TOMATO_CROP, HERB_CROP, STALACTITE, STALAGMITE,
   LAIRS, CUT_SANDSTONE, TRAP_PLATE, DART_TRAP, FROST_BRICKS, FORT_BRICKS, OBSIDIAN,
   BASALT, BOOKSHELF, TUNGSTEN_ORE, URANIUM_ORE, LOG as MAST,
   LIGHTHOUSE_LAMP, PAINTED_PLANKS, COLORS, LADDER, FENCE, CLAY_BRICKS,
@@ -365,6 +365,7 @@ export class Generator {
       }
     }
     this.caverns(data, cx, cz, hAt);
+    this.dripstone(data, cx, cz, hAt);
     if (hash3(this.seed ^ 0x7a3b9c1d, cx, 91, cz) < GEODE_CHANCE) this.geode(data, cx, cz, hAt);
     if (hash3(this.seed ^ 0x1d2c3b4a, cx, 77, cz) < DUNGEON_CHANCE) this.dungeon(data, cx, cz, hAt);
     else this.lair(data, cx, cz);
@@ -600,6 +601,21 @@ export class Generator {
     const wool = (k) => dyedWool(COLORS.findIndex((c) => c.key === PLATE_COLORS[k]));
     t.order.forEach((k, i) => put(8 + i, top + 3, 6, wool(k)));
     t.plates.forEach(([px, py, pz], k) => { put(px - x0, py - 1, pz - z0, wool(k)); put(px - x0, py, pz - z0, PRESSURE_PLATE); });
+  }
+
+  // Stalactites hanging from cave roofs of bare stone, and stalagmites rising from the floors.
+  dripstone(data, cx, cz, hAt) {
+    const x0 = cx * CHUNK, z0 = cz * CHUNK, seed = this.seed ^ 0x51a7c71e;
+    for (let lz = 0; lz < CHUNK; lz++) for (let lx = 0; lx < CHUNK; lx++) {
+      const x = x0 + lx, z = z0 + lz, top = hAt(x, z) - 6;
+      for (let y = 3; y < top; y++) {
+        const i = localIndex(lx, y, lz);
+        if (data[i] !== AIR) continue;
+        const above = data[localIndex(lx, y + 1, lz)], below = data[localIndex(lx, y - 1, lz)];
+        if (above === STONE && hash3(seed, x, y, z) < 0.035) data[i] = STALACTITE;
+        else if (below === STONE && data[localIndex(lx, y + 1, lz)] === AIR && hash3(seed ^ 0x1234, x, y, z) < 0.025) data[i] = STALAGMITE;
+      }
+    }
   }
 
   // Glowing mushrooms on the floors of some cave systems.

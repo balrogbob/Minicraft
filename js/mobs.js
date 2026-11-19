@@ -7,7 +7,7 @@
 // They aren't saved: they're spawned fresh around wherever you are.
 import * as THREE from 'three';
 import { AIR, WATER, LEAVES, isLeaves, LOG, GRASS, SAND, DIRT, WOOL, BUCKET, MILK_BUCKET, SLIME_BUCKET, FEATHER, COAL, COBBLE, ARROW, HIDE, SNOW_GRASS, SNOW, KING_CROWN, GOLD_INGOT, MOSSY_BRICKS, RAW_FISH, BAKED_FISH, WHEAT, SALMON, BAKED_SALMON, ICEFISH, BAKED_ICEFISH,
-  SUN_SCARAB, FROST_HEART, EMBER_CORE, SUN_MASK, FROST_CIRCLET, EMBER_CROWN, SILVER_INGOT, OBSIDIAN, STRING, BLOCKS, LAVA, SEEDS, BERRIES, EGG, TRUFFLE, SADDLE, APPLE, CARROT, SUGAR } from './blocks.js';
+  SUN_SCARAB, FROST_HEART, EMBER_CORE, SUN_MASK, FROST_CIRCLET, EMBER_CROWN, SILVER_INGOT, OBSIDIAN, STRING, BLOCKS, LAVA, SEEDS, BERRIES, EGG, TRUFFLE, SADDLE, APPLE, CARROT, SUGAR, STONE, GRAVEL, GLOW_SHELL } from './blocks.js';
 import { SEA_LEVEL, H } from './terrain.js';
 import { skyBrightness, lightBrightness } from './world.js';
 import { THORN_SPEED, THORN_GRAVITY } from './arrows.js';
@@ -742,6 +742,53 @@ const SPECIES = {
       return parts;
     },
   },
+
+  // v27 F: cave creatures. Glowing beetles trundle about in the dark (tap one and it may shed its shell);
+  // olms, pale and blind, keep to underground water.
+  beetle: {
+    w: 0.5, h: 0.3, speed: 0.6, fleeSpeed: 2, sink: 0, stride: 18, legSwing: 0.5,
+    group: [1, 3], cap: 6, avoidWater: true, grazes: false, cave: true,
+    build(b, root) {
+      const shell = 0x1e3a2a, glow = 0x6af0a0, dark = 0x101814;
+      const parts = { legs: [] };
+      const torso = parts.torso = b.pivot(root, [0, 0, 0]);
+      b.box(torso, [0.36, 0.16, 0.44], shell, [0, 0.16, -0.02]);
+      b.box(torso, [0.04, 0.012, 0.4], dark, [0, 0.245, -0.02]); // the split between the wing cases
+      for (const [x, z] of [[-0.1, -0.12], [0.1, -0.12], [-0.08, 0.06], [0.08, 0.06]]) b.box(torso, [0.07, 0.02, 0.08], glow, [x, 0.245, z], true);
+      b.box(torso, [0.3, 0.06, 0.12], glow, [0, 0.1, -0.22], true); // its glowing tail end
+      const head = parts.head = b.pivot(torso, [0, 0.14, 0.2]);
+      b.box(head, [0.2, 0.1, 0.1], dark, [0, 0, 0.05]);
+      for (const sx of [-1, 1]) b.box(head, [0.012, 0.012, 0.14], dark, [sx * 0.06, 0.05, 0.16]); // feelers
+      for (const z of [0.1, -0.02, -0.14]) for (const sx of [-1, 1]) {
+        const leg = b.pivot(torso, [sx * 0.17, 0.12, z]);
+        b.box(leg, [0.12, 0.025, 0.025], dark, [sx * 0.06, -0.04, 0]);
+        parts.legs.push(leg);
+      }
+      return parts;
+    },
+  },
+  olm: {
+    w: 0.25, h: 0.12, speed: 0.6, fleeSpeed: 1.8, sink: 0.06, stride: 16, legSwing: 0.6,
+    group: [1, 2], cap: 4, avoidWater: false, grazes: false, cave: true,
+    build(b, root) {
+      const skin = 0xf0c8c0, gill = 0xe87890;
+      const parts = { legs: [] };
+      const torso = parts.torso = b.pivot(root, [0, 0, 0]);
+      b.box(torso, [0.1, 0.07, 0.34], skin, [0, 0.06, 0]);
+      const head = parts.head = b.pivot(torso, [0, 0.06, 0.17]);
+      b.box(head, [0.1, 0.06, 0.12], skin, [0, 0, 0.06]);
+      for (const sx of [-1, 1]) for (const k of [0, 1]) b.box(head, [0.05, 0.015, 0.015], gill, [sx * (0.07 + k * 0.01), 0.01 + k * 0.025, 0.0]); // frilly gills
+      const tail = b.pivot(torso, [0, 0.06, -0.17]);
+      b.box(tail, [0.06, 0.06, 0.18], skin, [0, 0, -0.09]);
+      parts.tailSegments = [tail];
+      for (const [x, z] of [[-0.07, 0.1], [0.07, 0.1], [-0.07, -0.1], [0.07, -0.1]]) {
+        const leg = b.pivot(torso, [x, 0.04, z]);
+        b.box(leg, [0.06, 0.02, 0.025], skin, [Math.sign(x) * 0.02, -0.02, 0]);
+        parts.legs.push(leg);
+      }
+      return parts;
+    },
+  },
 };
 
 // Breeding: what each animal can be fed to look for a mate. Two of a kind that have both been fed find each
@@ -962,6 +1009,23 @@ export class MobManager {
     }
   }
 
+  // Cave creatures: on bare stone (or gravel) floors well under a roof of rock, near you.
+  trySpawnCave(player) {
+    if (this.animals >= ANIMAL_CAP) return;
+    const w = this.world, a = rand(0, Math.PI * 2), d = rand(8, 30);
+    const x = Math.floor(player.pos.x + Math.cos(a) * d), z = Math.floor(player.pos.z + Math.sin(a) * d);
+    if (!w.chunkAt(x, z)) return;
+    const s = this.surface(x, z), y0 = Math.floor(player.pos.y);
+    for (let y = Math.min(y0 + 8, (s ? s.y : H) - 4); y > Math.max(2, y0 - 16); y--) {
+      const floor = w.get(x, y - 1, z);
+      if ((floor !== STONE && floor !== GRAVEL) || w.isSolid(x, y, z) || w.isSolid(x, y + 1, z) || w.isWater(x, y, z) || w.skyAt(x, y, z) > 0) continue;
+      const wet = [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dz]) => w.isWater(x + dx, y - 1, z + dz) || w.isWater(x + dx, y, z + dz));
+      const kind = wet ? 'olm' : 'beetle';
+      if (this.count(kind) < SPECIES[kind].cap && this.hasRoom(kind, x + 0.5, y, z + 0.5)) this.spawn(kind, x + 0.5, y, z + 0.5);
+      return;
+    }
+  }
+
   spawnTrader(player) {
     const w = this.world;
     for (let k = 0; k < 12; k++) {
@@ -1104,6 +1168,7 @@ export class MobManager {
     if (this.spawnTimer <= 0) {
       this.spawnTimer = 0.4;
       this.trySpawn(player);
+      if (Math.random() < 0.3) this.trySpawnCave(player);
     }
     // now and then, on a fine day, a wandering trader turns up nearby (one at a time)
     this.traderTimer = (this.traderTimer ?? 30) - dt;
@@ -1546,6 +1611,12 @@ export class MobManager {
       return { give, take, said: '' };
     }
     if (m.spec.trader) return { give, take, said: '', trade: true };
+    if (m.kind === 'beetle') {
+      if (m.shed) return { give, take, said: 'The beetle has nothing more to give' };
+      m.shed = true; m.state = 'flee'; m.timer = rand(1.5, 2.5);
+      give.push([GLOW_SHELL, 1]);
+      return { give, take, said: 'The beetle sheds a glowing shell and scuttles off' };
+    }
     if (m.spec.horse) {
       // a wild horse has to be won over before it takes a saddle; a tame one can still be fed (to breed)
       if (HORSE_TREATS.includes(held) && !m.tame && !m.trusted && !(m.baby > 0)) {
