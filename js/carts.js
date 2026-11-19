@@ -1,7 +1,8 @@
 // Minecarts: they roll along rails, round curves and up and down slopes, slowing gently as they go.
 // Slopes speed them up going down and slow them going up (they roll back if they don't make it).
 // A powered rail turned by a shaft pushes a cart along at speed; one that isn't turning brakes it.
-// You can ride in a cart: hold forward to push it along, back to brake.
+// You can ride in a cart: hold forward to push it along, back to brake. A cart stops at a rail station, and
+// waits there until the station gets a signal (or you push off).
 import * as THREE from 'three';
 import { BLOCKS, FACING_DIRS } from './blocks.js';
 import { skyBrightness, lightBrightness } from './world.js';
@@ -146,6 +147,15 @@ export class Carts {
       if (c.speed < 0) {
         if (r.slope >= 0) { this.turnAround(c); c.speed = -c.speed; } else c.speed = 0; // rolls back down
       }
+      // a cart waits at a rail station until the station gets a signal, or you push off
+      if (c.waiting) {
+        if (!r.stop) c.waiting = false;
+        else if (poweredAt(c.x, c.y, c.z) > 0 || (rider?.cart === c && rider.push > 0.3)) {
+          c.waiting = false; c.released = true;
+          if (!railBeyond(world, c.x, c.y, c.z, c.to)) this.turnAround(c); // (the end of the line: back the way it came)
+          c.speed = Math.max(c.speed, PUSH_SPEED);
+        } else c.speed = 0;
+      }
       // a storage cart waits on a loader rail while it's filled or emptied, then rolls on
       if (c.holding) {
         c.speed = 0;
@@ -156,6 +166,10 @@ export class Carts {
         let step = Math.min(dist, 1 - c.s);
         if (r.loader && c.store && !c.released && c.s < 0.5 && c.s + step >= 0.5) {
           c.s = 0.5; c.speed = 0; c.holding = true; c.hold = HOLD;
+          break;
+        }
+        if (r.stop && !c.released && c.s < 0.5 && c.s + step >= 0.5) {
+          c.s = 0.5; c.speed = 0; c.waiting = true;
           break;
         }
         c.s += step; dist -= step;

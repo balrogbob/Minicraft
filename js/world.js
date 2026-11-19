@@ -270,8 +270,9 @@ export class World {
       return dx ? [lo, y0, 7, hi, y1, 9, tile] : [7, y0, lo, 9, y1, hi, tile];
     };
     if (def.shape === 'fence') {
-      const m = [[6, 0, 6, 10, 16, 10, T.PLANKS]];
-      for (const [dx, dz] of dirs) m.push(arm(dx, dz, 6, 10, 6, 8, T.PLANKS), arm(dx, dz, 6, 10, 12, 14, T.PLANKS));
+      const post = def.postTex ?? T.PLANKS, rail = def.armTex ?? T.PLANKS, [r0, r1] = def.armTex ? [7, 8] : [6, 8]; // (an electric fence's wires are thin)
+      const m = [[6, 0, 6, 10, 16, 10, post]];
+      for (const [dx, dz] of dirs) m.push(arm(dx, dz, 6, 10, r0, r1, rail), arm(dx, dz, 6, 10, r0 + 6, r1 + 6, rail), ...(def.armTex ? [arm(dx, dz, 6, 10, r0 + 3, r1 + 3, rail)] : []));
       return m;
     }
     if (def.shape === 'wall') {

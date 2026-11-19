@@ -11,6 +11,7 @@ import {
   GLOW_MUSHROOM, CRYSTAL_BLOCK, CRYSTAL_CLUSTER, GEODE_SHELL, BEE_HIVE, MAX_HONEY, VILLAGE_BELL,
   PLANKS, GLASS_PANE, FURN_TABLE, CHEST, TORCH_WALL_W, doorId, slabId, WHEAT_0, BLOCKS,
   LAIRS, CUT_SANDSTONE, TRAP_PLATE, DART_TRAP, FROST_BRICKS, FORT_BRICKS, OBSIDIAN,
+  BASALT, BOOKSHELF, TUNGSTEN_ORE, URANIUM_ORE, LOG as MAST,
 } from './blocks.js';
 
 export const CHUNK = 16;
@@ -114,6 +115,9 @@ const CAVE_LAKE_LEVEL = 13; // in some cave systems, everything up to here is fl
 const HIVE_CHANCE = 0.08; // temperate trees with a bee hive under their leaves
 const VILLAGE_REGION = 64; // villages: at most one in each 64 x 64 block region...
 const VILLAGE_CHANCE = 0.09; // ...in about this share of them
+const VOLCANO_CHANCE = 0.004; // land chunks with a small volcano
+const RUIN_CHANCE = 0.03; // flat grassy chunks with the ruins of an old stone house
+const WRECK_CHANCE = 0.06; // sea chunks with a shipwreck on the bed
 const smoothstep = (t) => { t = Math.max(0, Math.min(1, t)); return t * t * (3 - 2 * t); };
 const VEIN_CELL = 4; // metal ore veins: at most one small blob per 4x4x4 cell of stone // columns of height data kept around a chunk for trees and water checks
 
@@ -353,7 +357,101 @@ export class Generator {
     if (hash3(this.seed ^ 0x1d2c3b4a, cx, 77, cz) < DUNGEON_CHANCE) this.dungeon(data, cx, cz, hAt);
     else this.lair(data, cx, cz);
     this.village(data, cx, cz, hAt);
+    this.volcano(data, cx, cz, hAt);
+    this.ruin(data, cx, cz, hAt);
+    this.wreck(data, cx, cz, hAt);
     return data;
+  }
+
+  // A small volcano: a cone of basalt over the middle of a land chunk, with a crater of lava at the top and a
+  // pipe of lava down through it, and deep ores (tungsten, uranium) in its rock. { x, y (crater), z, base } or null.
+  volcanoAt(cx, cz) {
+    if (hash3(this.seed ^ 0x5be0cd19, cx, 101, cz) >= VOLCANO_CHANCE) return null;
+    const x = cx * CHUNK + 8, z = cz * CHUNK + 8;
+    let base = H;
+    for (let dz = -7; dz <= 7; dz += 7) for (let dx = -7; dx <= 7; dx += 7) base = Math.min(base, this.height(x + dx, z + dz));
+    if (base <= SEA_LEVEL + 1 || this.nearVillage(x, z)) return null;
+    const top = Math.min(H - 6, base + 11);
+    return { x, z, y: top - 2, base, top };
+  }
+  volcano(data, cx, cz, hAt) {
+    const v = this.volcanoAt(cx, cz);
+    if (!v) return;
+    const R = 7.5;
+    for (let lz = 0; lz < CHUNK; lz++) for (let lx = 0; lx < CHUNK; lx++) {
+      const x = cx * CHUNK + lx, z = cz * CHUNK + lz, d = Math.hypot(x - v.x, z - v.z);
+      if (d >= R) continue;
+      const rise = Math.round(v.base + (v.top - v.base) * Math.min(1, (R - d) / (R - 2)));
+      const h = hAt(x, z), crater = d < 2;
+      for (let y = Math.max(1, Math.min(h, v.base) - 3); y < H; y++) {
+        const i = localIndex(lx, y, lz);
+        if (y <= (crater ? v.top - 2 : rise)) {
+          const r = hash3(this.seed ^ 0x5be0cd1a, x, y, z);
+          data[i] = crater && y >= v.base - 2 ? LAVA : r < 0.02 ? TUNGSTEN_ORE : r < 0.03 ? URANIUM_ORE : r < 0.12 ? OBSIDIAN : BASALT;
+          if (crater && y === v.top - 2) data[i] = LAVA;
+        } else if (y <= v.top + 8 && data[i] !== AIR) data[i] = AIR; // (trees and plants that were here)
+      }
+      if (!crater && d < 2.9) data[localIndex(lx, v.top - 1, lz)] = OBSIDIAN; // the crater's rim
+    }
+  }
+
+  // An old ruined house on flat grass: crumbling stone walls, an old chest, and sometimes a bookshelf or two.
+  ruinAt(cx, cz) {
+    if (hash3(this.seed ^ 0x6c8e9cf5, cx, 103, cz) >= RUIN_CHANCE) return null;
+    const x0 = cx * CHUNK, z0 = cz * CHUNK;
+    let lo = H, hi = 0;
+    for (let z = z0 + 4; z <= z0 + 10; z++) for (let x = x0 + 4; x <= x0 + 10; x++) { const h = this.height(x, z); lo = Math.min(lo, h); hi = Math.max(hi, h); }
+    if (hi - lo > 2 || lo <= SEA_LEVEL + 1 || lo >= SNOW_LINE || this.biomeAt(x0 + 8, z0 + 8) === 'desert' || this.volcanoAt(cx, cz) || this.nearVillage(x0 + 8, z0 + 8)) return null;
+    return { x: x0 + 5, y: lo + 1, z: z0 + 5, floor: lo };
+  }
+  ruin(data, cx, cz) {
+    const r = this.ruinAt(cx, cz);
+    if (!r) return;
+    const x0 = cx * CHUNK, z0 = cz * CHUNK, y0 = r.floor;
+    const k = (n, x, y, z) => hash3(this.seed ^ n, x0 + x, y, z0 + z);
+    for (let lz = 4; lz <= 10; lz++) for (let lx = 4; lx <= 10; lx++) {
+      const wall = lx === 4 || lx === 10 || lz === 4 || lz === 10;
+      data[localIndex(lx, y0, lz)] = k(0x11, lx, y0, lz) < 0.35 ? MOSSY_BRICKS : COBBLE;
+      for (let y = y0 - 2; y < y0; y++) if (data[localIndex(lx, y, lz)] === AIR) data[localIndex(lx, y, lz)] = DIRT;
+      const height = wall ? Math.floor(k(0x12, lx, 0, lz) * 4) : 0; // what's left standing
+      for (let y = y0 + 1; y <= y0 + 6; y++) {
+        const i = localIndex(lx, y, lz);
+        data[i] = y <= y0 + height ? (k(0x13, lx, y, lz) < 0.5 ? MOSSY_BRICKS : k(0x14, lx, y, lz) < 0.5 ? BRICKS : COBBLE) : AIR;
+      }
+    }
+    data[localIndex(5, y0 + 1, 5)] = LOOT_CHEST;
+    if (k(0x15, 0, 0, 0) < 0.6) data[localIndex(9, y0 + 1, 5)] = BOOKSHELF;
+    if (k(0x16, 0, 0, 0) < 0.3) data[localIndex(9, y0 + 1, 6)] = BOOKSHELF;
+  }
+
+  // A wrecked ship lying on the sea bed: a broken plank hull, a snapped mast, and a chest in the hold.
+  wreckAt(cx, cz) {
+    if (hash3(this.seed ^ 0x1f83d9ac, cx, 105, cz) >= WRECK_CHANCE) return null;
+    const x0 = cx * CHUNK, z0 = cz * CHUNK;
+    let hi = 0;
+    for (let z = z0 + 6; z <= z0 + 10; z++) for (let x = x0 + 2; x <= x0 + 12; x++) hi = Math.max(hi, this.height(x, z));
+    if (hi > SEA_LEVEL - 6) return null;
+    return { x: x0 + 5, y: hi + 2, z: z0 + 8, bed: hi };
+  }
+  wreck(data, cx, cz) {
+    const w = this.wreckAt(cx, cz);
+    if (!w) return;
+    const x0 = cx * CHUNK, z0 = cz * CHUNK, b = w.bed;
+    const k = (n, x, y, z) => hash3(this.seed ^ n, x0 + x, y, z0 + z);
+    const set = (lx, y, lz, id) => { if (y < SEA_LEVEL) data[localIndex(lx, y, lz)] = id; };
+    for (let lx = 2; lx <= 12; lx++) {
+      const narrow = lx === 2 || lx === 12;
+      for (let lz = 6; lz <= 10; lz++) {
+        const side = lz === 6 || lz === 10;
+        if (narrow && side) continue;
+        for (let y = b - 1; y <= b; y++) if (data[localIndex(lx, y, lz)] === WATER) set(lx, y, lz, SAND); // (it's sunk into the bed)
+        set(lx, b + 1, lz, PLANKS); // the bottom
+        const wall = side || narrow;
+        for (let y = b + 2; y <= b + 3; y++) if (wall && k(0x21, lx, y, lz) > 0.3) set(lx, y, lz, PLANKS);
+      }
+    }
+    for (let y = b + 2; y < Math.min(SEA_LEVEL - 1, b + 2 + 3 + Math.floor(k(0x22, 0, 0, 0) * 4)); y++) set(7, y, 8, MAST); // the broken mast
+    set(5, b + 2, 8, LOOT_CHEST);
   }
 
   // Glowing mushrooms on the floors of some cave systems.
@@ -438,6 +536,12 @@ export class Generator {
     }
     this.villages.set(key, v);
     return v;
+  }
+
+  // Whether a village's houses could reach out to (x, z) (so a volcano or ruin doesn't land in one).
+  nearVillage(x, z) {
+    const v = this.nearestVillage(x, z);
+    return !!v && Math.hypot(v.x - x, v.z - z) < 40;
   }
 
   // The village nearest to (x, z) within `regions` regions, or null.

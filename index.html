@@ -68,7 +68,7 @@
             <div class="slot-grid" id="inv-grid"></div>
             <div class="slot-grid hotbar-row" id="inv-hotbar"></div>
             <div class="armour-row"><span class="armour-label">Armour &amp; shield</span><div class="slot-grid" id="inv-armour"></div><span id="armour-total"></span></div>
-            <p class="hint">Tap a slot, then tap another to move or swap. Put armour in the armour slots to wear it. <button class="btn small" id="btn-sort">Sort backpack</button></p>
+            <p class="hint">Tap a slot, then tap another to move or swap. Put armour in the armour slots to wear it. <button class="btn small" id="btn-sort">Sort backpack</button> <button class="btn small" id="btn-quick-stack" title="Put backpack things into chests nearby that already hold the same thing">Quick-stack to chests</button></p>
           </div>
           <div class="craft-col">
             <div id="palette-wrap" class="hidden">
@@ -104,7 +104,7 @@
               <div class="st-out" id="st-out"></div>
             </div>
             <p class="hint" id="st-status"></p>
-            <div class="chest-buttons"><button class="btn" id="btn-chest-in">Put backpack in</button><button class="btn" id="btn-chest-out">Take all</button><button class="btn" id="btn-chest-sort">Sort</button></div>
+            <div class="chest-buttons"><button class="btn" id="btn-chest-in">Put backpack in</button><button class="btn" id="btn-chest-out">Take all</button><button class="btn" id="btn-chest-sort">Sort</button><button class="btn" id="btn-chest-match" title="Put in only the things this chest already holds">Stack matching</button></div>
             <div class="slot-grid" id="st-inv"></div>
             <div class="slot-grid hotbar-row" id="st-hotbar"></div>
             <p class="hint">Tap a slot, then another, to move items in or out. Tap the result to collect it.</p>
@@ -128,6 +128,16 @@
       </div>
     </div>
 
+    <div id="journal" class="overlay hidden">
+      <div class="panel sign-panel">
+        <div class="panel-head"><h2>Journal</h2></div>
+        <div class="menu-items">
+          <textarea id="journal-text" rows="12" maxlength="4000" spellcheck="false" placeholder="Write anything here: what you found, where you left things..."></textarea>
+          <button class="btn wide" id="btn-journal-here">Note where I am</button>
+          <button class="btn wide" id="btn-journal-done">Done</button>
+        </div>
+      </div>
+    </div>
     <div id="sign-edit" class="overlay hidden">
       <div class="panel sign-panel">
         <div class="panel-head"><h2>Write on the sign</h2></div>
@@ -236,10 +246,14 @@
           <p>The <b>programmable crafter</b> steps through its item frames on a signal; an <b>item counter</b> pulses after every few things pass through; <b>teleport pads</b> pair up in the order you put them down and send things (or you, standing on a glowing one) to each other; and the <b>quarry</b> digs out a 9 × 9 area down to bedrock. Dungeons hold <b>monster spawners</b>: creatures die in lava, on cactus and from long falls, and leave their drops for collectors.</p>
           <h3>Power, uranium and gear</h3>
           <p>A <b>geothermal generator</b> makes power from lava beside it. A <b>wireless charger</b> tops up your battery gear within 8 blocks, <b>electric rails</b> speed carts along, and a <b>lift</b> carries you to the next lift above or below (jump to go up, sneak to go down). Deep <b>uranium ore</b> makes <b>fuel rods</b> for a <b>reactor</b>: lots of power, but keep water round it or it overheats and melts down (a signal stops it). The <b>chainsaw</b> fells trees and gives <b>sawdust</b>; sawdust and water make <b>paper</b>, and 6 paper and a hide make a <b>book</b>. <b>Backpacks</b> carry more, the <b>spanner</b> turns machines (hold it to pick one up with what's in it), and the <b>grappling hook</b> pulls you up to a block (jump to climb onto it).</p>
+          <h3>Nuclear waste and new machines</h3>
+          <p>Burnt-out fuel rods become <b>spent rods</b>, which give off radiation: shut them in a <b>lead-lined chest</b> or wear a <b>hazmat suit</b>. A <b>centrifuge</b> makes <b>enriched uranium</b> for longer-lasting rods. <b>Ice</b> and <b>packed ice</b> from a <b>freezer</b> cool a reactor better than water. A <b>tesla coil</b> zaps night creatures, an <b>electric fence</b> keeps animals in and creatures out, and the <b>arc furnace</b> smelts fast and makes invar and starsteel. Bookshelves round an altar make enchanting cheaper and unlock Lucky, Mending and Feather Fall. A <b>compost bin</b> makes <b>fertiliser</b> for crops and saplings, and a <b>journal</b> holds your notes.</p>
+          <h3>Getting about</h3>
+          <p>Row a <b>boat</b> on water; fly a <b>hot-air balloon</b> (jump to rise, sneak to sink; it burns coal); run <b>zipline rope</b> between two posts and slide along it with a grappling hook; and stop carts at <b>rail stations</b> until a signal sends them on. Saddle a buffalo to ride it.</p>
           <h3>Breeding</h3>
-          <p>Feed two animals of a kind their food (seeds for ducks, wheat for buffalo, alpacas, yaks and camels, berries for newts, fish for tame wolves) and they'll have a young one. An animal station with their food in it does this for you.</p>
+          <p>Feed two animals of a kind their food (seeds for ducks and chickens, wheat for buffalo, alpacas, yaks and camels, berries for newts, berries or wheat for pigs, fish for tame wolves and cats) and they'll have a young one, with the coat of one of its parents. An animal station with their food in it does this for you. Chickens lay eggs and pigs dig up truffles.</p>
           <h3>Exploring</h3>
-          <p>Carry a map to see the land around you; press M (or ☰ → World map) for the whole of what you've explored, and tap it to set waypoints. Rivers hold fish, villages hold traders, and shrines and lairs hold guardians worth defeating. Altars let you enchant tools with crystal shards.</p>
+          <p>Carry a map to see the land around you; press M (or ☰ → World map) for the whole of what you've explored, and tap it to set waypoints. Rivers hold fish, villages hold traders, and shrines and lairs hold guardians worth defeating. Look out for volcanoes, old ruins and shipwrecks with loot chests, and for meteorites falling at night: their rock gives meteoric iron for starsteel tools. Altars let you enchant tools with crystal shards.</p>
           <h3>Building</h3>
           <p>Walls, pillars and stairs join up on their own (stairs make corners). Paint doors and glass with dye, hang paintings, and light rooms with lanterns, chandeliers or coloured glow lamps.</p>
           <h3>Creative mode</h3>

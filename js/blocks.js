@@ -136,6 +136,9 @@ export const T = {
   QUARRY_SIDE: 252, TURBINE: 253,
   GEO_SIDE: 254, GEO_TOP: 255, WCHARGE_SIDE: 256, WCHARGE_TOP: 257, ELEVATOR_TOP: 258, ELEVATOR_SIDE: 259, URANIUM_ORE: 260,
   REACTOR_SIDE: 261, REACTOR_SIDE_HOT: 262, REACTOR_TOP: 263,
+  BOOKSHELF: 264, COMPOST_SIDE: 265, COMPOST_TOP: 266,
+  LEAD_CHEST_SIDE: 267, LEAD_CHEST_TOP: 268, LEAD_CHEST_FRONT: 269, CENTRIFUGE_SIDE: 270, CENTRIFUGE_TOP: 271, TESLA: 272, TESLA_TOP: 273,
+  FENCE_POST: 274, FENCE_WIRE: 275, FREEZER_SIDE: 276, FREEZER_FRONT: 277, ARC_SIDE: 278, ARC_FRONT: 279, PACKED_ICE: 280, INVAR: 281, RAIL_STOP: 282, BASALT: 283, BASALT_TOP: 284, METEORITE: 285,
 };
 
 // Ores, deepest-reaching last. tier: the pickaxe tier needed to mine it (see TOOL_TIERS);
@@ -157,7 +160,7 @@ export const ORES = [
 
 // Tool tiers: a block with `tier` n only drops (and only breaks quickly) with a tool of tier n or more.
 export const TOOL_TIERS = {
-  1: 'wooden', 2: 'stone', 3: 'copper-class', 4: 'iron-class', 5: 'stainless steel', 6: 'tungsten',
+  1: 'wooden', 2: 'stone', 3: 'copper-class', 4: 'iron-class', 5: 'stainless steel', 6: 'tungsten', 7: 'starsteel',
 };
 
 // Metal tool materials. Copper, tin, zinc and aluminium are a little better than stone; the alloys
@@ -242,6 +245,8 @@ function block(id, o) {
     electric: o.electric ?? null, // { role: 'wire' | 'cable' | 'gen' | 'use' | 'store' | 'meter', draw, speed, solar, wind }: joined up by electrum wire (see electric.js)
     spawner: !!o.spawner, counter: !!o.counter, quarry: !!o.quarry, pad: !!o.pad, // v22 machines (see machines.js)
     lift: !!o.lift, reactor: !!o.reactor, // v23: lifts and reactors (see electric.js and main.js)
+    postTex: o.postTex ?? null, armTex: o.armTex ?? null, // a fence's own post and rail tiles (an electric fence)
+    shock: !!o.shock, tesla: !!o.tesla, zip: !!o.zip, // v24: electric fences, tesla coils, zipline posts (see main.js)
     farm: o.farm ?? null, // 'feller' | 'planter' | 'breaker' | 'placer' | 'ranch' | 'net' (see machines.js)
   };
 }
@@ -2021,4 +2026,175 @@ RECIPES.push(
   { out: [HUGE_BACKPACK, 1], in: [[LEATHER, 8], [STAINLESS_INGOT, 4], [HIDE, 2]], table: true, metal: STAINLESS_INGOT },
   { out: [SPANNER, 1], in: [[STEEL_INGOT, 3]], table: true, metal: STEEL_INGOT },
   { out: [GRAPPLE, 1], in: [[IRON_INGOT, 3], [STRING, 8]], table: true, metal: IRON_INGOT },
+);
+
+// ---------- v24 A: bookshelves, the journal, compost and fertiliser ----------
+// Bookshelves round an enchanting altar (within 2 blocks, on its level or the one above) make enchanting
+// cheaper and unlock the enchantments that need learning (see ENCHANTS: shelves). The journal is a book to
+// write in. The compost bin rots plant scraps down into fertiliser, which grows a crop or sapling a step.
+export const BOOKSHELF = 1260, COMPOST_BIN = 1261;
+export const JOURNAL = 1060, FERTILISER = 1061;
+block(BOOKSHELF, { name: 'Bookshelf', sound: 'wood', tool: 'axe', hardness: 1.5, side: T.BOOKSHELF, top: T.PLANKS, bottom: T.PLANKS });
+block(COMPOST_BIN, { name: 'Compost Bin', sound: 'wood', tool: 'axe', hardness: 1.5, side: T.COMPOST_SIDE, top: T.COMPOST_TOP, bottom: T.PLANKS, station: 'compost' });
+ITEMS[JOURNAL] = { name: 'Journal', stack: 1, journal: true };
+ITEMS[FERTILISER] = { name: 'Fertiliser', fertiliser: true };
+Object.assign(ENCHANTS, {
+  lucky: { name: 'Lucky', about: '1 in 3 chance of an extra ore', on: (id) => toolType(id) === 'pick', cost: [[CRYSTAL_SHARD, 4], [BOOK, 2]], shelves: 4 },
+  mending: { name: 'Mending', about: 'slowly mends itself while you carry it', on: (id) => maxWear(id) > 0 && !chargeCap(id), cost: [[CRYSTAL_SHARD, 6], [BOOK, 3], [GOLD_INGOT, 1]], shelves: 8 },
+  feather: { name: 'Feather Fall', about: 'halves fall damage', on: (id) => ITEMS[id]?.armour?.piece === 3, cost: [[CRYSTAL_SHARD, 4], [BOOK, 2], [FEATHER, 4]], shelves: 12 },
+});
+export const SHELF_DISCOUNT = 5; // one crystal shard off for every this many bookshelves (up to half the shards)
+RECIPES.push(
+  { out: [BOOKSHELF, 1], in: [[PLANKS, 6], [BOOK, 3]], table: true },
+  { out: [JOURNAL, 1], in: [[BOOK, 1], [FEATHER, 1], [COAL_DUST, 1]], table: true },
+  { out: [COMPOST_BIN, 1], in: [[PLANKS, 7]], table: true },
+);
+
+// ---------- v24 B: spent fuel, radiation, the lead-lined chest, the hazmat suit and the centrifuge ----------
+// A fuel rod that burns out in a reactor leaves a spent rod: nuclear waste. Spent rods give off radiation that
+// makes you ill (see main.js) unless they're shut away in a lead-lined chest, or you're in a full hazmat suit.
+// The centrifuge enriches uranium for rods that burn twice as long, and slowly reprocesses spent rods.
+export const LEAD_CHEST = 1270, // 1270..1273: + facing
+  CENTRIFUGE = 1263;
+export const SPENT_ROD = 1062, ENRICHED_URANIUM = 1063, ENRICHED_ROD = 1064, HAZMAT = 1065; // 1065..1068: + piece
+export const hazmatId = (piece) => HAZMAT + piece;
+export const RADIATION_REACH = 6; // how far spent rods' radiation carries
+ITEMS[FUEL_ROD].fuelRod = true;
+ITEMS[SPENT_ROD] = { name: 'Spent Fuel Rod', stack: 1, radioactive: 1 };
+ITEMS[ENRICHED_URANIUM] = { name: 'Enriched Uranium' };
+ITEMS[ENRICHED_ROD] = { name: 'Enriched Fuel Rod', stack: 1, wearMax: ROD_LIFE * 2, fuelRod: true };
+export const isFuelRod = (id) => !!ITEMS[id]?.fuelRod;
+['Hood', 'Suit', 'Trousers', 'Boots'].forEach((n, i) => {
+  ITEMS[hazmatId(i)] = { name: `Hazmat ${n}`, stack: 1, armour: { piece: i, points: [1, 2, 2, 1][i], mat: 'hazmat' }, wearMax: 300, repair: LEAD_INGOT };
+});
+Object.assign(ELECTRIC_DRAW, { centrifuge: 10, tesla: 10, fence: 1, freezer: 6, arc: 14 });
+for (let f = 0; f < 4; f++) {
+  block(LEAD_CHEST + f, {
+    name: 'Lead-Lined Chest', station: 'leadchest', side: T.LEAD_CHEST_SIDE, top: T.LEAD_CHEST_TOP, bottom: T.LEAD_CHEST_TOP, front: T.LEAD_CHEST_FRONT,
+    facing: f, sound: 'stone', hardness: 3, tool: 'pick', variantOf: f ? LEAD_CHEST : 0, drop: LEAD_CHEST, stationBase: LEAD_CHEST,
+  });
+}
+block(CENTRIFUGE, {
+  ...plain, name: 'Centrifuge', hardness: 3, side: T.CENTRIFUGE_SIDE, top: T.CENTRIFUGE_TOP, bottom: T.STAINLESS, station: 'centrifuge',
+  electric: { role: 'use', draw: ELECTRIC_DRAW.centrifuge, speed: 1 },
+});
+
+// ---------- v24 C: tesla coil, electric fence, freezer, arc furnace ----------
+// The tesla coil zaps night creatures that come within TESLA_REACH. The electric fence is a fence that
+// shocks creatures (and you) that touch it. The freezer turns water into ice, and ice into packed ice, which
+// cools a reactor better than water does. The arc furnace smelts quickly and makes alloys nothing else can.
+export const TESLA_COIL = 1264, ELECTRIC_FENCE = 1265, PACKED_ICE = 1268,
+  FREEZER = 1274, // 1274..1277: + facing
+  ARC_FURNACE = 1278; // 1278..1281: + facing
+export const INVAR_INGOT = 1069;
+export const TESLA_REACH = 7, TESLA_DAMAGE = 6;
+export const ICE_COOL = 2, PACKED_ICE_COOL = 3; // heat a second carried off by each face of a reactor against ice / packed ice
+ITEMS[INVAR_INGOT] = { name: 'Invar Ingot', ingot: true };
+block(TESLA_COIL, {
+  ...plain, name: 'Tesla Coil', hardness: 3, transparent: true, light: 3, tesla: true,
+  model: [[3, 0, 3, 13, 3, 13, { side: T.INVAR, top: T.INVAR, bottom: T.INVAR }], [6, 3, 6, 10, 12, 10, T.TESLA], [4, 12, 4, 12, 16, 12, { side: T.TESLA_TOP, top: T.TESLA_TOP, bottom: T.TESLA_TOP }]],
+  boxes: [[3, 0, 3, 13, 16, 13]],
+  electric: { role: 'use', draw: ELECTRIC_DRAW.tesla },
+});
+block(ELECTRIC_FENCE, {
+  name: 'Electric Fence', shape: 'fence', sound: 'stone', tool: 'pick', hardness: 2, transparent: true, postTex: T.FENCE_POST, armTex: T.FENCE_WIRE, shock: true,
+  model: [[6, 0, 6, 10, 16, 10, T.FENCE_POST]],
+  electric: { role: 'use', draw: ELECTRIC_DRAW.fence },
+});
+block(PACKED_ICE, { name: 'Packed Ice', sound: 'glass', tex: T.PACKED_ICE, hardness: 1, tool: 'pick' });
+for (let f = 0; f < 4; f++) {
+  block(FREEZER + f, {
+    ...plain, name: 'Freezer', station: 'freezer', side: T.FREEZER_SIDE, top: T.FREEZER_SIDE, bottom: T.STAINLESS, front: T.FREEZER_FRONT,
+    facing: f, hardness: 3, variantOf: f ? FREEZER : 0, drop: FREEZER, stationBase: FREEZER,
+    electric: { role: 'use', draw: ELECTRIC_DRAW.freezer, speed: 1 },
+  });
+  block(ARC_FURNACE + f, {
+    ...plain, name: 'Arc Furnace', station: 'arc', side: T.ARC_SIDE, top: T.ARC_SIDE, bottom: T.FIRE_BRICKS, front: T.ARC_FRONT,
+    facing: f, hardness: 4, variantOf: f ? ARC_FURNACE : 0, drop: ARC_FURNACE, stationBase: ARC_FURNACE, light: 4,
+    electric: { role: 'use', draw: ELECTRIC_DRAW.arc, speed: 2 },
+  });
+}
+
+RECIPES.push(
+  { out: [LEAD_CHEST, 1], in: [[CHEST, 1], [LEAD_INGOT, 8]], table: true, metal: LEAD_INGOT },
+  { out: [hazmatId(0), 1], in: [[LEATHER, 2], [LEAD_INGOT, 2], [GLASS, 1]], table: true, metal: LEAD_INGOT },
+  { out: [hazmatId(1), 1], in: [[LEATHER, 4], [LEAD_INGOT, 4], [WOOL, 1]], table: true, metal: LEAD_INGOT },
+  { out: [hazmatId(2), 1], in: [[LEATHER, 3], [LEAD_INGOT, 3]], table: true, metal: LEAD_INGOT },
+  { out: [hazmatId(3), 1], in: [[LEATHER, 2], [LEAD_INGOT, 2]], table: true, metal: LEAD_INGOT },
+  { out: [CENTRIFUGE, 1], in: [[STAINLESS_INGOT, 6], [ELECTRIC_MOTOR, 1], [INVAR_INGOT, 2], [GLASS, 1]], table: true, metal: INVAR_INGOT },
+  { out: [ENRICHED_ROD, 1], in: [[ENRICHED_URANIUM, 2], [STAINLESS_INGOT, 2]], table: true, metal: ENRICHED_URANIUM },
+  { out: [TESLA_COIL, 1], in: [[INVAR_INGOT, 3], [COPPER_INGOT, 6], [ELECTRUM_WIRE, 4], [CRYSTAL_SHARD, 1]], table: true, metal: INVAR_INGOT },
+  { out: [ELECTRIC_FENCE, 6], in: [[INVAR_INGOT, 1], [IRON_INGOT, 2], [ELECTRUM_WIRE, 2]], table: true, metal: INVAR_INGOT },
+  { out: [FREEZER, 1], in: [[STAINLESS_INGOT, 4], [ELECTRIC_MOTOR, 1], [PIPE, 2], [ICE, 1]], table: true, metal: ELECTRIC_MOTOR },
+  { out: [ARC_FURNACE, 1], in: [[E_SMELTER, 1], [FIRE_BRICK, 6], [TUNGSTEN_INGOT, 2], [ELECTRUM_WIRE, 4]], table: true, metal: E_SMELTER },
+);
+
+// ---------- v24 D: rail stations, ziplines, boats and hot-air balloons ----------
+// A rail station: a straight rail where carts stop, and wait until it gets a signal (a button beside it, say)
+// or you push off. A zipline runs between two posts (tap one, then the other, holding a zipline rope); tap a
+// post holding a grappling hook to slide along it to the other. Boats and balloons are in vehicles.js.
+export const RAIL_STATION = 1282, // 1282 = along z, 1283 = along x
+  ZIP_POST = 1284;
+export const BOAT = 1076, BALLOON = 1077, ZIP_LINE = 1078;
+export const ZIP_REACH = 40; // the longest zipline
+for (let a = 0; a < 2; a++) {
+  const ends = a ? [1, 3] : [0, 2];
+  block(RAIL_STATION + a, {
+    name: 'Rail Station', sound: 'stone', transparent: true, solid: false, hardness: 0.7, tool: 'pick',
+    model: [...rotateModel([[2, 0, 1, 14, 0.8, 15, T.RAIL_STOP]], a), ...railModel({ ends })], rail: { ends, slope: -1, powered: false, stop: true },
+    variantOf: a ? RAIL_STATION : 0, drop: RAIL_STATION,
+  });
+}
+block(ZIP_POST, {
+  name: 'Zipline Post', sound: 'wood', hardness: 2, tool: 'axe', transparent: true, zip: true,
+  model: [[6, 0, 6, 10, 16, 10, { side: T.LOG_SIDE, top: T.LOG_TOP, bottom: T.LOG_TOP }], [3, 13, 7, 13, 15, 9, T.IRON], [7, 13, 3, 9, 15, 13, T.IRON]],
+  boxes: [[6, 0, 6, 10, 16, 10]],
+});
+ITEMS[BOAT] = { name: 'Boat', stack: 1, vehicle: 'boat' };
+ITEMS[BALLOON] = { name: 'Hot-Air Balloon', stack: 1, vehicle: 'balloon' };
+ITEMS[ZIP_LINE] = { name: 'Zipline Rope', stack: 16 };
+RECIPES.push(
+  { out: [RAIL_STATION, 2], in: [[RAIL, 2], [BRICKS, 1], [WIRE, 1]], table: true, metal: WIRE },
+  { out: [ZIP_POST, 2], in: [[LOG, 2], [IRON_INGOT, 1]], table: true, metal: IRON_INGOT },
+  { out: [ZIP_LINE, 2], in: [[STRING, 6], [IRON_INGOT, 1]], table: true, metal: IRON_INGOT },
+  { out: [BOAT, 1], in: [[PLANKS, 5], [STICK, 2]], table: true },
+  { out: [BALLOON, 1], in: [[WOOL, 12], [STRING, 8], [PLANKS, 4], [IRON_INGOT, 2], [LANTERN, 1]], table: true, metal: IRON_INGOT },
+);
+
+// ---------- v24 E: volcanoes, ruins, shipwrecks and meteorites ----------
+// Volcanoes are cones of basalt with a lava-filled crater, rich in deep ores. Meteorites fall at night (see
+// main.js) and leave meteoric iron, which the arc furnace makes into starsteel: the best tools of all.
+export const BASALT = 1285, METEORITE = 1286;
+export const METEORIC_IRON = 1070, STARSTEEL_INGOT = 1071, STARSTEEL_TOOLS = 1072; // 1072..1075: pick, axe, shovel, sword
+export const starsteelTool = (kind) => STARSTEEL_TOOLS + ['pick', 'axe', 'shovel', 'sword'].indexOf(kind);
+block(BASALT, { name: 'Basalt', side: T.BASALT, top: T.BASALT_TOP, bottom: T.BASALT_TOP, hardness: 2.5, tool: 'pick', needsTool: true });
+block(METEORITE, {
+  name: 'Meteorite', tex: T.METEORITE, hardness: 6, tool: 'pick', needsTool: true, tier: 5, light: 3,
+  drop: () => [[METEORIC_IRON, 1 + (Math.random() < 0.4 ? 1 : 0)]],
+});
+ITEMS[METEORIC_IRON] = { name: 'Meteoric Iron' };
+ITEMS[STARSTEEL_INGOT] = { name: 'Starsteel Ingot', ingot: true };
+['pick', 'axe', 'shovel'].forEach((kind, i) => {
+  ITEMS[STARSTEEL_TOOLS + i] = {
+    name: `Starsteel ${KIND_NAMES[kind]}`, mat: 'starsteel', wearMax: 3000, repair: STARSTEEL_INGOT,
+    tool: { type: kind, speed: 18, tier: 7, damage: KIND_DAMAGE[kind] + 7 },
+  };
+});
+ITEMS[starsteelTool('sword')] = { name: 'Starsteel Sword', mat: 'starsteel', wearMax: 3000, repair: STARSTEEL_INGOT, tool: { type: 'sword', speed: 1, tier: 0, damage: 16 } };
+RECIPES.push(
+  { out: [starsteelTool('pick'), 1], in: [[STARSTEEL_INGOT, 3], [STICK, 2]], table: true, metal: STARSTEEL_INGOT },
+  { out: [starsteelTool('axe'), 1], in: [[STARSTEEL_INGOT, 3], [STICK, 2]], table: true, metal: STARSTEEL_INGOT },
+  { out: [starsteelTool('shovel'), 1], in: [[STARSTEEL_INGOT, 1], [STICK, 2]], table: true, metal: STARSTEEL_INGOT },
+  { out: [starsteelTool('sword'), 1], in: [[STARSTEEL_INGOT, 2], [STICK, 1]], table: true, metal: STARSTEEL_INGOT },
+);
+
+// ---------- v24 F: farm animals ----------
+// Hens lay eggs and pigs root up truffles (see mobs.js); a saddle lets you ride a buffalo.
+export const EGG = 1079, FRIED_EGG = 1080, SADDLE = 1081, TRUFFLE = 1082;
+ITEMS[EGG] = { name: 'Egg', stack: 16 };
+ITEMS[FRIED_EGG] = { name: 'Fried Egg', food: 5 };
+ITEMS[SADDLE] = { name: 'Saddle', stack: 1 };
+ITEMS[TRUFFLE] = { name: 'Truffle', food: 4 };
+RECIPES.push(
+  { out: [SADDLE, 1], in: [[LEATHER, 3], [STRING, 2], [IRON_INGOT, 1]], table: true, metal: IRON_INGOT },
 );

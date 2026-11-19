@@ -97,6 +97,14 @@ It is designed for Android tablets (touch controls) but also plays with keyboard
   between floors, **uranium** and a **nuclear reactor** that needs cooling (or melts down), a **chainsaw** that
   gives **sawdust** for **paper** and **books**, **backpacks** in three sizes, a **spanner** that turns machines and
   picks them up with what's in them, a **grappling hook**, and **animal breeding**
+- v24: **bookshelves** that make the enchanting altar cheaper and unlock **Lucky**, **Mending** and **Feather Fall**,
+  a **journal** to write in, a **compost bin** and **fertiliser**; **spent fuel rods** that give off **radiation**,
+  a **lead-lined chest**, a **hazmat suit** and a **centrifuge** for **enriched fuel rods**; a **tesla coil**, an
+  **electric fence**, an **arc furnace** (invar and starsteel) and a **freezer** (ice and packed ice, which cool a
+  reactor better than water); **ziplines**, **boats**, **hot-air balloons** and **rail stations**; **volcanoes**,
+  **ruins**, **shipwrecks** and **meteorites** that fall at night and give **starsteel** for the best tools;
+  **cats**, **chickens** (eggs), **pigs** (truffles), **buffalo** you can saddle and ride, and young animals that
+  take their parents' **coat colours**; and **quick-stack** into nearby chests
 - **Three world slots** with export to a file and import, a **creative mode** (flying, every block, instant
   breaking and a **copy wand**), rebindable keys, a field-of-view slider, a full-screen **world map** with
   waypoints, and **22 achievements** with an in-game guide
@@ -914,10 +922,84 @@ Machines make a low hum while they turn, and electric ones a faint buzz, so you 
 ### Animal breeding
 
 Feed two animals of the same kind their food and they look for a mate (hearts show over them): seeds for ducks,
-wheat for buffalo, alpacas, yaks and camels, berries for newts, and a fish for tame wolves. A young one appears,
+wheat for buffalo, alpacas, yaks and camels, berries for newts, seeds for chickens, berries or wheat for pigs, and
+a fish for tame wolves and cats. A young one appears,
 growing up over 5 minutes, and the pair won't breed again for 5 more. A baby of tame parents is tame. An **animal
 station** with 2 or more of a kind's food in it feeds pairs nearby, so a pen keeps itself stocked. Animals won't
 breed when there are 12 or more about.
+
+### Version 24
+
+#### Bookshelves, the journal and compost
+
+- A **bookshelf** (6 planks, 3 books) near an enchanting altar (within 2 blocks, at the altar's level or one up)
+  makes enchanting cheaper: one crystal shard less for every 5 shelves, down to half. Shelves also unlock three
+  new enchantments: **Lucky** (4 shelves; a pickaxe gets an extra ore 1 time in 3), **Mending** (8; a tool or armour
+  slowly mends itself while you carry it) and **Feather Fall** (12; boots that halve fall damage).
+- A **journal** (a book, a feather, coal dust): tap with it in hand to write in it. "Note where I am" adds your
+  position. What you write is kept with that journal.
+- A **compost bin** (7 planks) rots sawdust, seeds, saplings, wheat, sugar cane and berries into **fertiliser**
+  with no fuel or power. Tap a sapling or a crop with fertiliser to make it grow a stage (or a sapling into a tree).
+
+#### Nuclear waste and radiation
+
+- A fuel rod that burns out in a reactor leaves a **spent fuel rod**, which is still radioactive: anywhere within
+  6 blocks of one (in a chest, a machine or your inventory) you hear a Geiger counter and slowly lose health.
+- A **lead-lined chest** (a chest, 8 lead) keeps the radiation in.
+- A **hazmat suit** (four pieces of leather and lead) keeps it off you, and slows lava burns as well.
+- The **centrifuge** (6 stainless steel, an electric motor, 2 invar, glass; 10 power) spins 3 uranium (ingots or
+  dust) into **enriched uranium**, and spent rods back into uranium dust. 2 enriched uranium and 2 stainless steel
+  make an **enriched fuel rod**, which lasts twice as long.
+
+#### Tesla coils, electric fences, the arc furnace and the freezer
+
+- A **tesla coil** (3 invar, 6 copper, 4 electrum wire, a crystal shard) zaps night creatures within 7 blocks for
+  6 damage every second or so, using 10 power while it has something to zap.
+- **Electric fences** (6 from invar, 2 iron, 2 electrum wire) join up like fences and give anything that touches
+  them a shock (1 damage to you, and animals run away), using 1 power each.
+- The **arc furnace** (an electric smelter, 6 fire bricks, 2 tungsten, 4 electrum wire; 14 power) smelts everything
+  twice as fast as a smelter, and makes **invar** (2 iron and a nickel make 3) and **starsteel** (2 meteoric iron,
+  a tungsten and a coal).
+- The **freezer** (4 stainless steel, an electric motor, 2 pipes, ice; 6 power) makes **ice** from water buckets
+  (you get the bucket back) and **packed ice** from 4 ice. Every face of a reactor touching ice cools it twice as
+  well as water, and packed ice three times as well. Ice beside a running reactor slowly melts.
+
+#### Ziplines, boats, balloons and rail stations
+
+- **Zipline posts** (2 from 2 logs and an iron) and **zipline rope** (2 from 6 string and an iron): with rope in
+  hand, tap one post and then another up to 40 blocks away to run a line between them (taking one rope). Tap a
+  post with a grappling hook in hand to slide along the line toward the post you're facing (faster downhill).
+  Sneak to let go. Breaking a post gives its ropes back.
+- A **boat** (5 planks, 2 sticks): tap water with it to put it in, tap the boat to get in. Hold forward to row the
+  way you look and back to slow down; tap to get out. Hold on a boat (or balloon) to pick it up.
+- A **hot-air balloon** (12 wool, 8 string, 4 planks, 2 iron, a lantern): put it on the ground and get in. Jump to
+  rise and sneak to sink; it moves as you walk. Its burner uses a coal or charcoal from your inventory every 45
+  seconds of flight, and sinks gently to the ground when it runs out.
+- A **rail station** (2 from 2 rails, bricks, copper wire) is a straight rail where carts stop and wait until it
+  gets a signal (a button beside it, say) or you push off. A cart that reaches the end of the line turns round.
+
+#### Volcanoes, ruins, shipwrecks and meteorites
+
+- **Volcanoes** are basalt cones with a lava crater and an obsidian rim; their rock is rich in tungsten and uranium.
+- **Ruins** of old stone houses stand on flat grassland, with a loot chest of books, paper, maps, a journal and old
+  iron tools, and sometimes a bookshelf.
+- **Shipwrecks** lie on the deep sea bed, with a chest of gold, a compass, maps, gunpowder and fish.
+- Once on some clear nights a **meteorite** streaks down 30 to 70 blocks away (a message tells you which way). It
+  blasts a crater and leaves glowing **meteorite** rock: mine it with a tungsten pickaxe or better for **meteoric
+  iron**. The arc furnace makes it into **starsteel**, for the best pickaxe, axe, shovel and sword of all.
+
+#### Cats, chickens, pigs and riding buffalo
+
+- **Cats** wander the plains: tame one with fish and it follows you about (tap it to make it stay).
+- **Chickens** lay an **egg** every few minutes: fry it in the oven, or bake a cake with 3 flour, 2 sugar and 2 eggs.
+  They breed on seeds.
+- **Pigs** root up a **truffle** now and then (a snack, and the trader buys them). They breed on berries or wheat.
+- A **saddle** (3 leather, 2 string, an iron): tap a grown buffalo with it, then tap the buffalo to ride it. A
+  saddled buffalo waits where you leave it.
+- A young animal takes its coat colour from one of its parents (and now and then has a new one), so you can breed
+  for the colours you like. Tame animals keep their coats when you come back to a world.
+- **Quick-stack**: the button in the backpack puts everything (except your hotbar, tools and backpacks) that a chest
+  within 6 blocks already holds into that chest. In a chest, **Stack matching** does the same for just that chest.
 
 ### Worlds, creative mode, the map and achievements
 
@@ -955,7 +1037,8 @@ guide to how everything works.
 | `js/machines.js` | Pumps, pipes, valves, tanks and sprinklers, drills, filament lamps, hoppers, collectors, ejectors, belts (splitting and sorting), bucket elevators, sensors (observers, gauges, power meters, daylight sensors, item counters), the farm machines, quarries, spawners and teleport pads |
 | `js/logic.js` | Copper wire and the logic blocks: inverters, delay blocks and latches |
 | `js/electric.js` | Electricity: generators, solar panels, wind turbines, wire and cable, grid batteries, and what runs on it (lamps, pulverizers, smelters, chargers, motors, teleport pads, quarries) |
-| `js/carts.js` | Minecarts and storage carts: rolling along rails, slopes, powered and loader rails, riding |
+| `js/carts.js` | Minecarts and storage carts: rolling along rails, slopes, powered and loader rails, rail stations, riding |
+| `js/vehicles.js` | Boats and hot-air balloons: floating, rowing, rising on coal, and riding |
 | `js/signs.js` | Sign text (and its colour) and the panels that show it |
 | `js/frames.js` | Item frames: what each holds, the pictures in them, and hopper filters |
 | `js/weather.js` | Rain, snow and sandstorms: when they come, and the falling particles |

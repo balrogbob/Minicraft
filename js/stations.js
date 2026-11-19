@@ -7,11 +7,12 @@ import {
   COAL, CHARCOAL, LOG, PLANKS, STICK, COBBLE, STONE, SAND, GLASS, SLIME_FUEL, BUCKET, SEEDS,
   SALMON, BAKED_SALMON, ICEFISH, BAKED_ICEFISH, HONEY_TEA, HONEYCOMB, MUSHROOM_STEW, FISH_PIE, GLOW_MUSHROOM,
   FLOUR, SUGAR, BUTTER, MILK_BUCKET, BREAD, COOKIE, CAKE, RAW_FISH, BAKED_FISH, BLOCKS, maxStack, stationKind,
-  ORES, COAL_OR_CHARCOAL, FUEL_ROD, CUPRONICKEL_INGOT, NICKEL_INGOT, IRON_INGOT, COPPER_INGOT, TIN_INGOT, ZINC_INGOT, ALUMINIUM_INGOT, SILVER_INGOT, GOLD_INGOT,
+  ORES, COAL_OR_CHARCOAL, FUEL_ROD, FERTILISER, SAWDUST, CUPRONICKEL_INGOT, ENRICHED_ROD, SPENT_ROD, URANIUM_INGOT, URANIUM_DUST, ENRICHED_URANIUM, WATER_BUCKET, ICE, PACKED_ICE, INVAR_INGOT, METEORIC_IRON, STARSTEEL_INGOT, NICKEL_INGOT, IRON_INGOT, COPPER_INGOT, TIN_INGOT, ZINC_INGOT, ALUMINIUM_INGOT, SILVER_INGOT, GOLD_INGOT,
   BRONZE_INGOT, ELECTRUM_INGOT, STAINLESS_INGOT, STEEL_INGOT, AL_BRONZE_INGOT,
   GRAVEL, FLINT, FLINT_DUST, CLAY_BALL, CLAY_DUST, BRICK, FIRE_CLAY, FIRE_BRICK, oreDust, HIDE, LEATHER,
   LAVA_BUCKET, LEAD_BUCKET, SALTPETRE, SANDSTONE, WHEAT, SUGAR_CANE, COAL_DUST, PLATE_METALS, PLATES, TUNGSTEN_INGOT, FILAMENT,
   SAPLING, ELECTRIC_ITEMS, chargeCap, GLASS_BOTTLE, NIGHT_TEA, HASTE_TEA, FIRE_TEA, HEAL_TEA, BERRIES, CORNFLOWER, DANDELION, POPPY, CACTUS, LAVENDER, DAISY, CAULDRON,
+  EGG, FRIED_EGG,
 } from './blocks.js';
 
 // A recipe ingredient can be one id or a list of alternatives (coal or charcoal).
@@ -36,6 +37,8 @@ export const STATION_KINDS = {
       { out: [COOKIE, 9], in: [[FLOUR, 3], [SUGAR, 3], [BUTTER, 1]], tools: [MILK_BUCKET], time: 8 },
       { out: [BREAD, 1], in: [[FLOUR, 3]], time: 6 },
       { out: [BAKED_FISH, 1], in: [[RAW_FISH, 1]], time: 5 },
+      { out: [FRIED_EGG, 1], in: [[EGG, 1]], time: 4 },
+      { out: [CAKE, 1], in: [[FLOUR, 3], [SUGAR, 2], [EGG, 2]], time: 10 },
       { out: [BAKED_SALMON, 1], in: [[SALMON, 1]], time: 5 },
       { out: [MUSHROOM_STEW, 1], in: [[GLOW_MUSHROOM, 3], [BUTTER, 1]], time: 8 },
       ...[BAKED_FISH, BAKED_SALMON, BAKED_ICEFISH].map((f) => ({ out: [FISH_PIE, 1], in: [[f, 1], [FLOUR, 2], [BUTTER, 1]], time: 10 })),
@@ -133,6 +136,16 @@ STATION_KINDS.charger = { name: 'Battery Charger', inputs: 1, holder: true, acce
 // The electric smelter smelts everything the smelter does with no fuel, on electricity (see electric.js):
 // at 2x speed with all the power it wants, slower when the grid's short.
 STATION_KINDS.esmelter = { ...STATION_KINDS.smelter, name: 'Electric Smelter', verb: 'Smelting', powered: true, electric: true };
+// The arc furnace: smelts everything the smelter does at half the time (and at 2x with full power), and
+// makes alloys that need more heat than any fire gives.
+STATION_KINDS.arc = {
+  name: 'Arc Furnace', verb: 'Smelting', inputs: 4, powered: true, electric: true,
+  recipes: [
+    { out: [STARSTEEL_INGOT, 1], in: [[METEORIC_IRON, 2], [TUNGSTEN_INGOT, 1], [COAL_OR_CHARCOAL, 1]], time: 12 },
+    { out: [INVAR_INGOT, 3], in: [[IRON_INGOT, 2], [NICKEL_INGOT, 1]], time: 6 },
+    ...STATION_KINDS.smelter.recipes.map((r) => ({ ...r, time: r.time / 2 })),
+  ],
+};
 // Chests just hold things.
 STATION_KINDS.chest = { name: 'Chest', inputs: 18, storage: true, recipes: [] };
 STATION_KINDS.ironchest = { name: 'Iron-Banded Chest', inputs: 36, storage: true, recipes: [] };
@@ -147,8 +160,41 @@ STATION_KINDS.pcrafter = { name: 'Programmable Crafter', inputs: 9, crafter: tru
 STATION_KINDS.planter = { name: 'Planter', inputs: 4, holder: true, accepts: [SAPLING], recipes: [] };
 STATION_KINDS.ranch = { name: 'Animal Station', inputs: 6, holder: true, accepts: [BUCKET, WHEAT, SEEDS, BERRIES], recipes: [] };
 STATION_KINDS.net = { name: 'Fishing Net', inputs: 4, storage: true, recipes: [] };
-// A reactor holds up to four fuel rods, burning them all at once (see electric.js).
-STATION_KINDS.reactor = { name: 'Reactor', inputs: 4, holder: true, accepts: [FUEL_ROD], recipes: [] };
+// A reactor holds up to four fuel rods, burning them all at once (see electric.js). Burnt-out rods stay in it, spent.
+STATION_KINDS.reactor = { name: 'Reactor', inputs: 4, holder: true, accepts: [FUEL_ROD, ENRICHED_ROD, SPENT_ROD], recipes: [] };
+// A lead-lined chest: a chest that keeps the radiation of spent fuel rods in.
+STATION_KINDS.leadchest = { name: 'Lead-Lined Chest', inputs: 18, storage: true, shielded: true, recipes: [] };
+// The centrifuge enriches uranium, and slowly reprocesses spent rods back into a little uranium.
+STATION_KINDS.centrifuge = {
+  name: 'Centrifuge', verb: 'Spinning', inputs: 2, powered: true, electric: true,
+  recipes: [
+    { out: [ENRICHED_URANIUM, 1], in: [[URANIUM_INGOT, 3]], time: 20 },
+    { out: [ENRICHED_URANIUM, 1], in: [[URANIUM_DUST, 3]], time: 20 },
+    { out: [URANIUM_DUST, 1], in: [[SPENT_ROD, 1]], time: 60 },
+  ],
+};
+// The freezer turns water into ice (you get the bucket back) and ice into packed ice.
+STATION_KINDS.freezer = {
+  name: 'Freezer', verb: 'Freezing', inputs: 2, powered: true, electric: true,
+  recipes: [
+    { out: [PACKED_ICE, 1], in: [[ICE, 4]], time: 10 },
+    { out: [ICE, 1], in: [[WATER_BUCKET, 1]], leaves: BUCKET, time: 6 },
+  ],
+};
+
+// The compost bin needs no fuel or power: plant scraps just rot down into fertiliser, given time.
+STATION_KINDS.compost = {
+  name: 'Compost Bin', verb: 'Rotting down', inputs: 4, powered: true, passive: true,
+  recipes: [
+    { out: [FERTILISER, 2], in: [[SAWDUST, 4]], time: 20 },
+    { out: [FERTILISER, 1], in: [[SEEDS, 8]], time: 20 },
+    { out: [FERTILISER, 1], in: [[SAPLING, 2]], time: 20 },
+    { out: [FERTILISER, 1], in: [[WHEAT, 4]], time: 20 },
+    { out: [FERTILISER, 1], in: [[SUGAR_CANE, 4]], time: 20 },
+    { out: [FERTILISER, 1], in: [[BERRIES, 6]], time: 20 },
+    { out: [FERTILISER, 1], in: [[[POPPY, DANDELION, CORNFLOWER, LAVENDER, DAISY], 4]], time: 20 },
+  ],
+};
 
 const key = (x, y, z) => `${x},${y},${z}`;
 
@@ -217,6 +263,10 @@ export class Stations {
         if (!s.count) st.inputs[i] = null;
       }
     }
+    if (r.leaves) { // (the freezer gives the bucket back)
+      const i = st.inputs.findIndex((x) => !x);
+      if (i >= 0) st.inputs[i] = { id: r.leaves, count: 1 };
+    }
     const n = r.out[1] + (r.bonus && Math.random() < r.bonus && (st.out?.count ?? 0) + r.out[1] < maxStack(r.out[0]) ? 1 : 0);
     if (st.out) st.out.count += n;
     else st.out = { id: r.out[0], count: n, ...(chargeCap(r.out[0]) ? { wear: chargeCap(r.out[0]) } : {}) }; // (batteries come out flat)
@@ -246,7 +296,7 @@ export class Stations {
       const r = K.water && !(BLOCKS[id].water > 0) ? null : this.recipeFor(st); // a dry cauldron can't brew
       if (!r) st.progress = 0;
       if (K.powered) {
-        const speed = powerAt(x, y, z);
+        const speed = K.passive ? 1 : powerAt(x, y, z);
         st.speed = speed;
         if (r && speed > 0) {
           st.progress += dt * speed;

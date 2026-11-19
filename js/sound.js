@@ -136,6 +136,15 @@ export class Sound {
 
   click() { if (this.ready) this.tone(800, 0.04, 0.08, 'square'); }
 
+  // a geiger counter's click
+  geiger() { if (this.ready) this.tone(1800 + Math.random() * 600, 0.008, 0.12, 'square'); }
+
+  // an electric zap: a tesla coil's bolt, or an electric fence
+  zap(gain = 1) {
+    if (!this.ready) return;
+    this.voice({ type: 'sawtooth', from: 900, to: 180, dur: 0.16, vol: 0.14 * gain, filter: 'highpass', freq: 400, q: 1, vibrato: 60 });
+  }
+
   // Bow release: a twang that's higher and louder the further the bow was drawn.
   bow(power = 1) {
     if (!this.ready) return;
@@ -286,6 +295,17 @@ export class Sound {
       // a yip, or a short howl
       if (hurt || Math.random() < 0.6) this.voice({ type: 'triangle', from: p(700, 800), to: p(1000, 1100), dur: 0.12, vol: 0.25 * gain, freq: 2500 });
       else this.voice({ type: 'sine', from: p(420, 460), to: p(640, 700), dur: 1.1, vol: 0.22 * gain, freq: 1800, attack: 0.2, vibrato: 8 });
+    } else if (kind === 'cat') {
+      // a meow (rising then falling), or a hiss when bumped
+      if (hurt) this.noiseBurst({ type: 'highpass', freq: 2500, q: 1, dur: 0.3, vol: 0.25 * gain }, 1, 1);
+      else this.voice({ type: 'triangle', from: p(500, 560), to: p(720, 800), dur: 0.45, vol: 0.2 * gain, freq: 2400, attack: 0.06, vibrato: 6 });
+    } else if (kind === 'chicken') {
+      // a few quick clucks
+      for (const delay of hurt ? [0, 0.08, 0.16] : [0, 0.12]) this.voice({ type: 'square', from: p(620, 700), to: p(420, 480), dur: 0.07, vol: 0.12 * gain, freq: 1800, q: 2, delay });
+    } else if (kind === 'pig') {
+      // a snuffly grunt; a squeal when bumped
+      if (hurt) this.voice({ type: 'sawtooth', from: p(900, 1000), to: 1400, dur: 0.3, vol: 0.18 * gain, freq: 2200 });
+      else this.voice({ type: 'sawtooth', from: p(150, 170), to: p(110, 120), dur: 0.22, vol: 0.3 * gain, freq: 700, q: 2, vibrato: 25 });
     } else if (kind === 'camel') {
       const f = hurt ? p(150, 170) : p(110, 130);
       this.voice({ from: f, to: f * 0.7, dur: hurt ? 0.3 : 0.7, vol: 0.45 * gain, freq: 600, q: 2, attack: 0.05, vibrato: 18 });
