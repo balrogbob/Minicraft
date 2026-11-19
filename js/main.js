@@ -5,7 +5,7 @@ import {
   WOOD_PICK, STONE_PICK, WOOD_AXE, STONE_AXE, WOOD_SHOVEL, STONE_SHOVEL,
   BED, BED_FOOT, CHAIR, LAMP, CARPET, CURTAIN, DOOR, SLIME_FUEL, FACING_DIRS, MAX_LAMP_FUEL,
   isBed, isChair, isLamp, isCurtain, isDoor, doorId, IRON_BARS, FLOWER_POT, HANGING_PLANT, WINDOW_BOX, POT_PLANTS, potOf,
-  OVEN, SMELTER, stationKind, maxStack, FISHING_ROD, RAW_FISH, TOOL_TIERS, LOG, LEAVES, SAPLING, WHEAT_3, isLeaves, FRUITS, fruitLeaves, FRUIT_SAPLING, SCARECROW, COOK_POT, SNOW_LAYER, LIGHTHOUSE_LAMP, EXPLORER_MAP, TREASURE_MAP, STARSTEEL_INGOT, MAX_LIGHT, APIARY, MAX_APIARY, BEESWAX, CANDLE_BLOCK, CABLE_CAR, FARM_REACH,
+  OVEN, SMELTER, stationKind, maxStack, FISHING_ROD, RAW_FISH, TOOL_TIERS, LOG, LEAVES, SAPLING, WHEAT_3, isLeaves, FRUITS, fruitLeaves, FRUIT_SAPLING, SCARECROW, COOK_POT, SNOW_LAYER, LIGHTHOUSE_LAMP, EXPLORER_MAP, TREASURE_MAP, STARSTEEL_INGOT, MAX_LIGHT, APIARY, MAX_APIARY, BEESWAX, CANDLE_BLOCK, CABLE_CAR, FARM_REACH, MARKET_STALL, COIN, GLASS_PANE, FURN_TABLE, GRAVEL,
   BLAST_SMELTER, CRUSHER, WATER_BUCKET, WATER_WHEEL, isWaterId, isFlowing,
   CHEST, IRON_CHEST, LADDER, SCAFFOLD, SIGN, SIGN_POST, isSign, isSword, ARMOUR_PIECES,
   SAW, TRIP_HAMMER, DRILL, HOPPER, BELT, WINDMILL, BELLOWS, PUMP, FILAMENT_LAMP, MILLSTONE,
@@ -438,7 +438,7 @@ async function startWorld(save, opts = {}) {
     const drops = dropsFor(LEAVES, 0); // (fruit trees' leaves too: not their fruit, which you'd pick)
     if (drops.length) giveDrops(drops);
   };
-  mobs.reset(world); bees.clear(); crows.clear(); critters.clear(); catGiftDay = -1; shownSeason = -1;
+  mobs.reset(world); bees.clear(); crows.clear(); critters.clear(); catGiftDay = -1; bellDay = -1; villageGrowth = new Map(); shownSeason = -1;
   kinetics.clear();
   kinetics.load(save?.kinetics);
   beltStart = null;
@@ -500,6 +500,9 @@ async function startWorld(save, opts = {}) {
   places = Array.isArray(save?.places) ? save.places.filter((p) => p && typeof p.kind === 'string' && [p.x, p.z].every(Number.isFinite)).slice(0, 400) : [];
   treasures = Array.isArray(save?.treasures) ? save.treasures.filter((t) => t && [t.x, t.z].every(Number.isFinite)) : [];
   catGiftDay = Number.isInteger(save?.catGiftDay) ? save.catGiftDay : -1;
+  bellDay = Number.isInteger(save?.bellDay) ? save.bellDay : -1;
+  villageGrowth = new Map((Array.isArray(save?.villageGrowth) ? save.villageGrowth : []).filter((e) => Array.isArray(e) && typeof e[0] === 'string' && e[1] && Number.isFinite(e[1].deals))
+    .map(([k, g]) => [k, { deals: g.deals, built: (Array.isArray(g.built) ? g.built : []).filter((h) => h && [h.x, h.y, h.z].every(Number.isFinite) && Array.isArray(h.door)) }]));
   beaconSpots = new Set(Array.isArray(save?.beacons) ? save.beacons.filter((k) => typeof k === 'string') : []);
   if (save?.weather) weather.set(!!save.weather.raining, Math.max(10, +save.weather.timer || 60));
   else weather.set(false);
@@ -598,7 +601,7 @@ function saveGame() {
     weather: { raining: weather.raining, timer: Math.round(weather.timer) },
     pets: mobs.pets(),
     waypoints,
-    places, treasures, beacons: [...beaconSpots], catGiftDay,
+    places, treasures, beacons: [...beaconSpots], catGiftDay, villageGrowth: [...villageGrowth], bellDay,
     time: sky.time,
     creative,
     flying: player.flying,
@@ -2802,6 +2805,7 @@ const TRADES = [
   [[SAND, 32], [STAINLESS_INGOT, 1]], [[FEATHER, 6], [SILVER_ARROW, 6]], [[IRON_INGOT, 4], [TUNGSTEN_INGOT, 1]],
   [[COAL, 16], [STEEL_INGOT, 2]], [[BERRIES, 12], [HEAL_TEA, 1]], [[SUGAR_CANE, 16], [COPPER_INGOT, 4]],
   [[CORNFLOWER, 4], [HASTE_TEA, 1]], [[TRUFFLE, 3], [GOLD_INGOT, 2]], [[COPPER_INGOT, 8], [IRON_SHIELD, 1]],
+  [[COIN, 10], [TUNGSTEN_INGOT, 1]], [[COIN, 8], [GOLD_INGOT, 2]],
 ];
 mobs.onTraderSpawn = (m) => {
   const pool = [...TRADES];
@@ -2811,10 +2815,10 @@ mobs.onTraderSpawn = (m) => {
 };
 // Villagers each have a trade, and offer three swaps from its list.
 const VILLAGER_TRADES = {
-  farmer: [[[LOG, 8], [BREAD, 4]], [[COBBLE, 24], [CAKE, 1]], [[STICK, 16], [WHEAT, 12]], [[FEATHER, 6], [BUTTER, 2]], [[BERRIES, 10], [COOKIE, 6]], [[COAL, 6], [FLOUR, 6]]],
-  smith: [[[COAL, 12], [IRON_INGOT, 3]], [[LOG, 16], [STEEL_INGOT, 1]], [[GOLD_INGOT, 1], [STAINLESS_INGOT, 1]], [[COBBLE, 32], [COPPER_INGOT, 4]], [[LEATHER, 4], [IRON_SHIELD, 1]], [[CRYSTAL_SHARD, 4], [TUNGSTEN_INGOT, 1]]],
-  fisher: [[[STICK, 12], [BAKED_FISH, 3]], [[STRING, 4], [WROD, 1]], [[WHEAT, 16], [SALMON, 4]], [[COAL, 8], [BAKED_SALMON, 3]], [[BREAD, 4], [ROD, 1]], [[OLD_BOOT, 2], [LEATHER, 3]]],
-  cleric: [[[GOLD_INGOT, 1], [HEAL_TEA, 2]], [[BERRIES, 8], [NIGHT_TEA, 1]], [[HONEYCOMB, 3], [HASTE_TEA, 1]], [[SILVER_INGOT, 2], [CRYSTAL_SHARD, 4]], [[PAPER, 6], [FIRE_TEA, 1]], [[GLOW_MUSHROOM, 4], [NIGHT_TEA, 1]]],
+  farmer: [[[LOG, 8], [BREAD, 4]], [[COBBLE, 24], [CAKE, 1]], [[STICK, 16], [WHEAT, 12]], [[FEATHER, 6], [BUTTER, 2]], [[BERRIES, 10], [COOKIE, 6]], [[COAL, 6], [FLOUR, 6]], [[COIN, 4], [CAKE, 1]], [[COIN, 2], [BREAD, 3]]],
+  smith: [[[COAL, 12], [IRON_INGOT, 3]], [[LOG, 16], [STEEL_INGOT, 1]], [[GOLD_INGOT, 1], [STAINLESS_INGOT, 1]], [[COBBLE, 32], [COPPER_INGOT, 4]], [[LEATHER, 4], [IRON_SHIELD, 1]], [[CRYSTAL_SHARD, 4], [TUNGSTEN_INGOT, 1]], [[COIN, 6], [STEEL_INGOT, 2]], [[COIN, 5], [IRON_INGOT, 4]]],
+  fisher: [[[STICK, 12], [BAKED_FISH, 3]], [[STRING, 4], [WROD, 1]], [[WHEAT, 16], [SALMON, 4]], [[COAL, 8], [BAKED_SALMON, 3]], [[BREAD, 4], [ROD, 1]], [[OLD_BOOT, 2], [LEATHER, 3]], [[COIN, 3], [BAKED_SALMON, 3]]],
+  cleric: [[[GOLD_INGOT, 1], [HEAL_TEA, 2]], [[BERRIES, 8], [NIGHT_TEA, 1]], [[HONEYCOMB, 3], [HASTE_TEA, 1]], [[SILVER_INGOT, 2], [CRYSTAL_SHARD, 4]], [[PAPER, 6], [FIRE_TEA, 1]], [[GLOW_MUSHROOM, 4], [NIGHT_TEA, 1]], [[COIN, 5], [HEAL_TEA, 1]]],
 };
 const PROFESSION_NAMES = { farmer: 'Farmer', smith: 'Smith', fisher: 'Fisher', cleric: 'Cleric' };
 mobs.onVillagerSpawn = (m) => {
@@ -2869,6 +2873,7 @@ function renderTrades() {
       inventory.add(oid, on);
       sound.pop();
       achieve('trade');
+      if (tradingWith.home) growVillage(tradingWith.home);
       renderTrades();
     });
     row.appendChild(btn);
@@ -3772,7 +3777,7 @@ function placeInner() {
     if (there !== AIR || !world.isSolid(x, y - 1, z)) { toast(`${BLOCKS[id].name}s need something solid underneath`); return; }
   } else {
     // chairs face you; curtains hang across your line of sight
-    if ([CHAIR, SCARECROW, COOK_POT, OVEN, SMELTER, BLAST_SMELTER, CRUSHER, PULVERIZER, E_SMELTER, CHEST, IRON_CHEST, SAW, TRIP_HAMMER, LEAD_CHEST, FREEZER, ARC_FURNACE].includes(id)) id += facingTowardPlayer(x, z); // the front faces you
+    if ([CHAIR, SCARECROW, COOK_POT, OVEN, SMELTER, BLAST_SMELTER, CRUSHER, PULVERIZER, E_SMELTER, CHEST, IRON_CHEST, SAW, TRIP_HAMMER, LEAD_CHEST, FREEZER, ARC_FURNACE, MARKET_STALL].includes(id)) id += facingTowardPlayer(x, z); // the front faces you
     else if (id === DRILL) id += player.pitch < -0.75 ? 4 : (facingTowardPlayer(x, z) + 2) % 4; // drills the way you're looking
     else if (id === ITEM_COUNTER) id += ((facingTowardPlayer(x, z) + 2) % 4) * 2; // passes things on the way you're looking
     else if ([OBSERVER, GAUGE, HARVESTER, EJECTOR, TREE_FELLER, PLANTER, BREAKER, PLACER, QUARRY].includes(id)) id += (facingTowardPlayer(x, z) + 2) % 4; // looks (or reaps) the way you're looking
@@ -4986,6 +4991,151 @@ function tickPets(dt) {
   }
 }
 
+// ---------- v26 A: village life ----------
+// Villagers go home at dusk and come out again when the bell rings in the morning. Trading with them, and
+// selling to them from a market stall, makes a village prosper: every so many deals it builds another house
+// (and another villager moves in).
+let villageGrowth = new Map(); // "x,z" of the well -> { deals, built: [house, ...] }
+let bellDay = -1;
+const DEALS_PER_HOUSE = 12;
+const villageKey = (v) => `${v.x},${v.z}`;
+// The houses a village has built since it was first found go back on its list (the blocks themselves are
+// saved with the world like any others).
+function villageHouses(v) {
+  if (!v || v.grown) return;
+  v.grown = true;
+  for (const h of villageGrowth.get(villageKey(v))?.built ?? []) if (!v.houses.some((o) => o.x === h.x && o.z === h.z)) v.houses.push({ ...h });
+}
+function growVillage(v, n = 1) {
+  villageHouses(v);
+  const g = villageGrowth.get(villageKey(v)) ?? { deals: 0, built: [] };
+  villageGrowth.set(villageKey(v), g);
+  g.deals += n;
+  if (g.deals >= DEALS_PER_HOUSE * (g.built.length + 1) && g.built.length < 6) {
+    const h = buildVillageHouse(v);
+    if (h) { g.built.push(h); v.houses.push({ ...h }); toast(`${v.name} is doing well: the villagers have built a new house`, 3000); }
+  }
+}
+// Find a level, clear patch 16-22 blocks from the well (in loaded ground) and build a house like the others.
+function groundAt(x, z) {
+  for (let y = H - 2; y > 1; y--) {
+    const id = world.get(x, y, z);
+    if (id === AIR || !BLOCKS[id]?.solid || isLeaves(id) || id === LOG) { if (id !== AIR && id !== undefined && (isLeaves(id) || id === LOG)) return null; continue; }
+    return y;
+  }
+  return null;
+}
+function buildVillageHouse(v) {
+  const base = Math.random() * Math.PI * 2;
+  for (let i = 0; i < 24; i++) {
+    const a = base + i * 0.9, d = 16 + (i % 4) * 2;
+    const hx = Math.round(v.x + Math.cos(a) * d), hz = Math.round(v.z + Math.sin(a) * d);
+    if (v.houses.some((o) => Math.hypot(o.x - hx, o.z - hz) < 8) || (v.farm && Math.hypot(v.farm.x - hx, v.farm.z - hz) < 7)) continue;
+    let ok = true, hy = null;
+    for (let dz = -3; dz <= 3 && ok; dz++) for (let dx = -3; dx <= 3 && ok; dx++) {
+      if (!world.chunkAt(hx + dx, hz + dz)) { ok = false; break; }
+      const g = groundAt(hx + dx, hz + dz);
+      if (g === null || world.isWater(hx + dx, g, hz + dz) || world.isWater(hx + dx, g + 1, hz + dz)) { ok = false; break; }
+      if (hy === null && !dx && !dz) hy = g;
+    }
+    if (!ok) continue;
+    hy = groundAt(hx, hz);
+    for (let dz = -2; dz <= 2 && ok; dz++) for (let dx = -2; dx <= 2 && ok; dx++) if (Math.abs(groundAt(hx + dx, hz + dz) - hy) > 2) ok = false;
+    if (!ok) continue;
+    const ddx = v.x - hx, ddz = v.z - hz;
+    const door = Math.abs(ddx) > Math.abs(ddz) ? [Math.sign(ddx) * 2, 0] : [0, Math.sign(ddz) * 2];
+    const h = { x: hx, y: hy, z: hz, door };
+    placeHouse(h);
+    return h;
+  }
+  return null;
+}
+function placeHouse({ x, y, z, door }) {
+  const set = (bx, by, bz, id) => world.setBlock(bx, by, bz, id);
+  for (let dz = -2; dz <= 2; dz++) for (let dx = -2; dx <= 2; dx++) {
+    const wx = x + dx, wz = z + dz, edge = Math.abs(dx) === 2 || Math.abs(dz) === 2, corner = Math.abs(dx) === 2 && Math.abs(dz) === 2;
+    for (let yy = y - 1; yy > y - 6; yy--) { const id = world.get(wx, yy, wz); if (id !== AIR && BLOCKS[id]?.solid && !world.isWater(wx, yy, wz)) break; set(wx, yy, wz, COBBLE); }
+    set(wx, y, wz, edge ? COBBLE : PLANKS);
+    for (let k = 1; k <= 3; k++) set(wx, y + k, wz, corner ? LOG : edge ? (k === 2 && (dx === 0 || dz === 0) ? GLASS_PANE : PLANKS) : AIR);
+    set(wx, y + 4, wz, PLANKS);
+    set(wx, y + 5, wz, edge ? AIR : slabId(0));
+    for (let k = 6; k <= 8; k++) if (world.get(wx, y + k, wz) !== AIR && !BLOCKS[world.get(wx, y + k, wz)]?.solid) set(wx, y + k, wz, AIR);
+  }
+  const dx = x + door[0], dz = z + door[1], facing = door[1] ? 0 : 1;
+  set(dx, y + 1, dz, doorId(facing, false, false));
+  set(dx, y + 2, dz, doorId(facing, false, true));
+  const bx = x - Math.sign(door[0]), bz = z - Math.sign(door[1]);
+  const tw = door[0] > 0 ? 0 : door[0] < 0 ? 1 : door[1] > 0 ? 2 : 3;
+  set(bx, y + 2, bz, TORCH_WALL_W + tw);
+  const side = door[0] ? [0, 1] : [1, 0];
+  set(x + side[0], y + 1, z + side[1], FURN_TABLE);
+  set(x - side[0], y + 1, z - side[1], CHEST);
+  // a path of gravel out of the door
+  for (let k = 1; k <= 3; k++) {
+    const px = dx + Math.sign(door[0]) * k, pz = dz + Math.sign(door[1]) * k, g = groundAt(px, pz);
+    if (g !== null && [GRASS, DIRT].includes(world.get(px, g, pz))) set(px, g, pz, GRAVEL);
+  }
+}
+// What villagers pay at a stall: [how many they take, coins]. Food by how filling it is, metal well, and
+// building stuff cheaply.
+function stallPrice(id) {
+  const food = foodValue(id);
+  if (food) return food >= 6 ? [1, 2] : food >= 3 ? [1, 1] : [2, 1];
+  if (id === GOLD_INGOT || id === STARSTEEL_INGOT) return [1, 5];
+  if (/Ingot$/.test(ITEMS[id]?.name ?? '')) return [1, 2];
+  if (id === COIN) return null;
+  if (isBlock(id)) return [8, 1];
+  return [4, 1];
+}
+const STALL_REACH = 9;
+let stallTimer = 0;
+// A villager near a stall, in the daytime, buys one lot of whatever is on it every so often and pays into it.
+function tickStalls(dt) {
+  stallTimer -= dt;
+  if (stallTimer > 0) return;
+  stallTimer = 2;
+  if (mobs.villagerNight()) return;
+  for (const [k, st] of stations.map) {
+    if (st.kind !== 'stall') continue;
+    st.sellIn = (st.sellIn ?? 18) - 2;
+    if (st.sellIn > 0) continue;
+    const [x, y, z] = k.split(',').map(Number);
+    if (Math.hypot(x - player.pos.x, z - player.pos.z) > 96) continue;
+    const buyer = mobs.mobs.find((m) => m.spec.villager && !m.indoors && !m.dying && Math.hypot(m.pos.x - x - 0.5, m.pos.z - z - 0.5) < STALL_REACH);
+    if (!buyer) continue;
+    const i = st.inputs.findIndex((s2) => s2 && s2.id !== COIN && stallPrice(s2.id));
+    if (i < 0) continue;
+    const stack = st.inputs[i], [n, coins] = stallPrice(stack.id);
+    if (stack.count < n) continue;
+    // room for the coins?
+    const ci = st.inputs.findIndex((s2) => s2 && s2.id === COIN && s2.count + coins <= maxStack(COIN));
+    const free = ci >= 0 ? ci : (stack.count === n ? i : st.inputs.findIndex((s2) => !s2));
+    if (free < 0) continue;
+    stack.count -= n;
+    if (!stack.count) st.inputs[i] = null;
+    if (st.inputs[free]?.id === COIN) st.inputs[free].count += coins; else st.inputs[free] = { id: COIN, count: coins };
+    st.sellIn = 14 + Math.random() * 10;
+    buyer.heading = Math.atan2(x + 0.5 - buyer.pos.x, z + 0.5 - buyer.pos.z); buyer.yaw = buyer.heading; buyer.state = 'idle'; buyer.timer = 2;
+    const d = Math.hypot(x - player.pos.x, y - player.pos.y, z - player.pos.z);
+    if (d < 20) { sound.mob('villager', 0.6 * (1 - d / 20)); sound.pop(); }
+    if (openStationAt && openStationAt.x === x && openStationAt.y === y && openStationAt.z === z) renderStation?.();
+    if (buyer.home) growVillage(buyer.home);
+  }
+}
+// The bell, first thing in the morning: the villagers come out.
+function tickVillages(dt) {
+  const hours = (sky.time * 24 + 6) % 24;
+  mobs.hour = hours;
+  const v = world.generator.nearestVillage(player.pos.x, player.pos.z, 1);
+  if (v) villageHouses(v);
+  if (v && bellDay !== day && hours > 6.05 && hours < 9) {
+    bellDay = day;
+    const d = Math.hypot(v.x + 2 - player.pos.x, v.z - player.pos.z);
+    if (d < 64) { sound.ding(Math.max(0.15, 1 - d / 64)); setTimeout(() => sound.ding(Math.max(0.15, 1 - d / 64) * 0.8), 700); toast(`The bell rings in ${v.name}: the villagers are up and about`, 2600); }
+  }
+  tickStalls(dt);
+}
+
 // ---------- seasons ----------
 // The year turns through four seasons of SEASON_DAYS days each. Crops grow fastest in summer and
 // barely at all in winter; leaves turn in autumn and fall in winter, and winter frosts the grass and
@@ -5090,7 +5240,7 @@ function stepGame(now, dt) {
     world.tickPlants(dt);
     world.tickLeaves(dt);
     tickLamps(dt);
-    tickExplore(dt); tickTreasure(dt); tickSnow(dt);
+    tickExplore(dt); tickTreasure(dt); tickSnow(dt); tickVillages(dt);
     crows.update(dt, world, player.pos, {
       day: lightUniforms.uDay.value,
       eat: (x, y, z) => world.setBlock(x, y, z, WHEAT_3 - 2), // back to green shoots
@@ -5231,5 +5381,5 @@ window.minicraft = {
   arrows, fishing, kinetics, electric, lightUniforms, bees, catchAt, seasonOf, applySeason, set day(v) { day = v; applySeason(); }, frames, signalAt, setSwitch, logic, machines, carts, minimap, signs, armour, damage, placeRail, getInCart, getOutOfCart,
   get riding() { return riding; }, explode, lightFuse, fuses, clockTime, compassText, place, editSign, closeSign, openInventory, closeInventory, chestMove, lamps, tickLamps, sleepUntilMorning, stations, openStation, closeStation,
   get caneToday() { return caneToday; }, get creative() { return creative; }, set creative(v) { creative = v; applyCreative(); }, toggleFly, wand, useWand, get achieved() { return achieved; }, achieve, worldMap, openMap, closeMap, openGuide, switchSlot, store, saveGame, renderWorlds, openWorlds, exportSlot, get target() { return target; }, set target(v) { target = v; }, applyKeys, renderKeys, camera, get controls() { return controls; }, loose, throwHeld, get waypoints() { return waypoints; }, toggleWaypoint, sortSlots, quickStack, dropMeteor, get meteors() { return meteors; }, weather, openTrade, closeTrade, mountMob, dismount, get ridingMob() { return ridingMob; }, effects, armourWear, useAnvil, rollLoot, settings,
-  get bedSpawn() { return bedSpawn; }, fertilise, openJournal, closeJournal, get packs() { return packs; }, radiationAt, vehicles, boardVehicle, leaveVehicle, get boarded() { return boarded; }, get seated() { return seated; }, crows, onInvSlot, onStationSlot, quickMoveInv, quickMoveStation, usedIn, itemTipHTML, critters, tickPets, get catGiftDay() { return catGiftDay; }, set catGiftDay(v) { catGiftDay = v; }, get places() { return places; }, get treasures() { return treasures; }, readTreasureMap, tickTreasure, beams, tickBeams, beaconSpots: () => beaconSpots, mistNow, tickSnow, tickExplore, sitOn, standUp, useDisplay, zips, linkZip, startZip, get zipping() { return zipping; }, burnCoal, get health() { return health; }, set health(v) { health = v; }, paintings, placeSwitchRail, signalAt, ailments, armourEnch, openAltar, lairNear, useBed, eat, drinkTea,
+  get bedSpawn() { return bedSpawn; }, fertilise, openJournal, closeJournal, get packs() { return packs; }, radiationAt, vehicles, boardVehicle, leaveVehicle, get boarded() { return boarded; }, get seated() { return seated; }, crows, onInvSlot, onStationSlot, quickMoveInv, quickMoveStation, usedIn, itemTipHTML, critters, tickPets, get catGiftDay() { return catGiftDay; }, get villageGrowth() { return villageGrowth; }, growVillage, buildVillageHouse, stallPrice, tickStalls, tickVillages, set catGiftDay(v) { catGiftDay = v; }, get places() { return places; }, get treasures() { return treasures; }, readTreasureMap, tickTreasure, beams, tickBeams, beaconSpots: () => beaconSpots, mistNow, tickSnow, tickExplore, sitOn, standUp, useDisplay, zips, linkZip, startZip, get zipping() { return zipping; }, burnCoal, get health() { return health; }, set health(v) { health = v; }, paintings, placeSwitchRail, signalAt, ailments, armourEnch, openAltar, lairNear, useBed, eat, drinkTea,
 };

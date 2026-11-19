@@ -939,7 +939,7 @@ export class MobManager {
     const v = w.generator.nearestVillage(player.pos.x, player.pos.z, 1);
     if (!v || Math.hypot(v.x - player.pos.x, v.z - player.pos.z) > 80) return;
     const here = this.mobs.filter((m) => m.home === v).length;
-    if (here >= Math.min(5, v.houses.length + 1)) return;
+    if (here >= Math.min(5 + Math.max(0, v.houses.length - 5), v.houses.length + 1) || this.villagerNight()) return;
     const hs = pick(v.houses);
     const x = hs.x + hs.door[0] * 2 + Math.round(rand(-1, 1)), z = hs.z + hs.door[1] * 2 + Math.round(rand(-1, 1));
     if (!w.chunkAt(x, z)) return;
@@ -948,9 +948,36 @@ export class MobManager {
     const used = this.mobs.filter((m) => m.home === v).map((m) => m.profession);
     const profession = PROFESSIONS.find((p) => !used.includes(p)) ?? pick(PROFESSIONS);
     const m = this.spawn('villager', x + 0.5, s.y + 1, z + 0.5, { profession });
-    m.home = v;
+    m.home = v; m.house = hs;
     this.onVillagerSpawn?.(m);
     return m;
+  }
+
+  // Villagers go indoors from dusk until morning. (`hour` is set by the game each frame: 0..24.)
+  villagerNight() { return this.hour != null && (this.hour > 18.5 || this.hour < 6); }
+  // The spot just outside a house's door.
+  doorstep(hs) { return { x: hs.x + hs.door[0] + Math.sign(hs.door[0]) + 0.5, z: hs.z + hs.door[1] + Math.sign(hs.door[1]) + 0.5 }; }
+  // A villager's evening: walk to its own front door and go in; come back out in the morning.
+  // Returns true while it's indoors (hidden, and not moving).
+  villagerHome(m, dt = 0) {
+    const night = this.villagerNight();
+    if (m.indoors) {
+      if (night) return true;
+      m.indoors = false; m.root.visible = true;
+      const d = this.doorstep(m.house);
+      m.pos.set(d.x, m.pos.y, d.z); m.vel.set(0, 0, 0);
+      m.state = 'idle'; m.timer = 1;
+      return false;
+    }
+    if (!night || !m.house || m.tame) { m.lateFor = 0; return false; }
+    const d = this.doorstep(m.house), dx = d.x - m.pos.x, dz = d.z - m.pos.z;
+    m.lateFor = (m.lateFor ?? 0) + dt; // (one that gets stuck on the way home slips in anyway after a while)
+    if (Math.hypot(dx, dz) < 1.1 || m.lateFor > 40) {
+      m.indoors = true; m.root.visible = false; m.vel.set(0, 0, 0);
+      return true;
+    }
+    m.state = 'walk'; m.heading = Math.atan2(dx, dz); m.timer = Math.max(m.timer, 0.5);
+    return false;
   }
 
   // Put a specific animal at (x, y, z), feet at y. Handy for testing from the console.
@@ -1092,7 +1119,8 @@ export class MobManager {
         this.thinkPet(m, dt, player);
         if (m.love > 0) this.seekMate(m);
       } else {
-        this.think(m, dt, player);
+        if (m.house && this.villagerHome(m, dt)) continue;
+        if (!m.house || !this.villagerNight()) this.think(m, dt, player);
         if (m.love > 0) this.seekMate(m);
       }
       if (!m.spec.hostile) this.tickBreeding(m, dt);
@@ -1427,7 +1455,7 @@ export class MobManager {
   raycast(o, d, maxDist) {
     let best = null;
     for (const m of this.mobs) {
-      if (m.dying) continue;
+      if (m.dying || m.indoors) continue;
       const hw = m.spec.w / 2;
       const min = [m.pos.x - hw, m.pos.y, m.pos.z - hw], max = [m.pos.x + hw, m.pos.y + m.spec.h, m.pos.z + hw];
       const oo = [o.x, o.y, o.z], dd = [d.x, d.y, d.z];

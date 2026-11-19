@@ -140,7 +140,7 @@ export const T = {
   LEAD_CHEST_SIDE: 267, LEAD_CHEST_TOP: 268, LEAD_CHEST_FRONT: 269, CENTRIFUGE_SIDE: 270, CENTRIFUGE_TOP: 271, TESLA: 272, TESLA_TOP: 273,
   FENCE_POST: 274, FENCE_WIRE: 275, FREEZER_SIDE: 276, FREEZER_FRONT: 277, ARC_SIDE: 278, ARC_FRONT: 279, PACKED_ICE: 280, INVAR: 281, RAIL_STOP: 282, BASALT: 283, BASALT_TOP: 284, METEORITE: 285,
   IRON_BARS: 286, POT: 287, IVY: 288, BOX_FLOWERS: 289,
-  FRUIT_LEAVES: 290, FRUIT_RIPE: 293, FRUIT_SAPLING: 296, HAY: 299, SACK: 300, BEACON: 301, APIARY_SIDE: 302, APIARY_FRONT: 303, APIARY_FULL: 304, APIARY_TOP: 305, BELT_CROSS: 306, FARM_CTRL: 307, FARM_CTRL_ON: 308, TUBE: 309, TUBE_END: 310, // (fruit tiles: apple, cherry, orange)
+  FRUIT_LEAVES: 290, FRUIT_RIPE: 293, FRUIT_SAPLING: 296, HAY: 299, SACK: 300, BEACON: 301, APIARY_SIDE: 302, APIARY_FRONT: 303, APIARY_FULL: 304, APIARY_TOP: 305, BELT_CROSS: 306, FARM_CTRL: 307, FARM_CTRL_ON: 308, TUBE: 309, TUBE_END: 310, AWNING: 311, // (fruit tiles: apple, cherry, orange)
 };
 
 // Ores, deepest-reaching last. tier: the pickaxe tier needed to mine it (see TOOL_TIERS);
@@ -2385,3 +2385,22 @@ RECIPES.push(
   { out: [TUBE, 6], in: [[GLASS, 4], [COPPER_INGOT, 1]], table: true, metal: COPPER_INGOT },
   { out: [CABLE_CAR, 1], in: [[IRON_INGOT, 4], [GLASS, 2], [PLANKS, 3]], table: true, metal: IRON_INGOT },
 );
+
+// ---------- v26 A: market stalls and coins ----------
+// A market stall in a village: put things on it and villagers passing by buy them for silver coins, which they
+// also take in trade.
+export const MARKET_STALL = 1343; // 1343..1346 + facing
+export const COIN = 1097;
+const STALL_MODEL = [
+  [0, 0, 8, 16, 9, 16, T.PLANKS], [0, 9, 7, 16, 10, 16, T.LOG_SIDE], // the counter
+  [0.5, 0, 0.5, 2, 15, 2, T.LOG_SIDE], [14, 0, 0.5, 15.5, 15, 2, T.LOG_SIDE], [0.5, 10, 14, 2, 15, 15.5, T.LOG_SIDE], [14, 10, 14, 15.5, 15, 15.5, T.LOG_SIDE],
+  [0, 15, 0, 16, 16, 16, T.AWNING], // the striped awning
+];
+for (let f = 0; f < 4; f++) {
+  block(MARKET_STALL + f, {
+    name: 'Market Stall', station: 'stall', sound: 'wood', transparent: true, hardness: 1.5, tool: 'axe', facing: f,
+    model: rotateModel(STALL_MODEL, f), boxes: [[0, 0, 0, 16, 10, 16]], variantOf: f ? MARKET_STALL : 0, drop: MARKET_STALL, stationBase: MARKET_STALL,
+  });
+}
+ITEMS[COIN] = { name: 'Silver Coin', stack: 99, about: 'villagers pay these at a market stall, and take them in trade' };
+RECIPES.push({ out: [MARKET_STALL, 1], in: [[PLANKS, 6], [LOG, 4], [WOOL, 3]], table: true });

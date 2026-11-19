@@ -114,9 +114,9 @@ export class Sound {
   }
 
   // a village bell: a bright strike with a long ring
-  ding() {
-    if (!this.ready) return;
-    for (const [f, v] of [[880, 0.25], [1320, 0.12], [2210, 0.06]]) this.voice({ type: 'sine', from: f, to: f * 0.998, dur: 2.2, vol: v, freq: 6000, attack: 0.005 });
+  ding(gain = 1) {
+    if (!this.ready || gain <= 0.01) return;
+    for (const [f, v] of [[880, 0.25], [1320, 0.12], [2210, 0.06]]) this.voice({ type: 'sine', from: f, to: f * 0.998, dur: 2.2, vol: v * gain, freq: 6000, attack: 0.005 });
   }
 
   // A reactor's alarm: a two-tone whoop, louder the nearer (k: 0..1).
