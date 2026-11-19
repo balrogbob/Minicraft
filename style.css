@@ -367,6 +367,7 @@ html, body {
 #inv-tip.show { display: block; }
 #inv-tip span { display: block; font-size: 12px; color: #cfc6e0; }
 #inv-tip span.ench { color: #c9a8ff; }
+#inv-tip span.used-in { color: #a8d8b8; font-size: 11px; max-width: 260px; }
 #split-menu {
   position: fixed; z-index: 60; width: 200px; padding: 8px 10px; border-radius: 8px;
   background: rgba(20, 16, 30, 0.96); color: #fff; border: 2px solid #6a4ca0; font-size: 14px;

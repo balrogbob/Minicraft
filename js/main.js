@@ -63,7 +63,7 @@ import { Logic } from './logic.js';
 
 // v2 = the 16k x 16k streaming world (player state here, edited chunks in IndexedDB).
 // v1 = the old 128 x 128 world, migrated into the middle of the big world on first launch.
-const GAME_VERSION = '24'; // shown in the menu; bump with each release
+const GAME_VERSION = '25'; // shown in the menu; bump with each release
 const SAVE_KEY = 'minicraft-save-v2';
 const LEGACY_SAVE_KEY = 'minicraft-save-v1';
 const SETTINGS_KEY = 'minicraft-settings-v1';
@@ -965,7 +965,8 @@ function buildInventoryGrid() {
   const make = (i, parent) => {
     const el = document.createElement('div');
     el.className = 'slot';
-    el.addEventListener('click', () => { onInvSlot(i); showSlotTip(i); });
+    el.addEventListener('click', (e) => { if (e.shiftKey && i < SLOTS) quickMoveInv(i); else onInvSlot(i); showSlotTip(i); });
+    if (i < SLOTS) holdOn(el, () => quickMoveInv(i));
     if (i < SLOTS) splitOn(el, () => ({ slot: { get: () => inventory.slots[i], set: (v) => { inventory.slots[i] = v; } }, list: inventory.slots, i, room: [inventory.slots], done: () => { picked = -1; inventory.onChange(); renderInventory(); } }));
     el.addEventListener('mouseenter', () => showSlotTip(i));
     el.addEventListener('mouseleave', () => { if (tipSlot === i) showSlotTip(picked); });
@@ -993,8 +994,11 @@ function itemTipHTML(s) {
   if (mw) bits.push(`${Math.max(0, Math.round(100 - (s.wear ?? 0) / mw * 100))}% left`);
   if (chargeCap(s.id)) bits.push(`${Math.round(chargeLeft(s) / chargeCap(s.id) * 100)}% charged${s.on ? ' · switched on' : ''}`);
   const ench = (s.ench ?? []).map((k) => ENCHANTS[k]?.name).filter(Boolean);
+  const uses = usedIn(s.id), names = [...new Set(uses.map((o) => itemName(o)))];
+  const usedTxt = names.length ? `Used in: ${names.slice(0, 6).join(', ')}${names.length > 6 ? ` and ${names.length - 6} more` : ''}` : '';
   return `<b>${itemName(s.id)}</b>${s.count > 1 ? ` × ${s.count}` : ''}` +
-    (ench.length ? `<span class="ench">${ench.join(', ')}</span>` : '') + (bits.length ? `<span>${bits.join(' · ')}</span>` : '');
+    (ench.length ? `<span class="ench">${ench.join(', ')}</span>` : '') + (bits.length ? `<span>${bits.join(' · ')}</span>` : '') +
+    (usedTxt ? `<span class="used-in">${usedTxt}</span>` : '');
 }
 function showSlotTip(i) {
   const tip = $('inv-tip');
@@ -1035,7 +1039,19 @@ function updateLookTip() {
 buildInventoryGrid();
 
 const armourPiece = (id) => ITEMS[id]?.armour?.piece ?? -1;
+let lastInvTap = { i: -1, t: 0 };
 function onInvSlot(i) {
+  // a quick second tap on the same slot gathers up all the same things from the rest of the backpack into it
+  const now = performance.now();
+  if (lastInvTap.i === i && now - lastInvTap.t < DOUBLE_TAP && i < ARMOUR_SLOT && inventory.slots[i]) {
+    lastInvTap = { i: -1, t: 0 };
+    picked = -1;
+    gatherInto(inventory.slots, i, [inventory.slots]);
+    inventory.onChange();
+    renderInventory();
+    return;
+  }
+  lastInvTap = { i, t: now };
   if (picked < 0) {
     if (i >= ARMOUR_SLOT ? armour[i - ARMOUR_SLOT] : inventory.slots[i]) picked = i;
   } else if (picked === i) {
@@ -1277,7 +1293,8 @@ function openStation(x, y, z, cart = null) {
     el.className = 'slot';
     el.dataset.area = area;
     el.dataset.i = i;
-    el.addEventListener('click', () => onStationSlot(area, i));
+    el.addEventListener('click', (e) => { if (e.shiftKey) quickMoveStation(area, i); else onStationSlot(area, i); });
+    holdOn(el, () => quickMoveStation(area, i));
     if (area === 'in' || area === 'inv') splitOn(el, () => {
       const st = currentStation();
       return st && { slot: stationSlot(area, i), list: area === 'in' ? st.inputs : inventory.slots, i, room: area === 'in' && STATION_KINDS[st.kind].storage ? [st.inputs, inventory.slots] : [inventory.slots],
@@ -1468,9 +1485,22 @@ $('btn-chest-match').addEventListener('click', () => {
 $('btn-chest-in').addEventListener('click', () => chestMove(true));
 $('btn-chest-out').addEventListener('click', () => chestMove(false));
 
+let lastStTap = { area: '', i: -1, t: 0 };
 function onStationSlot(area, i) {
   const st = currentStation();
   if (!st) return;
+  // a quick second tap gathers the same things (from the chest and your backpack) into the slot
+  const now = performance.now();
+  if (lastStTap.area === area && lastStTap.i === i && now - lastStTap.t < DOUBLE_TAP && (area === 'in' || area === 'inv') && stationSlot(area, i).get()) {
+    lastStTap = { area: '', i: -1, t: 0 };
+    stPicked = null;
+    const storage = STATION_KINDS[st.kind].storage;
+    gatherInto(area === 'in' ? st.inputs : inventory.slots, i, area === 'in' ? (storage ? [st.inputs, inventory.slots] : [inventory.slots]) : (storage ? [inventory.slots, st.inputs] : [inventory.slots]));
+    inventory.onChange();
+    renderStation();
+    return;
+  }
+  lastStTap = { area, i, t: now };
   // tapping the result collects it
   if (area === 'out' && !stPicked) {
     if (st.out) {
@@ -1506,6 +1536,110 @@ function onStationSlot(area, i) {
   }
   inventory.onChange();
   renderStation();
+}
+
+// ---------- v25: gathering stacks, quick moves ----------
+const DOUBLE_TAP = 350; // ms
+// Pull everything that stacks with list[i] out of the `sources` lists into it (up to a full stack).
+function gatherInto(list, i, sources) {
+  const s = list[i];
+  if (!s || s.pack || s.wear || s.ench || maxStack(s.id) <= 1) return 0;
+  let got = 0;
+  for (const src of sources) for (let j = 0; j < src.length && s.count < maxStack(s.id); j++) {
+    const t = src[j];
+    if (!t || t === s || t.id !== s.id || t.pack || t.wear || t.ench) continue;
+    const k = Math.min(t.count, maxStack(s.id) - s.count);
+    s.count += k; t.count -= k; got += k;
+    if (!t.count) src[j] = null;
+  }
+  if (got) { sound.pop(); toast(`Gathered ${got} more ${itemName(s.id).toLowerCase()}`, 1200); }
+  return got;
+}
+// Put the stack from[i] into `slots` (topping up stacks first, then empty slots). Returns how many went.
+function moveStack(slots, from, i, ok = () => true) {
+  const s = from[i];
+  if (!s || !ok(s)) return 0;
+  const n0 = s.count;
+  for (let j = 0; j < slots.length && s.count; j++) {
+    const t = slots[j];
+    if (t && t !== s && t.id === s.id && !t.pack && !s.pack && !t.wear && !s.wear && t.count < maxStack(s.id)) { const k = Math.min(s.count, maxStack(s.id) - t.count); t.count += k; s.count -= k; }
+  }
+  for (let j = 0; j < slots.length && s.count; j++) if (!slots[j]) { slots[j] = { ...s }; s.count = 0; }
+  if (!s.count) from[i] = null;
+  return n0 - s.count;
+}
+// Shift-click (or press and hold) a slot in the backpack screen: between the hotbar and the backpack.
+function quickMoveInv(i) {
+  picked = -1;
+  const into = i < 9 ? inventory.slots.slice(9) : inventory.slots.slice(0, 9);
+  const moved = moveStack(into, inventory.slots, i);
+  if (moved) {
+    if (i < 9) for (let j = 9; j < SLOTS; j++) inventory.slots[j] = into[j - 9]; else for (let j = 0; j < 9; j++) inventory.slots[j] = into[j];
+    sound.pop();
+  }
+  inventory.onChange();
+  renderInventory();
+}
+// Shift-click (or press and hold) a slot with a chest, backpack or machine open: the whole stack goes across.
+function quickMoveStation(area, i) {
+  const st = currentStation();
+  if (!st) return;
+  stPicked = null;
+  const K = STATION_KINDS[st.kind];
+  let moved = 0;
+  if (area === 'inv') {
+    const a = inventory.slots[i];
+    if (!a) return;
+    if (openStationAt.cart?.backpack && isBackpack(a.id)) { toast('A backpack won\'t go inside a backpack'); return; }
+    if (K.accepts && !K.accepts.includes(a.id)) { toast(`The ${K.name.toLowerCase()} won't take ${itemName(a.id).toLowerCase()}`); return; }
+    const ingredient = (K.recipes ?? []).some?.((r) => (r.in ?? []).some(([ing]) => (Array.isArray(ing) ? ing : [ing]).includes(a.id)));
+    if (!K.storage && !K.crafter && !K.powered && !K.holder && isFuel(a.id) && !(st.fuel && st.fuel.id !== a.id) && !ingredient) {
+      // fuel into the fuel slot
+      const fuel = [st.fuel];
+      moved = moveStack(fuel, inventory.slots, i);
+      st.fuel = fuel[0];
+    } else moved = moveStack(st.inputs, inventory.slots, i);
+  } else {
+    const slot = stationSlot(area, i), a = slot.get();
+    if (!a) return;
+    const left = inventory.addItem(a);
+    moved = a.count - left;
+    slot.set(left ? { ...a, count: left } : null);
+    if (left) toast('Inventory full');
+  }
+  if (moved) sound.pop();
+  inventory.onChange();
+  renderStation();
+}
+// Press and hold a slot (on a touch screen) to do `fn` instead of a tap.
+function holdOn(el, fn) {
+  let timer = 0, x0 = 0, y0 = 0;
+  const cancel = () => { clearTimeout(timer); timer = 0; };
+  el.addEventListener('pointerdown', (e) => {
+    if (e.pointerType === 'mouse') return;
+    x0 = e.clientX; y0 = e.clientY;
+    cancel();
+    timer = setTimeout(() => { timer = 0; noClickUntil = performance.now() + 600; navigator.vibrate?.(15); fn(); }, 480);
+  });
+  el.addEventListener('pointermove', (e) => { if (timer && Math.hypot(e.clientX - x0, e.clientY - y0) > 10) cancel(); });
+  for (const t of ['pointerup', 'pointercancel', 'pointerleave']) el.addEventListener(t, cancel);
+}
+
+// What each thing is used to make (crafting, and the machines and stations), worked out once.
+let usedInMap = null;
+function usedIn(id) {
+  if (!usedInMap) {
+    usedInMap = new Map();
+    const add = (ing, out) => {
+      for (const x of Array.isArray(ing) ? ing : [ing]) {
+        if (!usedInMap.has(x)) usedInMap.set(x, new Set());
+        usedInMap.get(x).add(out);
+      }
+    };
+    for (const r of RECIPES) for (const [ing] of r.in) add(ing, r.out[0]);
+    for (const K of Object.values(STATION_KINDS)) for (const r of Array.isArray(K.recipes) ? K.recipes : []) for (const [ing] of r.in ?? []) if (r.out) add(ing, r.out[0]);
+  }
+  return [...(usedInMap.get(id) ?? [])].filter((o) => o !== id);
 }
 
 // ---------- splitting a stack ----------
@@ -4889,7 +5023,11 @@ function compassText() {
   let home = bedSpawn;
   if (!home) home = (world.spawnCache ??= world.generator.findSpawn());
   const dx = home.x + 0.5 - player.pos.x, dz = home.z + 0.5 - player.pos.z, d = Math.hypot(dx, dz);
-  return `facing ${pointOf(look.x, look.z)} · ${bedSpawn ? 'bed' : 'start'} ${d < 2 ? 'here' : `${Math.round(d)} ${pointOf(dx, dz)}`}`;
+  // and the nearest of your waypoints
+  let near = null, nd = Infinity;
+  for (const w of waypoints) { const wd = Math.hypot(w.x + 0.5 - player.pos.x, w.z + 0.5 - player.pos.z); if (wd < nd) { nd = wd; near = w; } }
+  const mark = near ? ` · ${near.name} ${nd < 2 ? 'here' : `${Math.round(nd)} ${pointOf(near.x + 0.5 - player.pos.x, near.z + 0.5 - player.pos.z)}`}` : '';
+  return `facing ${pointOf(look.x, look.z)} · ${bedSpawn ? 'bed' : 'start'} ${d < 2 ? 'here' : `${Math.round(d)} ${pointOf(dx, dz)}`}${mark}`;
 }
 
 // ---------- main loop ----------
@@ -5093,5 +5231,5 @@ window.minicraft = {
   arrows, fishing, kinetics, electric, lightUniforms, bees, catchAt, seasonOf, applySeason, set day(v) { day = v; applySeason(); }, frames, signalAt, setSwitch, logic, machines, carts, minimap, signs, armour, damage, placeRail, getInCart, getOutOfCart,
   get riding() { return riding; }, explode, lightFuse, fuses, clockTime, compassText, place, editSign, closeSign, openInventory, closeInventory, chestMove, lamps, tickLamps, sleepUntilMorning, stations, openStation, closeStation,
   get caneToday() { return caneToday; }, get creative() { return creative; }, set creative(v) { creative = v; applyCreative(); }, toggleFly, wand, useWand, get achieved() { return achieved; }, achieve, worldMap, openMap, closeMap, openGuide, switchSlot, store, saveGame, renderWorlds, openWorlds, exportSlot, get target() { return target; }, set target(v) { target = v; }, applyKeys, renderKeys, camera, get controls() { return controls; }, loose, throwHeld, get waypoints() { return waypoints; }, toggleWaypoint, sortSlots, quickStack, dropMeteor, get meteors() { return meteors; }, weather, openTrade, closeTrade, mountMob, dismount, get ridingMob() { return ridingMob; }, effects, armourWear, useAnvil, rollLoot, settings,
-  get bedSpawn() { return bedSpawn; }, fertilise, openJournal, closeJournal, get packs() { return packs; }, radiationAt, vehicles, boardVehicle, leaveVehicle, get boarded() { return boarded; }, get seated() { return seated; }, crows, critters, tickPets, get catGiftDay() { return catGiftDay; }, set catGiftDay(v) { catGiftDay = v; }, get places() { return places; }, get treasures() { return treasures; }, readTreasureMap, tickTreasure, beams, tickBeams, beaconSpots: () => beaconSpots, mistNow, tickSnow, tickExplore, sitOn, standUp, useDisplay, zips, linkZip, startZip, get zipping() { return zipping; }, burnCoal, get health() { return health; }, set health(v) { health = v; }, paintings, placeSwitchRail, signalAt, ailments, armourEnch, openAltar, lairNear, useBed, eat, drinkTea,
+  get bedSpawn() { return bedSpawn; }, fertilise, openJournal, closeJournal, get packs() { return packs; }, radiationAt, vehicles, boardVehicle, leaveVehicle, get boarded() { return boarded; }, get seated() { return seated; }, crows, onInvSlot, onStationSlot, quickMoveInv, quickMoveStation, usedIn, itemTipHTML, critters, tickPets, get catGiftDay() { return catGiftDay; }, set catGiftDay(v) { catGiftDay = v; }, get places() { return places; }, get treasures() { return treasures; }, readTreasureMap, tickTreasure, beams, tickBeams, beaconSpots: () => beaconSpots, mistNow, tickSnow, tickExplore, sitOn, standUp, useDisplay, zips, linkZip, startZip, get zipping() { return zipping; }, burnCoal, get health() { return health; }, set health(v) { health = v; }, paintings, placeSwitchRail, signalAt, ailments, armourEnch, openAltar, lairNear, useBed, eat, drinkTea,
 };
