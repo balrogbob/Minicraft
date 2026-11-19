@@ -138,7 +138,7 @@ export const T = {
   REACTOR_SIDE: 261, REACTOR_SIDE_HOT: 262, REACTOR_TOP: 263,
   BOOKSHELF: 264, COMPOST_SIDE: 265, COMPOST_TOP: 266,
   LEAD_CHEST_SIDE: 267, LEAD_CHEST_TOP: 268, LEAD_CHEST_FRONT: 269, CENTRIFUGE_SIDE: 270, CENTRIFUGE_TOP: 271, TESLA: 272, TESLA_TOP: 273,
-  FENCE_POST: 274, FENCE_WIRE: 275, FREEZER_SIDE: 276, FREEZER_FRONT: 277, ARC_SIDE: 278, ARC_FRONT: 279, PACKED_ICE: 280, INVAR: 281,
+  FENCE_POST: 274, FENCE_WIRE: 275, FREEZER_SIDE: 276, FREEZER_FRONT: 277, ARC_SIDE: 278, ARC_FRONT: 279, PACKED_ICE: 280, INVAR: 281, RAIL_STOP: 282,
 };
 
 // Ores, deepest-reaching last. tier: the pickaxe tier needed to mine it (see TOOL_TIERS);
@@ -2127,4 +2127,36 @@ RECIPES.push(
   { out: [ELECTRIC_FENCE, 6], in: [[INVAR_INGOT, 1], [IRON_INGOT, 2], [ELECTRUM_WIRE, 2]], table: true, metal: INVAR_INGOT },
   { out: [FREEZER, 1], in: [[STAINLESS_INGOT, 4], [ELECTRIC_MOTOR, 1], [PIPE, 2], [ICE, 1]], table: true, metal: ELECTRIC_MOTOR },
   { out: [ARC_FURNACE, 1], in: [[E_SMELTER, 1], [FIRE_BRICK, 6], [TUNGSTEN_INGOT, 2], [ELECTRUM_WIRE, 4]], table: true, metal: E_SMELTER },
+);
+
+// ---------- v24 D: rail stations, ziplines, boats and hot-air balloons ----------
+// A rail station: a straight rail where carts stop, and wait until it gets a signal (a button beside it, say)
+// or you push off. A zipline runs between two posts (tap one, then the other, holding a zipline rope); tap a
+// post holding a grappling hook to slide along it to the other. Boats and balloons are in vehicles.js.
+export const RAIL_STATION = 1282, // 1282 = along z, 1283 = along x
+  ZIP_POST = 1284;
+export const BOAT = 1076, BALLOON = 1077, ZIP_LINE = 1078;
+export const ZIP_REACH = 40; // the longest zipline
+for (let a = 0; a < 2; a++) {
+  const ends = a ? [1, 3] : [0, 2];
+  block(RAIL_STATION + a, {
+    name: 'Rail Station', sound: 'stone', transparent: true, solid: false, hardness: 0.7, tool: 'pick',
+    model: [...rotateModel([[2, 0, 1, 14, 0.8, 15, T.RAIL_STOP]], a), ...railModel({ ends })], rail: { ends, slope: -1, powered: false, stop: true },
+    variantOf: a ? RAIL_STATION : 0, drop: RAIL_STATION,
+  });
+}
+block(ZIP_POST, {
+  name: 'Zipline Post', sound: 'wood', hardness: 2, tool: 'axe', transparent: true, zip: true,
+  model: [[6, 0, 6, 10, 16, 10, { side: T.LOG_SIDE, top: T.LOG_TOP, bottom: T.LOG_TOP }], [3, 13, 7, 13, 15, 9, T.IRON], [7, 13, 3, 9, 15, 13, T.IRON]],
+  boxes: [[6, 0, 6, 10, 16, 10]],
+});
+ITEMS[BOAT] = { name: 'Boat', stack: 1, vehicle: 'boat' };
+ITEMS[BALLOON] = { name: 'Hot-Air Balloon', stack: 1, vehicle: 'balloon' };
+ITEMS[ZIP_LINE] = { name: 'Zipline Rope', stack: 16 };
+RECIPES.push(
+  { out: [RAIL_STATION, 2], in: [[RAIL, 2], [BRICKS, 1], [WIRE, 1]], table: true, metal: WIRE },
+  { out: [ZIP_POST, 2], in: [[LOG, 2], [IRON_INGOT, 1]], table: true, metal: IRON_INGOT },
+  { out: [ZIP_LINE, 2], in: [[STRING, 6], [IRON_INGOT, 1]], table: true, metal: IRON_INGOT },
+  { out: [BOAT, 1], in: [[PLANKS, 5], [STICK, 2]], table: true },
+  { out: [BALLOON, 1], in: [[WOOL, 12], [STRING, 8], [PLANKS, 4], [IRON_INGOT, 2], [LANTERN, 1]], table: true, metal: IRON_INGOT },
 );

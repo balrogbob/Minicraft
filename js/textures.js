@@ -17,7 +17,7 @@ import {
   SUN_SCARAB, FROST_HEART, EMBER_CORE, SUN_MASK, FROST_CIRCLET, EMBER_CROWN, HONEY_TEA, MUSHROOM_STEW, FISH_PIE, COPY_WAND,
   CRYSTAL_SHARD, HONEY_BOTTLE, HONEYCOMB, SALMON, BAKED_SALMON, ICEFISH, BAKED_ICEFISH, PUFFERFISH, OLD_BOOT,
   BATTERY, PORTABLE_LAMP, JACKHAMMER, JETPACK, ELECTRIC_DRILL, HOVER_BOOTS, NV_GOGGLES, MAGNET_RING, WIND_TURBINE, NICKEL_INGOT, CUPRONICKEL_INGOT,
-  ELECTRIC_RAIL, CHAINSAW, SAWDUST, BOOK, BACKPACK, BIG_BACKPACK, HUGE_BACKPACK, SPANNER, GRAPPLE, URANIUM_INGOT, FUEL_ROD, JOURNAL, FERTILISER, SPENT_ROD, ENRICHED_URANIUM, ENRICHED_ROD, hazmatId, INVAR_INGOT,
+  ELECTRIC_RAIL, CHAINSAW, SAWDUST, BOOK, BACKPACK, BIG_BACKPACK, HUGE_BACKPACK, SPANNER, GRAPPLE, URANIUM_INGOT, FUEL_ROD, JOURNAL, FERTILISER, SPENT_ROD, ENRICHED_URANIUM, ENRICHED_ROD, hazmatId, INVAR_INGOT, RAIL_STATION, BOAT, BALLOON, ZIP_LINE,
   SALTPETRE, GUNPOWDER, LEAD_SINKER, WEIGHTED_ROD, LEAD_BUCKET, LAVA_BUCKET, GOLD_CLOCK, COMPASS, SILVER_ARROW, MIRROR_LAMP,
 } from './blocks.js';
 
@@ -1102,6 +1102,10 @@ P[T.PACKED_ICE] = (t) => {
   for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) t.set(x, y, t.vary([140, 180, 230], 0.08));
   for (let i = 0; i < 4; i++) { let x = t.r() * 16, y = t.r() * 16; for (let k = 0; k < 5; k++) { t.set(x | 0, y | 0, [200, 226, 250]); x += 1; y += t.r() < 0.5 ? 1 : -1; } }
 };
+// v24 D: the rail station's platform plate
+P[T.RAIL_STOP] = (t) => {
+  for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) t.set(x, y, ((x + y) >> 2) % 2 ? [220, 50, 40] : [240, 236, 228]);
+};
 P[T.LOGIC_BASE] = (t) => {
   for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) t.set(x, y, t.vary([172, 172, 168], 0.04));
   frame(t, [128, 128, 126], 1);
@@ -2041,6 +2045,21 @@ ITEM_PAINTERS[NV_GOGGLES] = (ctx) => {
 };
 // v23 gear
 ITEM_PAINTERS[ELECTRIC_RAIL] = railIcon([214, 186, 80]);
+ITEM_PAINTERS[RAIL_STATION] = (ctx) => { for (let y = 1; y < 15; y++) for (let x = 2; x < 14; x++) px(ctx, x, y, ((x + y) >> 2) % 2 ? [220, 50, 40] : [240, 236, 228]); railIcon([150, 154, 162])(ctx); };
+ITEM_PAINTERS[BOAT] = (ctx) => {
+  rect(ctx, 1, 8, 14, 3, [160, 106, 60]); rect(ctx, 3, 11, 10, 2, [138, 90, 50]); rect(ctx, 0, 6, 2, 3, [160, 106, 60]); rect(ctx, 14, 6, 2, 3, [160, 106, 60]);
+  rect(ctx, 2, 9, 12, 1, [110, 72, 40]); for (let k = 0; k < 6; k++) px(ctx, 4 + k, 7 - (k >> 1), [106, 68, 38]); // an oar
+};
+ITEM_PAINTERS[BALLOON] = (ctx) => {
+  const st = [[210, 60, 50], [240, 200, 56], [60, 120, 210]];
+  for (let y = 0; y < 10; y++) for (let x = 0; x < 16; x++) { const d = Math.hypot((x - 7.5) / 6, (y - 4.5) / 5); if (d < 1) px(ctx, x, y, st[((x + 1) >> 2) % 3]); }
+  for (const x of [5, 10]) for (let y = 10; y < 13; y++) px(ctx, x, y, [216, 207, 176]);
+  rect(ctx, 5, 13, 6, 3, [154, 106, 58]);
+};
+ITEM_PAINTERS[ZIP_LINE] = (ctx) => {
+  for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) { const d = Math.hypot(x - 7.5, y - 7.5); if (d > 3 && d < 6.5 && ((Math.atan2(y - 7.5, x - 7.5) * 6) | 0) % 2 === 0) px(ctx, x, y, [226, 214, 170]); else if (d > 3 && d < 6.5) px(ctx, x, y, [196, 184, 140]); }
+  rect(ctx, 12, 11, 3, 3, [176, 180, 190]); // a clip
+};
 ITEM_PAINTERS[CHAINSAW] = (ctx) => {
   rect(ctx, 1, 6, 6, 6, [230, 120, 40]); rect(ctx, 2, 7, 3, 2, [84, 92, 118]); rect(ctx, 1, 4, 4, 2, [60, 60, 66]); // body and handle
   rect(ctx, 7, 7, 8, 3, [196, 200, 210]); for (let x = 7; x < 15; x += 2) { px(ctx, x, 6, [150, 154, 164]); px(ctx, x + 1, 10, [150, 154, 164]); } // bar and chain

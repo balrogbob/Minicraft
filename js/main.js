@@ -27,6 +27,7 @@ import {
   WIRE, INVERTER, DELAY, LATCH, DETECTOR_RAIL, DRIVE_BELT, TREE_FELLER, PLANTER, BREAKER, PLACER, ANIMAL_STATION, EJECTOR, COLLECTOR, BELT_SPLITTER, BELT_SORTER,
   ELECTRIC_RAIL, LIFT, LIFT_REACH, WIRELESS_REACH, CHAINSAW, SAWDUST, SPANNER, GRAPPLE, isBackpack, kineticId, MELTDOWN, REACTOR_POWER, ROD_LIFE, BOOK,
   BOOKSHELF, JOURNAL, FERTILISER, SHELF_DISCOUNT, LEAD_CHEST, FREEZER, ARC_FURNACE, SPENT_ROD, RADIATION_REACH, hazmatId, TESLA_REACH, TESLA_DAMAGE, ELECTRIC_FENCE,
+  RAIL_STATION, ZIP_POST, ZIP_LINE, ZIP_REACH, BOAT, BALLOON, CHARCOAL,
 } from './blocks.js';
 import { createAtlas, createIcons, createCrackCanvases, createWaterCanvas, createHudIcons, paintSeason } from './textures.js';
 import { World, CHUNK, WORLD_SIZE, chunkKey } from './world.js';
@@ -50,6 +51,7 @@ import { Electric } from './electric.js';
 import { Signs } from './signs.js';
 import { Machines } from './machines.js';
 import { Carts, railBeyond } from './carts.js';
+import { Vehicles } from './vehicles.js';
 import { MiniMap } from './minimap.js';
 import { Frames } from './frames.js';
 import { Weather } from './weather.js';
@@ -291,6 +293,7 @@ const signs = new Signs(scene); // what's written on each sign
 const machines = new Machines(scene, icons); // pumps, drills, hoppers and belts
 const loose = new ItemDrops(scene, (id) => machines.makeSprite(id)); // items lying on the ground
 const carts = new Carts(scene); // minecarts on rails
+const vehicles = new Vehicles(scene); // boats and balloons
 let riding = null; // the minecart you're sitting in
 const minimap = new MiniMap($('map'), atlasCanvas);
 const frames = new Frames(scene, icons); // what's shown in each item frame
@@ -298,6 +301,9 @@ const paintings = new Paintings(scene); // the pictures in paintings
 const weather = new Weather(scene);
 const bees = new Bees(scene, sound);
 let ridingMob = null; // the camel you're riding
+let boarded = null; // the boat or balloon you're in
+let targetVehicle = null; // { v, t } when the crosshair is on a boat or balloon
+let zipping = null; // sliding along a zipline
 machines.frames = frames; machines.carts = carts; machines.loose = loose;
 machines.throwItem = (stack, pos, vel) => loose.spawn(stack, pos, vel, 0.5);
 // An auto-crafter makes what the item frame on it shows: the first recipe for that thing.
@@ -425,8 +431,11 @@ async function startWorld(save, opts = {}) {
   loadPacks(save?.packs, save?.nextPack);
   lift = null; releaseGrapple();
   carts.load(save?.carts);
+  vehicles.load(save?.vehicles);
+  loadZips(save?.zips);
   riding = null;
   ridingMob = null;
+  boarded = null; zipping = null;
   arrows.reset();
   lastSwing = 0;
   applyViewDistance();
@@ -552,6 +561,8 @@ function saveGame() {
     packs: [...packs],
     nextPack,
     carts: carts.serialize(),
+    vehicles: vehicles.serialize(),
+    zips: zips.map((z) => z.ends),
     armour: [...armour],
     armourWear: [...armourWear],
     armourEnch: [...armourEnch],
@@ -816,7 +827,7 @@ function respawnPlayer() {
 //   a well-fed player (hunger 16+) heals a point every 3 s, using up a little hunger.
 function updateHealth(dt, wasGround, prevY) {
   // falling: track the highest point since leaving the ground (including where this step started)
-  if (riding || ridingMob || player.flying || player.thrusting || player.hovering || player.inWater || player.inLava || player.climbing || player.onGround && wasGround) fallTop = null;
+  if (riding || ridingMob || boarded || zipping || player.flying || player.thrusting || player.hovering || player.inWater || player.inLava || player.climbing || player.onGround && wasGround) fallTop = null;
   if (!player.onGround && !player.inWater) fallTop = Math.max(fallTop ?? prevY, prevY, player.pos.y);
   else if (player.onGround && !wasGround && fallTop === null && !player.inWater) fallTop = prevY;
   if (player.onGround && !wasGround && fallTop !== null) {
@@ -970,6 +981,7 @@ function showSlotTip(i) {
 const capital = (t) => t.charAt(0).toUpperCase() + t.slice(1);
 function lookName() {
   if (targetCart) return targetCart.cart.store ? 'Storage Cart' : 'Minecart';
+  if (targetVehicle) return targetVehicle.v.kind === 'boat' ? 'Boat' : 'Hot-Air Balloon';
   if (targetMob) {
     const m = targetMob.mob;
     const name = m.spec.name ?? (m.kind === 'villager' ? `Villager (${m.profession ?? 'farmer'})` : capital(m.kind));
@@ -1743,7 +1755,7 @@ const PAD_WAIT = 0.8;
 let padTime = 0, padArrived = '', padWarned = '';
 function tickPads(dt) {
   const x = Math.floor(player.pos.x), y = Math.floor(player.pos.y + 0.01), z = Math.floor(player.pos.z), k = `${x},${y},${z}`;
-  if (!BLOCKS[world.get(x, y, z)]?.pad || !player.onGround || riding || ridingMob) { padTime = 0; padArrived = ''; padWarned = ''; return; }
+  if (!BLOCKS[world.get(x, y, z)]?.pad || !player.onGround || riding || ridingMob || boarded) { padTime = 0; padArrived = ''; padWarned = ''; return; }
   if (k === padArrived) return;
   if ((padTime += dt) < PAD_WAIT) return;
   const to = machines.padPartner(x, y, z);
@@ -1813,7 +1825,7 @@ function tickLift(dt) {
   }
   const dir = controls.jump ? 1 : controls.down ? -1 : 0;
   if (!dir) { liftWarned = ''; return false; }
-  if (!player.onGround || riding || ridingMob || player.flying) return false;
+  if (!player.onGround || riding || ridingMob || boarded || player.flying) return false;
   const x = Math.floor(player.pos.x), y = Math.floor(player.pos.y - 0.05), z = Math.floor(player.pos.z), k = `${x},${y},${z}`;
   if (!BLOCKS[world.get(x, y, z)]?.lift) return false;
   const warn = (msg) => { if (liftWarned !== k + dir) { liftWarned = k + dir; toast(msg, 2200); } };
@@ -1872,7 +1884,7 @@ function tickGrapple(dt) {
     if (v.t >= 1) { player.onGround = true; releaseGrapple(); }
     return true;
   }
-  if (controls.down || riding || ridingMob || dead || (!g.hang && g.t > 3)) { releaseGrapple(); return false; }
+  if (controls.down || riding || ridingMob || boarded || zipping || dead || (!g.hang && g.t > 3)) { releaseGrapple(); return false; }
   if (g.hang && controls.jump && g.t > 0.3) {
     // climb up off the rope: onto the top of the block it's caught on if there's room there, or a hop
     const [cx, cy, cz] = g.cell;
@@ -2796,6 +2808,142 @@ function placeSwitchRail(x, y, z) {
   }
 }
 
+// ---------- boats and balloons ----------
+// Put a boat on the water you're looking at, or a balloon on the block you're looking at.
+function waterInSight() {
+  const eye = player.eye, d = player.lookDir();
+  for (let t = 0.5; t <= REACH; t += 0.25) {
+    const x = Math.floor(eye.x + d.x * t), y = Math.floor(eye.y + d.y * t), z = Math.floor(eye.z + d.z * t);
+    if (world.isWater(x, y, z)) return [x, y, z];
+    if (world.isSolid(x, y, z)) return null;
+  }
+  return null;
+}
+function putVehicle(kind) {
+  if (kind === 'boat') {
+    const w = waterInSight();
+    if (!w) { toast('Put a boat on water', 1500); return false; }
+    let y = w[1];
+    while (world.isWater(w[0], y + 1, w[2])) y++;
+    vehicles.add('boat', w[0] + 0.5, y + 0.55, w[2] + 0.5, player.yaw + Math.PI);
+  } else {
+    if (!target) return false;
+    const { x, y, z } = target;
+    if (vehicles.blocked(world, x + 0.5, y + 1, z + 0.5, 0.5, 2.6)) { toast('There isn\'t room for a balloon there', 1500); return false; }
+    vehicles.add('balloon', x + 0.5, y + 1, z + 0.5, player.yaw);
+  }
+  sound.place('wood');
+  return true;
+}
+function boardVehicle(v) {
+  if (vehicles.list.some((o) => o !== v && o === boarded)) return;
+  boarded = v;
+  player.vel.set(0, 0, 0);
+  sound.place('wood');
+  toast(v.kind === 'boat' ? 'Hold forward to row the way you look, back to slow down. Tap to get out.'
+    : 'Jump to rise, sneak to sink, and move as you walk. The burner uses coal or charcoal from your inventory. Tap to get out.', 3500);
+}
+function leaveVehicle() {
+  if (!boarded) return;
+  const v = boarded;
+  boarded = null;
+  // step out onto land beside a boat if there is some, otherwise just stand up in it
+  if (v.kind === 'boat') {
+    for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [-1, -1], [1, -1], [-1, 1]]) {
+      const x = Math.floor(v.pos.x) + dx, z = Math.floor(v.pos.z) + dz;
+      for (let y = Math.floor(v.pos.y) + 1; y >= Math.floor(v.pos.y) - 1; y--) {
+        if (world.isSolid(x, y, z) && !world.isWater(x, y, z) && !world.isSolid(x, y + 1, z) && !world.isSolid(x, y + 2, z) && !world.isWater(x, y + 1, z)) { player.spawn(x + 0.5, y + 1, z + 0.5); return; }
+      }
+    }
+  }
+  player.spawn(v.pos.x, v.pos.y + (v.kind === 'boat' ? 0.6 : 0.15), v.pos.z);
+}
+function followVehicle() {
+  if (!vehicles.list.includes(boarded)) { boarded = null; return; }
+  player.pos.set(boarded.pos.x, boarded.pos.y + (boarded.kind === 'boat' ? 0.1 : 0.12), boarded.pos.z);
+  player.vel.set(0, 0, 0);
+  player.onGround = true;
+  player.updateWaterState();
+  fallTop = null;
+}
+// The balloon's burner: a piece of coal or charcoal from your inventory.
+function burnCoal() {
+  if (creative) return true;
+  for (const id of [COAL, CHARCOAL]) if (inventory.count(id) > 0) { inventory.remove(id, 1); return true; }
+  toast('The balloon\'s burner is out of fuel: carry coal or charcoal', 2500);
+  return false;
+}
+
+// ---------- ziplines ----------
+// Lines between pairs of zipline posts; tap a post holding a grappling hook to slide to the other end.
+const zips = []; // { ends: [ax, ay, az, bx, by, bz], line }
+let zipStart = null; // the first post you tapped with a rope
+const zipTop = (x, y, z) => new THREE.Vector3(x + 0.5, y + 0.9, z + 0.5);
+function drawZip(z) {
+  const a = zipTop(...z.ends.slice(0, 3)), b = zipTop(...z.ends.slice(3)), len = a.distanceTo(b), pts = [];
+  for (let i = 0; i <= 16; i++) { const k = i / 16; pts.push(a.clone().lerp(b, k).add(new THREE.Vector3(0, -Math.sin(k * Math.PI) * len * 0.03, 0))); }
+  z.line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), new THREE.LineBasicMaterial({ color: 0x3a3226 }));
+  scene.add(z.line);
+}
+function loadZips(list) {
+  for (const z of zips) { scene.remove(z.line); z.line.geometry.dispose(); }
+  zips.length = 0; zipStart = null;
+  for (const e of Array.isArray(list) ? list : []) if (Array.isArray(e) && e.length === 6 && e.every(Number.isFinite)) { const z = { ends: e.map(Math.floor) }; zips.push(z); drawZip(z); }
+}
+const zipsAt = (x, y, z) => zips.filter((l) => (l.ends[0] === x && l.ends[1] === y && l.ends[2] === z) || (l.ends[3] === x && l.ends[4] === y && l.ends[5] === z));
+function linkZip(x, y, z) {
+  if (!zipStart || world.get(...zipStart) !== ZIP_POST) { zipStart = [x, y, z]; toast('Now tap another zipline post to run the rope to', 2000); return; }
+  const [sx, sy, sz] = zipStart;
+  zipStart = null;
+  const d = Math.hypot(x - sx, y - sy, z - sz);
+  if (d < 1) { toast('Tap a different post', 1500); return; }
+  if (d > ZIP_REACH) { toast(`A zipline can be at most ${ZIP_REACH} blocks long`, 2000); return; }
+  if (zipsAt(sx, sy, sz).some((l) => zipsAt(x, y, z).includes(l))) { toast('Those posts are already joined', 1500); return; }
+  const l = { ends: [sx, sy, sz, x, y, z] };
+  zips.push(l); drawZip(l);
+  inventory.consumeHeld();
+  sound.place('wool');
+  toast('Zipline up! Tap a post holding a grappling hook to slide along it', 2500);
+}
+// Breaking a post takes its lines down: their ropes come back.
+function unlinkZips(x, y, z) {
+  const gone = zipsAt(x, y, z);
+  for (const l of gone) { scene.remove(l.line); l.line.geometry.dispose(); zips.splice(zips.indexOf(l), 1); }
+  return gone.length ? [[ZIP_LINE, gone.length]] : [];
+}
+function startZip(x, y, z) {
+  const lines = zipsAt(x, y, z);
+  if (!lines.length) { toast('That post has no zipline: join it to another with a zipline rope', 2000); return; }
+  // the line that runs most nearly the way you're looking
+  const look = player.lookDir(), here = zipTop(x, y, z);
+  const other = (l) => (l.ends[0] === x && l.ends[1] === y && l.ends[2] === z ? l.ends.slice(3) : l.ends.slice(0, 3));
+  const best = lines.map((l) => ({ l, to: other(l) })).sort((a, b) => zipTop(...b.to).sub(here).normalize().dot(look) - zipTop(...a.to).sub(here).normalize().dot(look))[0];
+  const from = here, to = zipTop(...best.to);
+  zipping = { from, to, end: best.to, len: from.distanceTo(to), d: 0, speed: 4 };
+  sound.swish?.();
+}
+function letGoZip() { zipping = null; player.vel.set(0, 0, 0); }
+function tickZip(dt) {
+  const z = zipping;
+  if (controls.down || dead) { letGoZip(); return; }
+  const drop = (z.from.y - z.to.y) / Math.max(1, z.len);
+  z.speed = Math.max(4, Math.min(16, z.speed + drop * 14 * dt));
+  z.d = Math.min(z.len, z.d + z.speed * dt);
+  const k = z.d / z.len, p = z.from.clone().lerp(z.to, k);
+  p.y -= Math.sin(k * Math.PI) * z.len * 0.03 + 2.0; // hanging under the rope
+  player.pos.copy(p);
+  player.vel.set(0, 0, 0);
+  fallTop = null;
+  if (z.d < z.len) return;
+  // off at the far post: step down beside it, back toward where you came from
+  zipping = null;
+  const [ex, ey, ez] = z.end, back = z.from.clone().sub(z.to).setY(0).normalize();
+  let fx = Math.floor(ex + 0.5 + back.x * 1.1), fz = Math.floor(ez + 0.5 + back.z * 1.1), fy = ey;
+  while (fy < ey + 4 && (world.isSolid(fx, fy, fz) || world.isSolid(fx, fy + 1, fz))) fy++;
+  player.spawn(fx + 0.5, fy, fz + 0.5);
+  sound.place('wool');
+}
+
 function getInCart(cart) {
   riding = cart;
   player.vel.set(0, 0, 0);
@@ -2868,11 +3016,17 @@ function placeInner() {
   if (held?.id === BOW) { shootArrow(Math.max(0.25, Math.min(1, bowCharge / FULL_DRAW))); bowCharge = 0; return; }
   if (riding) { getOutOfCart(); return; }
   if (ridingMob) { dismount(); return; }
+  if (boarded) { leaveVehicle(); return; }
+  if (zipping) { letGoZip(); return; }
   if (targetCart) {
     const c = targetCart.cart;
     if (c.store) { sound.click(); openStation(c.x, c.y, c.z, c); } else getInCart(c);
     return;
   }
+  if (targetVehicle) { boardVehicle(targetVehicle.v); return; }
+  if (held && ITEMS[held.id]?.vehicle && putVehicle(ITEMS[held.id].vehicle)) { inventory.consumeHeld(); return; }
+  if (held?.id === ZIP_LINE && target?.id === ZIP_POST) { linkZip(target.x, target.y, target.z); return; }
+  if (held?.id === GRAPPLE && target?.id === ZIP_POST) { startZip(target.x, target.y, target.z); return; }
   if (targetMob) { hitMob(); return; }
   if ((held?.id === MINECART || held?.id === STORAGE_CART) && target && isRail(target.id)) {
     if (carts.add(world, target.x, target.y, target.z, player.lookDir(), held.id === STORAGE_CART)) { inventory.consumeHeld(); sound.place('stone'); }
@@ -3154,10 +3308,10 @@ function placeInner() {
     sound.place('stone');
     inventory.consumeHeld();
     return;
-  } else if (id === RAIL || id === POWERED_RAIL || id === LOADER_RAIL || id === ELECTRIC_RAIL) {
+  } else if (id === RAIL || id === POWERED_RAIL || id === LOADER_RAIL || id === ELECTRIC_RAIL || id === RAIL_STATION) {
     // rails lie on top of a block, and bend to join the rails next to them (loader rails just run straight)
     if (there !== AIR || target.ny !== 1 || !BLOCKS[target.id].solid) { toast('Rails go on top of a block'); return; }
-    if (id === LOADER_RAIL) world.setBlock(x, y, z, LOADER_RAIL + (facingTowardPlayer(x, z) % 2));
+    if (id === LOADER_RAIL || id === RAIL_STATION) world.setBlock(x, y, z, id + (facingTowardPlayer(x, z) % 2));
     else placeRail(x, y, z, id === ELECTRIC_RAIL ? 'electric' : id === POWERED_RAIL);
     sound.place('stone');
     inventory.consumeHeld();
@@ -3410,6 +3564,18 @@ function updateBreaking(dt) {
     crack.visible = false;
     return;
   }
+  if (controls.breaking && targetVehicle) {
+    breakState.cart = (breakState.cart ?? 0) + dt;
+    if (breakState.cart >= 0.5) {
+      const v = targetVehicle.v;
+      vehicles.remove(v);
+      targetVehicle = null;
+      breakState.cart = 0;
+      giveDrops([[v.kind === 'boat' ? BOAT : BALLOON, 1]]);
+    }
+    crack.visible = false;
+    return;
+  }
   breakState.cart = 0;
   if (!controls.breaking) breakState.mobCooldown = 0.5;
   breakState.mobCooldown = Math.max(0, breakState.mobCooldown - dt);
@@ -3499,6 +3665,7 @@ function breakBlock(x, y, z) {
   if (isSign(id)) signs.remove(x, y, z);
   if (isSign(id) || isBed(id)) { dropWaypoint(x, y, z); dropWaypoint(...bedPartnerOr(x, y, z, id)); }
   if (isFrame(id)) { const item = frames.remove(x, y, z); if (item) drops.push([item, 1]); }
+  if (id === ZIP_POST) drops.push(...unlinkZips(x, y, z));
   if (stationKind(id)) loose.spill(stations.removeStacks(x, y, z), x, y, z); // whatever was inside spills out
   if (isElectricLamp(id)) electric.signalLamps.delete(`${x},${y},${z}`);
   if (def.machine || def.engine || def.sensor || def.ejector || def.hopper || def.tank || def.farm || def.quarry || def.pad || def.spawner) loose.spill(machines.removeAt(x, y, z).map(([i, n, st]) => ({ id: i, count: n, ...st })), x, y, z); // and whatever was on a belt or in a drill
@@ -4229,7 +4396,11 @@ function stepGame(now, dt) {
     const wasGround = player.onGround, wasWater = player.inWater, fallSpeed = -player.vel.y, prevY = player.pos.y;
     carts.update(dt, world, (x, y, z) => powerAt(x, y, z) || (signalAt(x, y, z) ? 1 : 0), riding && { cart: riding, push: controls.moveZ, look: player.lookDir() },
       { day: lightUniforms.uDay.value, flicker: lightUniforms.uFlicker.value, ambient: lightUniforms.uAmbient.value });
+    vehicles.update(dt, world, boarded && { v: boarded, moveX: controls.moveX, moveZ: controls.moveZ, jump: controls.jump, down: controls.down, yaw: player.yaw },
+      { day: lightUniforms.uDay.value, flicker: lightUniforms.uFlicker.value, ambient: lightUniforms.uAmbient.value }, { fuel: burnCoal });
     if (riding) followCart();
+    else if (boarded) followVehicle();
+    else if (zipping) tickZip(dt);
     else if (ridingMob) followMount();
     else if (tickGrapple(dt) || tickLift(dt)) { /* carried by the hook or a lift */ }
     else player.update(dt, { moveX: controls.moveX, moveZ: controls.moveZ, jump: controls.jump, down: controls.down });
@@ -4330,6 +4501,9 @@ function stepGame(now, dt) {
   targetCart = paused || riding ? null : carts.raycast(eye, look, REACH);
   if (targetCart && ((target && target.t < targetCart.t) || (targetMob && targetMob.t < targetCart.t))) targetCart = null;
   if (targetCart) { target = null; targetMob = null; }
+  targetVehicle = paused || riding || boarded ? null : vehicles.raycast(eye, look, REACH);
+  if (targetVehicle && ((target && target.t < targetVehicle.t) || (targetMob && targetMob.t < targetVehicle.t) || (targetCart && targetCart.t < targetVehicle.t))) targetVehicle = null;
+  if (targetVehicle) { target = null; targetMob = null; targetCart = null; }
   // whichever is closer wins: an animal in front of a block, or a block in front of an animal
   if (targetMob && target && target.t < targetMob.t) targetMob = null;
   if (targetMob) target = null;
@@ -4360,5 +4534,5 @@ window.minicraft = {
   arrows, fishing, kinetics, electric, lightUniforms, bees, catchAt, seasonOf, applySeason, set day(v) { day = v; applySeason(); }, frames, signalAt, setSwitch, logic, machines, carts, minimap, signs, armour, damage, placeRail, getInCart, getOutOfCart,
   get riding() { return riding; }, explode, lightFuse, fuses, clockTime, compassText, place, editSign, closeSign, openInventory, closeInventory, chestMove, lamps, tickLamps, sleepUntilMorning, stations, openStation, closeStation,
   get caneToday() { return caneToday; }, get creative() { return creative; }, set creative(v) { creative = v; applyCreative(); }, toggleFly, wand, useWand, get achieved() { return achieved; }, achieve, worldMap, openMap, closeMap, openGuide, switchSlot, store, saveGame, renderWorlds, openWorlds, exportSlot, get target() { return target; }, set target(v) { target = v; }, applyKeys, renderKeys, camera, get controls() { return controls; }, loose, throwHeld, get waypoints() { return waypoints; }, toggleWaypoint, sortSlots, weather, openTrade, closeTrade, mountMob, dismount, get ridingMob() { return ridingMob; }, effects, armourWear, useAnvil, rollLoot, settings,
-  get bedSpawn() { return bedSpawn; }, fertilise, openJournal, closeJournal, get packs() { return packs; }, radiationAt, get health() { return health; }, set health(v) { health = v; }, paintings, placeSwitchRail, signalAt, ailments, armourEnch, openAltar, lairNear, useBed, eat, drinkTea,
+  get bedSpawn() { return bedSpawn; }, fertilise, openJournal, closeJournal, get packs() { return packs; }, radiationAt, vehicles, boardVehicle, leaveVehicle, get boarded() { return boarded; }, zips, linkZip, startZip, get zipping() { return zipping; }, burnCoal, get health() { return health; }, set health(v) { health = v; }, paintings, placeSwitchRail, signalAt, ailments, armourEnch, openAltar, lairNear, useBed, eat, drinkTea,
 };
