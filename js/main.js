@@ -30,6 +30,7 @@ import {
   RAIL_STATION, ZIP_POST, ZIP_LINE, ZIP_REACH, BOAT, BALLOON, CHARCOAL, METEORITE, METEORIC_IRON, metalSword, TRUFFLE,
   RADIO_TX, RADIO_RX, SORTING_MACHINE, LOCOMOTIVE, FIREPLACE, CHIMNEY, HEARTH_FUEL, STABLE,
   SNOWMAN, FIREWORK, PUMPKIN, JACK_O_LANTERN, EGG, POPPY, DANDELION, DAISY, LAVENDER,
+  ONION, BEANS, TOMATO, HERBS, CIDER, VINTAGE_CIDER, BERRY_WINE, FINE_BERRY_WINE,
 } from './blocks.js';
 import { Smoke } from './smoke.js';
 import { Fireworks } from './fireworks.js';
@@ -48,7 +49,7 @@ import { ItemDrops } from './drops.js';
 import { ACHIEVEMENTS, ACHIEVEMENT_IDS } from './achievements.js';
 import { MobManager, DIFFICULTY, DIFFICULTY_ORDER, SPECIES } from './mobs.js';
 import { ArrowManager } from './arrows.js';
-import { Stations, STATION_KINDS, isFuel } from './stations.js';
+import { Stations, STATION_KINDS, isFuel, inCellar } from './stations.js';
 import { Fishing } from './fishing.js';
 import { Kinetics } from './kinetics.js';
 import { Electric } from './electric.js';
@@ -1411,9 +1412,9 @@ function openStation(x, y, z, cart = null) {
     : kind === 'reactor' ? `<p class="hint">Put fuel rods in: each burns for ${ROD_LIFE / 60} minutes (an enriched rod twice as long), making ${REACTOR_POWER} power, and heats the reactor. ` +
     'A burnt-out rod is left spent: nuclear waste, so keep it in a lead-lined chest. Water, ice or packed ice touching it (each face counts) cools it. If it gets too hot it melts down, so keep plenty of water round it, take rods out, or give it a ' +
     'signal (a lever, or a power meter set to signal a shortfall) to push its control rods in and stop it.</p>'
-    : K.holder ? `<p class="hint">${kind === 'planter' ? 'Put saplings, seeds, carrots or potatoes in (or feed them in with a hopper): it plants one on the grass or dirt in front of it whenever there\'s room.'
+    : K.holder ? `<p class="hint">${kind === 'planter' ? 'Put saplings, seeds or vegetables in (or feed them in with a hopper): it plants one on the grass or dirt in front of it whenever there\'s room.'
     : 'Put empty buckets in for milking yaks, and wheat to feed the animals (their coats grow back faster). Wheat, seeds or berries also feed pairs of animals so they have young. What it gets comes out of its back, into a chest, hopper or belt.'}</p>`
-    : kind === 'winepress' || kind === 'cheesepress' ? `<p class="hint">It needs no fuel or power. Lay what it makes down in an oak barrel to age: ${kind === 'winepress' ? 'juice becomes wine in a day, and fine wine three days later' : 'curds become cheese in a day, and aged cheese three days later'}.</p>`
+    : kind === 'winepress' || kind === 'cheesepress' ? `<p class="hint">It needs no fuel or power. Lay what it makes down in an oak barrel to age: ${kind === 'winepress' ? 'grape juice becomes wine, apple juice cider and berry juice berry wine in a day, and finer still three days later' : 'curds become cheese in a day, and aged cheese three days later'}.</p>`
     : kind === 'compost' ? '<p class="hint">It needs no fuel or power: scraps just rot down, given time. Tap a crop or sapling with fertiliser to grow it a step.</p>'
     : kind === 'pcrafter' ? '<p class="hint">Hang item frames on it (up to four) showing what to make: it makes the first, and steps on ' +
     'to the next each time it gets a signal (a lever, button, item counter...). Fill it with hoppers or belts and empty it with a hopper underneath.</p>'
@@ -1457,9 +1458,9 @@ function renderStation() {
     if (K.ages) {
       // a barrel: how the first thing that's ageing is coming along
       const i = st.inputs.findIndex((s) => s && AGING[s.id]);
-      const s = st.inputs[i];
-      $('st-status').textContent = s ? `${itemName(s.id)} → ${itemName(AGING[s.id][0])}: ${Math.floor(Math.min(1, (st.age?.[i] ?? 0) / (AGING[s.id][1] * DAY_LENGTH)) * 100)}% (${AGING[s.id][1]} day${AGING[s.id][1] > 1 ? 's' : ''} in all)`
-        : 'Lay down grape juice or curds to age: juice becomes wine in a day, then fine wine after three more; curds become cheese, then aged cheese';
+      const s = st.inputs[i], cellar = inCellar(world, openStationAt.x, openStationAt.y, openStationAt.z);
+      $('st-status').textContent = s ? `${itemName(s.id)} → ${itemName(AGING[s.id][0])}: ${Math.floor(Math.min(1, (st.age?.[i] ?? 0) / (AGING[s.id][1] * DAY_LENGTH)) * 100)}% (${AGING[s.id][1]} day${AGING[s.id][1] > 1 ? 's' : ''} in all)${cellar ? ', faster in the cellar' : ''}`
+        : `Lay down grape, apple or berry juice, or curds, to age: juice becomes wine (or cider) in a day, then something finer after three more; curds become cheese, then aged cheese. ${cellar ? 'This barrel is in a cellar: things age faster here' : 'A barrel where no daylight reaches (a cellar) ages things faster'}`;
     }
     return;
   }
@@ -3001,7 +3002,7 @@ mobs.onTraderSpawn = (m) => {
 };
 // Villagers each have a trade, and offer three swaps from its list.
 const VILLAGER_TRADES = {
-  farmer: [[[LOG, 8], [BREAD, 4]], [[COBBLE, 24], [CAKE, 1]], [[STICK, 16], [WHEAT, 12]], [[FEATHER, 6], [BUTTER, 2]], [[BERRIES, 10], [COOKIE, 6]], [[COAL, 6], [FLOUR, 6]], [[COIN, 4], [CAKE, 1]], [[COIN, 2], [BREAD, 3]], [[COIN, 2], [CARROT, 4]], [[COIN, 2], [POTATO, 4]], [[COIN, 3], [PUMPKIN_SEEDS, 3]], [[COIN, 3], [GRAPES, 4]]],
+  farmer: [[[LOG, 8], [BREAD, 4]], [[COBBLE, 24], [CAKE, 1]], [[STICK, 16], [WHEAT, 12]], [[FEATHER, 6], [BUTTER, 2]], [[BERRIES, 10], [COOKIE, 6]], [[COAL, 6], [FLOUR, 6]], [[COIN, 4], [CAKE, 1]], [[COIN, 2], [BREAD, 3]], [[COIN, 2], [CARROT, 4]], [[COIN, 2], [POTATO, 4]], [[COIN, 3], [PUMPKIN_SEEDS, 3]], [[COIN, 3], [GRAPES, 4]], [[COIN, 2], [ONION, 4]], [[COIN, 2], [BEANS, 6]], [[COIN, 2], [TOMATO, 4]], [[COIN, 2], [HERBS, 4]]],
   smith: [[[COAL, 12], [IRON_INGOT, 3]], [[LOG, 16], [STEEL_INGOT, 1]], [[GOLD_INGOT, 1], [STAINLESS_INGOT, 1]], [[COBBLE, 32], [COPPER_INGOT, 4]], [[LEATHER, 4], [IRON_SHIELD, 1]], [[CRYSTAL_SHARD, 4], [TUNGSTEN_INGOT, 1]], [[COIN, 6], [STEEL_INGOT, 2]], [[COIN, 5], [IRON_INGOT, 4]]],
   fisher: [[[STICK, 12], [BAKED_FISH, 3]], [[STRING, 4], [WROD, 1]], [[WHEAT, 16], [SALMON, 4]], [[COAL, 8], [BAKED_SALMON, 3]], [[BREAD, 4], [ROD, 1]], [[OLD_BOOT, 2], [LEATHER, 3]], [[COIN, 3], [BAKED_SALMON, 3]]],
   cleric: [[[GOLD_INGOT, 1], [HEAL_TEA, 2]], [[BERRIES, 8], [NIGHT_TEA, 1]], [[HONEYCOMB, 3], [HASTE_TEA, 1]], [[SILVER_INGOT, 2], [CRYSTAL_SHARD, 4]], [[PAPER, 6], [FIRE_TEA, 1]], [[GLOW_MUSHROOM, 4], [NIGHT_TEA, 1]], [[COIN, 5], [HEAL_TEA, 1]]],
@@ -5306,8 +5307,8 @@ function placeHouse({ x, y, z, door }) {
 // What villagers pay at a stall: [how many they take, coins]. Food by how filling it is, metal well, and
 // building stuff cheaply.
 function stallPrice(id) {
-  if (id === FINE_WINE || id === AGED_CHEESE || id === PEARL) return [1, 6]; // the best things villagers can buy
-  if (id === WINE || id === CHEESE) return [1, 3];
+  if (id === FINE_WINE || id === AGED_CHEESE || id === PEARL || id === VINTAGE_CIDER || id === FINE_BERRY_WINE) return [1, 6]; // the best things villagers can buy
+  if (id === WINE || id === CHEESE || id === CIDER || id === BERRY_WINE) return [1, 3];
   const food = foodValue(id);
   if (food) return food >= 6 ? [1, 2] : food >= 3 ? [1, 1] : [2, 1];
   if (id === GOLD_INGOT || id === STARSTEEL_INGOT) return [1, 5];
@@ -5403,8 +5404,8 @@ function tradeGreeting(v) {
 }
 // [item, how many, coins]
 const REQUESTS = [[BREAD, 6, 4], [CARROT, 12, 3], [POTATO, 12, 3], [EGG, 8, 3], [WOOL, 8, 4], [LOG, 24, 3], [PLANKS, 32, 3], [COBBLE, 48, 3],
-  [TORCH, 16, 3], [IRON_INGOT, 6, 6], [BAKED_FISH, 6, 4], [PAPER, 8, 4], [GLASS, 12, 4], [WINE, 1, 5], [CHEESE, 2, 5]];
-const SEASON_REQUESTS = [[[POPPY, 6, 2], [EGG, 12, 4]], [[WOOL, 12, 5], [BAKED_FISH, 8, 5]], [[PUMPKIN, 3, 4], [CARROT, 16, 4]], [[LOG, 32, 4], [TORCH, 24, 4]]];
+  [TORCH, 16, 3], [IRON_INGOT, 6, 6], [BAKED_FISH, 6, 4], [PAPER, 8, 4], [GLASS, 12, 4], [WINE, 1, 5], [CHEESE, 2, 5], [CIDER, 1, 5], [ONION, 10, 3], [TOMATO, 10, 3]];
+const SEASON_REQUESTS = [[[POPPY, 6, 2], [EGG, 12, 4]], [[WOOL, 12, 5], [BAKED_FISH, 8, 5]], [[PUMPKIN, 3, 4], [CARROT, 16, 4], [BERRY_WINE, 1, 5]], [[LOG, 32, 4], [TORCH, 24, 4]]];
 function requestFor(v, d = day) {
   let h = 7;
   for (const c of `${villageKey(v)}:${d}`) h = (h * 31 + c.charCodeAt(0)) | 0;
@@ -5535,13 +5536,14 @@ function airPumpNear(dt) {
 
 // ---------- v26 C: crop rotation ----------
 // The soil remembers what grew in it last (see world.planted): the same crop again tires it.
-const CROP_NAMES = { wheat: 'wheat', carrot: 'carrots', potato: 'potatoes', pumpkin: 'pumpkins', grape: 'grapes' };
+const CROP_NAMES = { wheat: 'wheat', carrot: 'carrots', potato: 'potatoes', pumpkin: 'pumpkins', grape: 'grapes', onion: 'onions', tomato: 'tomatoes', herb: 'herbs' };
 const cropKind = (id) => (isWheat(id) ? 'wheat' : BLOCKS[id]?.crop?.kind ?? null);
 function notePlanting(x, y, z, id) {
   const kind = cropKind(id);
   if (!kind) return 0;
   const tired = world.planted(x, y - 1, z, kind);
-  if (tired >= 1) toast(`This soil is ${tired >= 3 ? 'worn out' : tired === 2 ? 'tired' : 'a little tired'} from ${CROP_NAMES[kind]}: rotate crops, rest it a season, or fertilise it`, 2600);
+  if (world.soilRich(x, y - 1, z)) toast('The beans have left this soil rich: this crop will grow faster', 2200);
+  else if (tired >= 1) toast(`This soil is ${tired >= 3 ? 'worn out' : tired === 2 ? 'tired' : 'a little tired'} from ${CROP_NAMES[kind]}: rotate crops, rest it a season, or fertilise it`, 2600);
   return tired;
 }
 

@@ -9,7 +9,7 @@ import {
   LAVA, SALTPETRE_ORE, SNOW_GRASS, SNOW, ICE, SANDSTONE, CACTUS, FLOWERS,
   BRICKS, MOSSY_BRICKS, COBBLE, BOSS_SHRINE, LOOT_CHEST, BERRY_BUSH, SPAWNER,
   GLOW_MUSHROOM, CRYSTAL_BLOCK, CRYSTAL_CLUSTER, GEODE_SHELL, BEE_HIVE, MAX_HONEY, VILLAGE_BELL,
-  PLANKS, GLASS_PANE, FURN_TABLE, CHEST, TORCH_WALL_W, doorId, slabId, WHEAT_0, BLOCKS, CARROT_CROP, POTATO_CROP,
+  PLANKS, GLASS_PANE, FURN_TABLE, CHEST, TORCH_WALL_W, doorId, slabId, WHEAT_0, BLOCKS, CARROT_CROP, POTATO_CROP, ONION_CROP, BEAN_CROP, TOMATO_CROP, HERB_CROP,
   LAIRS, CUT_SANDSTONE, TRAP_PLATE, DART_TRAP, FROST_BRICKS, FORT_BRICKS, OBSIDIAN,
   BASALT, BOOKSHELF, TUNGSTEN_ORE, URANIUM_ORE, LOG as MAST,
   LIGHTHOUSE_LAMP, PAINTED_PLANKS, COLORS, LADDER, FENCE, CLAY_BRICKS,
@@ -132,6 +132,8 @@ const VILLAGE_NAMES = ['Ashford', 'Brindle', 'Cobblewick', 'Dunmere', 'Elderby',
   'Ivybridge', 'Juniper Cross', 'Kettlebrook', 'Larkfield', 'Millhaven', 'Nettlecombe', 'Oakhurst', 'Pebbleford', 'Quillmoor',
   'Rushdale', 'Saltmarsh', 'Thistlewood', 'Underhill', 'Wheatley', 'Yarrowby'];
 
+// what a village grows beside its wheat
+const VILLAGE_CROPS = [CARROT_CROP, POTATO_CROP, ONION_CROP, BEAN_CROP, TOMATO_CROP, HERB_CROP];
 export class Generator {
   constructor(seed) {
     this.seed = seed | 0;
@@ -782,7 +784,7 @@ export class Generator {
           // wheat on one side of the channel; carrots or potatoes on the other
           set(wx, y, wz, DIRT);
           const stage = Math.floor(hash3(this.seed, wx, 3011, wz) * 4);
-          set(wx, y + 1, wz, dx < 0 ? WHEAT_0 + stage : (hash3(this.seed, x, 3012, z) < 0.5 ? CARROT_CROP : POTATO_CROP) + stage);
+          set(wx, y + 1, wz, dx < 0 ? WHEAT_0 + stage : VILLAGE_CROPS[Math.floor(hash3(this.seed, x, 3012, z) * VILLAGE_CROPS.length)] + stage);
         }
       }
     }

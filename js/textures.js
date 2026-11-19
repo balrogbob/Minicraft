@@ -18,6 +18,7 @@ import {
   CRYSTAL_SHARD, HONEY_BOTTLE, HONEYCOMB, SALMON, BAKED_SALMON, ICEFISH, BAKED_ICEFISH, PUFFERFISH, OLD_BOOT,
   BATTERY, PORTABLE_LAMP, JACKHAMMER, JETPACK, ELECTRIC_DRILL, HOVER_BOOTS, NV_GOGGLES, MAGNET_RING, WIND_TURBINE, NICKEL_INGOT, CUPRONICKEL_INGOT,
   ELECTRIC_RAIL, CHAINSAW, SAWDUST, BOOK, BACKPACK, BIG_BACKPACK, HUGE_BACKPACK, SPANNER, GRAPPLE, URANIUM_INGOT, FUEL_ROD, JOURNAL, FERTILISER, SPENT_ROD, ENRICHED_URANIUM, ENRICHED_ROD, hazmatId, INVAR_INGOT, RAIL_STATION, BOAT, BALLOON, ZIP_LINE, METEORIC_IRON, STARSTEEL_INGOT, starsteelTool, EGG, FRIED_EGG, SADDLE, TRUFFLE, FLOWER_POT, HANGING_PLANT, WINDOW_BOX, APPLE, CHERRIES, ORANGE_FRUIT, APPLE_PIE, CHERRY_PIE, FRUIT_SALAD, ORANGE_JUICE, FISH_SOUP, TRUFFLE_SOUP, BERRY_JAM, COOK_POT, SCARECROW, EXPLORER_MAP, TREASURE_MAP, BEESWAX, CABLE_CAR, COIN, CARROT, POTATO, BAKED_POTATO, PUMPKIN_SEEDS, PUMPKIN_PIE, GRAPES, GRAPE_JUICE, WINE, FINE_WINE, CURDS, CHEESE, AGED_CHEESE, DIVING_HELMET, FLIPPERS, PEARL, LOCOMOTIVE, FIREWORK,
+  ONION, BEANS, TOMATO, HERBS, APPLE_JUICE, BERRY_JUICE, CIDER, VINTAGE_CIDER, BERRY_WINE, FINE_BERRY_WINE, VEG_STEW, TOMATO_SOUP, BAKED_BEANS,
   SALTPETRE, GUNPOWDER, LEAD_SINKER, WEIGHTED_ROD, LEAD_BUCKET, LAVA_BUCKET, GOLD_CLOCK, COMPASS, SILVER_ARROW, MIRROR_LAMP,
 } from './blocks.js';
 
@@ -2679,3 +2680,51 @@ export function paintSeason(canvas, season) {
     });
   }
 }
+
+// v27 C: onions, beans, tomatoes and herbs (four stages each), and what's made of them
+for (let k = 0; k < 4; k++) {
+  // onions: tall hollow leaves, and the bulbs showing at the ground when they're ready
+  P[T.ONION_0 + k] = (t) => {
+    const h = [4, 7, 10, 12][k];
+    for (const x of [3, 7, 11]) {
+      for (let j = 0; j < h - Math.floor(t.r() * 2); j++) t.set(x + (j > h * 0.7 ? 1 : 0), 15 - j, t.vary([96, 160, 70], 0.1));
+      if (k === 3) for (let dx = -1; dx <= 1; dx++) for (let j = 0; j < 3; j++) t.set(x + dx, 15 - j, t.vary(j === 2 && dx ? [200, 170, 120] : [214, 180, 120], 0.08));
+    }
+  };
+  // beans: climbing on a cane, with pods hanging when they're ready
+  P[T.BEAN_0 + k] = (t) => {
+    const h = [5, 9, 13, 15][k];
+    for (const x of [4, 11]) {
+      if (k > 0) for (let j = 0; j < 16; j++) t.set(x, 15 - j, t.vary([150, 120, 70], 0.08)); // the cane
+      for (let j = 0; j < h; j++) { const wx = x + (j % 4 < 2 ? -1 : 1); t.set(wx, 15 - j, t.vary([60, 140, 50], 0.12)); if (j % 3 === 1) t.set(wx + (wx < x ? -1 : 1), 15 - j, t.vary([80, 160, 60], 0.1)); }
+      if (k === 3) for (const j of [5, 9, 12]) for (let d = 0; d < 3; d++) t.set(x + 2, 15 - j + d, t.vary([140, 196, 80], 0.06));
+    }
+  };
+  // tomatoes: a bushy plant, red fruit when ripe (green before)
+  P[T.TOMATO_0 + k] = (t) => {
+    leafyCrop(t, k, null);
+    if (k >= 2) for (const [x, y] of [[3, 9], [9, 7], [12, 10], [6, 11]]) for (let d = 0; d < 4; d++) t.set(x + (d & 1), y + (d >> 1), t.vary(k === 3 ? [214, 40, 30] : [120, 170, 60], 0.08));
+  };
+  // herbs: low and bushy, purple flowers at the end
+  P[T.HERB_0 + k] = (t) => {
+    const h = [2, 4, 6, 7][k];
+    for (let x = 1; x < 15; x += 2) for (let j = 0; j < h - Math.floor(t.r() * 2); j++) { t.set(x, 15 - j, t.vary([80, 130, 70], 0.15)); if (j % 2) t.set(x + 1, 15 - j, t.vary([110, 150, 90], 0.12)); }
+    if (k === 3) for (let x = 2; x < 15; x += 3) t.set(x, 15 - h, t.vary([170, 120, 210], 0.1));
+  };
+}
+ITEM_PAINTERS[ONION] = (ctx) => { blob(ctx, 8, 10, 5, 4.5, [210, 170, 110], [170, 130, 80]); rect(ctx, 7, 3, 2, 3, [214, 190, 140]); rect(ctx, 8, 1, 1, 2, [96, 160, 70]); px(ctx, 6, 8, [240, 210, 160]); rect(ctx, 6, 14, 4, 1, [150, 120, 80]); };
+ITEM_PAINTERS[BEANS] = (ctx) => { for (const [x, y] of [[3, 3], [7, 5], [5, 9]]) for (let k = 0; k < 6; k++) { rect(ctx, x + k, y + k, 2, 2, [130, 190, 76]); px(ctx, x + k, y + k, [170, 220, 110]); } };
+ITEM_PAINTERS[TOMATO] = (ctx) => { blob(ctx, 8, 9.5, 5.5, 5, [214, 40, 30], [170, 26, 20]); rect(ctx, 6, 4, 5, 1, [70, 140, 50]); rect(ctx, 8, 3, 1, 2, [70, 140, 50]); px(ctx, 6, 7, [250, 140, 120]); };
+ITEM_PAINTERS[HERBS] = (ctx) => {
+  rect(ctx, 7, 9, 2, 6, [180, 150, 90]); // tied in a bunch
+  for (const [x, y, c] of [[5, 3, [80, 140, 70]], [9, 2, [100, 160, 80]], [7, 5, [70, 120, 60]], [4, 6, [110, 150, 90]], [11, 5, [80, 140, 70]]]) { rect(ctx, x, y, 2, 4, c); px(ctx, x + 1, y, [170, 120, 210]); }
+};
+ITEM_PAINTERS[APPLE_JUICE] = bottlePainter([236, 196, 80]);
+ITEM_PAINTERS[BERRY_JUICE] = bottlePainter([180, 30, 70]);
+ITEM_PAINTERS[CIDER] = wineBottle([214, 160, 50], null);
+ITEM_PAINTERS[VINTAGE_CIDER] = wineBottle([214, 160, 50], [236, 220, 170]);
+ITEM_PAINTERS[BERRY_WINE] = wineBottle([150, 20, 90], null);
+ITEM_PAINTERS[FINE_BERRY_WINE] = wineBottle([150, 20, 90], [236, 220, 170]);
+ITEM_PAINTERS[VEG_STEW] = bowlPainter([170, 110, 60], [[5, 8, [236, 120, 30]], [9, 8, [214, 180, 120]], [11, 9, [80, 140, 70]], [7, 9, [196, 160, 96]]]);
+ITEM_PAINTERS[TOMATO_SOUP] = bowlPainter([206, 50, 34], [[6, 8, [80, 140, 70]], [10, 9, [240, 120, 100]]]);
+ITEM_PAINTERS[BAKED_BEANS] = bowlPainter([196, 90, 40], [[5, 8, [230, 170, 120]], [7, 9, [230, 170, 120]], [9, 8, [230, 170, 120]], [11, 9, [230, 170, 120]]]);
