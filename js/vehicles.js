@@ -103,7 +103,7 @@ export class Vehicles {
 
   boat(v, dt, world, r) {
     const top = this.waterTop(world, v.pos.x, v.pos.y, v.pos.z);
-    if (top !== null) { v.pos.y += (top - 0.3 - v.pos.y) * Math.min(1, dt * 6); v.vy = 0; } // bob at the surface
+    if (top !== null) { v.pos.y += (top - 0.12 - v.pos.y) * Math.min(1, dt * 6); v.vy = 0; } // bob at the surface
     else if (!this.blocked(world, v.pos.x, v.pos.y - 0.1, v.pos.z, 0.4, 0.05)) { v.vy -= GRAVITY * dt; v.pos.y += v.vy * dt; } // falling
     else { v.vy = 0; v.speed *= Math.exp(-6 * dt); } // aground
     if (r) {

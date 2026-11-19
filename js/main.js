@@ -938,6 +938,7 @@ function buildInventoryGrid() {
     const el = document.createElement('div');
     el.className = 'slot';
     el.addEventListener('click', () => { onInvSlot(i); showSlotTip(i); });
+    if (i < SLOTS) splitOn(el, () => ({ slot: { get: () => inventory.slots[i], set: (v) => { inventory.slots[i] = v; } }, list: inventory.slots, i, room: [inventory.slots], done: () => { picked = -1; inventory.onChange(); renderInventory(); } }));
     el.addEventListener('mouseenter', () => showSlotTip(i));
     el.addEventListener('mouseleave', () => { if (tipSlot === i) showSlotTip(picked); });
     parent.appendChild(el);
@@ -1193,6 +1194,7 @@ function openInventory(station = null) {
   renderInventory();
 }
 function closeInventory() {
+  closeSplit();
   tipSlot = -1;
   $('inv-tip').classList.remove('show');
   $('inventory').classList.add('hidden');
@@ -1246,6 +1248,11 @@ function openStation(x, y, z, cart = null) {
     el.dataset.area = area;
     el.dataset.i = i;
     el.addEventListener('click', () => onStationSlot(area, i));
+    if (area === 'in' || area === 'inv') splitOn(el, () => {
+      const st = currentStation();
+      return st && { slot: stationSlot(area, i), list: area === 'in' ? st.inputs : inventory.slots, i, room: area === 'in' && STATION_KINDS[st.kind].storage ? [st.inputs, inventory.slots] : [inventory.slots],
+        done: () => { stPicked = null; inventory.onChange(); renderStation(); } };
+    });
     parent.appendChild(el);
   };
   const ins = $('st-inputs');
@@ -1296,6 +1303,7 @@ function openStation(x, y, z, cart = null) {
 }
 
 function closeStation() {
+  closeSplit();
   $('station').classList.add('hidden');
   openStationAt = null;
   stPicked = null;
@@ -1469,6 +1477,69 @@ function onStationSlot(area, i) {
   inventory.onChange();
   renderStation();
 }
+
+// ---------- splitting a stack ----------
+// Right-click a slot (or tap it with two fingers) for a little menu: split off half, one, or any number,
+// into an empty slot (in the same chest or backpack first).
+let splitting = null, noClickUntil = 0;
+function splitOn(el, what) {
+  el.addEventListener('contextmenu', (e) => { e.preventDefault(); openSplit(el, what()); });
+  el.addEventListener('touchstart', (e) => {
+    if (e.touches.length !== 2) return;
+    e.preventDefault();
+    // the slot under the first finger (or this one)
+    const t = e.touches[0], under = document.elementFromPoint(t.clientX, t.clientY)?.closest('.slot');
+    if (under && under !== el) under.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+    else openSplit(el, what());
+  }, { passive: false });
+}
+// a two-finger tap can let a click through as the fingers come up: swallow it
+document.addEventListener('click', (e) => { if (performance.now() < noClickUntil && !e.target.closest('#split-menu')) { e.stopPropagation(); e.preventDefault(); } }, true);
+function openSplit(el, w) {
+  const s = w?.slot.get();
+  if (!s) return;
+  if (s.count < 2) { toast('There\'s only one of those'); return; }
+  splitting = w;
+  noClickUntil = performance.now() + 500;
+  $('inv-tip').classList.remove('show');
+  $('split-title').textContent = `${itemName(s.id)} × ${s.count}`;
+  const range = $('split-range');
+  range.max = s.count - 1;
+  range.value = Math.floor(s.count / 2);
+  $('split-n').textContent = range.value;
+  const menu = $('split-menu');
+  menu.classList.remove('hidden');
+  const r = el.getBoundingClientRect(), mw = menu.offsetWidth, mh = menu.offsetHeight;
+  menu.style.left = Math.max(4, Math.min(window.innerWidth - mw - 4, r.left + r.width / 2 - mw / 2)) + 'px';
+  menu.style.top = Math.max(4, r.bottom + 6 + mh > window.innerHeight ? r.top - mh - 6 : r.bottom + 6) + 'px';
+}
+function closeSplit() { splitting = null; $('split-menu').classList.add('hidden'); }
+function doSplit(n) {
+  const w = splitting;
+  closeSplit();
+  const s = w?.slot.get();
+  if (!s || s.count < 2) return;
+  n = Math.max(1, Math.min(s.count - 1, Math.floor(n)));
+  for (const slots of w.room) {
+    // the next empty slot after this one (wrapping round), if it's in the same place
+    const from = slots === w.list ? w.i : -1;
+    let j = -1;
+    for (let k = 1; k <= slots.length && j < 0; k++) { const c = (from + k + slots.length) % slots.length; if (!slots[c]) j = c; }
+    if (j < 0) continue;
+    slots[j] = { ...s, count: n };
+    s.count -= n;
+    sound.pop();
+    w.done();
+    return;
+  }
+  toast('There\'s no empty slot to split it into');
+}
+$('split-range').addEventListener('input', (e) => { $('split-n').textContent = e.target.value; });
+$('btn-split-half').addEventListener('click', () => doSplit(Math.floor((splitting?.slot.get()?.count ?? 0) / 2)));
+$('btn-split-one').addEventListener('click', () => doSplit(1));
+$('btn-split-go').addEventListener('click', () => doSplit(+$('split-range').value));
+$('btn-split-cancel').addEventListener('click', closeSplit);
+document.addEventListener('pointerdown', (e) => { if (splitting && !e.target.closest('#split-menu')) closeSplit(); }, true);
 
 // ---------- actions ----------
 // Tap the animal under the crosshair with whatever is in hand: milk a yak, pluck a duck,

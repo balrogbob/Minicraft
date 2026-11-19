@@ -104,7 +104,7 @@ It is designed for Android tablets (touch controls) but also plays with keyboard
   reactor better than water); **ziplines**, **boats**, **hot-air balloons** and **rail stations**; **volcanoes**,
   **ruins**, **shipwrecks** and **meteorites** that fall at night and give **starsteel** for the best tools;
   **cats**, **chickens** (eggs), **pigs** (truffles), **buffalo** you can saddle and ride, and young animals that
-  take their parents' **coat colours**; and **quick-stack** into nearby chests
+  take their parents' **coat colours**; **quick-stack** into nearby chests and **split stacks**
 - **Three world slots** with export to a file and import, a **creative mode** (flying, every block, instant
   breaking and a **copy wand**), rebindable keys, a field-of-view slider, a full-screen **world map** with
   waypoints, and **22 achievements** with an in-game guide
@@ -1000,6 +1000,8 @@ breed when there are 12 or more about.
   for the colours you like. Tame animals keep their coats when you come back to a world.
 - **Quick-stack**: the button in the backpack puts everything (except your hotbar, tools and backpacks) that a chest
   within 6 blocks already holds into that chest. In a chest, **Stack matching** does the same for just that chest.
+- **Splitting stacks**: right-click a stack (or tap it with two fingers) in the backpack or a chest to split off half,
+  one, or any number into the next empty slot.
 
 ### Worlds, creative mode, the map and achievements
 
