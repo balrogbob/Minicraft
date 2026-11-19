@@ -114,9 +114,15 @@ It is designed for Android tablets (touch controls) but also plays with keyboard
   cats that bring **presents**; **belt crossings**, a **farm controller**, **pneumatic tubes** and **cable cars**;
   **double-tap to gather** a stack, **shift-click or hold** to move one across, **"used in"** in each item's tip,
   and a compass that points to your nearest **waypoint**
+- v26: **village life** (villagers go home at night, a morning bell, villages that grow), **market stalls** and
+  silver **coins**; **thunderstorms** with lightning that starts fires, **hail** and **rainbows**; **carrots**,
+  **potatoes**, **pumpkins** and **grapes**, with **crop rotation**; a **wine press**, a **cheese press** and an
+  **oak barrel** where wine and cheese age; **sunken temples** and **sky islands** with puzzle vaults, **diving
+  gear** and an **air pump**; **signal radios**, a **sorting machine** and steam **locomotives** that pull trains of
+  carts; a **fireplace** with a **chimney**; **pinned recipes** on screen and an **auto-refilling hotbar**
 - **Three world slots** with export to a file and import, a **creative mode** (flying, every block, instant
   breaking and a **copy wand**), rebindable keys, a field-of-view slider, a full-screen **world map** with
-  waypoints, and **23 achievements** with an in-game guide
+  waypoints, and **24 achievements** with an in-game guide
 - Torches that light up the area around them with a warm, flickering glow. They stand on floors or hang on walls
 - Synthesised sound effects for digging, breaking, placing, footsteps and splashing, with no audio files
 - Break and place blocks, with break times that depend on the tool you hold
@@ -1092,6 +1098,73 @@ breed when there are 12 or more about.
 - A **compass** now also shows the way to your nearest map waypoint.
 - New achievement: **X Marks the Spot**, for digging up buried treasure.
 
+### Version 26
+
+#### Village life and market stalls
+
+- Villagers walk home at dusk and stay indoors through the night. Each morning the village **bell** rings
+  (tap a bell to hear which village you're in).
+- A **market stall** (6 planks, 4 logs, 3 wool) in a village: put things on it and passing villagers buy them for
+  silver **coins**. Food, wine, cheese and pearls sell best. Traders take coins too.
+- A village you trade with grows: after enough deals the villagers build a new house (up to six).
+
+#### Weather
+
+- **Thunderstorms**: dark skies, thunder and **lightning**, which strikes the highest thing about and can set
+  wood, leaves and wool **on fire**. Fire spreads, more slowly in the rain, and burns out. Stay under a roof.
+- Up in the mountains rain falls as **hail**: it hurts unless you wear a helmet.
+- When the rain stops there's often a **rainbow**, across the sky from the sun.
+
+#### Crops and crop rotation
+
+- **Carrots** and **potatoes** grow from themselves (village farms have rows of them). Bake a potato in the oven.
+- **Pumpkin seeds** (4 from a pumpkin) grow a stem that puts a pumpkin beside it. A pumpkin and a torch make a
+  **jack o'lantern**; a pumpkin, sugar and an egg bake a **pumpkin pie**.
+- **Grapes** grow on a **trellis** (2 from 6 sticks): plant them at its foot.
+- **Crop rotation**: planting the same crop over and over in the same soil tires it, and it grows more slowly
+  (down to about a third). Change crops, or leave the soil for six days, and it recovers. Fertiliser freshens it.
+
+#### Winery and cheese
+
+- A **wine press** (6 planks, 3 logs, an iron) presses 6 grapes and a bottle into **grape juice**; a **cheese
+  press** (the same and a string) presses a milk bucket into **curds**. Neither needs fuel.
+- An **oak barrel** (6 planks, an iron) ages what's in it: juice becomes **wine** after a day and **fine wine**
+  after three more; curds become **cheese**, and cheese becomes **aged cheese**. Tap a barrel to see how they're
+  coming on. Aged things sell for more.
+
+#### Sunken temples and sky islands
+
+- **Sunken temples** lie on the sea bed: a vault with three levers in front. Set the levers right (the lamps over
+  them hint which) and the gate opens on a chest of pearls, coins, gold, sea lanterns and sometimes diving gear.
+- **Sky islands** float high over the land, with coloured pressure plates round a vault: step on them in the
+  right order to open it.
+- **Diving gear**: a **diving helmet** (5 copper, 2 glass) makes your air last five times as long, **flippers**
+  (4 leather, a slime) make you swim faster, and an **air pump** (4 iron, 2 copper, 2 leather, a pipe) fills your
+  air up while you're near it underwater. **Sea lanterns** (2 glass, a pearl) light the deep.
+- New achievement: **Open Sesame**, for opening a temple's or an island's vault.
+
+#### Machines and trains
+
+- **Radio transmitter** and **receiver** (3 copper, 2 wire, a glass each): a receiver gives a signal while any
+  transmitter on the same channel has one, however far apart they are. Tap either with an empty hand to change its
+  channel (1-8).
+- A **sorting machine** (3 tubes, 3 iron, an item frame) sends each thing that goes into it down the pneumatic
+  tube with a matching item frame on it, or else down a tube with no frames.
+- A **locomotive** (a minecart, 6 iron, a steam engine): put it on a rail and tap it with coal or charcoal (one
+  coal lasts a minute). It couples on the carts standing behind it and pulls them along, waits a few seconds at
+  each rail station and sets off again by itself (or at once on a signal), and stops at the end of the line. Ride
+  it and hold back to stop, forward to start. Turning round leaves its train behind.
+
+#### Home comforts
+
+- A **fireplace** (5 bricks, 2 cobblestone, an iron): tap it with logs, planks, sticks or coal to light it. It
+  lights and warms the room (you thaw out fast beside it). Build **chimney** blocks (2 from 3 bricks) straight up
+  from it for the smoke, or the room fills with it.
+- **Pin a recipe** (📌 beside it) to keep it on screen with how many of each thing you have and still need; it
+  goes green when you've got everything. Up to three.
+- **Auto-refill**: when the stack in your hand runs out, or a tool breaks, the next one of the same thing moves
+  in from your backpack. Turn it off under ☰ if you'd rather not.
+
 ### Worlds, creative mode, the map and achievements
 
 ☰ → **Worlds…** holds three worlds. Play any of them, start a new **survival** or **creative** world in a slot,
@@ -1106,7 +1179,7 @@ The **world map** (M, ☰ → World map, or tap the corner map) shows all the la
 around, pinch or scroll to zoom, and tap to put down a waypoint (or tap one to take it away). Waypoints show
 on the hand-held map too.
 
-☰ → **Guide & achievements** lists 23 achievements for each world (with a pop-up as you earn them) and a short
+☰ → **Guide & achievements** lists 24 achievements for each world (with a pop-up as you earn them) and a short
 guide to how everything works.
 
 ## Code layout

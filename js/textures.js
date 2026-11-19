@@ -653,6 +653,31 @@ P[T.SORTBOX_TOP] = (t) => {
   P[T.SORTBOX](t);
   for (const [x, y] of [[2, 2], [13, 2], [2, 13], [13, 13]]) t.set(x, y, [210, 60, 50]);
 };
+// v26 G: fireplace front (cold, and burning) and the top of a chimney
+function hearthFront(t, lit) {
+  P[T.BRICKS](t);
+  for (let y = 4; y < TILE; y++) for (let x = 2; x < 14; x++) {
+    const arch = y >= 6 || (y === 5 && x > 2 && x < 13) || (y === 4 && x > 4 && x < 11);
+    if (arch) t.set(x, y, t.vary([26, 20, 18], 0.1));
+  }
+  for (let x = 1; x < 15; x++) t.set(x, 3, t.vary([120, 120, 124], 0.06)); // the mantel
+  for (let x = 3; x < 13; x++) t.set(x, 14, t.vary([84, 54, 32], 0.1)); // logs
+  for (let x = 4; x < 12; x += 2) t.set(x, 13, t.vary([96, 62, 36], 0.1));
+  if (!lit) return;
+  for (let x = 3; x < 13; x++) {
+    const top = 7 + Math.floor(Math.abs(Math.sin(x * 1.9)) * 4);
+    for (let y = top; y < 14; y++) {
+      const k = (y - top) / (14 - top);
+      t.set(x, y, t.vary(k > 0.65 ? [255, 236, 130] : k > 0.3 ? [250, 160, 40] : [214, 72, 22], 0.06));
+    }
+  }
+}
+P[T.HEARTH] = (t) => hearthFront(t, false);
+P[T.HEARTH_LIT] = (t) => hearthFront(t, true);
+P[T.CHIMNEY_TOP] = (t) => {
+  P[T.BRICKS](t);
+  for (let y = 3; y < 13; y++) for (let x = 3; x < 13; x++) t.set(x, y, t.vary([30, 26, 24], 0.12));
+};
 P[T.AWNING] = (t) => { for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) t.set(x, y, t.vary(Math.floor(x / 4) % 2 ? [240, 236, 224] : [200, 44, 44], 0.04)); };
 P[T.TUBE] = (t) => {
   for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {

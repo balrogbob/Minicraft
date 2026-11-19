@@ -33,6 +33,7 @@
       <button class="btn small" id="btn-menu" title="Menu">☰</button>
     </div>
     <div id="coords"></div>
+    <div id="pins"></div>
     <div id="boss-bar" class="hidden"><span id="boss-name"></span><div class="bar"><div id="boss-fill"></div></div></div>
     <canvas id="map" class="hidden"></canvas>
     <div id="perf" class="hidden"></div>
@@ -172,6 +173,7 @@
           <p class="hint" id="difficulty-about"></p>
           <button class="btn wide" id="btn-autojump">Auto-jump: on</button>
           <button class="btn wide" id="btn-wear">Tool wear: on</button>
+          <button class="btn wide" id="btn-refill">Auto-refill hotbar: on</button>
           <label class="slider"><span id="view-label">View distance</span> <input type="range" id="view" min="3" max="10" step="1" value="6" /></label>
           <label class="slider"><span id="fov-label">Field of view</span> <input type="range" id="fov" min="50" max="110" step="2" value="72" /></label>
           <label class="slider">Look speed <input type="range" id="sens" min="2" max="14" step="1" value="6" /></label>
@@ -266,8 +268,12 @@
           <p>Walls, pillars and stairs join up on their own (stairs make corners). Paint doors and glass with dye, hang paintings, and light rooms with lanterns, chandeliers, coloured glow lamps or beeswax candles. Sit on chairs, show an item on a shelf or table, and plant flower pots, hanging baskets and window boxes.</p>
           <h3>Farming and food</h3>
           <p>Pick apples, cherries and oranges from fruit trees in summer and autumn. A cooking pot makes pies and soups that give buffs. Glass over crops makes a greenhouse that grows in winter, a scarecrow keeps crows off your wheat, and a farm controller signals when your field is ripe. An apiary gives honeycomb and beeswax.</p>
+          <h3>Villages, weather and crops</h3>
+          <p>Villagers go home at night, and the bell rings each morning. Put things on a <b>market stall</b> and villagers buy them for coins; trade with a village and it grows. Shelter from <b>thunderstorms</b>: lightning starts fires, and hail in the mountains hurts without a helmet. Grow <b>carrots</b>, <b>potatoes</b>, <b>pumpkins</b> and <b>grapes</b> (on a trellis), and change crops now and then: the same crop again and again tires the soil. Press grapes and curds, then leave them in an <b>oak barrel</b> to become wine and cheese.</p>
+          <h3>Temples, islands and trains</h3>
+          <p><b>Sunken temples</b> and <b>sky islands</b> hide vaults that open when you solve their levers or plates. Dive with a <b>diving helmet</b>, <b>flippers</b> and an <b>air pump</b>. <b>Radios</b> carry a signal between any two on the same channel (tap to change). A <b>sorting machine</b> sends things down the tube framed for them. A <b>locomotive</b> burns coal and pulls the carts behind it from station to station. A <b>fireplace</b> warms a room: give it a chimney.</p>
           <h3>Backpack tips</h3>
-          <p>Double-tap a slot to gather a stack together; shift-click (or press and hold) to move a stack across to a chest or between hotbar and backpack. Tips show what each thing is used in, and a compass points to your nearest waypoint.</p>
+          <p>Pin a recipe (📌) to keep what it needs on screen. When the stack in your hand runs out, the next one moves in from your backpack. Double-tap a slot to gather a stack together; shift-click (or press and hold) to move a stack across to a chest or between hotbar and backpack. Tips show what each thing is used in, and a compass points to your nearest waypoint.</p>
           <h3>Creative mode</h3>
           <p>Choose it for a new world, or switch under ☰ → Game mode. You can't be hurt or get hungry, blocks break at once and are never used up, and the inventory has a palette of every block and item. Press F (or 🕊) to fly: jump rises, Shift (or ⤓) sinks. The <b>copy wand</b> copies builds: tap one corner, then the opposite corner, then tap wherever you want copies; double-tap and hold (or hold the mouse button) to start over.</p>
         </div>

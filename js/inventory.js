@@ -7,6 +7,7 @@ export class Inventory {
   constructor() {
     this.slots = new Array(SLOTS).fill(null); // { id, count } | null
     this.selected = 0;
+    this.autoRefill = true;
     this.onChange = () => {};
   }
 
@@ -75,8 +76,25 @@ export class Inventory {
   consumeHeld() {
     const s = this.held();
     if (!s || this.infinite) return; // (creative mode: nothing in hand is ever used up)
-    if (--s.count <= 0) this.slots[this.selected] = null;
+    if (--s.count <= 0) { this.slots[this.selected] = null; this.refill(s.id); }
     this.onChange();
+  }
+
+  // Auto-refill: when the stack in your hand runs out (or a tool breaks), the next stack of the same
+  // thing in your backpack moves into its place. Returns whether it did.
+  refill(id) {
+    if (!this.autoRefill || !id || this.slots[this.selected]) return false;
+    let best = -1;
+    for (let i = 9; i < SLOTS; i++) {
+      const s = this.slots[i];
+      if (!s || s.id !== id || s.pack) continue;
+      if (best < 0 || (s.wear ?? 0) < (this.slots[best].wear ?? 0) || (!s.wear && s.count > this.slots[best].count)) best = i;
+    }
+    if (best < 0) return false;
+    this.slots[this.selected] = this.slots[best];
+    this.slots[best] = null;
+    this.onRefill?.(id);
+    return true;
   }
 
   // Move/merge/swap slot a into slot b (tap-to-pick, tap-to-drop UI).

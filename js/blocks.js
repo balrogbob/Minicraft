@@ -140,7 +140,7 @@ export const T = {
   LEAD_CHEST_SIDE: 267, LEAD_CHEST_TOP: 268, LEAD_CHEST_FRONT: 269, CENTRIFUGE_SIDE: 270, CENTRIFUGE_TOP: 271, TESLA: 272, TESLA_TOP: 273,
   FENCE_POST: 274, FENCE_WIRE: 275, FREEZER_SIDE: 276, FREEZER_FRONT: 277, ARC_SIDE: 278, ARC_FRONT: 279, PACKED_ICE: 280, INVAR: 281, RAIL_STOP: 282, BASALT: 283, BASALT_TOP: 284, METEORITE: 285,
   IRON_BARS: 286, POT: 287, IVY: 288, BOX_FLOWERS: 289,
-  FRUIT_LEAVES: 290, FRUIT_RIPE: 293, FRUIT_SAPLING: 296, HAY: 299, SACK: 300, BEACON: 301, APIARY_SIDE: 302, APIARY_FRONT: 303, APIARY_FULL: 304, APIARY_TOP: 305, BELT_CROSS: 306, FARM_CTRL: 307, FARM_CTRL_ON: 308, TUBE: 309, TUBE_END: 310, AWNING: 311, FIRE: 312, CARROT_0: 313, POTATO_0: 317, STEM_0: 321, PUMPKIN_SIDE: 324, PUMPKIN_TOP: 325, JACK_FACE: 326, TRELLIS: 327, VINE_0: 328, BARREL_SIDE: 331, BARREL_TOP: 332, CHEESE: 333, SEA_BRICK: 334, SEA_LANTERN: 335, VAULT: 336, SKY_STONE: 337, AIR_PUMP: 338, RADIO: 339, RADIO_ON: 340, SORTBOX: 341, SORTBOX_TOP: 342, // (fruit tiles: apple, cherry, orange)
+  FRUIT_LEAVES: 290, FRUIT_RIPE: 293, FRUIT_SAPLING: 296, HAY: 299, SACK: 300, BEACON: 301, APIARY_SIDE: 302, APIARY_FRONT: 303, APIARY_FULL: 304, APIARY_TOP: 305, BELT_CROSS: 306, FARM_CTRL: 307, FARM_CTRL_ON: 308, TUBE: 309, TUBE_END: 310, AWNING: 311, FIRE: 312, CARROT_0: 313, POTATO_0: 317, STEM_0: 321, PUMPKIN_SIDE: 324, PUMPKIN_TOP: 325, JACK_FACE: 326, TRELLIS: 327, VINE_0: 328, BARREL_SIDE: 331, BARREL_TOP: 332, CHEESE: 333, SEA_BRICK: 334, SEA_LANTERN: 335, VAULT: 336, SKY_STONE: 337, AIR_PUMP: 338, RADIO: 339, RADIO_ON: 340, SORTBOX: 341, SORTBOX_TOP: 342, HEARTH: 343, HEARTH_LIT: 344, CHIMNEY_TOP: 345, // (fruit tiles: apple, cherry, orange)
 };
 
 // Ores, deepest-reaching last. tier: the pickaxe tier needed to mine it (see TOOL_TIERS);
@@ -250,7 +250,7 @@ function block(id, o) {
     postTex: o.postTex ?? null, armTex: o.armTex ?? null, // a fence's own post and rail tiles (an electric fence)
     shock: !!o.shock, tesla: !!o.tesla, zip: !!o.zip, // v24: electric fences, tesla coils, zipline posts (see main.js)
     fruit: o.fruit ?? null, scarecrow: !!o.scarecrow, apiary: !!o.apiary, crossing: !!o.crossing, tube: !!o.tube, // v25: { kind, ripe } on a fruit tree's leaves; scarecrows keep crows off crops
-    sortbox: !!o.sortbox, // v26: a sorting machine (see machines.js)
+    sortbox: !!o.sortbox, hearth: !!o.hearth, chimney: !!o.chimney, // v26: a sorting machine (see machines.js)
     crop: o.crop ?? null, // v26: { kind, stage, ripe, seed } for the newer crops (carrots, potatoes, pumpkin vines, grapes)
     farm: o.farm ?? null, // 'feller' | 'planter' | 'breaker' | 'placer' | 'ranch' | 'net' (see machines.js)
   };
@@ -2537,4 +2537,22 @@ RECIPES.push(
   { out: [RADIO_RX, 1], in: [[COPPER_INGOT, 3], [WIRE, 2], [GLASS, 1]], table: true, metal: COPPER_INGOT },
   { out: [SORTING_MACHINE, 1], in: [[TUBE, 3], [IRON_INGOT, 3], [ITEM_FRAME, 1]], table: true, metal: IRON_INGOT },
   { out: [LOCOMOTIVE, 1], in: [[MINECART, 1], [IRON_INGOT, 6], [STEAM_ENGINE, 1]], table: true, metal: IRON_INGOT },
+);
+
+// v26 G: a fireplace burns logs, planks, sticks or coal (tap it with them) and warms and lights the room.
+// Build a chimney straight up from it and the smoke goes out of the top; without one it fills the room.
+export const FIREPLACE = 1377, CHIMNEY = 1385; // 1377..1384: + facing, + 4 when it's burning
+export const HEARTH_FUEL = { [LOG]: 60, [PLANKS]: 30, [STICK]: 10, [COAL]: 240, [CHARCOAL]: 240 }; // seconds of fire
+for (let k = 0; k < 8; k++) {
+  const on = k >= 4;
+  block(FIREPLACE + k, {
+    name: 'Fireplace', sound: 'stone', hardness: 2, tool: 'pick', side: T.BRICKS, top: T.BRICKS, bottom: T.BRICKS,
+    front: on ? T.HEARTH_LIT : T.HEARTH, facing: k & 3, hearth: true, lit: on, light: on ? 14 : 0,
+    variantOf: k ? FIREPLACE : 0, drop: FIREPLACE,
+  });
+}
+block(CHIMNEY, { name: 'Chimney', sound: 'stone', hardness: 2, tool: 'pick', side: T.BRICKS, top: T.CHIMNEY_TOP, bottom: T.CHIMNEY_TOP, chimney: true });
+RECIPES.push(
+  { out: [FIREPLACE, 1], in: [[BRICKS, 5], [COBBLE, 2], [IRON_INGOT, 1]], table: true },
+  { out: [CHIMNEY, 2], in: [[BRICKS, 3]], table: true },
 );

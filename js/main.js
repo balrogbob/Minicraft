@@ -28,8 +28,9 @@ import {
   ELECTRIC_RAIL, LIFT, LIFT_REACH, WIRELESS_REACH, CHAINSAW, SAWDUST, SPANNER, GRAPPLE, isBackpack, kineticId, MELTDOWN, REACTOR_POWER, ROD_LIFE, BOOK,
   BOOKSHELF, JOURNAL, FERTILISER, SHELF_DISCOUNT, LEAD_CHEST, FREEZER, ARC_FURNACE, SPENT_ROD, RADIATION_REACH, hazmatId, TESLA_REACH, TESLA_DAMAGE, ELECTRIC_FENCE,
   RAIL_STATION, ZIP_POST, ZIP_LINE, ZIP_REACH, BOAT, BALLOON, CHARCOAL, METEORITE, METEORIC_IRON, metalSword, TRUFFLE,
-  RADIO_TX, RADIO_RX, SORTING_MACHINE, LOCOMOTIVE,
+  RADIO_TX, RADIO_RX, SORTING_MACHINE, LOCOMOTIVE, FIREPLACE, CHIMNEY, HEARTH_FUEL,
 } from './blocks.js';
+import { Smoke } from './smoke.js';
 import { createAtlas, createIcons, createCrackCanvases, createWaterCanvas, createHudIcons, paintSeason } from './textures.js';
 import { World, CHUNK, WORLD_SIZE, chunkKey } from './world.js';
 import { localIndex, CHUNK_VOLUME, H, SEA_LEVEL } from './terrain.js';
@@ -64,7 +65,7 @@ import { Logic } from './logic.js';
 
 // v2 = the 16k x 16k streaming world (player state here, edited chunks in IndexedDB).
 // v1 = the old 128 x 128 world, migrated into the middle of the big world on first launch.
-const GAME_VERSION = '25'; // shown in the menu; bump with each release
+const GAME_VERSION = '26'; // shown in the menu; bump with each release
 const SAVE_KEY = 'minicraft-save-v2';
 const LEGACY_SAVE_KEY = 'minicraft-save-v1';
 const SETTINGS_KEY = 'minicraft-settings-v1';
@@ -83,12 +84,13 @@ function writeSave(obj, slot = settings.slot) {
 }
 // Settings live apart from the world so they survive "New world".
 const settings = (() => {
-  const defaults = { sens: 6, volume: 70, viewDistance: 6, perf: false, difficulty: 'worrying', wear: true, favs: [], slot: 0, fov: 72, keys: {}, tips: true, doubleTap: true };
+  const defaults = { sens: 6, volume: 70, viewDistance: 6, perf: false, difficulty: 'worrying', wear: true, favs: [], pins: [], slot: 0, fov: 72, keys: {}, tips: true, doubleTap: true };
   let s;
   try { s = { ...defaults, ...JSON.parse(localStorage.getItem(SETTINGS_KEY)) }; } catch { s = { ...defaults }; }
   s.slot = Math.max(0, Math.min(SLOT_COUNT - 1, s.slot | 0));
   s.fov = Math.max(50, Math.min(110, +s.fov || 72));
   if (!s.keys || typeof s.keys !== 'object') s.keys = {};
+  if (!Array.isArray(s.pins)) s.pins = [];
   return s;
 })();
 function saveSettings() {
@@ -300,7 +302,10 @@ const carts = new Carts(scene); // minecarts on rails
 carts.onLoco = (c, what) => {
   const d = Math.hypot(c.pos.x - player.pos.x, c.pos.y - player.pos.y, c.pos.z - player.pos.z);
   const g = riding === c ? 1 : Math.max(0, 1 - d / 40);
-  if (what === 'chuff') sound.chuff(g * 0.8);
+  if (what === 'chuff') {
+    sound.chuff(g * 0.8);
+    if (d < 80) smoke.puff(c.pos.x + Math.sin(c.yaw) * 0.34, c.pos.y + 1.1, c.pos.z + Math.cos(c.yaw) * 0.34, { grey: 0.8, size: 0.45, life: 2.5, rise: 1.4 });
+  }
   else if (what === 'hoot') sound.hoot(g);
   else if (what === 'couple') sound.place('stone');
 };
@@ -312,6 +317,7 @@ const minimap = new MiniMap($('map'), atlasCanvas);
 const frames = new Frames(scene, icons); // what's shown in each item frame
 const paintings = new Paintings(scene); // the pictures in paintings
 const weather = new Weather(scene);
+const smoke = new Smoke(scene); // chimney and locomotive smoke
 const bees = new Bees(scene, sound);
 let ridingMob = null; // the camel you're riding
 let boarded = null; // the boat or balloon you're in
@@ -446,7 +452,7 @@ async function startWorld(save, opts = {}) {
     const drops = dropsFor(LEAVES, 0); // (fruit trees' leaves too: not their fruit, which you'd pick)
     if (drops.length) giveDrops(drops);
   };
-  mobs.reset(world); bees.clear(); crows.clear(); critters.clear(); fires.clear(); strikeIn = 20; catGiftDay = -1; bellDay = -1; villageGrowth = new Map(); shownSeason = -1;
+  mobs.reset(world); bees.clear(); crows.clear(); critters.clear(); fires.clear(); hearths.clear(); smoke.clear(); strikeIn = 20; catGiftDay = -1; bellDay = -1; villageGrowth = new Map(); shownSeason = -1;
   kinetics.clear();
   kinetics.load(save?.kinetics);
   beltStart = null;
@@ -510,6 +516,7 @@ async function startWorld(save, opts = {}) {
   catGiftDay = Number.isInteger(save?.catGiftDay) ? save.catGiftDay : -1;
   bellDay = Number.isInteger(save?.bellDay) ? save.bellDay : -1;
   world.soil = new Map((Array.isArray(save?.soil) ? save.soil : []).filter((e) => Array.isArray(e) && typeof e[0] === 'string' && e[1] && typeof e[1].kind === 'string'));
+  for (const e of Array.isArray(save?.hearths) ? save.hearths : []) if (Array.isArray(e) && typeof e[0] === 'string' && Number.isFinite(e[1])) hearths.set(e[0], e[1]);
   for (const e of Array.isArray(save?.fires) ? save.fires : []) if (Array.isArray(e) && typeof e[0] === 'string' && Number.isFinite(e[1])) fires.set(e[0], e[1]);
   villageGrowth = new Map((Array.isArray(save?.villageGrowth) ? save.villageGrowth : []).filter((e) => Array.isArray(e) && typeof e[0] === 'string' && e[1] && Number.isFinite(e[1].deals))
     .map(([k, g]) => [k, { deals: g.deals, built: (Array.isArray(g.built) ? g.built : []).filter((h) => h && [h.x, h.y, h.z].every(Number.isFinite) && Array.isArray(h.door)) }]));
@@ -611,7 +618,7 @@ function saveGame() {
     weather: { raining: weather.raining, timer: Math.round(weather.timer) },
     pets: mobs.pets(),
     waypoints,
-    places, treasures, beacons: [...beaconSpots], catGiftDay, villageGrowth: [...villageGrowth], bellDay, fires: [...fires], soil: [...(world.soil ?? [])].slice(-4000),
+    places, treasures, beacons: [...beaconSpots], catGiftDay, villageGrowth: [...villageGrowth], bellDay, fires: [...fires], hearths: [...hearths], soil: [...(world.soil ?? [])].slice(-4000),
     time: sky.time,
     creative,
     flying: player.flying,
@@ -694,7 +701,7 @@ function takeFromHeld(n) {
   const s = inventory.held();
   if (!s || creative) return;
   s.count -= n;
-  if (s.count <= 0) inventory.slots[inventory.selected] = null;
+  if (s.count <= 0) { inventory.slots[inventory.selected] = null; inventory.refill(s.id); }
   inventory.onChange();
 }
 
@@ -741,6 +748,7 @@ function selectSlot(i) {
 
 inventory.onChange = () => {
   renderHotbar();
+  renderPins();
   if (openStationAt) renderStation();
   if (!$('inventory').classList.contains('hidden')) renderInventory();
 };
@@ -1184,6 +1192,14 @@ function renderInventory() {
       renderInventory();
     });
     row.appendChild(star);
+    // pin it to the screen, to keep track of what you still need for it
+    const pinned = settings.pins.includes(recipeKey(r));
+    const pin = document.createElement('button');
+    pin.className = 'pinb' + (pinned ? ' on' : '');
+    pin.textContent = '📌';
+    pin.title = pinned ? 'Unpin from the screen' : 'Pin to the screen';
+    pin.addEventListener('click', () => togglePin(r));
+    row.appendChild(pin);
     const btn = document.createElement('button');
     btn.className = 'btn';
     btn.textContent = 'Craft';
@@ -1204,8 +1220,36 @@ function renderInventory() {
   if (!count) list.innerHTML = `<p class="hint">${query ? `Nothing matches "${query.replace(/[<>&"]/g, '')}".` : favOnly ? 'No favourites yet: tap the ☆ beside a recipe.' : 'Nothing you can make right now.'}</p>`;
 }
 
+// Pinned recipes: up to three, shown at the side of the screen with how many of each thing you have
+// and still need. Pinned recipes stay pinned until you unpin them (or make the thing, if you like).
+const MAX_PINS = 3;
+function togglePin(r) {
+  const k = recipeKey(r);
+  if (settings.pins.includes(k)) settings.pins = settings.pins.filter((p) => p !== k);
+  else {
+    settings.pins = [...settings.pins, k].slice(-MAX_PINS);
+    toast(`Pinned: ${itemName(r.out[0])}`, 1200);
+  }
+  saveSettings();
+  renderPins();
+  renderInventory();
+}
+function renderPins() {
+  const el = $('pins');
+  if (!el) return;
+  const rs = settings.pins.map((k) => RECIPES.find((r) => recipeKey(r) === k)).filter(Boolean);
+  el.innerHTML = rs.map((r) => {
+    const ings = r.in.map(([id, n]) => {
+      const have = countOf(id), first = idsOf(id)[0];
+      return `<span class="${have >= n ? 'have' : 'need'}"><img src="${icons[first]}" alt="">${Math.min(have, n)}/${n}</span>`;
+    }).join(' ');
+    const ready = r.in.every(([id, n]) => countOf(id) >= n);
+    return `<div class="pin${ready ? ' ready' : ''}"><img src="${icons[r.out[0]]}" alt=""><span class="pname">${itemName(r.out[0])}${r.table ? ' 🛠' : ''}</span>${ings}</div>`;
+  }).join('');
+}
+
 // What a recipe is called in the favourites list: what it makes and from what.
-const recipeKey = (r) => `${r.out[0]}x${r.out[1]}:${r.in.map(([id, n]) => idsOf(id).join('|') + 'x' + n).join(',')}`;
+function recipeKey(r) { return `${r.out[0]}x${r.out[1]}:${r.in.map(([id, n]) => idsOf(id).join('|') + 'x' + n).join(',')}`; }
 let favOnly = false, canMakeOnly = false;
 $('recipe-search').addEventListener('input', () => renderInventory());
 $('btn-fav-only').addEventListener('click', (e) => { favOnly = !favOnly; e.currentTarget.classList.toggle('on', favOnly); renderInventory(); });
@@ -1231,8 +1275,8 @@ $('btn-sort').addEventListener('click', () => { sortSlots(inventory.slots, 9); p
 $('btn-chest-sort').addEventListener('click', () => { const st = currentStation(); if (!st) return; sortSlots(st.inputs); stPicked = null; sound.pop(); renderStation(); });
 
 // A recipe ingredient can be one id or a list of alternatives (coal or charcoal).
-const idsOf = (spec) => (Array.isArray(spec) ? spec : [spec]);
-const countOf = (spec) => idsOf(spec).reduce((t, id) => t + inventory.count(id), 0);
+function idsOf(spec) { return Array.isArray(spec) ? spec : [spec]; }
+function countOf(spec) { return idsOf(spec).reduce((t, id) => t + inventory.count(id), 0); }
 // The charge in the batteries a recipe uses up (the ones inventory.remove takes: from the last slot back),
 // which goes into what it makes. (A new battery comes flat.)
 function batteriesTaken(r) {
@@ -1994,7 +2038,7 @@ function wearOutHeld(n) {
   if (s.wear >= maxWear(s.id)) {
     inventory.slots[inventory.selected] = null;
     sound.breakBlock('stone');
-    toast(`Your ${itemName(s.id).toLowerCase()} broke!`, 2000);
+    toast(`Your ${itemName(s.id).toLowerCase()} broke!${inventory.refill(s.id) ? ' You take out another.' : ''}`, 2000);
   }
   inventory.onChange();
 }
@@ -2579,7 +2623,7 @@ function tickAilments(dt) {
   const cold = coldLand && outside && (sky.light < 0.45 || (weather.raining && weather.level > 0.3));
   const warm = effects.warm > 0 || guarded('chill') || armourEnch.some((e) => e?.includes('warmth')) ||
     armour.slice(0, 4).filter(Boolean).length >= 3 || world.lightAt(x, head, z) >= 9 || ridingMob;
-  ailments.chill = Math.max(0, ailments.chill + (cold && !warm ? dt / 45 : -dt / 12));
+  ailments.chill = Math.max(0, ailments.chill + (cold && !warm ? dt / 45 : hearths.size && hearthNear() ? -dt / 3 : -dt / 12));
   const sun = sky.light > 0.95 && sky.time > 0.15 && sky.time < 0.35;
   const hot = biome === 'desert' && outside && (sun || (weather.raining && weather.level > 0.5));
   const shaded = armour[0] || effects.fire > 0 || guarded('heat');
@@ -3497,6 +3541,14 @@ function placeInner() {
     if (isCurtain(tid)) { toggleCurtain(tx, ty, tz); return; }
     if (isGate(tid) || isTrapdoor(tid)) { toggleHatch(tx, ty, tz); return; }
     if (BLOCKS[tid].switch === 'lever') { setSwitch(tx, ty, tz, !BLOCKS[tid].on); return; }
+    if (BLOCKS[tid].hearth) {
+      if (held && HEARTH_FUEL[held.id]) { feedHearth(tx, ty, tz, held); return; }
+      if (!(held && isBlock(held.id))) {
+        const left = hearths.get(`${tx},${ty},${tz}`);
+        toast(left ? `The fire will burn for ${hearthTime(left)}` : 'Tap the fireplace with logs, planks, sticks or coal to light it', 2000);
+        return;
+      }
+    }
     if ((BLOCKS[tid].sensor === 'radio' || BLOCKS[tid].sensor === 'radiotx') && !(held && isBlock(held.id))) {
       const ch = machines.nextChannel(tx, ty, tz);
       sound.click();
@@ -3851,7 +3903,7 @@ function placeInner() {
     if (there !== AIR || !world.isSolid(x, y - 1, z)) { toast(`${BLOCKS[id].name}s need something solid underneath`); return; }
   } else {
     // chairs face you; curtains hang across your line of sight
-    if ([CHAIR, SCARECROW, COOK_POT, OVEN, SMELTER, BLAST_SMELTER, CRUSHER, PULVERIZER, E_SMELTER, CHEST, IRON_CHEST, SAW, TRIP_HAMMER, LEAD_CHEST, FREEZER, ARC_FURNACE, MARKET_STALL].includes(id)) id += facingTowardPlayer(x, z); // the front faces you
+    if ([CHAIR, SCARECROW, COOK_POT, OVEN, SMELTER, BLAST_SMELTER, CRUSHER, PULVERIZER, E_SMELTER, CHEST, IRON_CHEST, SAW, TRIP_HAMMER, LEAD_CHEST, FREEZER, ARC_FURNACE, MARKET_STALL, FIREPLACE].includes(id)) id += facingTowardPlayer(x, z); // the front faces you
     else if (id === DRILL) id += player.pitch < -0.75 ? 4 : (facingTowardPlayer(x, z) + 2) % 4; // drills the way you're looking
     else if (id === ITEM_COUNTER) id += ((facingTowardPlayer(x, z) + 2) % 4) * 2; // passes things on the way you're looking
     else if ([OBSERVER, GAUGE, HARVESTER, EJECTOR, TREE_FELLER, PLANTER, BREAKER, PLACER, QUARRY].includes(id)) id += (facingTowardPlayer(x, z) + 2) % 4; // looks (or reaps) the way you're looking
@@ -4369,6 +4421,9 @@ $('btn-menu').addEventListener('click', () => {
 $('btn-close-menu').addEventListener('click', () => { $('menu').classList.add('hidden'); paused = false; });
 $('btn-autojump').addEventListener('click', () => { player.autoJump = !player.autoJump; updateAutoJumpLabel(); saveGame(); });
 function updateWearLabel() { $('btn-wear').textContent = `Tool wear: ${settings.wear ? 'on' : 'off'}`; }
+function updateRefillLabel() { inventory.autoRefill = settings.autoRefill !== false; $('btn-refill').textContent = `Auto-refill hotbar: ${inventory.autoRefill ? 'on' : 'off'}`; }
+updateRefillLabel();
+$('btn-refill').addEventListener('click', () => { settings.autoRefill = settings.autoRefill === false; updateRefillLabel(); saveSettings(); });
 updateWearLabel();
 $('btn-wear').addEventListener('click', () => { settings.wear = !settings.wear; updateWearLabel(); saveSettings(); });
 $('btn-save').addEventListener('click', () => toast(saveGame() ? 'World saved' : 'Could not save (storage unavailable)'));
@@ -5293,6 +5348,68 @@ function notePlanting(x, y, z, id) {
 const HAIL_HEIGHT = 50;
 let strikeIn = 20, hailIn = 3, flashLevel = 0;
 const fires = new Map(); // "x,y,z" -> seconds left burning
+
+// ---------- fireplaces ----------
+// A fireplace burns what you feed it (tap it with logs, planks, sticks or coal), lighting and warming the
+// room. Smoke rises out of the top of a chimney built straight up from it; with no chimney it puffs out
+// into the room instead.
+const hearths = new Map(); // "x,y,z" -> seconds of fire left
+const MAX_HEARTH = 1800;
+let hearthTimer = 0, smokyWarned = false;
+function feedHearth(x, y, z, held) {
+  const per = HEARTH_FUEL[held.id];
+  const k = `${x},${y},${z}`, left = hearths.get(k) ?? 0;
+  const n = Math.max(0, Math.min(held.count, Math.ceil((MAX_HEARTH - left) / per)));
+  if (!n) { toast('The fireplace is full of fuel', 1500); return; }
+  takeFromHeld(n);
+  hearths.set(k, left + n * per);
+  const id = world.get(x, y, z);
+  if (!BLOCKS[id].lit) world.setBlock(x, y, z, id + 4);
+  sound.crackle(1);
+  toast(`The fire will burn for ${hearthTime(left + n * per)}${chimneyTop(x, y, z) ? '' : ' (build a chimney on top for the smoke)'}`, 2200);
+}
+const hearthTime = (t) => (t >= 90 ? `${Math.round(t / 60)} minutes` : `${Math.ceil(t)} seconds`);
+// The top of the chimney over a fireplace: the y of the topmost chimney block, or 0 for none.
+function chimneyTop(x, y, z) {
+  let top = 0;
+  for (let h = y + 1; h < H && world.get(x, h, z) === CHIMNEY; h++) top = h;
+  return top;
+}
+function tickHearths(dt) {
+  if (!hearths.size) return;
+  hearthTimer -= dt;
+  const puff = hearthTimer <= 0;
+  if (puff) hearthTimer = 0.35;
+  for (const [k, left] of [...hearths]) {
+    const [x, y, z] = k.split(',').map(Number);
+    if (!world.chunkAt(x, z)) continue;
+    const id = world.get(x, y, z);
+    if (!BLOCKS[id]?.hearth) { hearths.delete(k); continue; }
+    const t = left - dt;
+    if (t <= 0) { hearths.delete(k); if (BLOCKS[id].lit) world.setBlock(x, y, z, id - 4); continue; }
+    hearths.set(k, t);
+    if (!puff) continue;
+    const near = Math.hypot(x + 0.5 - player.pos.x, z + 0.5 - player.pos.z);
+    if (near > 96) continue;
+    const top = chimneyTop(x, y, z);
+    if (top && !world.isSolid(x, top + 1, z)) smoke.puff(x + 0.5, top + 1.05, z + 0.5, { grey: 0.62, size: 0.55, life: 5, rise: 1 });
+    else if (!top) {
+      // no chimney: smoke billows out of the front into the room
+      const [dx, dz] = FACING_DIRS[BLOCKS[id].facing];
+      if (Math.random() < 0.5) smoke.puff(x + 0.5 + dx * 0.6, y + 0.8, z + 0.5 + dz * 0.6, { grey: 0.45, size: 0.4, life: 3, rise: 0.5, spread: 0.4 });
+      if (near < 6 && !smokyWarned) { smokyWarned = true; toast('The room is filling with smoke! Build a chimney up from the fireplace.', 3000); }
+    }
+  }
+}
+// A burning fireplace close by warms you quickly.
+function hearthNear(r = 6) {
+  const px = player.pos.x, py = player.pos.y, pz = player.pos.z;
+  for (const k of hearths.keys()) {
+    const [x, y, z] = k.split(',').map(Number);
+    if (Math.abs(x + 0.5 - px) <= r && Math.abs(y - py) <= 3 && Math.abs(z + 0.5 - pz) <= r) return true;
+  }
+  return false;
+}
 function topBlock(x, z) {
   for (let y = H - 1; y > 0; y--) { const id = world.get(x, y, z); if (id !== AIR && !(BLOCKS[id]?.liquid && !world.isWater(x, y, z))) return y; }
   return null;
@@ -5445,6 +5562,7 @@ function stepGame(now, dt) {
   if (!paused && here) {
     controls.update();
     const wasGround = player.onGround, wasWater = player.inWater, fallSpeed = -player.vel.y, prevY = player.pos.y;
+    smoke.update(dt, { x: 0.3 + (weather.storm ? 1.2 : 0), z: 0.12 }, sky.light);
     carts.update(dt, world, (x, y, z) => powerAt(x, y, z) || (signalAt(x, y, z) ? 1 : 0), riding && { cart: riding, push: controls.moveZ, look: player.lookDir() },
       { day: lightUniforms.uDay.value, flicker: lightUniforms.uFlicker.value, ambient: lightUniforms.uAmbient.value });
     vehicles.update(dt, world, boarded && { v: boarded, moveX: controls.moveX, moveZ: controls.moveZ, jump: controls.jump, down: controls.down, yaw: player.yaw },
@@ -5462,7 +5580,7 @@ function stepGame(now, dt) {
     world.tickPlants(dt);
     world.tickLeaves(dt);
     tickLamps(dt);
-    tickExplore(dt); tickTreasure(dt); tickSnow(dt); tickVillages(dt); tickStorm(dt); tickFires(dt); tickPuzzles(dt);
+    tickExplore(dt); tickTreasure(dt); tickSnow(dt); tickVillages(dt); tickStorm(dt); tickFires(dt); tickPuzzles(dt); tickHearths(dt);
     crows.update(dt, world, player.pos, {
       day: lightUniforms.uDay.value,
       eat: (x, y, z) => world.setBlock(x, y, z, WHEAT_3 - 2), // back to green shoots
@@ -5604,5 +5722,5 @@ window.minicraft = {
   arrows, fishing, kinetics, electric, lightUniforms, bees, catchAt, seasonOf, applySeason, set day(v) { day = v; applySeason(); }, frames, signalAt, setSwitch, logic, machines, carts, minimap, signs, armour, damage, placeRail, getInCart, getOutOfCart,
   get riding() { return riding; }, explode, lightFuse, fuses, clockTime, compassText, place, editSign, closeSign, openInventory, closeInventory, chestMove, lamps, tickLamps, sleepUntilMorning, stations, openStation, closeStation,
   get caneToday() { return caneToday; }, get creative() { return creative; }, set creative(v) { creative = v; applyCreative(); }, toggleFly, wand, useWand, get achieved() { return achieved; }, achieve, worldMap, openMap, closeMap, openGuide, switchSlot, store, saveGame, renderWorlds, openWorlds, exportSlot, get target() { return target; }, set target(v) { target = v; }, applyKeys, renderKeys, camera, get controls() { return controls; }, loose, throwHeld, get waypoints() { return waypoints; }, toggleWaypoint, sortSlots, quickStack, dropMeteor, get meteors() { return meteors; }, weather, openTrade, closeTrade, mountMob, dismount, get ridingMob() { return ridingMob; }, effects, armourWear, useAnvil, rollLoot, settings,
-  get bedSpawn() { return bedSpawn; }, fertilise, openJournal, closeJournal, get packs() { return packs; }, radiationAt, vehicles, boardVehicle, leaveVehicle, get boarded() { return boarded; }, get seated() { return seated; }, crows, onInvSlot, onStationSlot, quickMoveInv, quickMoveStation, usedIn, itemTipHTML, critters, tickPets, get catGiftDay() { return catGiftDay; }, get villageGrowth() { return villageGrowth; }, notePlanting, tickPuzzles, airPumpNear, lightning, igniteAt, fires, tickFires, tickStorm, growVillage, buildVillageHouse, stallPrice, tickStalls, tickVillages, set catGiftDay(v) { catGiftDay = v; }, get places() { return places; }, get treasures() { return treasures; }, readTreasureMap, tickTreasure, beams, tickBeams, beaconSpots: () => beaconSpots, mistNow, tickSnow, tickExplore, sitOn, standUp, useDisplay, zips, linkZip, startZip, get zipping() { return zipping; }, burnCoal, get health() { return health; }, set health(v) { health = v; }, paintings, placeSwitchRail, signalAt, ailments, armourEnch, openAltar, lairNear, useBed, eat, drinkTea,
+  get bedSpawn() { return bedSpawn; }, fertilise, openJournal, closeJournal, get packs() { return packs; }, radiationAt, vehicles, boardVehicle, leaveVehicle, get boarded() { return boarded; }, get seated() { return seated; }, crows, onInvSlot, onStationSlot, quickMoveInv, quickMoveStation, usedIn, itemTipHTML, critters, tickPets, get catGiftDay() { return catGiftDay; }, get villageGrowth() { return villageGrowth; }, notePlanting, tickPuzzles, airPumpNear, hearths, tickHearths, feedHearth, chimneyTop, smoke, renderPins, togglePin, lightning, igniteAt, fires, tickFires, tickStorm, growVillage, buildVillageHouse, stallPrice, tickStalls, tickVillages, set catGiftDay(v) { catGiftDay = v; }, get places() { return places; }, get treasures() { return treasures; }, readTreasureMap, tickTreasure, beams, tickBeams, beaconSpots: () => beaconSpots, mistNow, tickSnow, tickExplore, sitOn, standUp, useDisplay, zips, linkZip, startZip, get zipping() { return zipping; }, burnCoal, get health() { return health; }, set health(v) { health = v; }, paintings, placeSwitchRail, signalAt, ailments, armourEnch, openAltar, lairNear, useBed, eat, drinkTea,
 };
