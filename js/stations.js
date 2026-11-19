@@ -14,6 +14,8 @@ import {
   SAPLING, ELECTRIC_ITEMS, chargeCap, GLASS_BOTTLE, NIGHT_TEA, HASTE_TEA, FIRE_TEA, HEAL_TEA, BERRIES, CORNFLOWER, DANDELION, POPPY, CACTUS, LAVENDER, DAISY, CAULDRON,
   EGG, FRIED_EGG, TRUFFLE, APPLE, CHERRIES, APPLE_PIE, CHERRY_PIE, FISH_SOUP, TRUFFLE_SOUP, BERRY_JAM,
   CARROT, POTATO, BAKED_POTATO, PUMPKIN, PUMPKIN_PIE, PUMPKIN_SEEDS, GRAPES, GRAPE_JUICE, CURDS, AGING,
+  ONION, BEANS, TOMATO, HERBS, APPLE_JUICE, BERRY_JUICE, VEG_STEW, TOMATO_SOUP, BAKED_BEANS,
+  CLAY, TERRACOTTA, TERRA_COL, GLAZED_TILE, URN, UNFIRED_URN, COLORS,
 } from './blocks.js';
 
 // A recipe ingredient can be one id or a list of alternatives (coal or charcoal).
@@ -159,7 +161,7 @@ STATION_KINDS.crafter = { name: 'Auto-Crafter', inputs: 9, crafter: true, recipe
 STATION_KINDS.pcrafter = { name: 'Programmable Crafter', inputs: 9, crafter: true, recipes: [] };
 // Farm machines that hold things: a planter's saplings, an animal station's buckets and wheat (both just
 // hold them: see machines.js), and a fishing net's catch (taken out by a hopper underneath).
-STATION_KINDS.planter = { name: 'Planter', inputs: 4, holder: true, accepts: [SAPLING, SEEDS, CARROT, POTATO, PUMPKIN_SEEDS], recipes: [] };
+STATION_KINDS.planter = { name: 'Planter', inputs: 4, holder: true, accepts: [SAPLING, SEEDS, CARROT, POTATO, PUMPKIN_SEEDS, ONION, BEANS, TOMATO, HERBS], recipes: [] };
 STATION_KINDS.ranch = { name: 'Animal Station', inputs: 6, holder: true, accepts: [BUCKET, WHEAT, SEEDS, BERRIES], recipes: [] };
 STATION_KINDS.net = { name: 'Fishing Net', inputs: 4, storage: true, recipes: [] };
 // A reactor holds up to four fuel rods, burning them all at once (see electric.js). Burnt-out rods stay in it, spent.
@@ -200,12 +202,17 @@ STATION_KINDS.cookpot = {
 // v26 D: presses (no fuel or power) and the oak barrel, where drinks and cheese age (see tick)
 STATION_KINDS.winepress = { name: 'Wine Press', verb: 'Pressing', inputs: 2, powered: true, passive: true, recipes: [
   { out: [GRAPE_JUICE, 1], in: [[GRAPES, 6], [GLASS_BOTTLE, 1]], time: 8 },
+  { out: [APPLE_JUICE, 1], in: [[APPLE, 4], [GLASS_BOTTLE, 1]], time: 8 },
+  { out: [BERRY_JUICE, 1], in: [[BERRIES, 8], [GLASS_BOTTLE, 1]], time: 8 },
 ] };
 STATION_KINDS.cheesepress = { name: 'Cheese Press', verb: 'Pressing', inputs: 2, powered: true, passive: true, recipes: [
   { out: [CURDS, 1], in: [[MILK_BUCKET, 1]], leaves: BUCKET, time: 10 },
 ] };
 STATION_KINDS.barrel = { name: 'Oak Barrel', inputs: 6, storage: true, ages: true, recipes: [] };
 export const AGE_DAY = 12 * 60; // (a game day, in seconds)
+// A barrel in a cellar, where no daylight reaches it (dark and cool), ages what's in it half as fast again.
+export const CELLAR_SPEED = 1.5;
+export const inCellar = (world, x, y, z) => [[0, 1, 0], [1, 0, 0], [-1, 0, 0], [0, 0, 1], [0, 0, -1]].every(([dx, dy, dz]) => !(world.skyAt?.(x + dx, y + dy, z + dz) > 0));
 
 // v26: the new crops in the oven and the pot
 STATION_KINDS.oven.recipes.push(
@@ -214,7 +221,11 @@ STATION_KINDS.oven.recipes.push(
 );
 STATION_KINDS.cookpot.recipes.push(
   { out: [PUMPKIN_PIE, 1], in: [[PUMPKIN, 1], [SUGAR, 1], [EGG, 1]], time: 10 },
+  { out: [VEG_STEW, 1], in: [[ONION, 1], [CARROT, 1], [POTATO, 1], [HERBS, 1]], time: 10 },
+  { out: [TOMATO_SOUP, 1], in: [[TOMATO, 3], [ONION, 1], [WATER_BUCKET, 1]], leaves: BUCKET, time: 8 },
 );
+// v27: beans in tomato sauce
+STATION_KINDS.oven.recipes.push({ out: [BAKED_BEANS, 1], in: [[BEANS, 4], [TOMATO, 1]], time: 6 });
 
 // The compost bin needs no fuel or power: plant scraps just rot down into fertiliser, given time.
 STATION_KINDS.compost = {
@@ -319,7 +330,7 @@ export class Stations {
       const id = world.get(x, y, z);
       if (stationKind(id) !== st.kind) { this.map.delete(k); continue; }
       const K = STATION_KINDS[st.kind];
-      if (K.ages) this.age(st, dt);
+      if (K.ages) this.age(st, inCellar(world, x, y, z) ? dt * CELLAR_SPEED : dt);
       if (K.storage || K.holder) continue;
       if (K.crafter) {
         const want = recipeAt(x, y, z);
@@ -397,3 +408,12 @@ export class Stations {
     }
   }
 }
+
+// v27 D: the kiln fires clay (burning fuel like an oven); an urn is a little pot to keep things in
+STATION_KINDS.kiln = { name: 'Kiln', verb: 'Firing', inputs: 2, recipes: [
+  { out: [TERRACOTTA, 1], in: [[CLAY, 1]], time: 5 },
+  { out: [BRICK, 1], in: [[CLAY_BALL, 1]], time: 2.5 },
+  { out: [URN, 1], in: [[UNFIRED_URN, 1]], time: 8 },
+  ...COLORS.map((c, i) => ({ out: [GLAZED_TILE + i, 1], in: [[TERRA_COL + i, 1]], time: 5 })),
+] };
+STATION_KINDS.urn = { name: 'Urn', inputs: 6, storage: true, recipes: [] };

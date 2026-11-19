@@ -7,7 +7,7 @@
 // They aren't saved: they're spawned fresh around wherever you are.
 import * as THREE from 'three';
 import { AIR, WATER, LEAVES, isLeaves, LOG, GRASS, SAND, DIRT, WOOL, BUCKET, MILK_BUCKET, SLIME_BUCKET, FEATHER, COAL, COBBLE, ARROW, HIDE, SNOW_GRASS, SNOW, KING_CROWN, GOLD_INGOT, MOSSY_BRICKS, RAW_FISH, BAKED_FISH, WHEAT, SALMON, BAKED_SALMON, ICEFISH, BAKED_ICEFISH,
-  SUN_SCARAB, FROST_HEART, EMBER_CORE, SUN_MASK, FROST_CIRCLET, EMBER_CROWN, SILVER_INGOT, OBSIDIAN, STRING, BLOCKS, LAVA, SEEDS, BERRIES, EGG, TRUFFLE, SADDLE } from './blocks.js';
+  SUN_SCARAB, FROST_HEART, EMBER_CORE, SUN_MASK, FROST_CIRCLET, EMBER_CROWN, SILVER_INGOT, OBSIDIAN, STRING, BLOCKS, LAVA, SEEDS, BERRIES, EGG, TRUFFLE, SADDLE, APPLE, CARROT, SUGAR, STONE, GRAVEL, GLOW_SHELL } from './blocks.js';
 import { SEA_LEVEL, H } from './terrain.js';
 import { skyBrightness, lightBrightness } from './world.js';
 import { THORN_SPEED, THORN_GRAVITY } from './arrows.js';
@@ -157,6 +157,45 @@ const SPECIES = {
       const tail = parts.tail = b.pivot(root, [0, 1.35, -0.95]);
       b.box(tail, [0.1, 0.45, 0.1], dark, [0, -0.22, 0]);
       b.box(tail, [0.16, 0.14, 0.16], mane, [0, -0.48, 0]);
+      return parts;
+    },
+  },
+
+  // v27: wild horses roam the grassland. Win one over with apples, carrots or sugar, saddle it, and ride:
+  // each horse has its own speed and jump, and foals take after their parents.
+  horse: {
+    w: 0.9, h: 1.75, speed: 1.3, fleeSpeed: 6.5, sink: 1.2, stride: 4.2, legSwing: 0.55,
+    group: [2, 4], cap: 6, avoidWater: true, grazes: true, rideable: true, saddles: true, seat: 1.32, horse: true,
+    coats: [0x7a4a2a, 0x7a4a2a, 0x9a5a2e, 0x2a2420, 0xe6dfd2, 0x8c8c8e, 0xc8a46a],
+    build(b, root, opts = {}) {
+      const coat = opts.coat ?? pick(this.coats), c = new THREE.Color(coat);
+      const light = c.r + c.g + c.b > 2.2;
+      const mane = light ? 0xb8b2a8 : c.clone().multiplyScalar(0.35).getHex(), dark = c.clone().multiplyScalar(0.7).getHex();
+      const parts = { legs: [], coat };
+      b.box(root, [0.72, 0.68, 1.45], coat, [0, 1.12, 0]); // body
+      parts.saddle = b.box(root, [0.78, 0.12, 0.62], 0x5a2e14, [0, 1.5, -0.05]);
+      const flap = b.box(root, [0.82, 0.3, 0.3], 0x5a2e14, [0, 1.35, -0.05]);
+      parts.saddle.visible = false; flap.visible = false;
+      b.box(root, [0.38, 0.75, 0.42], coat, [0, 1.62, 0.68]); // neck
+      b.box(root, [0.12, 0.7, 0.36], mane, [0, 1.7, 0.56]); // mane
+      const head = parts.head = b.pivot(root, [0, 1.95, 0.8]);
+      b.box(head, [0.34, 0.36, 0.7], coat, [0, -0.02, 0.22]);
+      b.box(head, [0.3, 0.26, 0.24], dark, [0, -0.08, 0.56]); // muzzle
+      for (const sx of [-1, 1]) {
+        b.box(head, [0.08, 0.16, 0.06], coat, [sx * 0.11, 0.24, 0.02]); // ears
+        b.box(head, [0.04, 0.06, 0.06], 0x0a0a0a, [sx * 0.175, 0.06, 0.3]); // eyes
+      }
+      const bridle = b.box(head, [0.36, 0.06, 0.06], 0x3a2010, [0, -0.04, 0.48]);
+      bridle.visible = false;
+      for (const [x, z] of [[-0.24, 0.55], [0.24, 0.55], [-0.24, -0.55], [0.24, -0.55]]) {
+        const leg = b.pivot(root, [x, 0.85, z]);
+        b.box(leg, [0.18, 0.82, 0.2], coat, [0, -0.41, 0]);
+        b.box(leg, [0.2, 0.12, 0.22], 0x2a2018, [0, -0.8, 0]); // hoof
+        parts.legs.push(leg);
+      }
+      const tail = parts.tail = b.pivot(root, [0, 1.38, -0.72]);
+      b.box(tail, [0.14, 0.7, 0.14], mane, [0, -0.32, -0.08]);
+      parts.tame = (on) => { parts.saddle.visible = on; flap.visible = on; bridle.visible = on; };
       return parts;
     },
   },
@@ -703,12 +742,60 @@ const SPECIES = {
       return parts;
     },
   },
+
+  // v27 F: cave creatures. Glowing beetles trundle about in the dark (tap one and it may shed its shell);
+  // olms, pale and blind, keep to underground water.
+  beetle: {
+    w: 0.5, h: 0.3, speed: 0.6, fleeSpeed: 2, sink: 0, stride: 18, legSwing: 0.5,
+    group: [1, 3], cap: 6, avoidWater: true, grazes: false, cave: true,
+    build(b, root) {
+      const shell = 0x1e3a2a, glow = 0x6af0a0, dark = 0x101814;
+      const parts = { legs: [] };
+      const torso = parts.torso = b.pivot(root, [0, 0, 0]);
+      b.box(torso, [0.36, 0.16, 0.44], shell, [0, 0.16, -0.02]);
+      b.box(torso, [0.04, 0.012, 0.4], dark, [0, 0.245, -0.02]); // the split between the wing cases
+      for (const [x, z] of [[-0.1, -0.12], [0.1, -0.12], [-0.08, 0.06], [0.08, 0.06]]) b.box(torso, [0.07, 0.02, 0.08], glow, [x, 0.245, z], true);
+      b.box(torso, [0.3, 0.06, 0.12], glow, [0, 0.1, -0.22], true); // its glowing tail end
+      const head = parts.head = b.pivot(torso, [0, 0.14, 0.2]);
+      b.box(head, [0.2, 0.1, 0.1], dark, [0, 0, 0.05]);
+      for (const sx of [-1, 1]) b.box(head, [0.012, 0.012, 0.14], dark, [sx * 0.06, 0.05, 0.16]); // feelers
+      for (const z of [0.1, -0.02, -0.14]) for (const sx of [-1, 1]) {
+        const leg = b.pivot(torso, [sx * 0.17, 0.12, z]);
+        b.box(leg, [0.12, 0.025, 0.025], dark, [sx * 0.06, -0.04, 0]);
+        parts.legs.push(leg);
+      }
+      return parts;
+    },
+  },
+  olm: {
+    w: 0.25, h: 0.12, speed: 0.6, fleeSpeed: 1.8, sink: 0.06, stride: 16, legSwing: 0.6,
+    group: [1, 2], cap: 4, avoidWater: false, grazes: false, cave: true,
+    build(b, root) {
+      const skin = 0xf0c8c0, gill = 0xe87890;
+      const parts = { legs: [] };
+      const torso = parts.torso = b.pivot(root, [0, 0, 0]);
+      b.box(torso, [0.1, 0.07, 0.34], skin, [0, 0.06, 0]);
+      const head = parts.head = b.pivot(torso, [0, 0.06, 0.17]);
+      b.box(head, [0.1, 0.06, 0.12], skin, [0, 0, 0.06]);
+      for (const sx of [-1, 1]) for (const k of [0, 1]) b.box(head, [0.05, 0.015, 0.015], gill, [sx * (0.07 + k * 0.01), 0.01 + k * 0.025, 0.0]); // frilly gills
+      const tail = b.pivot(torso, [0, 0.06, -0.17]);
+      b.box(tail, [0.06, 0.06, 0.18], skin, [0, 0, -0.09]);
+      parts.tailSegments = [tail];
+      for (const [x, z] of [[-0.07, 0.1], [0.07, 0.1], [-0.07, -0.1], [0.07, -0.1]]) {
+        const leg = b.pivot(torso, [x, 0.04, z]);
+        b.box(leg, [0.06, 0.02, 0.025], skin, [Math.sign(x) * 0.02, -0.02, 0]);
+        parts.legs.push(leg);
+      }
+      return parts;
+    },
+  },
 };
 
 // Breeding: what each animal can be fed to look for a mate. Two of a kind that have both been fed find each
 // other and have a young one, which grows up over GROW_TIME; then they need BREED_REST before they'll breed
 // again. They won't when there are already CROWD of their kind close by.
-const BREED_FOOD = { duck: [SEEDS], buffalo: [WHEAT], alpaca: [WHEAT], yak: [WHEAT], camel: [WHEAT], newt: [BERRIES], chicken: [SEEDS], pig: [BERRIES, WHEAT], deer: [BERRIES] };
+const BREED_FOOD = { duck: [SEEDS], buffalo: [WHEAT], alpaca: [WHEAT], yak: [WHEAT], camel: [WHEAT], newt: [BERRIES], chicken: [SEEDS], pig: [BERRIES, WHEAT], deer: [BERRIES], horse: [APPLE, CARROT, SUGAR] };
+export const HORSE_TREATS = [APPLE, CARROT, SUGAR];
 for (const [k, f] of Object.entries(BREED_FOOD)) SPECIES[k].breeds = f;
 SPECIES.wolf.breeds = SPECIES.wolf.tames;
 SPECIES.cat.breeds = SPECIES.cat.tames;
@@ -790,6 +877,11 @@ class Mob {
     this.root = new THREE.Group();
     this.parts = this.spec.build(b, this.root, opts);
     this.coat = this.parts.coat; // passed on to its young
+    if (this.spec.horse) {
+      // how fast it gallops (blocks a second) and how high it jumps (blocks)
+      this.gait = Math.min(12, Math.max(6, opts.gait ?? rand(7, 10)));
+      this.leap = Math.min(2.6, Math.max(1, opts.leap ?? rand(1.1, 2)));
+    }
     if (this.spec.lays) this.layFor = rand(this.spec.lays[1] * 0.3, this.spec.lays[2]);
     this.baseScale = this.root.scale.x;
     this.geometries = b.geometries;
@@ -867,7 +959,7 @@ export class MobManager {
     if (this.nearWater(x, s.y, z)) return { kinds: ['duck', 'newt'], y };
     if (s.id !== GRASS) return null;
     if (s.y >= SEA_LEVEL + 12) return { kinds: ['alpaca', 'yak', 'yak'], y };
-    if (s.y >= SEA_LEVEL + 2) return { kinds: ['buffalo', 'buffalo', 'chicken', 'chicken', 'pig', 'cat', 'deer', 'deer'], y };
+    if (s.y >= SEA_LEVEL + 2) return { kinds: ['buffalo', 'buffalo', 'chicken', 'chicken', 'pig', 'cat', 'deer', 'deer', 'horse', 'horse'], y };
     return null;
   }
 
@@ -917,6 +1009,23 @@ export class MobManager {
     }
   }
 
+  // Cave creatures: on bare stone (or gravel) floors well under a roof of rock, near you.
+  trySpawnCave(player) {
+    if (this.animals >= ANIMAL_CAP) return;
+    const w = this.world, a = rand(0, Math.PI * 2), d = rand(8, 30);
+    const x = Math.floor(player.pos.x + Math.cos(a) * d), z = Math.floor(player.pos.z + Math.sin(a) * d);
+    if (!w.chunkAt(x, z)) return;
+    const s = this.surface(x, z), y0 = Math.floor(player.pos.y);
+    for (let y = Math.min(y0 + 8, (s ? s.y : H) - 4); y > Math.max(2, y0 - 16); y--) {
+      const floor = w.get(x, y - 1, z);
+      if ((floor !== STONE && floor !== GRAVEL) || w.isSolid(x, y, z) || w.isSolid(x, y + 1, z) || w.isWater(x, y, z) || w.skyAt(x, y, z) > 0) continue;
+      const wet = [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dz]) => w.isWater(x + dx, y - 1, z + dz) || w.isWater(x + dx, y, z + dz));
+      const kind = wet ? 'olm' : 'beetle';
+      if (this.count(kind) < SPECIES[kind].cap && this.hasRoom(kind, x + 0.5, y, z + 0.5)) this.spawn(kind, x + 0.5, y, z + 0.5);
+      return;
+    }
+  }
+
   spawnTrader(player) {
     const w = this.world;
     for (let k = 0; k < 12; k++) {
@@ -954,7 +1063,7 @@ export class MobManager {
   }
 
   // Villagers go indoors from dusk until morning. (`hour` is set by the game each frame: 0..24.)
-  villagerNight() { return this.hour != null && (this.hour > 18.5 || this.hour < 6); }
+  villagerNight() { return this.hour != null && (this.hour > (this.festival ? 23 : 18.5) || this.hour < 6); } // they stay up late on festival days
   // The spot just outside a house's door.
   doorstep(hs) { return { x: hs.x + hs.door[0] + Math.sign(hs.door[0]) + 0.5, z: hs.z + hs.door[1] + Math.sign(hs.door[1]) + 0.5 }; }
   // A villager's evening: walk to its own front door and go in; come back out in the morning.
@@ -1059,6 +1168,7 @@ export class MobManager {
     if (this.spawnTimer <= 0) {
       this.spawnTimer = 0.4;
       this.trySpawn(player);
+      if (Math.random() < 0.3) this.trySpawnCave(player);
     }
     // now and then, on a fine day, a wandering trader turns up nearby (one at a time)
     this.traderTimer = (this.traderTimer ?? 30) - dt;
@@ -1113,7 +1223,8 @@ export class MobManager {
           const fx = -Math.sin(ctx.ride.yaw), fz = -Math.cos(ctx.ride.yaw), rx = Math.cos(ctx.ride.yaw), rz = -Math.sin(ctx.ride.yaw);
           const vx = fx * ctx.ride.moveZ + rx * ctx.ride.moveX, vz = fz * ctx.ride.moveZ + rz * ctx.ride.moveX;
           m.heading = Math.atan2(vx, vz);
-          m.rideSpeed = Math.min(1, Math.hypot(vx, vz)) * 7;
+          m.rideSpeed = Math.min(1, Math.hypot(vx, vz)) * (m.gait ?? 7);
+          m.wantJump = !!ctx.ride.jump;
         }
       } else if (m.tame) {
         this.thinkPet(m, dt, player);
@@ -1369,8 +1480,9 @@ export class MobManager {
       const bz = this.moveAxis(m, 'z', m.vel.z * h);
       m.onGround = false;
       if (this.moveAxis(m, 'y', m.vel.y * h)) m.vel.y = 0;
+      if (m.ridden && m.wantJump && wasGround && m.leap) { m.vel.y = Math.sqrt(2 * GRAVITY * (m.leap + 0.15)); m.wantJump = false; } // a horse leaps
       if ((bx || bz) && speed) {
-        if ((wasGround || m.inWater) && this.canStepUp(m, dx, dz)) m.vel.y = m.inWater ? 6 : 7.5;
+        if ((wasGround || m.inWater) && this.canStepUp(m, dx, dz)) m.vel.y = Math.max(m.vel.y, m.inWater ? 6 : 7.5);
         else if (wasGround && !hunting) m.heading += rand(Math.PI * 0.5, Math.PI * 1.5); // a wall: turn away
       }
     }
@@ -1499,6 +1611,31 @@ export class MobManager {
       return { give, take, said: '' };
     }
     if (m.spec.trader) return { give, take, said: '', trade: true };
+    if (m.kind === 'beetle') {
+      if (m.shed) return { give, take, said: 'The beetle has nothing more to give' };
+      m.shed = true; m.state = 'flee'; m.timer = rand(1.5, 2.5);
+      give.push([GLOW_SHELL, 1]);
+      return { give, take, said: 'The beetle sheds a glowing shell and scuttles off' };
+    }
+    if (m.spec.horse) {
+      // a wild horse has to be won over before it takes a saddle; a tame one can still be fed (to breed)
+      if (HORSE_TREATS.includes(held) && !m.tame && !m.trusted && !(m.baby > 0)) {
+        take.push([held, 1]);
+        this.sound?.mob(m.kind, 0.9);
+        m.trust = (m.trust ?? 0) + 1;
+        m.trustNeed ??= 2 + Math.floor(Math.random() * 3);
+        if (m.trust >= m.trustNeed) { m.trusted = true; m.state = 'idle'; return { give, take, said: 'The horse nuzzles your hand: it trusts you now. Put a saddle on it to ride.' }; }
+        return { give, take, said: 'The horse crunches it up and edges closer…' };
+      }
+      if (held === SADDLE && !m.tame && !m.trusted) return { give, take, said: 'The horse shies away from the saddle: win it over with apples, carrots or sugar first' };
+      if (m.tame && HORSE_TREATS.includes(held)) {
+        const said = this.feed(m);
+        if (said) return { give, take, said };
+        take.push([held, 1]);
+        this.sound?.mob(m.kind, 0.9);
+        return { give, take, said: 'The horse looks around for a mate' };
+      }
+    }
     if (m.spec.saddles && m.tame) return { give, take, said: '', ride: true };
     if (m.spec.saddles && held === SADDLE) {
       if (m.baby > 0) return { give, take, said: `This ${m.kind} is too young for a saddle` };
@@ -1599,7 +1736,10 @@ export class MobManager {
     if (crowd >= CROWD) return;
     // the young one takes its coat from one parent or the other (and once in a while has a coat of its own)
     const coat = m.spec.coats && Math.random() < 0.9 ? pick([m.coat, best.coat]) : undefined;
-    const baby = this.spawn(m.kind, (m.pos.x + best.pos.x) / 2, Math.max(m.pos.y, best.pos.y), (m.pos.z + best.pos.z) / 2, { coat });
+    // a foal's speed and jump are about the average of its parents', give or take a little
+    const stats = m.spec.horse ? { gait: (m.gait + best.gait) / 2 + rand(-0.8, 1), leap: (m.leap + best.leap) / 2 + rand(-0.2, 0.25) } : {};
+    const baby = this.spawn(m.kind, (m.pos.x + best.pos.x) / 2, Math.max(m.pos.y, best.pos.y), (m.pos.z + best.pos.z) / 2, { coat, ...stats });
+    if (m.spec.horse && (m.tame || best.tame || m.trusted || best.trusted)) baby.trusted = true; // (a foal grows up trusting you)
     baby.baby = GROW_TIME;
     baby.root.scale.setScalar(baby.baseScale * 0.5);
     if (m.tame && best.tame && !m.spec.saddles) this.setTame(baby);
@@ -1614,7 +1754,10 @@ export class MobManager {
   }
 
   // Pets to save: [kind, x, y, z, sitting, coat].
-  pets() { return this.mobs.filter((m) => m.tame && !m.dying).map((m) => [m.kind, +m.pos.x.toFixed(2), +m.pos.y.toFixed(2), +m.pos.z.toFixed(2), !!m.sitting, m.coat ?? null]); }
+  pets() {
+    return this.mobs.filter((m) => (m.tame || (m.trusted && m.spec.horse)) && !m.dying).map((m) => [m.kind, +m.pos.x.toFixed(2), +m.pos.y.toFixed(2), +m.pos.z.toFixed(2), !!m.sitting, m.coat ?? null,
+      m.spec.horse ? { gait: +m.gait.toFixed(2), leap: +m.leap.toFixed(2), tame: !!m.tame, stable: m.stable ?? null, baby: Math.max(0, Math.round(m.baby ?? 0)) } : null]);
+  }
 
   // The player hits a night creature for `amount`. It gets knocked back, flashes, and hunts the
   // player for a while (even on Peaceful). Returns its drops if that hit defeated it.

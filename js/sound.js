@@ -279,6 +279,10 @@ export class Sound {
     } else if (kind === 'buffalo') {
       const f = hurt ? p(115, 130) : p(85, 100);
       this.voice({ from: f, to: f * 0.8, dur: hurt ? 0.3 : 0.8, vol: 0.55 * gain, freq: 420, q: 2, attack: 0.08 });
+    } else if (kind === 'horse') {
+      // a whinny: a high wavering neigh that falls away (a snort when bumped)
+      if (hurt) this.noiseBurst({ type: 'bandpass', freq: 900, q: 1.2, dur: 0.25, vol: 0.4 * gain }, 1, 1);
+      else this.voice({ type: 'sawtooth', from: p(620, 700), to: p(300, 340), dur: 0.9, vol: 0.22 * gain, freq: 1800, q: 1.5, attack: 0.05, vibrato: 18 });
     } else if (kind === 'yak') {
       // yaks grunt rather than moo
       const f = hurt ? p(92, 102) : p(66, 76);
@@ -367,8 +371,11 @@ export class Sound {
       const f = hurt ? p(70, 80) : p(48, 56);
       this.voice({ type: 'sawtooth', from: f, to: f * 0.7, dur: hurt ? 0.5 : 1.2, vol: 0.6 * gain, freq: 300, q: 2, attack: 0.1 });
       for (let i = 0; i < 6; i++) setTimeout(() => this.ready && this.noiseBurst({ type: 'highpass', freq: 1800, q: 1, dur: 0.04, vol: 0.25 * gain }, 1, 1), i * 90 + Math.random() * 40);
-    } else if (kind === 'newt') {
+    } else if (kind === 'newt' || kind === 'olm') {
       this.voice({ type: 'sine', from: p(2400, 2700), to: p(3100, 3400), dur: hurt ? 0.1 : 0.06, vol: 0.12 * gain, freq: 6000 });
+    } else if (kind === 'beetle') {
+      // a dry clicking
+      for (const delay of [0, 0.06, 0.12]) setTimeout(() => this.noiseBurst({ type: 'bandpass', freq: 3200, q: 4, dur: 0.025, vol: 0.12 * gain }, 1, 1), delay * 1000);
     }
   }
 

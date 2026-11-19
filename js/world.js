@@ -445,13 +445,16 @@ export class World {
     this.soil ??= new Map();
     const k = `${x},${y},${z}`, was = this.soil.get(k), day = this.day ?? 1;
     let tired = 0;
-    if (was && was.kind === kind && day - was.day < SOIL_REST_DAYS) tired = Math.min(3, was.tired + 1);
-    this.soil.set(k, { kind, tired, day });
+    // (beans never tire the soil: they feed it, and whatever follows them grows faster)
+    if (was && was.kind === kind && kind !== 'bean' && day - was.day < SOIL_REST_DAYS) tired = Math.min(3, was.tired + 1);
+    const rich = !!was && was.kind === 'bean' && kind !== 'bean';
+    this.soil.set(k, rich ? { kind, tired, day, rich } : { kind, tired, day });
     if (this.soil.size > 6000) this.soil.delete(this.soil.keys().next().value);
     return tired;
   }
   soilTired(x, y, z) { return this.soil?.get(`${x},${y},${z}`)?.tired ?? 0; }
-  soilFactor(x, y, z) { return [1, 0.7, 0.5, 0.35][this.soilTired(x, y, z)]; }
+  soilFactor(x, y, z) { return this.soil?.get(`${x},${y},${z}`)?.rich ? 1.4 : [1, 0.7, 0.5, 0.35][this.soilTired(x, y, z)]; }
+  soilRich(x, y, z) { return !!this.soil?.get(`${x},${y},${z}`)?.rich; }
   restSoil(x, y, z) { const e = this.soil?.get(`${x},${y},${z}`); if (!e || !e.tired) return false; e.tired = 0; return true; }
 
   isFlowerAt(x, y, z) { return isFlower(this.get(x, y, z)); }

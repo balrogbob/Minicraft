@@ -395,3 +395,24 @@ html, body {
 #split-range { flex: 1; min-width: 0; }
 #split-n { min-width: 2.2em; text-align: right; }
 #palette-wrap.hidden { display: none; }
+
+/* v27: find things in chests nearby */
+#chest-search-wrap { margin: 6px 0 4px; }
+#chest-search { width: 100%; box-sizing: border-box; font: inherit; font-size: 15px; padding: 6px 10px; border-radius: 6px; border: 1px solid rgba(0,0,0,0.25); background: #f4f4f2; color: #222; }
+#chest-results { max-height: 30vh; overflow-y: auto; font-size: 14px; }
+#chest-results .cs-box { margin: 6px 0; padding: 5px 8px; background: rgba(0,0,0,0.06); border-radius: 6px; }
+#chest-results .btn.small { padding: 3px 10px; font-size: 14px; min-height: 0; }
+#chest-results .cs-head { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+#chest-results .cs-head b { flex: 1; }
+#chest-results .cs-items { opacity: 0.9; margin-top: 2px; }
+#chest-results .cs-item { display: inline-flex; align-items: center; gap: 3px; margin-right: 10px; }
+#chest-results .cs-item canvas { width: 20px; height: 20px; image-rendering: pixelated; }
+#chest-results .cs-none { opacity: 0.7; padding: 4px 0; }
+
+/* v27: photo mode hides the HUD and shows a small camera bar */
+body.photo #game > *:not(canvas):not(#touch-layer):not(#joy-base):not(#photo-bar):not(#flash):not(#underwater) { display: none !important; }
+#photo-bar { position: absolute; right: 14px; bottom: 18px; display: flex; gap: 8px; z-index: 30; }
+#photo-bar.hidden { display: none; }
+body.photo #joy-base:not(.active) { opacity: 0; }
+#photo-bar .btn { min-width: 52px; min-height: 52px; font-size: 22px; background: rgba(0,0,0,0.45); }
+body.photo.snapping #photo-bar { display: none; }

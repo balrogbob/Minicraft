@@ -38,6 +38,12 @@
     <canvas id="map" class="hidden"></canvas>
     <div id="perf" class="hidden"></div>
     <div id="toast"></div>
+    <div id="photo-bar" class="hidden">
+      <button class="btn" id="photo-up" title="Rise">▲</button>
+      <button class="btn" id="photo-down" title="Sink">▼</button>
+      <button class="btn" id="photo-snap" title="Take the photo">📷</button>
+      <button class="btn" id="photo-exit" title="Leave photo mode">✕</button>
+    </div>
     <div id="ach-toast"></div>
     <div id="look-tip"></div>
     <div id="inv-tip"></div>
@@ -84,6 +90,7 @@
               <li>Put armour in the armour slots to wear it.</li>
             </ul>
             <p class="hint"><button class="btn small" id="btn-sort">Sort backpack</button> <button class="btn small" id="btn-quick-stack" title="Put backpack things into chests nearby that already hold the same thing">Quick-stack to chests</button></p>
+            <div id="chest-search-wrap"><input type="search" id="chest-search" placeholder="🔎 Find in chests nearby…" autocomplete="off" /><div id="chest-results"></div></div>
           </div>
           <div class="craft-col">
             <div id="palette-wrap" class="hidden">
@@ -174,6 +181,7 @@
           <button class="btn wide" id="btn-worlds">Worlds…</button>
           <button class="btn wide" id="btn-open-map">World map</button>
           <button class="btn wide" id="btn-guide">Guide &amp; achievements</button>
+          <button class="btn wide" id="btn-photo">📷 Photo mode</button>
           <button class="btn wide" id="btn-mode">Game mode: Survival</button>
           <button class="btn wide" id="btn-difficulty">Difficulty: Worrying</button>
           <p class="hint" id="difficulty-about"></p>
@@ -278,8 +286,14 @@
           <p>Villagers go home at night, and the bell rings each morning. Put things on a <b>market stall</b> and villagers buy them for coins; trade with a village and it grows. Shelter from <b>thunderstorms</b>: lightning starts fires, and hail in the mountains hurts without a helmet. Grow <b>carrots</b>, <b>potatoes</b>, <b>pumpkins</b> and <b>grapes</b> (on a trellis), and change crops now and then: the same crop again and again tires the soil. Press grapes and curds, then leave them in an <b>oak barrel</b> to become wine and cheese.</p>
           <h3>Temples, islands and trains</h3>
           <p><b>Sunken temples</b> and <b>sky islands</b> hide vaults that open when you solve their levers or plates. Dive with a <b>diving helmet</b>, <b>flippers</b> and an <b>air pump</b>. <b>Radios</b> carry a signal between any two on the same channel (tap to change). A <b>sorting machine</b> sends things down the tube framed for them. A <b>locomotive</b> burns coal and pulls the carts behind it from station to station. A <b>fireplace</b> warms a room: give it a chimney.</p>
+          <h3>Horses, villages and festivals</h3>
+          <p>Feed a wild <b>horse</b> apples, carrots or sugar until it trusts you, then saddle it and ride; each has its own speed and jump. Tap a <b>stable</b> to bring your horses home. Tap a village <b>bell</b> to hear what it wants today, and again holding it to deliver: requests, trades and stall sales raise your <b>reputation</b>, and friends of a village pay less. On the fourth day of each season villages hold a <b>festival</b>, with double pay and fireworks at night.</p>
+          <h3>Kitchen garden, kiln and cellar</h3>
+          <p>Grow <b>onions</b>, <b>beans</b> (which enrich the soil), <b>tomatoes</b> and <b>herbs</b> for stews, soups and baked beans. Press apples and berries, then age the juice in a barrel into <b>cider</b> and <b>berry wine</b>: a dark <b>cellar</b> ages it faster. A <b>kiln</b> fires clay into <b>terracotta</b>, glazed tiles and <b>urns</b>.</p>
+          <h3>Ropes, locks and caves</h3>
+          <p>A <b>rope ladder</b> unrolls down a wall or cliff edge; a <b>rope bridge</b> lays itself across a gap. Build a <b>canal lock</b>: a walled chamber with <b>lock gates</b> and a <b>sluice wheel</b> that fills or drains it to the next canal's level. Beware falling <b>stalactites</b> in dark caverns; tap glowing <b>cave beetles</b> for shells to make lamps.</p>
           <h3>Backpack tips</h3>
-          <p>Pin a recipe (📌) to keep what it needs on screen. When the stack in your hand runs out, the next one moves in from your backpack. Double-tap a slot to gather a stack together; shift-click (or press and hold) to move a stack across to a chest or between hotbar and backpack. Tips show what each thing is used in, and a compass points to your nearest waypoint.</p>
+          <p>Pin a recipe (📌) to keep what it needs on screen. When the stack in your hand runs out, the next one moves in from your backpack. Double-tap a slot to gather a stack together; shift-click (or press and hold) to move a stack across to a chest or between hotbar and backpack. Tips show what each thing is used in, and a compass points to your nearest waypoint. Type in <b>Find in chests nearby</b> to see which chests hold something, and where. <b>Photo mode</b> (☰ or F2) hides the HUD and lets the camera float free for a picture.</p>
           <h3>Creative mode</h3>
           <p>Choose it for a new world, or switch under ☰ → Game mode. You can't be hurt or get hungry, blocks break at once and are never used up, and the inventory has a palette of every block and item. Press F (or 🕊) to fly: jump rises, Shift (or ⤓) sinks. The <b>copy wand</b> copies builds: tap one corner, then the opposite corner, then tap wherever you want copies; double-tap and hold (or hold the mouse button) to start over.</p>
         </div>

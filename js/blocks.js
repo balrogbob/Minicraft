@@ -140,7 +140,7 @@ export const T = {
   LEAD_CHEST_SIDE: 267, LEAD_CHEST_TOP: 268, LEAD_CHEST_FRONT: 269, CENTRIFUGE_SIDE: 270, CENTRIFUGE_TOP: 271, TESLA: 272, TESLA_TOP: 273,
   FENCE_POST: 274, FENCE_WIRE: 275, FREEZER_SIDE: 276, FREEZER_FRONT: 277, ARC_SIDE: 278, ARC_FRONT: 279, PACKED_ICE: 280, INVAR: 281, RAIL_STOP: 282, BASALT: 283, BASALT_TOP: 284, METEORITE: 285,
   IRON_BARS: 286, POT: 287, IVY: 288, BOX_FLOWERS: 289,
-  FRUIT_LEAVES: 290, FRUIT_RIPE: 293, FRUIT_SAPLING: 296, HAY: 299, SACK: 300, BEACON: 301, APIARY_SIDE: 302, APIARY_FRONT: 303, APIARY_FULL: 304, APIARY_TOP: 305, BELT_CROSS: 306, FARM_CTRL: 307, FARM_CTRL_ON: 308, TUBE: 309, TUBE_END: 310, AWNING: 311, FIRE: 312, CARROT_0: 313, POTATO_0: 317, STEM_0: 321, PUMPKIN_SIDE: 324, PUMPKIN_TOP: 325, JACK_FACE: 326, TRELLIS: 327, VINE_0: 328, BARREL_SIDE: 331, BARREL_TOP: 332, CHEESE: 333, SEA_BRICK: 334, SEA_LANTERN: 335, VAULT: 336, SKY_STONE: 337, AIR_PUMP: 338, RADIO: 339, RADIO_ON: 340, SORTBOX: 341, SORTBOX_TOP: 342, HEARTH: 343, HEARTH_LIT: 344, CHIMNEY_TOP: 345, // (fruit tiles: apple, cherry, orange)
+  FRUIT_LEAVES: 290, FRUIT_RIPE: 293, FRUIT_SAPLING: 296, HAY: 299, SACK: 300, BEACON: 301, APIARY_SIDE: 302, APIARY_FRONT: 303, APIARY_FULL: 304, APIARY_TOP: 305, BELT_CROSS: 306, FARM_CTRL: 307, FARM_CTRL_ON: 308, TUBE: 309, TUBE_END: 310, AWNING: 311, FIRE: 312, CARROT_0: 313, POTATO_0: 317, STEM_0: 321, PUMPKIN_SIDE: 324, PUMPKIN_TOP: 325, JACK_FACE: 326, TRELLIS: 327, VINE_0: 328, BARREL_SIDE: 331, BARREL_TOP: 332, CHEESE: 333, SEA_BRICK: 334, SEA_LANTERN: 335, VAULT: 336, SKY_STONE: 337, AIR_PUMP: 338, RADIO: 339, RADIO_ON: 340, SORTBOX: 341, SORTBOX_TOP: 342, HEARTH: 343, HEARTH_LIT: 344, CHIMNEY_TOP: 345, STABLE_SIDE: 346, SNOWMAN_FRONT: 347, ONION_0: 348, BEAN_0: 352, TOMATO_0: 356, HERB_0: 360, KILN_SIDE: 364, KILN_TOP: 365, KILN_FRONT: 366, KILN_FRONT_LIT: 367, TERRACOTTA: 368, TERRA_COL: 369, GLAZED: 379, ROOF_TILES: 389, URN: 390, ROPE: 391, LOCK_GATE: 392, LOCK_GATE_TOP: 393, DRIPSTONE: 394, BEETLE_LAMP: 395, // (fruit tiles: apple, cherry, orange)
 };
 
 // Ores, deepest-reaching last. tier: the pickaxe tier needed to mine it (see TOOL_TIERS);
@@ -250,7 +250,7 @@ function block(id, o) {
     postTex: o.postTex ?? null, armTex: o.armTex ?? null, // a fence's own post and rail tiles (an electric fence)
     shock: !!o.shock, tesla: !!o.tesla, zip: !!o.zip, // v24: electric fences, tesla coils, zipline posts (see main.js)
     fruit: o.fruit ?? null, scarecrow: !!o.scarecrow, apiary: !!o.apiary, crossing: !!o.crossing, tube: !!o.tube, // v25: { kind, ripe } on a fruit tree's leaves; scarecrows keep crows off crops
-    sortbox: !!o.sortbox, hearth: !!o.hearth, chimney: !!o.chimney, // v26: a sorting machine (see machines.js)
+    sortbox: !!o.sortbox, hearth: !!o.hearth, chimney: !!o.chimney, stable: !!o.stable, snowman: !!o.snowman, ropeLadder: !!o.ropeLadder, stalactite: !!o.stalactite, bridge: o.bridge ?? null, // v26: a sorting machine (see machines.js)
     crop: o.crop ?? null, // v26: { kind, stage, ripe, seed } for the newer crops (carrots, potatoes, pumpkin vines, grapes)
     farm: o.farm ?? null, // 'feller' | 'planter' | 'breaker' | 'placer' | 'ranch' | 'net' (see machines.js)
   };
@@ -2421,7 +2421,8 @@ export const isFlammable = (id) => !!id && (isLeaves(id) || id === LOG || id ===
 // beside it (and goes on cropping); grapes grow up a trellis and fruit again after picking.
 // Planting the same crop in the same soil over and over tires it out (it grows slower): rotate crops, let
 // the ground rest a season, or fertilise it (see world.js).
-export const CARROT = 1098, POTATO = 1099, BAKED_POTATO = 1100, PUMPKIN_SEEDS = 1101, PUMPKIN_PIE = 1102, GRAPES = 1103;
+// (baked potato and pumpkin pie were 1100 and 1102, which are also copper wire's and the inverter's ids: moved)
+export const CARROT = 1098, POTATO = 1099, BAKED_POTATO = 392, PUMPKIN_SEEDS = 1101, PUMPKIN_PIE = 393, GRAPES = 1103;
 export const CARROT_CROP = 1348, POTATO_CROP = 1352, PUMPKIN_STEM = 1356, PUMPKIN = 1359, JACK_O_LANTERN = 1360, TRELLIS = 1361, GRAPE_VINE = 1362;
 // carrots and potatoes: 4 stages (3 is ripe)
 for (const [base, kind, seed, tex, extra] of [[CARROT_CROP, 'carrot', CARROT, T.CARROT_0, 0], [POTATO_CROP, 'potato', POTATO, T.POTATO_0, 1]]) {
@@ -2497,7 +2498,7 @@ RECIPES.push(
 // its treasure behind a vault gate that only its puzzle opens (see main.js). A diving helmet makes your breath
 // last five times as long, and an air pump keeps it topped up while you're near; flippers make you swim fast.
 export const SEA_BRICK = 1368, SEA_LANTERN = 1369, VAULT_GATE = 1370, SKY_STONE = 1371, AIR_PUMP = 1372;
-export const DIVING_HELMET = 1110, FLIPPERS = 1111, PEARL = 1112;
+export const DIVING_HELMET = 394, FLIPPERS = 1111, PEARL = 1112; // (the helmet was 1110, the delay block's id)
 block(SEA_BRICK, { name: 'Sea Bricks', tex: T.SEA_BRICK, hardness: 2.5, tool: 'pick', needsTool: true });
 block(SEA_LANTERN, { name: 'Sea Lantern', tex: T.SEA_LANTERN, hardness: 1, tool: 'pick', light: 15, sound: 'glass' });
 block(VAULT_GATE, { name: 'Vault Gate', tex: T.VAULT, hardness: Infinity, blastproof: true, drop: 0 });
@@ -2558,3 +2559,175 @@ RECIPES.push(
   { out: [FIREPLACE, 1], in: [[BRICKS, 5], [COBBLE, 2], [IRON_INGOT, 1]], table: true },
   { out: [CHIMNEY, 2], in: [[BRICKS, 3]], table: true },
 );
+
+// ---------- v27 A: stables ----------
+// A stable: a wooden manger full of hay. Tap it to call your horses home; a horse you get off near one goes in
+// and waits there.
+export const STABLE = 1386;
+block(STABLE, {
+  name: 'Stable', sound: 'wood', hardness: 1.5, tool: 'axe', transparent: true, stable: true,
+  model: [[0, 0, 0, 16, 11, 16, { side: T.STABLE_SIDE, top: T.HAY, bottom: T.PLANKS }], [0, 11, 0, 2, 16, 2, T.LOG_SIDE], [14, 11, 0, 16, 16, 2, T.LOG_SIDE], [0, 11, 14, 2, 16, 16, T.LOG_SIDE], [14, 11, 14, 16, 16, 16, T.LOG_SIDE]],
+  boxes: [[0, 0, 0, 16, 11, 16]],
+});
+RECIPES.push({ out: [STABLE, 1], in: [[PLANKS, 6], [LOG, 2], [WHEAT, 6]], table: true });
+
+// ---------- v27 B: snowmen and fireworks ----------
+// A snowman (it melts away out of winter, except in the tundra), and fireworks: tap with one in hand to send
+// it up. Villages put on fireworks of their own on festival nights.
+export const SNOWMAN = 1387; // 1387..1390: + facing
+export const FIREWORK = 1114;
+const SNOWMAN_MODEL = [
+  [3, 0, 3, 13, 9, 13, T.SNOW], [4.5, 9, 4.5, 11.5, 15.5, 11.5, T.SNOW], // body and head
+  [4, 1, 13, 12, 8.5, 13.3, T.SNOWMAN_FRONT], [5, 10, 11.5, 11, 15, 11.8, T.SNOWMAN_FRONT], // buttons, and the face
+  [7.5, 12, 11.8, 8.5, 13, 14.2, T.PUMPKIN_SIDE], // a carrot nose
+  [0, 6, 7.5, 3, 7, 8.5, T.LOG_SIDE], [13, 6, 7.5, 16, 7, 8.5, T.LOG_SIDE], // stick arms
+];
+for (let f = 0; f < 4; f++) {
+  block(SNOWMAN + f, {
+    name: 'Snowman', sound: 'grass', hardness: 0.4, tool: 'shovel', transparent: true, snowman: true, facing: f,
+    model: rotateModel(SNOWMAN_MODEL, f), boxes: [[3, 0, 3, 13, 15.5, 13]], variantOf: f ? SNOWMAN : 0, drop: SNOWMAN,
+  });
+}
+ITEMS[FIREWORK] = { name: 'Firework', about: 'tap to send it up' };
+RECIPES.push(
+  { out: [SNOWMAN, 1], in: [[SNOW, 3], [CARROT, 1], [COAL, 1], [STICK, 2]] },
+  { out: [FIREWORK, 3], in: [[PAPER, 1], [GUNPOWDER, 1]] },
+);
+
+// ---------- v27 C: more vegetables; cider and berry wine; cellars ----------
+// Onions, beans, tomatoes and herbs are planted as they are, like carrots. Beans feed the soil rather than
+// tiring it: whatever is planted after them grows faster. Apples and berries go through the wine press too, and
+// age in a barrel into cider and berry wine. A barrel kept in a cellar (where no daylight reaches) ages faster.
+export const ONION = 395, BEANS = 396, TOMATO = 397, HERBS = 398, APPLE_JUICE = 399, BERRY_JUICE = 334, CIDER = 335, VINTAGE_CIDER = 336,
+  BERRY_WINE = 337, FINE_BERRY_WINE = 338, VEG_STEW = 339, BAKED_BEANS = 1053, TOMATO_SOUP = 1054;
+export const ONION_CROP = 1391, BEAN_CROP = 1395, TOMATO_CROP = 1399, HERB_CROP = 1403; // 4 stages each (3 is ripe)
+for (const [base, kind, seed, tex, name, n] of [[ONION_CROP, 'onion', ONION, T.ONION_0, 'Onions', 2], [BEAN_CROP, 'bean', BEANS, T.BEAN_0, 'Beans', 3],
+  [TOMATO_CROP, 'tomato', TOMATO, T.TOMATO_0, 'Tomatoes', 2], [HERB_CROP, 'herb', HERBS, T.HERB_0, 'Herbs', 2]]) {
+  for (let k = 0; k < 4; k++) {
+    block(base + k, {
+      ...plant, name, tex: tex + k, variantOf: seed, grows: k < 3 ? base + k + 1 : null,
+      crop: { kind, stage: k, ripe: k === 3, seed, first: base },
+      drop: k < 3 ? () => [[seed, 1]] : () => [[seed, n + Math.floor(Math.random() * 2)]],
+    });
+  }
+}
+ITEMS[ONION] = { name: 'Onion', food: 1, places: ONION_CROP };
+ITEMS[BEANS] = { name: 'Beans', food: 1, places: BEAN_CROP, about: 'they feed the soil: the next crop grows faster' };
+ITEMS[TOMATO] = { name: 'Tomato', food: 3, places: TOMATO_CROP };
+ITEMS[HERBS] = { name: 'Herbs', food: 1, places: HERB_CROP, about: 'thyme, sage and basil, for the cooking pot' };
+ITEMS[APPLE_JUICE] = { name: 'Apple Juice', stack: 8, food: 3, bottle: true, about: 'lay it down in a barrel to make cider' };
+ITEMS[BERRY_JUICE] = { name: 'Berry Juice', stack: 8, food: 3, bottle: true, about: 'lay it down in a barrel to make berry wine' };
+ITEMS[CIDER] = { name: 'Cider', stack: 8, food: 4, meal: ['warm', 200], about: 'feel warm inside', bottle: true };
+ITEMS[VINTAGE_CIDER] = { name: 'Vintage Cider', stack: 8, food: 6, meal: ['heal', 8], about: 'feel wonderful', bottle: true };
+ITEMS[BERRY_WINE] = { name: 'Berry Wine', stack: 8, food: 4, meal: ['warm', 200], about: 'feel warm inside', bottle: true };
+ITEMS[FINE_BERRY_WINE] = { name: 'Fine Berry Wine', stack: 8, food: 6, meal: ['heal', 8], about: 'feel wonderful', bottle: true };
+ITEMS[VEG_STEW] = { name: 'Vegetable Stew', food: 10, meal: ['warm', 300], about: 'feel warm inside' };
+ITEMS[TOMATO_SOUP] = { name: 'Tomato Soup', food: 7, meal: ['heal', 4], about: 'feel better' };
+ITEMS[BAKED_BEANS] = { name: 'Baked Beans', food: 7 };
+Object.assign(AGING, { [APPLE_JUICE]: [CIDER, 1], [CIDER]: [VINTAGE_CIDER, 3], [BERRY_JUICE]: [BERRY_WINE, 1], [BERRY_WINE]: [FINE_BERRY_WINE, 3] });
+
+// ---------- v27 D: the kiln, terracotta and pottery; rope ladders and rope bridges ----------
+// A kiln burns fuel like an oven and fires clay: a block of clay into terracotta (dye it, then fire it again
+// for glazed tiles), clay balls into bricks (quicker than a smelter) or into an urn to keep things in.
+// A rope ladder fixed to the top of a drop unrolls down it; a rope bridge is laid out across a gap, plank by
+// plank, the way you're facing, with rope rails along it.
+export const KILN = 1407, // 1407..1414: + facing, + 4 while burning
+  TERRACOTTA = 1415, TERRA_COL = 1416, // 1416..1425: + colour 0..9
+  GLAZED_TILE = 1426, // 1426..1435: + colour
+  ROOF_TILES = 1436, URN = 1437,
+  ROPE_LADDER = 1438, // 1438..1441: + facing
+  ROPE_BRIDGE = 1442, // 1442..1443: + axis (0 along z, 1 along x)
+  BRIDGE_RAIL = 1444; // 1444..1445: the rope rails over a bridge, + axis
+export const UNFIRED_URN = 102;
+ITEMS[UNFIRED_URN] = { name: 'Unfired Urn', about: 'fire it in a kiln' };
+for (let k = 0; k < 8; k++) {
+  const facing = k & 3, lit = k >= 4;
+  block(KILN + k, {
+    name: 'Kiln', station: 'kiln', side: T.KILN_SIDE, top: T.KILN_TOP, bottom: T.KILN_SIDE, front: lit ? T.KILN_FRONT_LIT : T.KILN_FRONT, facing, lit, light: lit ? 13 : 0,
+    hardness: 2.5, tool: 'pick', variantOf: k ? KILN : 0, drop: KILN, stationBase: KILN,
+  });
+}
+block(TERRACOTTA, { name: 'Terracotta', sound: 'stone', tex: T.TERRACOTTA, hardness: 1.5, tool: 'pick' });
+COLORS.forEach((c, i) => {
+  block(TERRA_COL + i, { name: `${c.name} Terracotta`, sound: 'stone', tex: T.TERRA_COL + i, hardness: 1.5, tool: 'pick', color: i });
+  block(GLAZED_TILE + i, { name: `${c.name} Glazed Tile`, sound: 'glass', tex: T.GLAZED + i, hardness: 1.5, tool: 'pick', color: i });
+});
+block(ROOF_TILES, { name: 'Roof Tiles', sound: 'stone', tex: T.ROOF_TILES, hardness: 1.5, tool: 'pick' });
+block(URN, {
+  name: 'Urn', station: 'urn', sound: 'stone', transparent: true, hardness: 1, tool: 'pick',
+  model: [[4, 0, 4, 12, 1, 12, T.URN], [2.5, 1, 2.5, 13.5, 10, 13.5, T.URN], [4, 10, 4, 12, 12, 12, T.URN], [5, 12, 5, 11, 14, 11, T.URN], [4, 14, 4, 12, 15, 12, T.URN]],
+  boxes: [[2.5, 0, 2.5, 13.5, 15, 13.5]],
+});
+const rope = T.ROPE;
+const ROPE_LADDER_MODEL = [
+  [2.5, 0, 0.3, 3.5, 16, 1.3, rope], [12.5, 0, 0.3, 13.5, 16, 1.3, rope],
+  ...[2, 6, 10, 14].map((y) => [3.5, y, 0.2, 12.5, y + 1, 1.4, T.PLANKS]),
+];
+for (let f = 0; f < 4; f++) {
+  block(ROPE_LADDER + f, {
+    name: 'Rope Ladder', sound: 'wool', transparent: true, solid: false, hardness: 0.4, climb: true, ropeLadder: true,
+    model: rotateModel(ROPE_LADDER_MODEL, f), facing: f, variantOf: f ? ROPE_LADDER : 0, drop: ROPE_LADDER,
+  });
+}
+// (a rotation by 1 turns a model along z into one along x)
+const BRIDGE_MODEL = [...[0, 4, 8, 12].map((z) => [0.5, 13, z + 0.3, 15.5, 15, z + 3.7, T.PLANKS]), [1, 12, 0, 2, 13, 16, rope], [14, 12, 0, 15, 13, 16, rope]];
+const RAIL_MODEL = [[0.5, 9, 0, 1.5, 10, 16, rope], [14.5, 9, 0, 15.5, 10, 16, rope], [0.7, 0, 7.5, 1.3, 9, 8.5, rope], [14.7, 0, 7.5, 15.3, 9, 8.5, rope]];
+for (let a = 0; a < 2; a++) {
+  block(ROPE_BRIDGE + a, {
+    name: 'Rope Bridge', sound: 'wood', transparent: true, hardness: 0.8, tool: 'axe', bridge: a,
+    model: a ? rotateModel(BRIDGE_MODEL, 1) : BRIDGE_MODEL, boxes: [[0, 13, 0, 16, 15, 16]], variantOf: a ? ROPE_BRIDGE : 0, drop: ROPE_BRIDGE,
+  });
+  block(BRIDGE_RAIL + a, {
+    name: 'Rope Rail', sound: 'wool', transparent: true, solid: false, hardness: 0.1, variantOf: ROPE_BRIDGE, drop: 0,
+    model: a ? rotateModel(RAIL_MODEL, 1) : RAIL_MODEL,
+  });
+}
+RECIPES.push(
+  { out: [KILN, 1], in: [[CLAY_BRICKS, 5], [IRON_INGOT, 1]], table: true, metal: IRON_INGOT },
+  { out: [ROOF_TILES, 4], in: [[TERRACOTTA, 4]], table: true },
+  { out: [UNFIRED_URN, 1], in: [[CLAY_BALL, 6]] },
+  { out: [ROPE_LADDER, 4], in: [[STRING, 4], [STICK, 3]] },
+  { out: [ROPE_BRIDGE, 4], in: [[PLANKS, 3], [STRING, 3]] },
+);
+COLORS.forEach((c, i) => RECIPES.push({ out: [TERRA_COL + i, 4], in: [[TERRACOTTA, 4], [DYE + i, 1]], metal: DYE + i }));
+
+// ---------- v27 E: canal locks ----------
+// Lock gates are heavy timber gates that hold the water back. Build a walled chamber between a lower and an
+// upper stretch of canal, with gates at each end, and a sluice wheel on the bank beside it: turning the wheel
+// shuts the gates, fills (or drains) the chamber to the other canal's level and opens the gate on that side,
+// carrying a boat up or down with it.
+export const LOCK_GATE = 1446, SLUICE_WHEEL = 1447;
+block(LOCK_GATE, { name: 'Lock Gate', sound: 'wood', side: T.LOCK_GATE, top: T.LOCK_GATE_TOP, bottom: T.LOCK_GATE_TOP, hardness: 2.5, tool: 'axe' });
+block(SLUICE_WHEEL, {
+  name: 'Sluice Wheel', sound: 'wood', transparent: true, hardness: 1.5, tool: 'axe',
+  model: [
+    [3, 0, 6, 7, 11, 10, T.LOG_SIDE], [7, 9.25, 7.25, 12.5, 10.75, 8.75, T.IRON], // post and axle
+    [12.5, 5, 7.5, 13.5, 15, 8.5, T.PLANKS], [12.5, 9.5, 3, 13.5, 10.5, 13, T.PLANKS], // spokes
+    [12, 15, 5, 14, 16, 11, T.IRON], [12, 4, 5, 14, 5, 11, T.IRON], [12, 7, 2, 14, 13, 3, T.IRON], [12, 7, 13, 14, 13, 14, T.IRON], // the rim
+    [12, 13, 3, 14, 15, 5, T.IRON], [12, 13, 11, 14, 15, 13, T.IRON], [12, 5, 3, 14, 7, 5, T.IRON], [12, 5, 11, 14, 7, 13, T.IRON],
+  ],
+  boxes: [[3, 0, 3, 14, 16, 13]],
+});
+RECIPES.push(
+  { out: [LOCK_GATE, 2], in: [[PLANKS, 6], [IRON_INGOT, 1]], table: true, metal: IRON_INGOT },
+  { out: [SLUICE_WHEEL, 1], in: [[LOG, 1], [PLANKS, 2], [IRON_INGOT, 2]], table: true, metal: IRON_INGOT },
+);
+
+// ---------- v27 F: stalactites, stalagmites and cave creatures ----------
+// Dripstone hangs from cave roofs and rises from their floors. A stalactite can come loose over your head
+// (or when the rock it hangs from is dug out) and fall. Glowing beetles crawl in the dark; their shells make
+// a cool green lamp.
+export const STALACTITE = 1448, STALAGMITE = 1449, BEETLE_LAMP = 1450;
+export const GLOW_SHELL = 103;
+const DRIP = T.DRIPSTONE;
+block(STALACTITE, {
+  name: 'Stalactite', sound: 'stone', transparent: true, solid: false, hardness: 0.8, tool: 'pick', stalactite: true,
+  model: [[5, 11, 5, 11, 16, 11, DRIP], [6, 6, 6, 10, 11, 10, DRIP], [7, 2, 7, 9, 6, 9, DRIP], [7.5, 0, 7.5, 8.5, 2, 8.5, DRIP]],
+});
+block(STALAGMITE, {
+  name: 'Stalagmite', sound: 'stone', transparent: true, solid: false, hardness: 0.8, tool: 'pick',
+  model: [[4.5, 0, 4.5, 11.5, 5, 11.5, DRIP], [5.5, 5, 5.5, 10.5, 10, 10.5, DRIP], [6.75, 10, 6.75, 9.25, 14, 9.25, DRIP], [7.5, 14, 7.5, 8.5, 16, 8.5, DRIP]],
+});
+block(BEETLE_LAMP, { name: 'Beetle Lamp', sound: 'glass', tex: T.BEETLE_LAMP, hardness: 0.5, light: 12 });
+ITEMS[GLOW_SHELL] = { name: 'Glow Shell', about: 'from a cave beetle: it still glows' };
+RECIPES.push({ out: [BEETLE_LAMP, 1], in: [[GLOW_SHELL, 3], [GLASS, 1]] });
