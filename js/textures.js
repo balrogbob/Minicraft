@@ -857,6 +857,7 @@ P[T.CRAFTER_FRONT] = (t) => {
     else if (d >= 3.6 && d < 4.4 && (Math.round(Math.atan2(y - 11.5, x - 11.5) * 4 / Math.PI) & 1)) t.set(x, y, [150, 150, 160]);
   }
 };
+P[T.TANK_WATER] = (t) => { for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) t.set(x, y, t.vary(Math.sin(x * 0.8 + y * 0.4) > 0.6 ? [96, 150, 232] : [52, 104, 210], 0.05)); };
 P[T.LOGIC_BASE] = (t) => {
   for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) t.set(x, y, t.vary([172, 172, 168], 0.04));
   frame(t, [128, 128, 126], 1);

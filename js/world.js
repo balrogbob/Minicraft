@@ -404,6 +404,7 @@ export class World {
         // plants grow twice as fast in the rain, faster near bees, and with the seasons
         let chance = elapsed * (this.raining ? 2 : 1) * season / (def.grows === 'up' ? GROW_SECONDS.cane : GROW_SECONDS.wheat);
         if (hives.length && nearHive(x, y, z)) chance *= 1.5;
+        if (this.sprinkled?.some(([sx, sy, sz]) => Math.abs(sx - x) <= 2 && Math.abs(sz - z) <= 2 && sy - y >= 0 && sy - y <= 2)) chance *= 2; // watered
         if (Math.random() >= chance) continue;
         if (def.grows === 'up') this.setBlock(x, y + 1, z, SUGAR_CANE);
         else if (def.grows === 'tree') this.growTree(x, y, z);
@@ -1046,9 +1047,11 @@ export class World {
       }
       if (def.shape === 'kinetic') continue; // drawn (and turned) by kinetics.js
       if (def.shape === 'pipe') {
-        // a lead pipe: a short length at the centre, with arms reaching out to each pipe, pump or spout it touches
+        // a lead pipe: a short length at the centre, with arms reaching out to each pipe, pump, spout, tank,
+        // sprinkler or fuel-burning machine it touches
         const model = [[5, 5, 5, 11, 11, 11, T.LEAD]];
-        const joins = (id) => id === PIPE || id === PUMP || id === SPOUT;
+        if (def.valve) model.push([4, 11, 7, 12, 12, 9, T.WIRE_ON], [7, 11, 4, 9, 12, 12, T.WIRE_ON], [7.5, 11, 7.5, 8.5, 12.5, 8.5, T.IRON]); // its handwheel
+        const joins = (id) => { const d = BLOCKS[id]; return id === PUMP || id === SPOUT || d?.shape === 'pipe' || d?.tank || d?.sprinkler || d?.engine || ['oven', 'smelter', 'blast'].includes(d?.station); };
         if (joins(this.get(x + 1, y, z))) model.push([11, 5.5, 5.5, 16, 10.5, 10.5, T.LEAD]);
         if (joins(this.get(x - 1, y, z))) model.push([0, 5.5, 5.5, 5, 10.5, 10.5, T.LEAD]);
         if (joins(this.get(x, y + 1, z))) model.push([5.5, 11, 5.5, 10.5, 16, 10.5, T.LEAD]);

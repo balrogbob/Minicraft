@@ -2291,6 +2291,20 @@ function place() {
       toast(machines.toggleEjector(tx, ty, tz) ? 'Ejector: throws a whole stack each time its signal comes on' : 'Ejector: throws one thing at a time while it gets a signal', 2500);
       return;
     }
+    if (BLOCKS[tid].tank) {
+      // pour a bucket in, or fill an empty one; otherwise see what's in it
+      const pour = { [WATER_BUCKET]: [WATER, 1, BUCKET], [BUCKET]: [WATER, -1, WATER_BUCKET], [LAVA_BUCKET]: [LAVA, 1, LEAD_BUCKET], [LEAD_BUCKET]: [LAVA, -1, LAVA_BUCKET] }[held?.id];
+      if (pour) {
+        if (machines.pourTank(world, tx, ty, tz, pour[0], pour[1])) {
+          if (held.count > 1) { inventory.consumeHeld(); if (inventory.add(pour[2], 1)) toast('Inventory full'); }
+          else { inventory.slots[inventory.selected] = { id: pour[2], count: 1 }; inventory.onChange(); }
+          sound.splash(false);
+        } else toast(pour[1] > 0 ? 'The tank is full, or holds the other liquid' : 'There\'s not a bucketful of that in the tank', 2000);
+        return;
+      }
+      if (!(held && isBlock(held.id))) { toast(`Tank: ${machines.tankText(tx, ty, tz)}`, 2000); return; }
+    }
+    if (BLOCKS[tid].valve && !(held && isBlock(held.id))) { toast(`Valve: ${signalAt(tx, ty, tz) ? 'open (it has a signal)' : 'shut: give it a signal to let liquid through'}`, 2000); return; }
     if (BLOCKS[tid].elevator && !(held && isBlock(held.id))) { toast(`Bucket elevator: ${machines.liftStatus(world, kinetics, tx, ty, tz)}`, 2500); return; }
     if (BLOCKS[tid].sensor === 'gauge' && !(held && isBlock(held.id))) {
       const full = machines.toggleGauge(tx, ty, tz);
@@ -2732,7 +2746,7 @@ function breakBlock(x, y, z) {
   if (isSign(id) || isBed(id)) { dropWaypoint(x, y, z); dropWaypoint(...bedPartnerOr(x, y, z, id)); }
   if (isFrame(id)) { const item = frames.remove(x, y, z); if (item) drops.push([item, 1]); }
   if (stationKind(id)) loose.spill(stations.removeStacks(x, y, z), x, y, z); // whatever was inside spills out
-  if (def.machine || def.engine || def.sensor || def.ejector || def.hopper) loose.spill(machines.removeAt(x, y, z).map(([i, n]) => ({ id: i, count: n })), x, y, z); // and whatever was on a belt or in a drill
+  if (def.machine || def.engine || def.sensor || def.ejector || def.hopper || def.tank) loose.spill(machines.removeAt(x, y, z).map(([i, n]) => ({ id: i, count: n })), x, y, z); // and whatever was on a belt or in a drill
   if (isBed(id)) {
     // either half takes the whole bed with it
     const [ox, oy, oz] = bedPartner(x, y, z);

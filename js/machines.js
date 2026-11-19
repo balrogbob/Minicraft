@@ -12,6 +12,8 @@
 //    machine it fills the ingredients; from the side it fills the fuel slot (if it's fuel).
 //  - A conveyor belt, while driven, carries things along to whatever its end points at.
 //  - A pump beside lava pumps lava instead; a spout over a cauldron fills it with water.
+//  - Pipes also fill tanks, water sprinklers, and carry lava to ovens, smelters and engines as fuel;
+//    valves only let it through while signalled. A pump beside a tank pumps out of it.
 //  - A harvester reaps the ripe crops in front of it and passes them back, like a drill.
 //  - A steam engine burns the fuel put into it while there's water beside it, and drives shafts.
 //  - Observers and storage gauges watch the block in front of them and switch on (see onSwitch).
@@ -23,7 +25,7 @@ import * as THREE from 'three';
 import {
   BLOCKS, AIR, WATER, LAVA, PIPE, PUMP, SPOUT, DRILL, FILAMENT_LAMP, BELT, FACING_DIRS, TOOL_MATERIALS,
   metalTool, maxStack, dropsFor, isFlowing, stationKind, CAULDRON, WHEAT_0, WHEAT_3, SEEDS, BERRY_BUSH, BERRIES, SUGAR_CANE,
-  STEAM_ENGINE, MAX_HONEY,
+  STEAM_ENGINE, MAX_HONEY, TANK, TANK_CAP, tankId,
 } from './blocks.js';
 import { STATION_KINDS, isFuel, FUEL_ITEMS } from './stations.js';
 import { CHUNK } from './terrain.js';
@@ -80,6 +82,8 @@ export class Machines {
     this.ejectors = new Map(); // "x,y,z" -> { t: seconds to the next throw, sig: signalled last time }
     this.ejectStacks = new Set(); // ejectors set to throw a whole stack each time their signal comes on
     this.split = new Map(); // splitting belt "x,y,z" -> which side the next thing goes (0 left, 1 right)
+    this.tanks = new Map(); // "x,y,z" -> { liquid, amount (buckets) }
+    this.sprinkling = []; // sprinklers watering now
     this.lifts = new Map(); // bucket elevator column, by its bottom "x,y,z" -> [{ id, h, sprite }] (h: height climbed)
     this.sensorTimer = 0;
     this.world = null;
@@ -100,6 +104,36 @@ export class Machines {
     this.ejectors.clear(); this.ejectStacks.clear(); this.split.clear();
     for (const items of this.lifts.values()) for (const it of items) this.dropSprite(it);
     this.lifts.clear();
+    this.tanks.clear();
+  }
+
+  // ---------- tanks ----------
+
+  tank(x, y, z) {
+    const k = key(x, y, z);
+    let t = this.tanks.get(k);
+    if (!t) { t = { liquid: WATER, amount: 0 }; this.tanks.set(k, t); }
+    return t;
+  }
+
+  // Show how full a tank is.
+  showTank(world, x, y, z) {
+    const t = this.tank(x, y, z), id = tankId(t.liquid, t.amount);
+    if (world.get(x, y, z) !== id && BLOCKS[world.get(x, y, z)]?.tank) world.setBlock(x, y, z, id);
+  }
+
+  // Pour a bucket of liquid into a tank (n = 1) or take one out (n = -1). Returns true if it could.
+  pourTank(world, x, y, z, liquid, n) {
+    const t = this.tank(x, y, z);
+    if (n > 0) { if ((t.amount > 0 && t.liquid !== liquid) || t.amount > TANK_CAP - 1) return false; t.liquid = liquid; t.amount += 1; }
+    else { if (t.liquid !== liquid || t.amount < 1) return false; t.amount -= 1; }
+    this.showTank(world, x, y, z);
+    return true;
+  }
+
+  tankText(x, y, z) {
+    const t = this.tanks.get(key(x, y, z));
+    return t?.amount > 0 ? `${Math.floor(t.amount * 10) / 10} of ${TANK_CAP} buckets of ${t.liquid === LAVA ? 'lava' : 'water'}` : 'Empty';
   }
 
   // ---------- putting things into blocks ----------
@@ -219,7 +253,7 @@ export class Machines {
       const lit = kinetics.powerAt(x, y, z) > 0;
       if (lit !== (id === FILAMENT_LAMP + 1)) world.setBlock(x, y, z, FILAMENT_LAMP + (lit ? 1 : 0));
     }
-    if ((this.pumpTimer -= dt) <= 0) { this.pumpTimer = 0.5; this.tickPumps(world, kinetics, pumps); }
+    if ((this.pumpTimer -= dt) <= 0) { this.pumpTimer = 0.5; this.tickPumps(world, kinetics, pumps, stations); }
     for (const d of drills) this.tickDrill(dt, world, kinetics, stations, d);
     for (const h of harvesters) this.tickHarvester(dt, world, kinetics, stations, h);
     for (const e of engines) this.tickEngine(dt, world, e);
@@ -339,26 +373,56 @@ export class Machines {
     return `${top - by} block${top - by > 1 ? 's' : ''} high, ${n ? `lifting ${n} thing${n > 1 ? 's' : ''}` : 'empty'}; ${speed > 0 ? `running at ${+speed.toFixed(2)}x` : 'not turning: drive it with a shaft'}`;
   }
 
-  tickPumps(world, kinetics, pumps) {
+  tickPumps(world, kinetics, pumps, stations) {
     const active = new Map(); // cell below a spout -> WATER or LAVA
+    const sprinkled = [];
     for (const [x, y, z] of pumps) {
       if (kinetics.powerAt(x, y, z) <= 0) continue;
-      const near = SIDES6.map(([dx, dy, dz]) => world.get(x + dx, y + dy, z + dz));
-      const liquid = near.includes(WATER) ? WATER : near.includes(LAVA) ? LAVA : 0;
+      const near = SIDES6.map(([dx, dy, dz]) => [x + dx, y + dy, z + dz]);
+      const ids = near.map(([nx, ny, nz]) => world.get(nx, ny, nz));
+      let liquid = ids.includes(WATER) ? WATER : ids.includes(LAVA) ? LAVA : 0, from = null;
+      if (!liquid) {
+        // or out of a tank beside it
+        const i = ids.findIndex((id) => BLOCKS[id]?.tank && id !== TANK);
+        if (i >= 0) { from = key(...near[i]); liquid = this.tank(...near[i]).liquid; }
+      }
       if (!liquid) continue;
-      // follow the pipes from the pump; spouts touching any of them pour
+      // follow the pipes (and open valves) from the pump; spouts, tanks, sprinklers and fires touching them take it
       const seen = new Set([key(x, y, z)]);
       const queue = [[x, y, z]];
+      const tanks = [], fires = [];
       while (queue.length && seen.size < 512) {
         const [px, py, pz] = queue.shift();
         for (const [dx, dy, dz] of SIDES6) {
           const nx = px + dx, ny = py + dy, nz = pz + dz, k = key(nx, ny, nz);
           if (seen.has(k)) continue;
-          const id = world.get(nx, ny, nz);
-          if (id === PIPE) { seen.add(k); queue.push([nx, ny, nz]); } else if (id === SPOUT) { seen.add(k); if (!active.has(key(nx, ny - 1, nz))) active.set(key(nx, ny - 1, nz), liquid); }
+          const id = world.get(nx, ny, nz), d = BLOCKS[id];
+          if (id === PIPE || (d?.valve && this.signalAt?.(nx, ny, nz))) { seen.add(k); queue.push([nx, ny, nz]); continue; }
+          if (id === SPOUT) { seen.add(k); if (!active.has(key(nx, ny - 1, nz))) active.set(key(nx, ny - 1, nz), liquid); }
+          else if (d?.tank) { seen.add(k); if (k !== from) tanks.push([nx, ny, nz]); }
+          else if (d?.sprinkler) { seen.add(k); if (liquid === WATER) sprinkled.push([nx, ny, nz]); }
+          else if (liquid === LAVA && (d?.engine || ['oven', 'smelter', 'blast'].includes(d?.station))) { seen.add(k); fires.push([nx, ny, nz, d]); }
         }
       }
+      const src = from ? this.tank(...from.split(',').map(Number)) : null;
+      const draw = (n) => { if (!src) return true; if (src.amount < n) return false; src.amount -= n; return true; };
+      // tanks fill a bucket each time round
+      for (const [tx, ty, tz] of tanks) {
+        const t = this.tank(tx, ty, tz);
+        if ((t.amount > 0 && t.liquid !== liquid) || t.amount >= TANK_CAP || !draw(1)) continue;
+        t.liquid = liquid; t.amount = Math.min(TANK_CAP, t.amount + 1);
+      }
+      // lava burns as fuel (a hundredth of a bucket for each thing cooked, or half a minute of steam)
+      for (const [fx, fy, fz, d] of fires) {
+        if (d.engine) { const e = this.engine(fx, fy, fz); if (e.burn < 2 && draw(0.01)) e.burn += ENGINE_BURN; continue; }
+        const st = stations.get(fx, fy, fz, d.station);
+        if (st.burn < 0.5 && draw(0.01)) { st.burn += 1; st.burnMax = Math.max(st.burnMax, 1); }
+      }
+      if (src) this.showTank(world, ...from.split(',').map(Number));
+      for (const [tx, ty, tz] of tanks) this.showTank(world, tx, ty, tz);
     }
+    world.sprinkled = sprinkled;
+    this.sprinkling = sprinkled;
     for (const [k, liquid] of active) {
       const [x, y, z] = unkey(k);
       const id = world.get(x, y, z), def = BLOCKS[id];
@@ -515,6 +579,7 @@ export class Machines {
     if (!def) return false;
     if (def.stationBase === CAULDRON) return full ? def.water >= 3 : def.water > 0;
     if (def.hive >= 0) return full ? def.hive >= MAX_HONEY : def.hive > 0;
+    if (def.tank) { const t = this.tanks.get(key(x, y, z)); return full ? (t?.amount ?? 0) >= TANK_CAP : (t?.amount ?? 0) > 0; }
     if (def.engine) { const e = this.engines.get(key(x, y, z)); return full ? (e?.fuel?.count ?? 0) >= maxStack(e?.fuel?.id ?? 0) : !!e?.fuel; }
     if (def.rail?.loader) {
       const cart = this.carts?.storageAt(x, y, z);
@@ -652,7 +717,7 @@ export class Machines {
     this.engines.delete(k);
     this.gaugeFull.delete(k);
     this.seen.delete(k);
-    this.ejectors.delete(k); this.ejectStacks.delete(k); this.split.delete(k);
+    this.ejectors.delete(k); this.ejectStacks.delete(k); this.split.delete(k); this.tanks.delete(k);
     if (BLOCKS[this.world?.get(x, y, z)]?.elevator) {
       // the column it was part of: what it holds comes back
       for (const [lk, items] of this.lifts) {
@@ -679,6 +744,7 @@ export class Machines {
       engines: [...this.engines].filter(([, e]) => e.fuel || e.burn > 0).map(([k, e]) => [k, +e.burn.toFixed(1), e.fuel ? [e.fuel.id, e.fuel.count] : 0]),
       gaugeFull: [...this.gaugeFull],
       ejectStacks: [...this.ejectStacks],
+      tanks: [...this.tanks].filter(([, t]) => t.amount > 0).map(([k, t]) => [k, t.liquid, +t.amount.toFixed(2)]),
       lifts: [...this.lifts].map(([k, items]) => [k, items.map((it) => [it.id, +it.h.toFixed(2)])]),
     };
   }
@@ -698,6 +764,9 @@ export class Machines {
     }
     for (const k of o?.gaugeFull ?? []) if (typeof k === 'string') this.gaugeFull.add(k);
     for (const k of o?.ejectStacks ?? []) if (typeof k === 'string') this.ejectStacks.add(k);
+    for (const [k, liquid, amount] of o?.tanks ?? []) {
+      if (typeof k === 'string' && (liquid === WATER || liquid === LAVA)) this.tanks.set(k, { liquid, amount: Math.min(TANK_CAP, Math.max(0, +amount || 0)) });
+    }
     for (const [k, items] of o?.lifts ?? []) {
       if (typeof k === 'string' && Array.isArray(items)) this.lifts.set(k, items.filter((it) => it?.[0] > 0).map(([id, h]) => ({ id, h: Math.max(0, +h || 0), sprite: null })));
     }

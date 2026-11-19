@@ -128,7 +128,7 @@ export const T = {
   PAINTED_DOOR: 176, // 176..195: the lower then upper half of a door painted in each colour
   GLOW_LAMP: 196, // 196..205: a glow lamp in each colour
   PILLAR_SIDE: 206, PILLAR_TOP: 207, SAND_PILLAR_SIDE: 208, SAND_PILLAR_TOP: 209, CANDLE: 210,
-  WIRE_OFF: 211, WIRE_ON: 212, LOGIC_BASE: 213, EJECTOR_FRONT: 214, CRAFTER_FRONT: 215,
+  WIRE_OFF: 211, WIRE_ON: 212, LOGIC_BASE: 213, EJECTOR_FRONT: 214, CRAFTER_FRONT: 215, TANK_WATER: 216,
 };
 
 // Ores, deepest-reaching last. tier: the pickaxe tier needed to mine it (see TOOL_TIERS);
@@ -231,6 +231,7 @@ function block(id, o) {
     directed: !!o.directed, // a switch that only signals the block in front of it (inverters, delays, latches)
     sorts: o.sorts ?? null, // a belt that sends things off to the side: 'split' (left and right in turn) | 'sort' (matches go left)
     ejector: !!o.ejector, collector: !!o.collector, elevator: !!o.elevator, // more automation (see machines.js)
+    tank: !!o.tank, valve: !!o.valve, sprinkler: !!o.sprinkler, // liquids (see machines.js)
   };
 }
 
@@ -1656,4 +1657,37 @@ RECIPES.push(
   { out: [FLYWHEEL, 1], in: [[STONE, 6], [IRON_INGOT, 2], [kineticId('shaft', 1), 1]], table: true, metal: IRON_INGOT },
   { out: [GEAR_SHIFT, 1], in: [[kineticId('gear', 1), 2], [kineticId('large', 1), 1], [IRON_INGOT, 1]], table: true, metal: IRON_INGOT },
   { out: [TACHOMETER, 1], in: [[COPPER_INGOT, 2], [GLASS, 1], [kineticId('shaft', 0), 1]], table: true, metal: COPPER_INGOT },
+);
+
+// ---------- liquids: tanks, valves, sprinklers ----------
+// A tank holds up to TANK_CAP buckets of water or lava: pour buckets in (or take them out) by hand, or
+// fill it from a pump through lead pipes. A pump beside a tank pumps from it. A storage gauge reads it.
+// A valve is a pipe that only lets liquid through while it gets a signal. Lava piped up to an oven,
+// smelter or steam engine burns there as its fuel. A sprinkler on a water pipe waters the 5 x 5 patch
+// around it (and the level below), and crops there grow twice as fast.
+export const TANK = 1160, // 1160 empty; 1161..1164 water by quarters; 1165..1168 lava by quarters
+  VALVE = 1169, SPRINKLER = 1170, TANK_CAP = 16;
+export const tankId = (liquid, amount) => (amount <= 0 ? TANK : TANK + (liquid === LAVA ? 4 : 0) + Math.max(1, Math.min(4, Math.ceil((amount / TANK_CAP) * 4))));
+for (let k = 0; k < 9; k++) {
+  const lava = k > 4, q = k === 0 ? 0 : lava ? k - 4 : k, h = 1 + q * 3.5;
+  block(TANK + k, {
+    name: 'Tank', sound: 'glass', hardness: 1.5, tool: 'pick', transparent: true, tank: true, light: lava ? 10 : 0,
+    model: [
+      ...(q ? [[1.5, 1, 1.5, 14.5, h, 14.5, lava ? T.LAVA : T.TANK_WATER]] : []),
+      [0, 0, 0, 16, 1, 16, T.IRON], [0, 15, 0, 16, 16, 16, T.IRON],
+      [0, 1, 0, 1, 15, 1, T.IRON], [15, 1, 0, 16, 15, 1, T.IRON], [0, 1, 15, 1, 15, 16, T.IRON], [15, 1, 15, 16, 15, 16, T.IRON],
+      [1, 1, 0.5, 15, 15, 1, T.GLASS], [1, 1, 15, 15, 15, 15.5, T.GLASS], [0.5, 1, 1, 1, 15, 15, T.GLASS], [15, 1, 1, 15.5, 15, 15, T.GLASS],
+    ],
+    variantOf: k ? TANK : 0, drop: TANK,
+  });
+}
+block(VALVE, { name: 'Valve', shape: 'pipe', transparent: true, sound: 'stone', hardness: 1, tool: 'pick', valve: true });
+block(SPRINKLER, {
+  name: 'Sprinkler', sound: 'stone', hardness: 1, tool: 'pick', transparent: true, solid: false, sprinkler: true,
+  model: [[6, 8, 6, 10, 16, 10, T.LEAD], [3, 6, 7, 13, 8, 9, T.LEAD], [7, 6, 3, 9, 8, 13, T.LEAD], [6.5, 5, 6.5, 9.5, 6, 9.5, T.IRON]],
+});
+RECIPES.push(
+  { out: [TANK, 1], in: [[IRON_INGOT, 4], [GLASS, 4], [PIPE, 1]], table: true, metal: IRON_INGOT },
+  { out: [VALVE, 1], in: [[PIPE, 1], [IRON_INGOT, 1], [LEVER, 1]], table: true, metal: LEAD_INGOT },
+  { out: [SPRINKLER, 1], in: [[SPOUT, 1], [PIPE, 2]], table: true, metal: LEAD_INGOT },
 );
