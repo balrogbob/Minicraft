@@ -5,7 +5,7 @@ import {
   WOOD_PICK, STONE_PICK, WOOD_AXE, STONE_AXE, WOOD_SHOVEL, STONE_SHOVEL,
   BED, BED_FOOT, CHAIR, LAMP, CARPET, CURTAIN, DOOR, SLIME_FUEL, FACING_DIRS, MAX_LAMP_FUEL,
   isBed, isChair, isLamp, isCurtain, isDoor, doorId, IRON_BARS, FLOWER_POT, HANGING_PLANT, WINDOW_BOX, POT_PLANTS, potOf,
-  OVEN, SMELTER, stationKind, maxStack, FISHING_ROD, RAW_FISH, TOOL_TIERS, LOG, LEAVES, SAPLING, WHEAT_3, isLeaves, FRUITS, fruitLeaves, FRUIT_SAPLING, SCARECROW, COOK_POT, SNOW_LAYER, LIGHTHOUSE_LAMP, EXPLORER_MAP, TREASURE_MAP, STARSTEEL_INGOT, MAX_LIGHT, APIARY, MAX_APIARY, BEESWAX, CANDLE_BLOCK, CABLE_CAR, FARM_REACH, MARKET_STALL, COIN, GLASS_PANE, FURN_TABLE, GRAVEL, FIRE, isFlammable,
+  OVEN, SMELTER, stationKind, maxStack, FISHING_ROD, RAW_FISH, TOOL_TIERS, LOG, LEAVES, SAPLING, WHEAT_3, isLeaves, FRUITS, fruitLeaves, FRUIT_SAPLING, SCARECROW, COOK_POT, SNOW_LAYER, LIGHTHOUSE_LAMP, EXPLORER_MAP, TREASURE_MAP, STARSTEEL_INGOT, MAX_LIGHT, APIARY, MAX_APIARY, BEESWAX, CANDLE_BLOCK, CABLE_CAR, FARM_REACH, MARKET_STALL, COIN, GLASS_PANE, FURN_TABLE, GRAVEL, FIRE, isFlammable, isCrop, GRAPES, TRELLIS, GRAPE_VINE, PUMPKIN_SEEDS, CARROT, POTATO,
   BLAST_SMELTER, CRUSHER, WATER_BUCKET, WATER_WHEEL, isWaterId, isFlowing,
   CHEST, IRON_CHEST, LADDER, SCAFFOLD, SIGN, SIGN_POST, isSign, isSword, ARMOUR_PIECES,
   SAW, TRIP_HAMMER, DRILL, HOPPER, BELT, WINDMILL, BELLOWS, PUMP, FILAMENT_LAMP, MILLSTONE,
@@ -501,6 +501,7 @@ async function startWorld(save, opts = {}) {
   treasures = Array.isArray(save?.treasures) ? save.treasures.filter((t) => t && [t.x, t.z].every(Number.isFinite)) : [];
   catGiftDay = Number.isInteger(save?.catGiftDay) ? save.catGiftDay : -1;
   bellDay = Number.isInteger(save?.bellDay) ? save.bellDay : -1;
+  world.soil = new Map((Array.isArray(save?.soil) ? save.soil : []).filter((e) => Array.isArray(e) && typeof e[0] === 'string' && e[1] && typeof e[1].kind === 'string'));
   for (const e of Array.isArray(save?.fires) ? save.fires : []) if (Array.isArray(e) && typeof e[0] === 'string' && Number.isFinite(e[1])) fires.set(e[0], e[1]);
   villageGrowth = new Map((Array.isArray(save?.villageGrowth) ? save.villageGrowth : []).filter((e) => Array.isArray(e) && typeof e[0] === 'string' && e[1] && Number.isFinite(e[1].deals))
     .map(([k, g]) => [k, { deals: g.deals, built: (Array.isArray(g.built) ? g.built : []).filter((h) => h && [h.x, h.y, h.z].every(Number.isFinite) && Array.isArray(h.door)) }]));
@@ -602,7 +603,7 @@ function saveGame() {
     weather: { raining: weather.raining, timer: Math.round(weather.timer) },
     pets: mobs.pets(),
     waypoints,
-    places, treasures, beacons: [...beaconSpots], catGiftDay, villageGrowth: [...villageGrowth], bellDay, fires: [...fires],
+    places, treasures, beacons: [...beaconSpots], catGiftDay, villageGrowth: [...villageGrowth], bellDay, fires: [...fires], soil: [...(world.soil ?? [])].slice(-4000),
     time: sky.time,
     creative,
     flying: player.flying,
@@ -1330,7 +1331,7 @@ function openStation(x, y, z, cart = null) {
     : kind === 'reactor' ? `<p class="hint">Put fuel rods in: each burns for ${ROD_LIFE / 60} minutes (an enriched rod twice as long), making ${REACTOR_POWER} power, and heats the reactor. ` +
     'A burnt-out rod is left spent: nuclear waste, so keep it in a lead-lined chest. Water, ice or packed ice touching it (each face counts) cools it. If it gets too hot it melts down, so keep plenty of water round it, take rods out, or give it a ' +
     'signal (a lever, or a power meter set to signal a shortfall) to push its control rods in and stop it.</p>'
-    : K.holder ? `<p class="hint">${kind === 'planter' ? 'Put saplings in (or feed them in with a hopper): it plants one on the grass or dirt in front of it whenever there\'s room.'
+    : K.holder ? `<p class="hint">${kind === 'planter' ? 'Put saplings, seeds, carrots or potatoes in (or feed them in with a hopper): it plants one on the grass or dirt in front of it whenever there\'s room.'
     : 'Put empty buckets in for milking yaks, and wheat to feed the animals (their coats grow back faster). Wheat, seeds or berries also feed pairs of animals so they have young. What it gets comes out of its back, into a chest, hopper or belt.'}</p>`
     : kind === 'compost' ? '<p class="hint">It needs no fuel or power: scraps just rot down, given time. Tap a crop or sapling with fertiliser to grow it a step.</p>'
     : kind === 'pcrafter' ? '<p class="hint">Hang item frames on it (up to four) showing what to make: it makes the first, and steps on ' +
@@ -2312,6 +2313,14 @@ $('btn-journal-here').addEventListener('click', () => {
 // Tap a crop or a sapling with it to grow it a step (a sapling into a tree; sugar cane a block taller).
 function fertilise(x, y, z) {
   const id = world.get(x, y, z), grows = BLOCKS[id]?.grows;
+  // fertiliser on soil (or on a crop growing in it) freshens worn-out ground
+  const soilY = [GRASS, DIRT].includes(id) ? y : y - 1;
+  const freshened = world.restSoil(x, soilY, z);
+  if (freshened && (soilY === y || !grows)) { toast('The soil is fresh again', 1500); sound.place('grass'); return true; }
+  if (grows === 'pumpkin') {
+    if (!world.growPumpkin(x, y, z)) { toast('A pumpkin vine needs open grass or dirt beside it, and no pumpkin there already', 2000); return false; }
+    sound.place('grass'); return true;
+  }
   if (!grows || grows === 'fill' || grows === 'honey') { toast('Fertiliser helps crops and saplings grow', 1500); return false; }
   if (grows === 'tree') world.growTree(x, y, z);
   else if (grows === 'up') {
@@ -2807,6 +2816,7 @@ const TRADES = [
   [[COAL, 16], [STEEL_INGOT, 2]], [[BERRIES, 12], [HEAL_TEA, 1]], [[SUGAR_CANE, 16], [COPPER_INGOT, 4]],
   [[CORNFLOWER, 4], [HASTE_TEA, 1]], [[TRUFFLE, 3], [GOLD_INGOT, 2]], [[COPPER_INGOT, 8], [IRON_SHIELD, 1]],
   [[COIN, 10], [TUNGSTEN_INGOT, 1]], [[COIN, 8], [GOLD_INGOT, 2]],
+  [[WHEAT, 8], [GRAPES, 4]], [[SEEDS, 12], [PUMPKIN_SEEDS, 3]], [[BREAD, 2], [CARROT, 6]], [[STICK, 16], [POTATO, 6]],
 ];
 mobs.onTraderSpawn = (m) => {
   const pool = [...TRADES];
@@ -2816,7 +2826,7 @@ mobs.onTraderSpawn = (m) => {
 };
 // Villagers each have a trade, and offer three swaps from its list.
 const VILLAGER_TRADES = {
-  farmer: [[[LOG, 8], [BREAD, 4]], [[COBBLE, 24], [CAKE, 1]], [[STICK, 16], [WHEAT, 12]], [[FEATHER, 6], [BUTTER, 2]], [[BERRIES, 10], [COOKIE, 6]], [[COAL, 6], [FLOUR, 6]], [[COIN, 4], [CAKE, 1]], [[COIN, 2], [BREAD, 3]]],
+  farmer: [[[LOG, 8], [BREAD, 4]], [[COBBLE, 24], [CAKE, 1]], [[STICK, 16], [WHEAT, 12]], [[FEATHER, 6], [BUTTER, 2]], [[BERRIES, 10], [COOKIE, 6]], [[COAL, 6], [FLOUR, 6]], [[COIN, 4], [CAKE, 1]], [[COIN, 2], [BREAD, 3]], [[COIN, 2], [CARROT, 4]], [[COIN, 2], [POTATO, 4]], [[COIN, 3], [PUMPKIN_SEEDS, 3]], [[COIN, 3], [GRAPES, 4]]],
   smith: [[[COAL, 12], [IRON_INGOT, 3]], [[LOG, 16], [STEEL_INGOT, 1]], [[GOLD_INGOT, 1], [STAINLESS_INGOT, 1]], [[COBBLE, 32], [COPPER_INGOT, 4]], [[LEATHER, 4], [IRON_SHIELD, 1]], [[CRYSTAL_SHARD, 4], [TUNGSTEN_INGOT, 1]], [[COIN, 6], [STEEL_INGOT, 2]], [[COIN, 5], [IRON_INGOT, 4]]],
   fisher: [[[STICK, 12], [BAKED_FISH, 3]], [[STRING, 4], [WROD, 1]], [[WHEAT, 16], [SALMON, 4]], [[COAL, 8], [BAKED_SALMON, 3]], [[BREAD, 4], [ROD, 1]], [[OLD_BOOT, 2], [LEATHER, 3]], [[COIN, 3], [BAKED_SALMON, 3]]],
   cleric: [[[GOLD_INGOT, 1], [HEAL_TEA, 2]], [[BERRIES, 8], [NIGHT_TEA, 1]], [[HONEYCOMB, 3], [HASTE_TEA, 1]], [[SILVER_INGOT, 2], [CRYSTAL_SHARD, 4]], [[PAPER, 6], [FIRE_TEA, 1]], [[GLOW_MUSHROOM, 4], [NIGHT_TEA, 1]], [[COIN, 5], [HEAL_TEA, 1]]],
@@ -3607,7 +3617,15 @@ function placeInner() {
   }
   if (held?.id === BUCKET || held?.id === WATER_BUCKET) { useBucket(held.id); return; }
   if (held?.id === LEAD_BUCKET || held?.id === LAVA_BUCKET) { useLeadBucket(held.id); return; }
-  if (held && (foodValue(held.id) || ITEMS[held.id]?.drink)) { eat(held.id); return; }
+  // grapes on a trellis plant a vine; a carrot or potato aimed at the top of soil is planted, not eaten
+  if (held?.id === GRAPES && target?.id === TRELLIS) {
+    if (![GRASS, DIRT].includes(world.get(target.x, target.y - 1, target.z))) { toast('The trellis needs to stand on grass or dirt for a vine to grow', 2000); return; }
+    world.setBlock(target.x, target.y, target.z, GRAPE_VINE);
+    notePlanting(target.x, target.y, target.z, GRAPE_VINE);
+    sound.place('leaves'); inventory.consumeHeld(); return;
+  }
+  const plantsCrop = held && isCrop(ITEMS[held.id]?.places) && target?.ny === 1 && [GRASS, DIRT].includes(target.id) && world.get(target.x, target.y + 1, target.z) === AIR;
+  if (held && !plantsCrop && (foodValue(held.id) || ITEMS[held.id]?.drink)) { eat(held.id); return; }
   if (held && ITEMS[held.id]?.tea) { drinkTea(held.id); return; }
   if (held?.id === PORTABLE_LAMP) { switchHandLamp(held); return; }
   if (held?.id === MAGNET_RING) { switchMagnet(held); return; }
@@ -3633,7 +3651,7 @@ function placeInner() {
     // torches need a solid block to stand on or hang from, and can't go underwater or on ceilings
     if (there !== AIR || target.ny < 0 || !BLOCKS[target.id].solid || isTorch(target.id)) return;
     if (target.ny === 0) id = TORCH_WALL_W + WALL_TORCH_DIRS.findIndex(([dx, dz]) => dx === -target.nx && dz === -target.nz);
-  } else if (isWheat(id)) {
+  } else if (isWheat(id) || isCrop(id)) {
     // seeds go on top of grass or dirt
     if (there !== AIR || target.ny !== 1 || (target.id !== GRASS && target.id !== DIRT)) { toast('Plant seeds on top of grass or dirt'); return; }
   } else if (id === BERRY_BUSH) {
@@ -3796,6 +3814,7 @@ function placeInner() {
   logic.near(world, x, y, z); // (a block put down beside a wire or logic block can change what it gets)
   sound.place(BLOCKS[id].sound);
   inventory.consumeHeld();
+  if (isWheat(id) || isCrop(id)) notePlanting(x, y, z, id);
   if (id === LIGHTHOUSE_LAMP) beaconSpots.add(`${x},${y},${z}`);
   if (id === TELEPAD) {
     const p = machines.padPlaced(x, y, z);
@@ -4946,7 +4965,7 @@ function tickSnow(dt) {
 // Throw a stick (the drop key, or drag it out of your bag) and a tame wolf that isn't told to stay runs after it
 // and brings it back. A tame cat, now and then of a morning, leaves you a present.
 let catGiftDay = -1;
-const CAT_GIFTS = [[FEATHER, 1, 2], [STRING, 1, 2], [RAW_FISH, 1, 1], [SEEDS, 2, 4], [BERRIES, 1, 3], [OLD_BOOT, 1, 1]];
+const CAT_GIFTS = [[FEATHER, 1, 2], [STRING, 1, 2], [RAW_FISH, 1, 1], [SEEDS, 2, 4], [BERRIES, 1, 3], [OLD_BOOT, 1, 1], [CARROT, 1, 2], [POTATO, 1, 2]];
 function tickPets(dt) {
   for (const m of mobs.mobs) {
     if (m.kind !== 'wolf' || !m.tame) continue;
@@ -5125,6 +5144,7 @@ function tickStalls(dt) {
 }
 // The bell, first thing in the morning: the villagers come out.
 function tickVillages(dt) {
+  world.day = day;
   const hours = (sky.time * 24 + 6) % 24;
   mobs.hour = hours;
   const v = world.generator.nearestVillage(player.pos.x, player.pos.z, 1);
@@ -5135,6 +5155,18 @@ function tickVillages(dt) {
     if (d < 64) { sound.ding(Math.max(0.15, 1 - d / 64)); setTimeout(() => sound.ding(Math.max(0.15, 1 - d / 64) * 0.8), 700); toast(`The bell rings in ${v.name}: the villagers are up and about`, 2600); }
   }
   tickStalls(dt);
+}
+
+// ---------- v26 C: crop rotation ----------
+// The soil remembers what grew in it last (see world.planted): the same crop again tires it.
+const CROP_NAMES = { wheat: 'wheat', carrot: 'carrots', potato: 'potatoes', pumpkin: 'pumpkins', grape: 'grapes' };
+const cropKind = (id) => (isWheat(id) ? 'wheat' : BLOCKS[id]?.crop?.kind ?? null);
+function notePlanting(x, y, z, id) {
+  const kind = cropKind(id);
+  if (!kind) return 0;
+  const tired = world.planted(x, y - 1, z, kind);
+  if (tired >= 1) toast(`This soil is ${tired >= 3 ? 'worn out' : tired === 2 ? 'tired' : 'a little tired'} from ${CROP_NAMES[kind]}: rotate crops, rest it a season, or fertilise it`, 2600);
+  return tired;
 }
 
 // ---------- v26 B: thunderstorms, fire, hail ----------
@@ -5455,5 +5487,5 @@ window.minicraft = {
   arrows, fishing, kinetics, electric, lightUniforms, bees, catchAt, seasonOf, applySeason, set day(v) { day = v; applySeason(); }, frames, signalAt, setSwitch, logic, machines, carts, minimap, signs, armour, damage, placeRail, getInCart, getOutOfCart,
   get riding() { return riding; }, explode, lightFuse, fuses, clockTime, compassText, place, editSign, closeSign, openInventory, closeInventory, chestMove, lamps, tickLamps, sleepUntilMorning, stations, openStation, closeStation,
   get caneToday() { return caneToday; }, get creative() { return creative; }, set creative(v) { creative = v; applyCreative(); }, toggleFly, wand, useWand, get achieved() { return achieved; }, achieve, worldMap, openMap, closeMap, openGuide, switchSlot, store, saveGame, renderWorlds, openWorlds, exportSlot, get target() { return target; }, set target(v) { target = v; }, applyKeys, renderKeys, camera, get controls() { return controls; }, loose, throwHeld, get waypoints() { return waypoints; }, toggleWaypoint, sortSlots, quickStack, dropMeteor, get meteors() { return meteors; }, weather, openTrade, closeTrade, mountMob, dismount, get ridingMob() { return ridingMob; }, effects, armourWear, useAnvil, rollLoot, settings,
-  get bedSpawn() { return bedSpawn; }, fertilise, openJournal, closeJournal, get packs() { return packs; }, radiationAt, vehicles, boardVehicle, leaveVehicle, get boarded() { return boarded; }, get seated() { return seated; }, crows, onInvSlot, onStationSlot, quickMoveInv, quickMoveStation, usedIn, itemTipHTML, critters, tickPets, get catGiftDay() { return catGiftDay; }, get villageGrowth() { return villageGrowth; }, lightning, igniteAt, fires, tickFires, tickStorm, growVillage, buildVillageHouse, stallPrice, tickStalls, tickVillages, set catGiftDay(v) { catGiftDay = v; }, get places() { return places; }, get treasures() { return treasures; }, readTreasureMap, tickTreasure, beams, tickBeams, beaconSpots: () => beaconSpots, mistNow, tickSnow, tickExplore, sitOn, standUp, useDisplay, zips, linkZip, startZip, get zipping() { return zipping; }, burnCoal, get health() { return health; }, set health(v) { health = v; }, paintings, placeSwitchRail, signalAt, ailments, armourEnch, openAltar, lairNear, useBed, eat, drinkTea,
+  get bedSpawn() { return bedSpawn; }, fertilise, openJournal, closeJournal, get packs() { return packs; }, radiationAt, vehicles, boardVehicle, leaveVehicle, get boarded() { return boarded; }, get seated() { return seated; }, crows, onInvSlot, onStationSlot, quickMoveInv, quickMoveStation, usedIn, itemTipHTML, critters, tickPets, get catGiftDay() { return catGiftDay; }, get villageGrowth() { return villageGrowth; }, notePlanting, lightning, igniteAt, fires, tickFires, tickStorm, growVillage, buildVillageHouse, stallPrice, tickStalls, tickVillages, set catGiftDay(v) { catGiftDay = v; }, get places() { return places; }, get treasures() { return treasures; }, readTreasureMap, tickTreasure, beams, tickBeams, beaconSpots: () => beaconSpots, mistNow, tickSnow, tickExplore, sitOn, standUp, useDisplay, zips, linkZip, startZip, get zipping() { return zipping; }, burnCoal, get health() { return health; }, set health(v) { health = v; }, paintings, placeSwitchRail, signalAt, ailments, armourEnch, openAltar, lairNear, useBed, eat, drinkTea,
 };

@@ -140,7 +140,7 @@ export const T = {
   LEAD_CHEST_SIDE: 267, LEAD_CHEST_TOP: 268, LEAD_CHEST_FRONT: 269, CENTRIFUGE_SIDE: 270, CENTRIFUGE_TOP: 271, TESLA: 272, TESLA_TOP: 273,
   FENCE_POST: 274, FENCE_WIRE: 275, FREEZER_SIDE: 276, FREEZER_FRONT: 277, ARC_SIDE: 278, ARC_FRONT: 279, PACKED_ICE: 280, INVAR: 281, RAIL_STOP: 282, BASALT: 283, BASALT_TOP: 284, METEORITE: 285,
   IRON_BARS: 286, POT: 287, IVY: 288, BOX_FLOWERS: 289,
-  FRUIT_LEAVES: 290, FRUIT_RIPE: 293, FRUIT_SAPLING: 296, HAY: 299, SACK: 300, BEACON: 301, APIARY_SIDE: 302, APIARY_FRONT: 303, APIARY_FULL: 304, APIARY_TOP: 305, BELT_CROSS: 306, FARM_CTRL: 307, FARM_CTRL_ON: 308, TUBE: 309, TUBE_END: 310, AWNING: 311, FIRE: 312, // (fruit tiles: apple, cherry, orange)
+  FRUIT_LEAVES: 290, FRUIT_RIPE: 293, FRUIT_SAPLING: 296, HAY: 299, SACK: 300, BEACON: 301, APIARY_SIDE: 302, APIARY_FRONT: 303, APIARY_FULL: 304, APIARY_TOP: 305, BELT_CROSS: 306, FARM_CTRL: 307, FARM_CTRL_ON: 308, TUBE: 309, TUBE_END: 310, AWNING: 311, FIRE: 312, CARROT_0: 313, POTATO_0: 317, STEM_0: 321, PUMPKIN_SIDE: 324, PUMPKIN_TOP: 325, JACK_FACE: 326, TRELLIS: 327, VINE_0: 328, // (fruit tiles: apple, cherry, orange)
 };
 
 // Ores, deepest-reaching last. tier: the pickaxe tier needed to mine it (see TOOL_TIERS);
@@ -250,6 +250,7 @@ function block(id, o) {
     postTex: o.postTex ?? null, armTex: o.armTex ?? null, // a fence's own post and rail tiles (an electric fence)
     shock: !!o.shock, tesla: !!o.tesla, zip: !!o.zip, // v24: electric fences, tesla coils, zipline posts (see main.js)
     fruit: o.fruit ?? null, scarecrow: !!o.scarecrow, apiary: !!o.apiary, crossing: !!o.crossing, tube: !!o.tube, // v25: { kind, ripe } on a fruit tree's leaves; scarecrows keep crows off crops
+    crop: o.crop ?? null, // v26: { kind, stage, ripe, seed } for the newer crops (carrots, potatoes, pumpkin vines, grapes)
     farm: o.farm ?? null, // 'feller' | 'planter' | 'breaker' | 'placer' | 'ranch' | 'net' (see machines.js)
   };
 }
@@ -2411,3 +2412,51 @@ RECIPES.push({ out: [MARKET_STALL, 1], in: [[PLANKS, 6], [LOG, 4], [WOOL, 3]], t
 export const FIRE = 1347;
 block(FIRE, { name: 'Fire', sound: 'leaves', tex: T.FIRE, transparent: true, solid: false, shape: 'cross', hardness: 0, light: 13, drop: 0 });
 export const isFlammable = (id) => !!id && (isLeaves(id) || id === LOG || id === PLANKS || /(Wool|Log|Planks|Leaves)$/.test(BLOCKS[id]?.name ?? '')) && !BLOCKS[id]?.station;
+
+// ---------- v26 C: more crops ----------
+// Carrots and potatoes are planted as they are; pumpkin seeds grow a vine that sets a pumpkin on the ground
+// beside it (and goes on cropping); grapes grow up a trellis and fruit again after picking.
+// Planting the same crop in the same soil over and over tires it out (it grows slower): rotate crops, let
+// the ground rest a season, or fertilise it (see world.js).
+export const CARROT = 1098, POTATO = 1099, BAKED_POTATO = 1100, PUMPKIN_SEEDS = 1101, PUMPKIN_PIE = 1102, GRAPES = 1103;
+export const CARROT_CROP = 1348, POTATO_CROP = 1352, PUMPKIN_STEM = 1356, PUMPKIN = 1359, JACK_O_LANTERN = 1360, TRELLIS = 1361, GRAPE_VINE = 1362;
+// carrots and potatoes: 4 stages (3 is ripe)
+for (const [base, kind, seed, tex, extra] of [[CARROT_CROP, 'carrot', CARROT, T.CARROT_0, 0], [POTATO_CROP, 'potato', POTATO, T.POTATO_0, 1]]) {
+  for (let k = 0; k < 4; k++) {
+    block(base + k, {
+      ...plant, name: kind === 'carrot' ? 'Carrots' : 'Potatoes', tex: tex + k, variantOf: seed, grows: k < 3 ? base + k + 1 : null,
+      crop: { kind, stage: k, ripe: k === 3, seed, first: base },
+      drop: k < 3 ? () => [[seed, 1]] : () => [[seed, 2 + Math.floor(Math.random() * 2) + extra]],
+    });
+  }
+}
+// pumpkin vine: 3 stages; the last sets pumpkins beside it
+for (let k = 0; k < 3; k++) {
+  block(PUMPKIN_STEM + k, {
+    ...plant, name: 'Pumpkin Vine', tex: T.STEM_0 + k, variantOf: PUMPKIN_SEEDS, grows: k < 2 ? PUMPKIN_STEM + k + 1 : 'pumpkin',
+    crop: { kind: 'pumpkin', stage: k, ripe: false, seed: PUMPKIN_SEEDS, first: PUMPKIN_STEM }, drop: () => [[PUMPKIN_SEEDS, 1]],
+  });
+}
+block(PUMPKIN, { name: 'Pumpkin', sound: 'wood', top: T.PUMPKIN_TOP, bottom: T.PUMPKIN_TOP, side: T.PUMPKIN_SIDE, hardness: 1, tool: 'axe' });
+block(JACK_O_LANTERN, { name: "Jack-o'-Lantern", sound: 'wood', top: T.PUMPKIN_TOP, bottom: T.PUMPKIN_TOP, side: T.JACK_FACE, hardness: 1, tool: 'axe', light: 14, tint: 4 });
+// grapes: a trellis, then a vine on it in 3 stages (2 is in fruit); picking takes it back to 1
+block(TRELLIS, { name: 'Trellis', sound: 'wood', tex: T.TRELLIS, transparent: true, solid: false, shape: 'cross', hardness: 0.3, tool: 'axe' });
+for (let k = 0; k < 3; k++) {
+  block(GRAPE_VINE + k, {
+    ...plant, name: 'Grape Vine', tex: T.VINE_0 + k, variantOf: TRELLIS, grows: k < 2 ? GRAPE_VINE + k + 1 : null, hardness: 0.3,
+    crop: { kind: 'grape', stage: k, ripe: k === 2, seed: GRAPES, first: GRAPE_VINE, after: GRAPE_VINE + 1 },
+    drop: k === 2 ? () => [[TRELLIS, 1], [GRAPES, 3 + Math.floor(Math.random() * 2)]] : () => [[TRELLIS, 1]],
+  });
+}
+export const isCrop = (id) => !!BLOCKS[id]?.crop;
+ITEMS[CARROT] = { name: 'Carrot', food: 3, places: CARROT_CROP };
+ITEMS[POTATO] = { name: 'Potato', food: 1, places: POTATO_CROP };
+ITEMS[BAKED_POTATO] = { name: 'Baked Potato', food: 6 };
+ITEMS[PUMPKIN_SEEDS] = { name: 'Pumpkin Seeds', places: PUMPKIN_STEM };
+ITEMS[PUMPKIN_PIE] = { name: 'Pumpkin Pie', food: 8 };
+ITEMS[GRAPES] = { name: 'Grapes', food: 2, about: 'plant them on a trellis to grow a vine' };
+RECIPES.push(
+  { out: [PUMPKIN_SEEDS, 4], in: [[PUMPKIN, 1]] },
+  { out: [JACK_O_LANTERN, 1], in: [[PUMPKIN, 1], [TORCH, 1]] },
+  { out: [TRELLIS, 2], in: [[STICK, 6]] },
+);

@@ -3,7 +3,7 @@
 import * as THREE from 'three';
 import {
   BLOCKS, AIR, LEAVES, LOG, isLeaves, FRUIT_SAPLING, FRUITS, fruitLeaves, GLASS, DIRT, GRASS, WATER, MAX_LIGHT, SUGAR_CANE, MAX_CANE_HEIGHT,
-  WATER_FLOW, WATER_FALL, WATER_WHEEL, isWaterId, isFlowing, waterLevel, LAVA, OBSIDIAN, PIPE, PUMP, SPOUT, T, FLOWERS, isFlower, FACING_DIRS,
+  PUMPKIN, isWheat, WATER_FLOW, WATER_FALL, WATER_WHEEL, isWaterId, isFlowing, waterLevel, LAVA, OBSIDIAN, PIPE, PUMP, SPOUT, T, FLOWERS, isFlower, FACING_DIRS,
 } from './blocks.js';
 
 // Water wheels let water run through their cell (and over them); see waterAt().
@@ -119,6 +119,7 @@ class Chunk {
 
 // Average seconds between growth steps for each kind of plant (only while its chunk is loaded).
 const GROW_SECONDS = { wheat: 45, cane: 60, tree: 150 };
+const SOIL_REST_DAYS = 6; // a season: soil left this long without the same crop has rested
 // Leaves with no log within this many steps (through other leaves) decay.
 const LEAF_REACH = 4;
 
@@ -406,14 +407,17 @@ export class World {
         }
         if (def.grows === 'honey') { this.tickHive(x, y, z, id, elapsed); continue; }
         if (def.grows === 'fruit') { this.tickFruit(x, y, z, def, elapsed); continue; }
+        const tired = def.crop || isWheat(id) ? this.soilFactor(x, y - 1, z) : 1;
         // plants grow twice as fast in the rain, faster near bees, and with the seasons
         // under glass (a greenhouse) crops grow as well in winter as in spring
         const grow = season < 1 && this.underGlass(x, y, z) ? 1.25 : season;
         let chance = elapsed * (this.raining ? 2 : 1) * grow / (def.grows === 'up' ? GROW_SECONDS.cane : GROW_SECONDS.wheat);
         if (hives.length && nearHive(x, y, z)) chance *= 1.5;
+        chance *= tired; // worn-out soil (the same crop over and over) grows slowly
         if (this.sprinkled?.some(([sx, sy, sz]) => Math.abs(sx - x) <= 2 && Math.abs(sz - z) <= 2 && sy - y >= 0 && sy - y <= 2)) chance *= 2; // watered
         if (Math.random() >= chance) continue;
         if (def.grows === 'up') this.setBlock(x, y + 1, z, SUGAR_CANE);
+        else if (def.grows === 'pumpkin') this.growPumpkin(x, y, z);
         else if (def.grows === 'tree') {
           const k = id - FRUIT_SAPLING; // a fruit tree is a little shorter
           if (k >= 0 && k < FRUITS.length) this.growTree(x, y, z, 3 + Math.floor(Math.random() * 2), fruitLeaves(k)); else this.growTree(x, y, z);
@@ -422,6 +426,33 @@ export class World {
       }
     }
   }
+
+  // A pumpkin vine sets a pumpkin on open ground beside it (one at a time).
+  growPumpkin(x, y, z) {
+    const sides = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+    if (sides.some(([dx, dz]) => this.get(x + dx, y, z + dz) === PUMPKIN)) return false;
+    const free = sides.filter(([dx, dz]) => this.get(x + dx, y, z + dz) === AIR && [GRASS, DIRT].includes(this.get(x + dx, y - 1, z + dz)));
+    if (!free.length) return false;
+    const [dx, dz] = free[Math.floor(Math.random() * free.length)];
+    this.setBlock(x + dx, y, z + dz, PUMPKIN);
+    return true;
+  }
+
+  // ---------- crop rotation ----------
+  // Each patch of soil remembers what was last planted in it. Planting the same crop again tires it (up to 3);
+  // something different, a season left fallow, or fertiliser freshens it up. `day` is set by the game.
+  planted(x, y, z, kind) {
+    this.soil ??= new Map();
+    const k = `${x},${y},${z}`, was = this.soil.get(k), day = this.day ?? 1;
+    let tired = 0;
+    if (was && was.kind === kind && day - was.day < SOIL_REST_DAYS) tired = Math.min(3, was.tired + 1);
+    this.soil.set(k, { kind, tired, day });
+    if (this.soil.size > 6000) this.soil.delete(this.soil.keys().next().value);
+    return tired;
+  }
+  soilTired(x, y, z) { return this.soil?.get(`${x},${y},${z}`)?.tired ?? 0; }
+  soilFactor(x, y, z) { return [1, 0.7, 0.5, 0.35][this.soilTired(x, y, z)]; }
+  restSoil(x, y, z) { const e = this.soil?.get(`${x},${y},${z}`); if (!e || !e.tired) return false; e.tired = 0; return true; }
 
   isFlowerAt(x, y, z) { return isFlower(this.get(x, y, z)); }
 

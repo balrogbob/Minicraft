@@ -9,7 +9,7 @@ import {
   LAVA, SALTPETRE_ORE, SNOW_GRASS, SNOW, ICE, SANDSTONE, CACTUS, FLOWERS,
   BRICKS, MOSSY_BRICKS, COBBLE, BOSS_SHRINE, LOOT_CHEST, BERRY_BUSH, SPAWNER,
   GLOW_MUSHROOM, CRYSTAL_BLOCK, CRYSTAL_CLUSTER, GEODE_SHELL, BEE_HIVE, MAX_HONEY, VILLAGE_BELL,
-  PLANKS, GLASS_PANE, FURN_TABLE, CHEST, TORCH_WALL_W, doorId, slabId, WHEAT_0, BLOCKS,
+  PLANKS, GLASS_PANE, FURN_TABLE, CHEST, TORCH_WALL_W, doorId, slabId, WHEAT_0, BLOCKS, CARROT_CROP, POTATO_CROP,
   LAIRS, CUT_SANDSTONE, TRAP_PLATE, DART_TRAP, FROST_BRICKS, FORT_BRICKS, OBSIDIAN,
   BASALT, BOOKSHELF, TUNGSTEN_ORE, URANIUM_ORE, LOG as MAST,
   LIGHTHOUSE_LAMP, PAINTED_PLANKS, COLORS, LADDER, FENCE, CLAY_BRICKS,
@@ -684,7 +684,12 @@ export class Generator {
         pad(wx, y, wz, DIRT, 3);
         if (edge) set(wx, y, wz, LOG);
         else if (dx === 0) set(wx, y, wz, WATER);
-        else { set(wx, y, wz, DIRT); set(wx, y + 1, wz, WHEAT_0 + Math.floor(hash3(this.seed, wx, 3011, wz) * 4)); }
+        else {
+          // wheat on one side of the channel; carrots or potatoes on the other
+          set(wx, y, wz, DIRT);
+          const stage = Math.floor(hash3(this.seed, wx, 3011, wz) * 4);
+          set(wx, y + 1, wz, dx < 0 ? WHEAT_0 + stage : (hash3(this.seed, x, 3012, z) < 0.5 ? CARROT_CROP : POTATO_CROP) + stage);
+        }
       }
     }
   }

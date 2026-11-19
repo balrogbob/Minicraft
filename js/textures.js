@@ -17,7 +17,7 @@ import {
   SUN_SCARAB, FROST_HEART, EMBER_CORE, SUN_MASK, FROST_CIRCLET, EMBER_CROWN, HONEY_TEA, MUSHROOM_STEW, FISH_PIE, COPY_WAND,
   CRYSTAL_SHARD, HONEY_BOTTLE, HONEYCOMB, SALMON, BAKED_SALMON, ICEFISH, BAKED_ICEFISH, PUFFERFISH, OLD_BOOT,
   BATTERY, PORTABLE_LAMP, JACKHAMMER, JETPACK, ELECTRIC_DRILL, HOVER_BOOTS, NV_GOGGLES, MAGNET_RING, WIND_TURBINE, NICKEL_INGOT, CUPRONICKEL_INGOT,
-  ELECTRIC_RAIL, CHAINSAW, SAWDUST, BOOK, BACKPACK, BIG_BACKPACK, HUGE_BACKPACK, SPANNER, GRAPPLE, URANIUM_INGOT, FUEL_ROD, JOURNAL, FERTILISER, SPENT_ROD, ENRICHED_URANIUM, ENRICHED_ROD, hazmatId, INVAR_INGOT, RAIL_STATION, BOAT, BALLOON, ZIP_LINE, METEORIC_IRON, STARSTEEL_INGOT, starsteelTool, EGG, FRIED_EGG, SADDLE, TRUFFLE, FLOWER_POT, HANGING_PLANT, WINDOW_BOX, APPLE, CHERRIES, ORANGE_FRUIT, APPLE_PIE, CHERRY_PIE, FRUIT_SALAD, ORANGE_JUICE, FISH_SOUP, TRUFFLE_SOUP, BERRY_JAM, COOK_POT, SCARECROW, EXPLORER_MAP, TREASURE_MAP, BEESWAX, CABLE_CAR, COIN,
+  ELECTRIC_RAIL, CHAINSAW, SAWDUST, BOOK, BACKPACK, BIG_BACKPACK, HUGE_BACKPACK, SPANNER, GRAPPLE, URANIUM_INGOT, FUEL_ROD, JOURNAL, FERTILISER, SPENT_ROD, ENRICHED_URANIUM, ENRICHED_ROD, hazmatId, INVAR_INGOT, RAIL_STATION, BOAT, BALLOON, ZIP_LINE, METEORIC_IRON, STARSTEEL_INGOT, starsteelTool, EGG, FRIED_EGG, SADDLE, TRUFFLE, FLOWER_POT, HANGING_PLANT, WINDOW_BOX, APPLE, CHERRIES, ORANGE_FRUIT, APPLE_PIE, CHERRY_PIE, FRUIT_SALAD, ORANGE_JUICE, FISH_SOUP, TRUFFLE_SOUP, BERRY_JAM, COOK_POT, SCARECROW, EXPLORER_MAP, TREASURE_MAP, BEESWAX, CABLE_CAR, COIN, CARROT, POTATO, BAKED_POTATO, PUMPKIN_SEEDS, PUMPKIN_PIE, GRAPES,
   SALTPETRE, GUNPOWDER, LEAD_SINKER, WEIGHTED_ROD, LEAD_BUCKET, LAVA_BUCKET, GOLD_CLOCK, COMPASS, SILVER_ARROW, MIRROR_LAMP,
 } from './blocks.js';
 
@@ -560,6 +560,44 @@ P[T.FIRE] = (t) => {
       t.set(x, y, t.vary(c, 0.06), 255);
     }
   }
+};
+// v26 C: carrots, potatoes, pumpkin vines, pumpkins, trellises and grape vines
+function leafyCrop(t, stage, top) {
+  const h = [3, 5, 8, 10][stage];
+  for (const x of [2, 5, 8, 11, 13]) {
+    const hh = h - 1 + Math.floor(t.r() * 3);
+    for (let k = 0; k < hh; k++) { t.set(x, 15 - k, t.vary([70, 150, 52], 0.12)); if (k > hh / 2 && k % 2) { t.set(x - 1, 15 - k, t.vary([90, 170, 60], 0.1)); t.set(x + 1, 15 - k, t.vary([60, 130, 44], 0.1)); } }
+    if (stage === 3 && top) for (let k = 0; k < 2; k++) for (let d = -1; d <= 1; d++) t.set(x + d, 15 - k, t.vary(top, 0.1));
+  }
+}
+for (let k = 0; k < 4; k++) { P[T.CARROT_0 + k] = (t) => leafyCrop(t, k, [236, 120, 30]); P[T.POTATO_0 + k] = (t) => { leafyCrop(t, k, [196, 160, 96]); if (k === 3) for (const x of [4, 10]) t.set(x, 4, [240, 240, 255]); }; }
+for (let k = 0; k < 3; k++) P[T.STEM_0 + k] = (t) => {
+  const h = [4, 8, 12][k];
+  for (let y = 0; y < h; y++) { const x = 7 + Math.round(Math.sin(y * 0.9)); t.set(x, 15 - y, t.vary([110, 160, 60], 0.1)); }
+  if (k >= 1) for (const [x, y] of [[5, 13], [9, 10], [6, 7], [10, 5]]) if (15 - y < h) for (let d = 0; d < 3; d++) t.set(x + d - 1, y, t.vary([70, 140, 50], 0.12));
+  if (k === 2) for (const [x, y] of [[4, 4], [11, 9]]) t.set(x, y, [240, 200, 60]);
+};
+P[T.PUMPKIN_SIDE] = (t) => { for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) t.set(x, y, t.vary(x % 4 === 0 ? [196, 100, 20] : [228, 132, 32], 0.06)); };
+P[T.PUMPKIN_TOP] = (t) => {
+  for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) t.set(x, y, t.vary((x + y) % 5 === 0 ? [200, 108, 24] : [222, 128, 32], 0.06));
+  for (let y = 6; y < 10; y++) for (let x = 7; x < 9; x++) t.set(x, y, t.vary([90, 120, 40], 0.1));
+};
+P[T.JACK_FACE] = (t) => {
+  P[T.PUMPKIN_SIDE](t);
+  const glow = [255, 214, 90];
+  for (const [x, y] of [[4, 4], [5, 4], [4, 5], [5, 5], [10, 4], [11, 4], [10, 5], [11, 5]]) t.set(x, y, glow);
+  for (let x = 3; x <= 12; x++) { t.set(x, 10, glow); if (x % 3) t.set(x, 11, glow); }
+  t.set(3, 9, glow); t.set(12, 9, glow);
+};
+function trellis(t) {
+  for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) if (x === 1 || x === 14 || (x + y) % 6 === 0 || (x - y + 16) % 6 === 0) t.set(x, y, t.vary([150, 112, 66], 0.1));
+}
+P[T.TRELLIS] = trellis;
+for (let k = 0; k < 3; k++) P[T.VINE_0 + k] = (t) => {
+  trellis(t);
+  const reach = [6, 11, 15][k];
+  for (let y = 15; y > 15 - reach; y--) for (let x = 0; x < TILE; x++) if (t.r() < (k ? 0.45 : 0.25) && (x + y) % 2 === 0) t.set(x, y, t.vary([66, 132, 48], 0.15));
+  if (k === 2) for (const [x, y] of [[3, 6], [10, 4], [7, 10], [12, 11]]) for (let dy = 0; dy < 3; dy++) for (let dx = 0; dx < 2 + (dy < 2 ? 1 : 0) - (dy === 2 ? 1 : 0); dx++) t.set(x + dx, y + dy, t.vary([96, 40, 120], 0.12));
 };
 P[T.AWNING] = (t) => { for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) t.set(x, y, t.vary(Math.floor(x / 4) % 2 ? [240, 236, 224] : [200, 44, 44], 0.04)); };
 P[T.TUBE] = (t) => {
@@ -2254,6 +2292,21 @@ ITEM_PAINTERS[TREASURE_MAP] = (ctx) => {
   for (let y = 2; y < 14; y++) for (let x = 1; x < 15; x++) px(ctx, x, y, (x * 3 + y * 5) % 7 ? [214, 190, 140] : [196, 168, 116]);
   for (const [x, y] of [[3, 11], [4, 10], [5, 10], [6, 9], [8, 8], [9, 7], [10, 6]]) px(ctx, x, y, [120, 80, 50]); // the trail
   for (let i = 0; i < 4; i++) { px(ctx, 10 + i, 3 + i, [200, 30, 30]); px(ctx, 13 - i, 3 + i, [200, 30, 30]); } // X
+};
+// v26 C: the new crops
+ITEM_PAINTERS[CARROT] = (ctx) => {
+  for (let k = 0; k < 9; k++) rect(ctx, 4 + k, 11 - k, Math.max(1, 3 - Math.floor(k / 4)), 3, [236, 120, 30]);
+  rect(ctx, 6, 9, 1, 1, [190, 90, 20]); rect(ctx, 9, 6, 1, 1, [190, 90, 20]);
+  rect(ctx, 12, 1, 1, 3, [70, 150, 50]); rect(ctx, 13, 2, 2, 1, [90, 170, 60]); rect(ctx, 11, 2, 1, 2, [60, 130, 44]);
+};
+const spud = (body, dark) => (ctx) => { rect(ctx, 4, 5, 8, 7, body); rect(ctx, 3, 6, 10, 5, body); rect(ctx, 5, 4, 6, 1, body); px(ctx, 6, 7, dark); px(ctx, 9, 9, dark); px(ctx, 10, 6, dark); };
+ITEM_PAINTERS[POTATO] = spud([196, 160, 96], [140, 110, 60]);
+ITEM_PAINTERS[BAKED_POTATO] = (ctx) => { spud([150, 100, 50], [110, 70, 30])(ctx); rect(ctx, 6, 6, 4, 2, [250, 230, 150]); };
+ITEM_PAINTERS[PUMPKIN_SEEDS] = (ctx) => { for (const [x, y] of [[4, 5], [9, 4], [6, 9], [10, 10], [3, 11]]) { rect(ctx, x, y, 2, 3, [238, 226, 180]); px(ctx, x, y, [255, 250, 220]); } };
+ITEM_PAINTERS[PUMPKIN_PIE] = (ctx) => { rect(ctx, 2, 8, 12, 4, [196, 140, 70]); rect(ctx, 3, 7, 10, 2, [214, 120, 30]); rect(ctx, 2, 12, 12, 1, [150, 100, 50]); px(ctx, 5, 7, [240, 160, 60]); };
+ITEM_PAINTERS[GRAPES] = (ctx) => {
+  for (const [x, y] of [[5, 4], [8, 4], [11, 4], [6, 7], [9, 7], [7, 10], [10, 10], [8, 13]]) { rect(ctx, x - 1, y - 1, 3, 3, [96, 40, 120]); px(ctx, x - 1, y - 1, [160, 100, 190]); }
+  rect(ctx, 8, 0, 1, 3, [110, 80, 40]); rect(ctx, 9, 1, 3, 1, [70, 140, 50]);
 };
 // v26: a silver coin
 ITEM_PAINTERS[COIN] = (ctx) => {

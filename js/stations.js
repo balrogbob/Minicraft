@@ -13,6 +13,7 @@ import {
   LAVA_BUCKET, LEAD_BUCKET, SALTPETRE, SANDSTONE, WHEAT, SUGAR_CANE, COAL_DUST, PLATE_METALS, PLATES, TUNGSTEN_INGOT, FILAMENT,
   SAPLING, ELECTRIC_ITEMS, chargeCap, GLASS_BOTTLE, NIGHT_TEA, HASTE_TEA, FIRE_TEA, HEAL_TEA, BERRIES, CORNFLOWER, DANDELION, POPPY, CACTUS, LAVENDER, DAISY, CAULDRON,
   EGG, FRIED_EGG, TRUFFLE, APPLE, CHERRIES, APPLE_PIE, CHERRY_PIE, FISH_SOUP, TRUFFLE_SOUP, BERRY_JAM,
+  CARROT, POTATO, BAKED_POTATO, PUMPKIN, PUMPKIN_PIE, PUMPKIN_SEEDS,
 } from './blocks.js';
 
 // A recipe ingredient can be one id or a list of alternatives (coal or charcoal).
@@ -158,7 +159,7 @@ STATION_KINDS.crafter = { name: 'Auto-Crafter', inputs: 9, crafter: true, recipe
 STATION_KINDS.pcrafter = { name: 'Programmable Crafter', inputs: 9, crafter: true, recipes: [] };
 // Farm machines that hold things: a planter's saplings, an animal station's buckets and wheat (both just
 // hold them: see machines.js), and a fishing net's catch (taken out by a hopper underneath).
-STATION_KINDS.planter = { name: 'Planter', inputs: 4, holder: true, accepts: [SAPLING], recipes: [] };
+STATION_KINDS.planter = { name: 'Planter', inputs: 4, holder: true, accepts: [SAPLING, SEEDS, CARROT, POTATO, PUMPKIN_SEEDS], recipes: [] };
 STATION_KINDS.ranch = { name: 'Animal Station', inputs: 6, holder: true, accepts: [BUCKET, WHEAT, SEEDS, BERRIES], recipes: [] };
 STATION_KINDS.net = { name: 'Fishing Net', inputs: 4, storage: true, recipes: [] };
 // A reactor holds up to four fuel rods, burning them all at once (see electric.js). Burnt-out rods stay in it, spent.
@@ -196,6 +197,15 @@ STATION_KINDS.cookpot = {
   ],
 };
 
+// v26: the new crops in the oven and the pot
+STATION_KINDS.oven.recipes.push(
+  { out: [BAKED_POTATO, 1], in: [[POTATO, 1]], time: 5 },
+  { out: [PUMPKIN_PIE, 1], in: [[PUMPKIN, 1], [SUGAR, 1], [EGG, 1]], time: 10 },
+);
+STATION_KINDS.cookpot.recipes.push(
+  { out: [PUMPKIN_PIE, 1], in: [[PUMPKIN, 1], [SUGAR, 1], [EGG, 1]], time: 10 },
+);
+
 // The compost bin needs no fuel or power: plant scraps just rot down into fertiliser, given time.
 STATION_KINDS.compost = {
   name: 'Compost Bin', verb: 'Rotting down', inputs: 4, powered: true, passive: true,
@@ -206,6 +216,8 @@ STATION_KINDS.compost = {
     { out: [FERTILISER, 1], in: [[WHEAT, 4]], time: 20 },
     { out: [FERTILISER, 1], in: [[SUGAR_CANE, 4]], time: 20 },
     { out: [FERTILISER, 1], in: [[BERRIES, 6]], time: 20 },
+    { out: [FERTILISER, 1], in: [[CARROT, 4]], time: 20 },
+    { out: [FERTILISER, 1], in: [[POTATO, 4]], time: 20 },
     { out: [FERTILISER, 1], in: [[[POPPY, DANDELION, CORNFLOWER, LAVENDER, DAISY], 4]], time: 20 },
   ],
 };

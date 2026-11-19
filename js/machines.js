@@ -33,7 +33,7 @@
 import * as THREE from 'three';
 import {
   BLOCKS, AIR, WATER, LAVA, isWaterId, PIPE, PUMP, SPOUT, DRILL, FILAMENT_LAMP, BELT, FACING_DIRS, TOOL_MATERIALS,
-  metalTool, maxStack, dropsFor, isFlowing, stationKind, CAULDRON, WHEAT_0, WHEAT_3, SEEDS, BERRY_BUSH, BERRIES, SUGAR_CANE,
+  PUMPKIN, TRELLIS, ITEMS, metalTool, maxStack, dropsFor, isFlowing, stationKind, CAULDRON, WHEAT_0, WHEAT_3, SEEDS, BERRY_BUSH, BERRIES, SUGAR_CANE,
   STEAM_ENGINE, MAX_HONEY, FARM_REACH, isWheat, BEDROCK, PAD_ITEM, LOOT_CHEST, TANK, TANK_CAP, tankId, LOG, SAPLING, GRASS, DIRT, isBlock, WOOL, FEATHER, BUCKET, MILK_BUCKET, WHEAT,
 } from './blocks.js';
 import { STATION_KINDS, isFuel, FUEL_ITEMS } from './stations.js';
@@ -567,10 +567,12 @@ export class Machines {
       const below = world.get(fx, y - 1, fz);
       if (world.get(fx, y, fz) !== AIR || (below !== GRASS && below !== DIRT)) return;
       const st = stations.get(x, y, z, 'planter');
-      const i = st.inputs.findIndex((s) => s?.id === SAPLING);
+      const i = st.inputs.findIndex((s) => s && (s.id === SAPLING || ITEMS[s.id]?.places));
       if (i < 0) return;
+      const put = st.inputs[i].id === SAPLING ? SAPLING : ITEMS[st.inputs[i].id].places;
       if (!--st.inputs[i].count) st.inputs[i] = null;
-      world.setBlock(fx, y, fz, SAPLING);
+      world.setBlock(fx, y, fz, put);
+      if (put !== SAPLING) world.planted?.(fx, y - 1, fz, BLOCKS[put].crop?.kind ?? 'wheat');
       return;
     }
     if (def.farm === 'net') {
@@ -806,8 +808,18 @@ export class Machines {
     const id = world.get(x, y, z);
     if (id === WHEAT_3) {
       const drops = dropsFor(id).map(([i, n]) => [i, i === SEEDS ? n - 1 : n]).filter(([, n]) => n > 0); // one seed is replanted
+      world.planted?.(x, y - 1, z, 'wheat');
       return { drops, after: WHEAT_0 };
     }
+    // the v26 crops: one carrot or potato goes back in; a grape vine stays on its trellis
+    const crop = BLOCKS[id]?.crop;
+    if (crop?.ripe) {
+      const keep = crop.after ? TRELLIS : crop.seed;
+      const drops = dropsFor(id).map(([i, n]) => [i, i === keep ? n - 1 : n]).filter(([, n]) => n > 0);
+      if (!crop.after) world.planted?.(x, y - 1, z, crop.kind);
+      return { drops, after: crop.after ?? crop.first };
+    }
+    if (id === PUMPKIN) return { drops: [[PUMPKIN, 1]], after: AIR };
     if (id === BERRY_BUSH + 1) return { drops: [[BERRIES, 2]], after: BERRY_BUSH };
     if (id === SUGAR_CANE && world.get(x, y - 1, z) === SUGAR_CANE && world.get(x, y + 1, z) !== SUGAR_CANE) return { drops: [[SUGAR_CANE, 1]], after: AIR };
     return null;
