@@ -2,7 +2,7 @@
 // with block light and sunlight flowing across chunk borders, chunk meshing and raycasting.
 import * as THREE from 'three';
 import {
-  BLOCKS, AIR, LEAVES, LOG, DIRT, GRASS, WATER, MAX_LIGHT, SUGAR_CANE, MAX_CANE_HEIGHT,
+  BLOCKS, AIR, LEAVES, LOG, isLeaves, FRUIT_SAPLING, FRUITS, fruitLeaves, GLASS, DIRT, GRASS, WATER, MAX_LIGHT, SUGAR_CANE, MAX_CANE_HEIGHT,
   WATER_FLOW, WATER_FALL, WATER_WHEEL, isWaterId, isFlowing, waterLevel, LAVA, OBSIDIAN, PIPE, PUMP, SPOUT, T, FLOWERS, isFlower, FACING_DIRS,
 } from './blocks.js';
 
@@ -69,7 +69,7 @@ export const skyBrightness = (level) => SKY_CURVE[Math.round(level * 4)];
 // through air or glass stays full; everything else (sideways, or down through leaves and water)
 // loses one level per block. Both chunk lighting and the incremental updates use this rule.
 function skyStep(level, down, id) {
-  return down && level === MAX_LIGHT && id !== LEAVES && !isWaterId(id) ? MAX_LIGHT : level - 1;
+  return down && level === MAX_LIGHT && !isLeaves(id) && !isWaterId(id) ? MAX_LIGHT : level - 1;
 }
 
 // The nearest of a block's boxes (in 1/16 block) hit by a ray: { t, n: the face's normal } or null.
@@ -233,7 +233,7 @@ export class World {
     if (isWheel(old) && !isWheel(id)) this.wheelWater.delete(pack(x, y, z));
     // losing a log (or a leaf) may leave nearby leaves with nothing holding them up
     if (old === LOG && id !== LOG) this.checkLeavesAround(x, y, z, LEAF_REACH);
-    else if (old === LEAVES && id !== LEAVES) this.checkLeavesAround(x, y, z, 1);
+    else if (isLeaves(old) && !isLeaves(id)) this.checkLeavesAround(x, y, z, 1);
     this.unsaved.add(c.key);
     this.markCellDirty(x, z);
     this.updateLight(x, y, z);
@@ -405,19 +405,47 @@ export class World {
           continue;
         }
         if (def.grows === 'honey') { this.tickHive(x, y, z, id, elapsed); continue; }
+        if (def.grows === 'fruit') { this.tickFruit(x, y, z, def, elapsed); continue; }
         // plants grow twice as fast in the rain, faster near bees, and with the seasons
-        let chance = elapsed * (this.raining ? 2 : 1) * season / (def.grows === 'up' ? GROW_SECONDS.cane : GROW_SECONDS.wheat);
+        // under glass (a greenhouse) crops grow as well in winter as in spring
+        const grow = season < 1 && this.underGlass(x, y, z) ? 1.25 : season;
+        let chance = elapsed * (this.raining ? 2 : 1) * grow / (def.grows === 'up' ? GROW_SECONDS.cane : GROW_SECONDS.wheat);
         if (hives.length && nearHive(x, y, z)) chance *= 1.5;
         if (this.sprinkled?.some(([sx, sy, sz]) => Math.abs(sx - x) <= 2 && Math.abs(sz - z) <= 2 && sy - y >= 0 && sy - y <= 2)) chance *= 2; // watered
         if (Math.random() >= chance) continue;
         if (def.grows === 'up') this.setBlock(x, y + 1, z, SUGAR_CANE);
-        else if (def.grows === 'tree') this.growTree(x, y, z);
+        else if (def.grows === 'tree') {
+          const k = id - FRUIT_SAPLING; // a fruit tree is a little shorter
+          if (k >= 0 && k < FRUITS.length) this.growTree(x, y, z, 3 + Math.floor(Math.random() * 2), fruitLeaves(k)); else this.growTree(x, y, z);
+        }
         else this.setBlock(x, y, z, def.grows);
       }
     }
   }
 
   isFlowerAt(x, y, z) { return isFlower(this.get(x, y, z)); }
+
+  // Is the first thing above (x, y, z), within 8 blocks, glass? (Plain or stained glass, or a glass pane.)
+  underGlass(x, y, z) {
+    for (let ty = y + 1; ty <= y + 8 && ty < H; ty++) {
+      const id = this.get(x, ty, z);
+      if (id === AIR) continue;
+      const d = BLOCKS[id];
+      return id === GLASS || d.name?.includes('Glass') || false;
+    }
+    return false;
+  }
+
+  // A fruit tree's leaves: about one in four bears fruit in summer and autumn; ripe fruit falls in winter.
+  tickFruit(x, y, z, def, elapsed) {
+    const s = this.season ?? 0;
+    if (def.fruit.ripe) {
+      if (s === 3 && Math.random() < elapsed / 60) this.setBlock(x, y, z, fruitLeaves(def.fruit.kind));
+      return;
+    }
+    if ((s !== 1 && s !== 2) || ((x * 7 + y * 13 + z * 31) & 3) !== 0) return;
+    if (Math.random() < elapsed * (this.raining ? 1.5 : 1) / GROW_SECONDS.wheat) this.setBlock(x, y, z, fruitLeaves(def.fruit.kind, true));
+  }
 
   // Every loaded bee hive, as [x, y, z].
   hiveList() {
@@ -455,7 +483,7 @@ export class World {
 
   // A sapling at (x, y, z) grows into a tree, if there's room for the trunk and it's on grass or dirt.
   // Returns true if it grew. Same shape as the trees in the generated world.
-  growTree(x, y, z, trunk = 4 + Math.floor(Math.random() * 3)) {
+  growTree(x, y, z, trunk = 4 + Math.floor(Math.random() * 3), leaf = LEAVES) {
     const ground = this.get(x, y - 1, z);
     if (ground !== GRASS && ground !== DIRT) return false;
     const top = y + trunk - 1;
@@ -468,7 +496,7 @@ export class World {
       for (let dz = -r; dz <= r; dz++) for (let dx = -r; dx <= r; dx++) {
         const corner = Math.abs(dx) === r && Math.abs(dz) === r;
         if (corner && (ly === top + 1 || Math.random() < 0.5)) continue;
-        if (this.get(x + dx, ly, z + dz) === AIR && this.chunkAt(x + dx, z + dz)) this.setBlock(x + dx, ly, z + dz, LEAVES);
+        if (this.get(x + dx, ly, z + dz) === AIR && this.chunkAt(x + dx, z + dz)) this.setBlock(x + dx, ly, z + dz, leaf);
       }
     }
     return true;
@@ -483,7 +511,7 @@ export class World {
     for (let dy = -r; dy <= r; dy++) for (let dz = -r; dz <= r; dz++) for (let dx = -r; dx <= r; dx++) {
       if (r === 1 && Math.abs(dx) + Math.abs(dy) + Math.abs(dz) !== 1) continue; // just the 6 neighbours
       const lx = x + dx, ly = y + dy, lz = z + dz;
-      if (this.get(lx, ly, lz) !== LEAVES) continue;
+      if (!isLeaves(this.get(lx, ly, lz))) continue;
       const key = `${lx},${ly},${lz}`;
       if (!this.decay.has(key)) this.decay.set(key, 0.4 + Math.random() * 2.6);
     }
@@ -505,7 +533,7 @@ export class World {
           if (ny >= 0 && ny < H && this.inBounds(nx, ny, nz) && !this.chunkAt(nx, nz)) return true;
           const id = this.get(nx, ny, nz);
           if (id === LOG) return true;
-          if (id === LEAVES) next.push([nx, ny, nz]);
+          if (isLeaves(id)) next.push([nx, ny, nz]);
         }
       }
       frontier = next;
@@ -520,7 +548,7 @@ export class World {
       if (t - dt > 0) { this.decay.set(key, t - dt); continue; }
       this.decay.delete(key);
       const [x, y, z] = key.split(',').map(Number);
-      if (this.get(x, y, z) !== LEAVES || this.leafSupported(x, y, z)) continue;
+      if (!isLeaves(this.get(x, y, z)) || this.leafSupported(x, y, z)) continue;
       this.setBlock(x, y, z, AIR); // queues its neighbours in turn
       this.onLeafDecay?.(x, y, z);
     }
@@ -1111,7 +1139,7 @@ export class World {
         if (nid !== AIR) {
           const ndef = BLOCKS[nid];
           if (!ndef.transparent) continue;
-          if (nid === id && id !== LEAVES) continue; // glass-to-glass faces are hidden
+          if (nid === id && !isLeaves(id)) continue; // glass-to-glass faces are hidden
         }
         // (blocks with a front, like ovens, show it on the side that faces their `facing` direction)
         const tile = f.d === 1 ? (f.s > 0 ? def.top : def.bottom) : def.front !== null && f.dir === def.facing ? def.front : def.side;

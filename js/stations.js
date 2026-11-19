@@ -12,7 +12,7 @@ import {
   GRAVEL, FLINT, FLINT_DUST, CLAY_BALL, CLAY_DUST, BRICK, FIRE_CLAY, FIRE_BRICK, oreDust, HIDE, LEATHER,
   LAVA_BUCKET, LEAD_BUCKET, SALTPETRE, SANDSTONE, WHEAT, SUGAR_CANE, COAL_DUST, PLATE_METALS, PLATES, TUNGSTEN_INGOT, FILAMENT,
   SAPLING, ELECTRIC_ITEMS, chargeCap, GLASS_BOTTLE, NIGHT_TEA, HASTE_TEA, FIRE_TEA, HEAL_TEA, BERRIES, CORNFLOWER, DANDELION, POPPY, CACTUS, LAVENDER, DAISY, CAULDRON,
-  EGG, FRIED_EGG,
+  EGG, FRIED_EGG, TRUFFLE, APPLE, CHERRIES, APPLE_PIE, CHERRY_PIE, FISH_SOUP, TRUFFLE_SOUP, BERRY_JAM,
 } from './blocks.js';
 
 // A recipe ingredient can be one id or a list of alternatives (coal or charcoal).
@@ -179,6 +179,19 @@ STATION_KINDS.freezer = {
   recipes: [
     { out: [PACKED_ICE, 1], in: [[ICE, 4]], time: 10 },
     { out: [ICE, 1], in: [[WATER_BUCKET, 1]], leaves: BUCKET, time: 6 },
+  ],
+};
+
+// The cooking pot: stews, soups and pies over a fire. Good meals that do something more for you (see ITEMS).
+STATION_KINDS.cookpot = {
+  name: 'Cooking Pot', verb: 'Cooking', inputs: 4,
+  recipes: [
+    { out: [APPLE_PIE, 1], in: [[APPLE, 3], [FLOUR, 2], [SUGAR, 1], [EGG, 1]], time: 10 },
+    { out: [CHERRY_PIE, 1], in: [[CHERRIES, 4], [FLOUR, 2], [SUGAR, 1], [EGG, 1]], time: 10 },
+    { out: [TRUFFLE_SOUP, 1], in: [[TRUFFLE, 1], [GLOW_MUSHROOM, 2], [WATER_BUCKET, 1]], leaves: BUCKET, time: 8 },
+    { out: [FISH_SOUP, 1], in: [[[RAW_FISH, SALMON, ICEFISH], 2], [WATER_BUCKET, 1]], leaves: BUCKET, time: 8 },
+    { out: [BERRY_JAM, 1], in: [[BERRIES, 6], [SUGAR, 2], [GLASS_BOTTLE, 1]], time: 8 },
+    { out: [MUSHROOM_STEW, 1], in: [[GLOW_MUSHROOM, 3], [BUTTER, 1]], time: 8 },
   ],
 };
 

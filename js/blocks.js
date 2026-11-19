@@ -140,6 +140,7 @@ export const T = {
   LEAD_CHEST_SIDE: 267, LEAD_CHEST_TOP: 268, LEAD_CHEST_FRONT: 269, CENTRIFUGE_SIDE: 270, CENTRIFUGE_TOP: 271, TESLA: 272, TESLA_TOP: 273,
   FENCE_POST: 274, FENCE_WIRE: 275, FREEZER_SIDE: 276, FREEZER_FRONT: 277, ARC_SIDE: 278, ARC_FRONT: 279, PACKED_ICE: 280, INVAR: 281, RAIL_STOP: 282, BASALT: 283, BASALT_TOP: 284, METEORITE: 285,
   IRON_BARS: 286, POT: 287, IVY: 288, BOX_FLOWERS: 289,
+  FRUIT_LEAVES: 290, FRUIT_RIPE: 293, FRUIT_SAPLING: 296, HAY: 299, SACK: 300, // (fruit tiles: apple, cherry, orange)
 };
 
 // Ores, deepest-reaching last. tier: the pickaxe tier needed to mine it (see TOOL_TIERS);
@@ -248,6 +249,7 @@ function block(id, o) {
     lift: !!o.lift, reactor: !!o.reactor, // v23: lifts and reactors (see electric.js and main.js)
     postTex: o.postTex ?? null, armTex: o.armTex ?? null, // a fence's own post and rail tiles (an electric fence)
     shock: !!o.shock, tesla: !!o.tesla, zip: !!o.zip, // v24: electric fences, tesla coils, zipline posts (see main.js)
+    fruit: o.fruit ?? null, scarecrow: !!o.scarecrow, // v25: { kind, ripe } on a fruit tree's leaves; scarecrows keep crows off crops
     farm: o.farm ?? null, // 'feller' | 'planter' | 'breaker' | 'placer' | 'ranch' | 'net' (see machines.js)
   };
 }
@@ -2241,4 +2243,69 @@ RECIPES.push(
   { out: [FLOWER_POT, 1], in: [[BRICK, 3]] },
   { out: [HANGING_PLANT, 1], in: [[FLOWER_POT, 1], [STRING, 2], [IRON_INGOT, 1], [LEAVES, 4]], table: true, metal: IRON_INGOT },
   { out: [WINDOW_BOX, 1], in: [[PLANKS, 3], [DIRT, 1], [[POPPY, DANDELION, CORNFLOWER, LAVENDER, DAISY], 3]], table: true },
+);
+
+// ---------- v25 B: fruit trees, the cooking pot and scarecrows ----------
+// Apple, cherry and orange trees grow wild in temperate land (and from their saplings). Their leaves blossom in
+// spring and fruit in summer and autumn: tap a leaf with fruit on it to pick it. The fruit drops off in winter.
+export const FRUIT_SAPLING = 1317, FRUIT_LEAVES = 1320, SCARECROW = 1326, COOK_POT = 1309; // saplings 1317..1319, leaves 1320..1325 (kind * 2 + ripe), scarecrow 1326..1329, pot 1309..1316
+export const APPLE = 1083, CHERRIES = 1084, ORANGE_FRUIT = 1085, APPLE_PIE = 1086, CHERRY_PIE = 1087, FRUIT_SALAD = 1088,
+  ORANGE_JUICE = 1089, FISH_SOUP = 1090, TRUFFLE_SOUP = 1091, BERRY_JAM = 1092;
+export const FRUITS = [
+  { key: 'apple', name: 'Apple', item: APPLE },
+  { key: 'cherry', name: 'Cherry', item: CHERRIES },
+  { key: 'orange', name: 'Orange', item: ORANGE_FRUIT },
+];
+export const isLeaves = (id) => id === LEAVES || (id >= FRUIT_LEAVES && id < FRUIT_LEAVES + FRUITS.length * 2);
+export const fruitLeaves = (k, ripe = false) => FRUIT_LEAVES + k * 2 + (ripe ? 1 : 0);
+FRUITS.forEach((f, k) => {
+  block(FRUIT_SAPLING + k, { ...plant, name: `${f.name} Sapling`, tex: T.FRUIT_SAPLING + k, grows: 'tree' });
+  for (const ripe of [false, true]) {
+    block(fruitLeaves(k, ripe), {
+      name: `${f.name} Leaves`, sound: 'leaves', tex: ripe ? T.FRUIT_RIPE + k : T.FRUIT_LEAVES + k, transparent: true, hardness: 0.3,
+      grows: 'fruit', fruit: { kind: k, ripe }, variantOf: ripe ? fruitLeaves(k) : 0, drop: () => [
+        [FRUIT_SAPLING + k, Math.random() < 0.08 ? 1 : 0], [STICK, Math.random() < 0.12 ? 1 : 0], [f.item, ripe ? 1 : 0]],
+    });
+  }
+});
+ITEMS[APPLE] = { name: 'Apple', food: 4 };
+ITEMS[CHERRIES] = { name: 'Cherries', food: 3 };
+ITEMS[ORANGE_FRUIT] = { name: 'Orange', food: 4 };
+// Cooked in the cooking pot (or mixed by hand): good meals that give you something extra for a while.
+ITEMS[APPLE_PIE] = { name: 'Apple Pie', food: 14, meal: ['warm', 300], about: 'warms you through' };
+ITEMS[CHERRY_PIE] = { name: 'Cherry Pie', food: 14, meal: ['heal', 8], about: 'heals you' };
+ITEMS[FRUIT_SALAD] = { name: 'Fruit Salad', food: 9, meal: ['haste', 120], about: 'dig half as fast again' };
+ITEMS[ORANGE_JUICE] = { name: 'Orange Juice', stack: 8, food: 5, meal: ['swift', 180], about: 'run faster', bottle: true };
+ITEMS[FISH_SOUP] = { name: 'Fish Soup', food: 10, meal: ['warm', 300], about: 'warms you through' };
+ITEMS[TRUFFLE_SOUP] = { name: 'Truffle Soup', food: 12, meal: ['night', 240], about: 'see in the dark' };
+ITEMS[BERRY_JAM] = { name: 'Berry Jam', stack: 8, food: 7, meal: ['heal', 5], about: 'heals you', bottle: true };
+// the cooking pot: an iron pot on a tripod over a little fire
+const potModel = (lit) => [
+  [3, 4, 3, 13, 11, 13, T.IRON], [2.5, 10, 2.5, 13.5, 11.5, 13.5, T.IRON], // the pot and its rim
+  [1, 0, 1, 2, 12, 2, T.IRON], [14, 0, 1, 15, 12, 2, T.IRON], [7.5, 0, 14, 8.5, 12, 15, T.IRON], // the tripod
+  [5, 0, 5, 11, 1.5, 11, T.LOG_SIDE], // the firewood
+  ...(lit ? [[6, 1, 6, 10, 4, 10, T.FLAME, true]] : []),
+];
+for (let k = 0; k < 8; k++) {
+  block(COOK_POT + k, {
+    name: 'Cooking Pot', station: 'cookpot', sound: 'stone', transparent: true, hardness: 1.5, tool: 'pick', facing: k & 3, lit: k >= 4,
+    model: potModel(k >= 4), light: k >= 4 ? 12 : 0, variantOf: k ? COOK_POT : 0, drop: COOK_POT, stationBase: COOK_POT,
+  });
+}
+// a scarecrow: a straw man in a sack mask and a hat, on a post
+const SCARECROW_MODEL = [
+  [7.2, 0, 7.2, 8.8, 12, 8.8, wood], // the post
+  [5, 5, 6.5, 11, 11.5, 9.5, T.HAY], // the body
+  [1, 9.5, 7, 15, 11, 9, T.HAY], // the arms
+  [5.5, 11.5, 5.5, 10.5, 16, 10.5, { side: T.SACK, top: T.WOOL, bottom: T.WOOL }], // the head
+  [4, 16, 4, 12, 16.6, 12, T.LOG_SIDE], [5.5, 16.6, 5.5, 10.5, 19, 10.5, T.LOG_SIDE], // the hat
+];
+for (let f = 0; f < 4; f++) {
+  block(SCARECROW + f, { ...furniture, name: 'Scarecrow', sound: 'grass', solid: false, model: rotateModel(SCARECROW_MODEL, f), variantOf: f ? SCARECROW : 0, drop: SCARECROW, facing: f, scarecrow: true });
+}
+RECIPES.push(
+  { out: [COOK_POT, 1], in: [[IRON_INGOT, 5], [LOG, 1]], table: true, metal: IRON_INGOT },
+  { out: [SCARECROW, 1], in: [[STICK, 3], [WHEAT, 6], [WOOL, 1]], table: true },
+  { out: [FRUIT_SALAD, 1], in: [[APPLE, 1], [CHERRIES, 1], [ORANGE_FRUIT, 1]] },
+  { out: [ORANGE_JUICE, 1], in: [[ORANGE_FRUIT, 3], [GLASS_BOTTLE, 1]] },
 );

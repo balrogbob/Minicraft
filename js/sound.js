@@ -302,6 +302,9 @@ export class Sound {
     } else if (kind === 'chicken') {
       // a few quick clucks
       for (const delay of hurt ? [0, 0.08, 0.16] : [0, 0.12]) this.voice({ type: 'square', from: p(620, 700), to: p(420, 480), dur: 0.07, vol: 0.12 * gain, freq: 1800, q: 2, delay });
+    } else if (kind === 'crow') {
+      // a harsh caw or two
+      for (const delay of [0, 0.3]) this.voice({ type: 'sawtooth', from: p(560, 640), to: p(380, 420), dur: 0.2, vol: 0.16 * gain, freq: 1500, q: 3, delay, vibrato: 30 });
     } else if (kind === 'pig') {
       // a snuffly grunt; a squeal when bumped
       if (hurt) this.voice({ type: 'sawtooth', from: p(900, 1000), to: 1400, dur: 0.3, vol: 0.18 * gain, freq: 2200 });

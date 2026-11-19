@@ -5,7 +5,7 @@ import {
   WOOD_PICK, STONE_PICK, WOOD_AXE, STONE_AXE, WOOD_SHOVEL, STONE_SHOVEL,
   BED, BED_FOOT, CHAIR, LAMP, CARPET, CURTAIN, DOOR, SLIME_FUEL, FACING_DIRS, MAX_LAMP_FUEL,
   isBed, isChair, isLamp, isCurtain, isDoor, doorId, IRON_BARS, FLOWER_POT, HANGING_PLANT, WINDOW_BOX, POT_PLANTS, potOf,
-  OVEN, SMELTER, stationKind, maxStack, FISHING_ROD, RAW_FISH, TOOL_TIERS, LOG, LEAVES, SAPLING,
+  OVEN, SMELTER, stationKind, maxStack, FISHING_ROD, RAW_FISH, TOOL_TIERS, LOG, LEAVES, SAPLING, WHEAT_3, isLeaves, FRUITS, fruitLeaves, FRUIT_SAPLING, SCARECROW, COOK_POT,
   BLAST_SMELTER, CRUSHER, WATER_BUCKET, WATER_WHEEL, isWaterId, isFlowing,
   CHEST, IRON_CHEST, LADDER, SCAFFOLD, SIGN, SIGN_POST, isSign, isSword, ARMOUR_PIECES,
   SAW, TRIP_HAMMER, DRILL, HOPPER, BELT, WINDMILL, BELLOWS, PUMP, FILAMENT_LAMP, MILLSTONE,
@@ -54,6 +54,7 @@ import { Carts, railBeyond } from './carts.js';
 import { Vehicles } from './vehicles.js';
 import { MiniMap } from './minimap.js';
 import { Frames, isDisplay } from './frames.js';
+import { Crows } from './birds.js';
 import { Weather } from './weather.js';
 import { Bees } from './bees.js';
 import { Paintings, paintingCells } from './paintings.js';
@@ -294,6 +295,7 @@ const machines = new Machines(scene, icons); // pumps, drills, hoppers and belts
 const loose = new ItemDrops(scene, (id) => machines.makeSprite(id)); // items lying on the ground
 const carts = new Carts(scene); // minecarts on rails
 const vehicles = new Vehicles(scene); // boats and balloons
+const crows = new Crows(scene); // after ripe wheat (see birds.js)
 let riding = null; // the minecart you're sitting in
 const minimap = new MiniMap($('map'), atlasCanvas);
 const frames = new Frames(scene, icons); // what's shown in each item frame
@@ -414,10 +416,10 @@ async function startWorld(save, opts = {}) {
   world.onLeafDecay = (x, y, z) => {
     const p = player.pos;
     if (dead || (x + 0.5 - p.x) ** 2 + (y + 0.5 - p.y) ** 2 + (z + 0.5 - p.z) ** 2 > 16 * 16) return;
-    const drops = dropsFor(LEAVES, 0);
+    const drops = dropsFor(LEAVES, 0); // (fruit trees' leaves too: not their fruit, which you'd pick)
     if (drops.length) giveDrops(drops);
   };
-  mobs.reset(world); bees.clear(); shownSeason = -1;
+  mobs.reset(world); bees.clear(); crows.clear(); shownSeason = -1;
   kinetics.clear();
   kinetics.load(save?.kinetics);
   beltStart = null;
@@ -738,7 +740,7 @@ function updateHunger(dt) {
     (effects.fed > 0 ? 0.5 : 1) * (ailments.heat >= 1 ? 2 : 1);
   hunger = Math.max(0, hunger - rate * dt);
   // starving: you can only stagger along until you eat something; the cold slows you too
-  player.speedMul = (hunger <= 0 ? 0.45 : 1) * (ailments.chill >= 1 ? 0.7 : 1);
+  player.speedMul = (hunger <= 0 ? 0.45 : 1) * (ailments.chill >= 1 ? 0.7 : 1) * (effects.swift > 0 ? 1.3 : 1);
   if (hunger <= 0 && !starvingWarned) { starvingWarned = true; toast('You\'re starving! Eat something to get your strength back.', 4000); }
   if (hunger > 2) starvingWarned = false;
   renderHunger();
@@ -1611,6 +1613,15 @@ function eat(id) {
     if (!was) toast(`Ate ${itemName(id).toLowerCase()}: you feel well fed`, 1600);
     achieve('eat');
   }
+  const meal = ITEMS[id]?.meal;
+  if (meal) {
+    // a good meal does you good for a while
+    effects[meal[0]] = Math.max(effects[meal[0]], meal[1]);
+    if (meal[0] === 'heal') { poisoned = 0; renderHealth(); }
+    if (meal[0] === 'warm') ailments.chill = 0;
+    toast(`${itemName(id)}: you ${ITEMS[id].about}`, 1800);
+  }
+  if (ITEMS[id]?.bottle && inventory.add(GLASS_BOTTLE, 1)) toast('Inventory full');
   if (id === HONEY_BOTTLE) { inventory.add(GLASS_BOTTLE, 1); health = Math.min(MAX_HEALTH, health + 2); renderHealth(); }
   if (id === PUFFERFISH) { poisoned = Math.max(poisoned, 15); toast('Ugh! The pufferfish was poisonous.', 2500); renderHealth(); }
   sound.eat();
@@ -2236,8 +2247,8 @@ function useAnvil() {
 }
 
 // ---------- teas ----------
-const effects = { night: 0, haste: 0, fire: 0, heal: 0, warm: 0, fed: 0 }; // seconds left of each
-const EFFECT_ICONS = { night: '🌙', haste: '⛏', fire: '🔥', heal: '💚', warm: '🍯', fed: '🍗' };
+const effects = { night: 0, haste: 0, fire: 0, heal: 0, warm: 0, fed: 0, swift: 0 }; // seconds left of each
+const EFFECT_ICONS = { night: '🌙', haste: '⛏', fire: '🔥', heal: '💚', warm: '🍯', fed: '🍗', swift: '🏃' };
 function drinkTea(id) {
   const [kind, secs] = ITEMS[id].tea;
   effects[kind] = Math.max(effects[kind], secs);
@@ -3267,6 +3278,14 @@ function placeInner() {
       toast(v ? `Welcome to ${v.name}` : 'Ding!', 2200);
       return;
     }
+    if (BLOCKS[tid].fruit?.ripe) {
+      // pick the fruit off a fruit tree's leaves
+      const f = BLOCKS[tid].fruit;
+      world.setBlock(tx, ty, tz, fruitLeaves(f.kind));
+      sound.breakBlock('leaves');
+      giveDrops([[FRUITS[f.kind].item, 1 + (Math.random() < 0.3 ? 1 : 0)]]);
+      return;
+    }
     if (tid === BERRY_BUSH + 1) {
       world.setBlock(tx, ty, tz, BERRY_BUSH);
       sound.breakBlock('leaves');
@@ -3557,7 +3576,7 @@ function placeInner() {
     if (there !== AIR || !world.isSolid(x, y - 1, z)) { toast(`${BLOCKS[id].name}s need something solid underneath`); return; }
   } else {
     // chairs face you; curtains hang across your line of sight
-    if ([CHAIR, OVEN, SMELTER, BLAST_SMELTER, CRUSHER, PULVERIZER, E_SMELTER, CHEST, IRON_CHEST, SAW, TRIP_HAMMER, LEAD_CHEST, FREEZER, ARC_FURNACE].includes(id)) id += facingTowardPlayer(x, z); // the front faces you
+    if ([CHAIR, SCARECROW, COOK_POT, OVEN, SMELTER, BLAST_SMELTER, CRUSHER, PULVERIZER, E_SMELTER, CHEST, IRON_CHEST, SAW, TRIP_HAMMER, LEAD_CHEST, FREEZER, ARC_FURNACE].includes(id)) id += facingTowardPlayer(x, z); // the front faces you
     else if (id === DRILL) id += player.pitch < -0.75 ? 4 : (facingTowardPlayer(x, z) + 2) % 4; // drills the way you're looking
     else if (id === ITEM_COUNTER) id += ((facingTowardPlayer(x, z) + 2) % 4) * 2; // passes things on the way you're looking
     else if ([OBSERVER, GAUGE, HARVESTER, EJECTOR, TREE_FELLER, PLANTER, BREAKER, PLACER, QUARRY].includes(id)) id += (facingTowardPlayer(x, z) + 2) % 4; // looks (or reaps) the way you're looking
@@ -3995,7 +4014,7 @@ function treeAbove(x, y, z) {
       if (seen.has(key)) continue;
       seen.add(key);
       const id = world.get(nx, ny, nz);
-      if (id === LEAVES) leafy = true;
+      if (isLeaves(id)) leafy = true;
       else if (id === LOG && logs.length < MAX_FELL) { logs.push([nx, ny, nz]); queue.push([nx, ny, nz]); }
     }
   }
@@ -4588,6 +4607,7 @@ function applySeason() {
   if (s === shownSeason || !world) return;
   shownSeason = s;
   world.growthRate = SEASONS[s].grow;
+  world.season = s;
   paintSeason(atlasCanvas, s);
   atlas.needsUpdate = true;
 }
@@ -4669,6 +4689,11 @@ function stepGame(now, dt) {
     world.tickPlants(dt);
     world.tickLeaves(dt);
     tickLamps(dt);
+    crows.update(dt, world, player.pos, {
+      day: lightUniforms.uDay.value,
+      eat: (x, y, z) => world.setBlock(x, y, z, WHEAT_3 - 2), // back to green shoots
+      caw: (p) => { const d = p.distanceTo(player.pos); if (d < 24) sound.mob('crow', 1 - d / 28); },
+    });
     tickFuses(dt);
     tickSwitches(dt);
     tickProgress(dt);
@@ -4794,5 +4819,5 @@ window.minicraft = {
   arrows, fishing, kinetics, electric, lightUniforms, bees, catchAt, seasonOf, applySeason, set day(v) { day = v; applySeason(); }, frames, signalAt, setSwitch, logic, machines, carts, minimap, signs, armour, damage, placeRail, getInCart, getOutOfCart,
   get riding() { return riding; }, explode, lightFuse, fuses, clockTime, compassText, place, editSign, closeSign, openInventory, closeInventory, chestMove, lamps, tickLamps, sleepUntilMorning, stations, openStation, closeStation,
   get caneToday() { return caneToday; }, get creative() { return creative; }, set creative(v) { creative = v; applyCreative(); }, toggleFly, wand, useWand, get achieved() { return achieved; }, achieve, worldMap, openMap, closeMap, openGuide, switchSlot, store, saveGame, renderWorlds, openWorlds, exportSlot, get target() { return target; }, set target(v) { target = v; }, applyKeys, renderKeys, camera, get controls() { return controls; }, loose, throwHeld, get waypoints() { return waypoints; }, toggleWaypoint, sortSlots, quickStack, dropMeteor, get meteors() { return meteors; }, weather, openTrade, closeTrade, mountMob, dismount, get ridingMob() { return ridingMob; }, effects, armourWear, useAnvil, rollLoot, settings,
-  get bedSpawn() { return bedSpawn; }, fertilise, openJournal, closeJournal, get packs() { return packs; }, radiationAt, vehicles, boardVehicle, leaveVehicle, get boarded() { return boarded; }, get seated() { return seated; }, sitOn, standUp, useDisplay, zips, linkZip, startZip, get zipping() { return zipping; }, burnCoal, get health() { return health; }, set health(v) { health = v; }, paintings, placeSwitchRail, signalAt, ailments, armourEnch, openAltar, lairNear, useBed, eat, drinkTea,
+  get bedSpawn() { return bedSpawn; }, fertilise, openJournal, closeJournal, get packs() { return packs; }, radiationAt, vehicles, boardVehicle, leaveVehicle, get boarded() { return boarded; }, get seated() { return seated; }, crows, sitOn, standUp, useDisplay, zips, linkZip, startZip, get zipping() { return zipping; }, burnCoal, get health() { return health; }, set health(v) { health = v; }, paintings, placeSwitchRail, signalAt, ailments, armourEnch, openAltar, lairNear, useBed, eat, drinkTea,
 };

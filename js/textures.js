@@ -17,7 +17,7 @@ import {
   SUN_SCARAB, FROST_HEART, EMBER_CORE, SUN_MASK, FROST_CIRCLET, EMBER_CROWN, HONEY_TEA, MUSHROOM_STEW, FISH_PIE, COPY_WAND,
   CRYSTAL_SHARD, HONEY_BOTTLE, HONEYCOMB, SALMON, BAKED_SALMON, ICEFISH, BAKED_ICEFISH, PUFFERFISH, OLD_BOOT,
   BATTERY, PORTABLE_LAMP, JACKHAMMER, JETPACK, ELECTRIC_DRILL, HOVER_BOOTS, NV_GOGGLES, MAGNET_RING, WIND_TURBINE, NICKEL_INGOT, CUPRONICKEL_INGOT,
-  ELECTRIC_RAIL, CHAINSAW, SAWDUST, BOOK, BACKPACK, BIG_BACKPACK, HUGE_BACKPACK, SPANNER, GRAPPLE, URANIUM_INGOT, FUEL_ROD, JOURNAL, FERTILISER, SPENT_ROD, ENRICHED_URANIUM, ENRICHED_ROD, hazmatId, INVAR_INGOT, RAIL_STATION, BOAT, BALLOON, ZIP_LINE, METEORIC_IRON, STARSTEEL_INGOT, starsteelTool, EGG, FRIED_EGG, SADDLE, TRUFFLE, FLOWER_POT, HANGING_PLANT, WINDOW_BOX,
+  ELECTRIC_RAIL, CHAINSAW, SAWDUST, BOOK, BACKPACK, BIG_BACKPACK, HUGE_BACKPACK, SPANNER, GRAPPLE, URANIUM_INGOT, FUEL_ROD, JOURNAL, FERTILISER, SPENT_ROD, ENRICHED_URANIUM, ENRICHED_ROD, hazmatId, INVAR_INGOT, RAIL_STATION, BOAT, BALLOON, ZIP_LINE, METEORIC_IRON, STARSTEEL_INGOT, starsteelTool, EGG, FRIED_EGG, SADDLE, TRUFFLE, FLOWER_POT, HANGING_PLANT, WINDOW_BOX, APPLE, CHERRIES, ORANGE_FRUIT, APPLE_PIE, CHERRY_PIE, FRUIT_SALAD, ORANGE_JUICE, FISH_SOUP, TRUFFLE_SOUP, BERRY_JAM, COOK_POT, SCARECROW,
   SALTPETRE, GUNPOWDER, LEAD_SINKER, WEIGHTED_ROD, LEAD_BUCKET, LAVA_BUCKET, GOLD_CLOCK, COMPASS, SILVER_ARROW, MIRROR_LAMP,
 } from './blocks.js';
 
@@ -1147,6 +1147,50 @@ P[T.BOX_FLOWERS] = (t) => {
     for (const [dx, dy] of [[0, -1], [-1, 0], [1, 0], [0, 1], [0, 0]]) t.set(x + dx, top - 1 + dy, dx || dy ? t.vary(c, 0.08) : [250, 220, 90]);
   }
 };
+// v25 B: fruit trees (apple, cherry, orange), hay and sacking
+const FRUIT_GREEN = [[56, 120, 40], [70, 128, 52], [48, 112, 46]];
+const FRUIT_COLOURS = [[[200, 30, 30], [236, 90, 70]], [[140, 10, 30], [190, 40, 60]], [[236, 130, 20], [252, 176, 60]]];
+for (let k = 0; k < 3; k++) {
+  const leaves = (t) => {
+    for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+      if (t.r() < 0.2) t.set(x, y, [0, 0, 0], 0);
+      else t.set(x, y, t.vary(t.r() < 0.3 ? shade(FRUIT_GREEN[k], 0.75) : FRUIT_GREEN[k], 0.28));
+    }
+  };
+  P[T.FRUIT_LEAVES + k] = leaves;
+  P[T.FRUIT_RIPE + k] = (t) => {
+    leaves(t);
+    const [c, hi] = FRUIT_COLOURS[k];
+    for (const [fx, fy] of [[3, 3], [10, 2], [6, 9], [12, 10], [2, 12]]) {
+      if (k === 1) { // cherries hang in pairs on stalks
+        t.set(fx, fy - 1, [70, 90, 30]); t.set(fx, fy, c); t.set(fx + 2, fy, c); t.set(fx + 1, fy - 1, [70, 90, 30]); t.set(fx, fy + 1, c); t.set(fx + 2, fy + 1, c); t.set(fx, fy, hi);
+      } else {
+        for (let dy = 0; dy < 2; dy++) for (let dx = 0; dx < 2; dx++) t.set(fx + dx, fy + dy, c);
+        t.set(fx, fy, hi);
+      }
+    }
+  };
+  P[T.FRUIT_SAPLING + k] = (t) => {
+    for (let y = 8; y < TILE; y++) { t.set(7, y, t.vary([112, 80, 46], 0.1)); t.set(8, y, t.vary([88, 62, 34], 0.1)); }
+    const clump = (cx, cy, r) => {
+      for (let y = cy - r; y <= cy + r; y++) for (let x = cx - r; x <= cx + r; x++) {
+        if ((x - cx) ** 2 + (y - cy) ** 2 > r * r + 1 || t.r() < 0.12) continue;
+        t.set(x, y, t.vary(FRUIT_GREEN[k], 0.25));
+      }
+    };
+    clump(8, 5, 3); clump(4, 9, 2); clump(12, 8, 2);
+    t.set(7, 4, FRUIT_COLOURS[k][0]); t.set(10, 6, FRUIT_COLOURS[k][0]);
+  };
+}
+P[T.HAY] = (t) => {
+  for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) t.set(x, y, t.vary((x + (y >> 2)) % 3 ? [214, 180, 80] : [180, 146, 56], 0.1));
+};
+P[T.SACK] = (t) => {
+  t.fill([206, 184, 140], 0.08);
+  for (let y = 0; y < TILE; y += 2) for (let x = 0; x < TILE; x++) t.set(x, y, t.vary([190, 168, 124], 0.05));
+  for (const [x, y] of [[4, 6], [5, 6], [10, 6], [11, 6], [4, 7], [11, 7]]) t.set(x, y, [40, 30, 24]); // eyes
+  for (let x = 5; x < 11; x++) t.set(x, 11 + (x === 5 || x === 10 ? -1 : 0), [90, 50, 30]); // a stitched grin
+};
 // v24 D: the rail station's platform plate
 P[T.RAIL_STOP] = (t) => {
   for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) t.set(x, y, ((x + y) >> 2) % 2 ? [220, 50, 40] : [240, 236, 228]);
@@ -2102,6 +2146,43 @@ const blob = (ctx, cx, cy, rx, ry, c, c2) => { for (let y = 0; y < 16; y++) for 
 ITEM_PAINTERS[EGG] = (ctx) => { blob(ctx, 8, 8.5, 4.5, 6, [244, 232, 210], [214, 196, 168]); px(ctx, 6, 5, [255, 252, 244]); };
 ITEM_PAINTERS[FRIED_EGG] = (ctx) => { blob(ctx, 8, 8, 7, 6, [250, 248, 240], [226, 222, 212]); blob(ctx, 8, 8, 2.6, 2.6, [250, 186, 40]); };
 ITEM_PAINTERS[TRUFFLE] = (ctx) => { blob(ctx, 8, 9, 5.5, 5, [70, 52, 40], [50, 36, 28]); for (const [x, y] of [[6, 7], [9, 8], [7, 11], [10, 11]]) px(ctx, x, y, [110, 86, 66]); };
+// v25 B: fruit, pies, soups, juice and jam
+ITEM_PAINTERS[APPLE] = (ctx) => { blob(ctx, 8, 9.5, 5.5, 5.5, [206, 32, 32], [160, 20, 24]); rect(ctx, 8, 2, 1, 3, [90, 60, 30]); rect(ctx, 9, 2, 3, 2, [70, 150, 50]); px(ctx, 6, 7, [250, 140, 130]); };
+ITEM_PAINTERS[CHERRIES] = (ctx) => {
+  for (let i = 0; i < 6; i++) { px(ctx, 7 - (i >> 1), 2 + i, [80, 110, 30]); px(ctx, 8 + (i >> 1), 2 + i, [80, 110, 30]); }
+  blob(ctx, 5, 11, 3, 3, [160, 14, 34], [120, 8, 24]); blob(ctx, 11, 11, 3, 3, [160, 14, 34], [120, 8, 24]); px(ctx, 4, 10, [230, 100, 110]); px(ctx, 10, 10, [230, 100, 110]);
+};
+ITEM_PAINTERS[ORANGE_FRUIT] = (ctx) => { blob(ctx, 8, 9, 5.5, 5.5, [240, 140, 24], [210, 110, 16]); px(ctx, 8, 3, [70, 130, 40]); px(ctx, 9, 3, [70, 130, 40]); px(ctx, 6, 7, [255, 200, 120]); };
+const piePainter = (fill) => (ctx) => {
+  for (let y = 5; y < 14; y++) for (let x = 1; x < 15; x++) {
+    const d = Math.hypot((x - 7.5) / 6.6, (y - 9) / 4);
+    if (d < 1) px(ctx, x, y, d > 0.8 ? [180, 120, 50] : (x + y) % 4 === 0 ? fill : [226, 176, 96]);
+  }
+  for (const [x, y] of [[5, 8], [8, 9], [10, 8], [7, 11]]) px(ctx, x, y, fill);
+};
+ITEM_PAINTERS[APPLE_PIE] = piePainter([200, 150, 60]);
+ITEM_PAINTERS[CHERRY_PIE] = piePainter([170, 20, 40]);
+const bowlPainter = (soup, bits) => (ctx) => {
+  rect(ctx, 2, 8, 12, 5, [150, 104, 60]); rect(ctx, 3, 13, 10, 1, [110, 74, 40]); rect(ctx, 2, 7, 12, 1, [120, 84, 48]);
+  rect(ctx, 3, 8, 10, 2, soup);
+  for (const [x, y, c] of bits) px(ctx, x, y, c);
+};
+ITEM_PAINTERS[FRUIT_SALAD] = bowlPainter([240, 230, 200], [[4, 7, [206, 32, 32]], [5, 7, [206, 32, 32]], [7, 6, [240, 140, 24]], [8, 7, [240, 140, 24]], [10, 7, [160, 14, 34]], [11, 6, [160, 14, 34]]]);
+ITEM_PAINTERS[FISH_SOUP] = bowlPainter([220, 200, 150], [[5, 8, [240, 160, 120]], [9, 9, [240, 160, 120]], [7, 8, [90, 150, 60]]]);
+ITEM_PAINTERS[TRUFFLE_SOUP] = bowlPainter([120, 90, 64], [[5, 8, [60, 44, 34]], [9, 8, [80, 210, 210]], [11, 9, [60, 44, 34]]]);
+ITEM_PAINTERS[ORANGE_JUICE] = bottlePainter([246, 150, 30]);
+ITEM_PAINTERS[BERRY_JAM] = bottlePainter([150, 24, 70]);
+ITEM_PAINTERS[COOK_POT] = (ctx) => {
+  for (const [x0, x1] of [[2, 3], [13, 14]]) for (let y = 3; y < 15; y++) px(ctx, y < 9 ? x0 : x0 + (x0 < 8 ? -1 : 1) * 0, y, [70, 70, 76]);
+  for (let y = 5; y < 12; y++) for (let x = 3; x < 13; x++) px(ctx, x, y, y === 5 ? [120, 120, 128] : x === 3 ? [60, 60, 66] : [86, 86, 94]);
+  rect(ctx, 5, 13, 6, 2, [110, 70, 40]); px(ctx, 7, 12, [250, 170, 40]); px(ctx, 8, 12, [250, 120, 30]);
+};
+ITEM_PAINTERS[SCARECROW] = (ctx) => {
+  rect(ctx, 7, 6, 2, 10, [140, 100, 60]); // post
+  rect(ctx, 1, 7, 14, 2, [214, 180, 80]); rect(ctx, 5, 6, 6, 6, [200, 166, 70]); // arms, body
+  rect(ctx, 5, 2, 6, 4, [206, 184, 140]); px(ctx, 6, 3, [40, 30, 24]); px(ctx, 9, 3, [40, 30, 24]); // head
+  rect(ctx, 4, 1, 8, 1, [110, 80, 50]); rect(ctx, 6, 0, 4, 1, [110, 80, 50]); // hat
+};
 // v25 A: a terracotta pot, a hanging basket of ivy, a window box of flowers
 const potShape = (ctx, x0, y0, w, h) => {
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
@@ -2305,4 +2386,18 @@ export function paintSeason(canvas, season) {
   };
   put(T.GRASS_TOP, grass);
   put(T.GRASS_SIDE, grass);
+  // fruit trees blossom in spring (pink cherry, white apple and orange), and go thin in winter
+  const BLOSSOM = [[250, 246, 240], [248, 180, 206], [255, 252, 236]];
+  for (let k = 0; k < 3; k++) {
+    put(T.FRUIT_LEAVES + k, (c, i) => {
+      if (season === 0) {
+        // blossom in little clumps of 2 x 2 pixels
+        const x = i % 16, y = i >> 4, h = Math.imul(((y >> 1) * 8 + (x >> 1)) ^ (k * 0x9e37), 0x85ebca6b) >>> 0;
+        return ((h ^ (h >>> 13)) & 255) < 100 ? shade(BLOSSOM[k], 0.9 + ((x + y) & 1) * 0.1) : mix(c, [120, 190, 70], 0.3);
+      }
+      if (season === 2) return mix(c, [190, 170, 60], 0.3);
+      if (season === 3) return hash(i) < 0.45 ? null : mix(c, [110, 96, 70], 0.6);
+      return c;
+    });
+  }
 }

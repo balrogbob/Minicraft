@@ -6,7 +6,7 @@
 // physics as the player (gravity, block collisions, stepping up one block) and float in water.
 // They aren't saved: they're spawned fresh around wherever you are.
 import * as THREE from 'three';
-import { AIR, WATER, LEAVES, LOG, GRASS, SAND, DIRT, WOOL, BUCKET, MILK_BUCKET, SLIME_BUCKET, FEATHER, COAL, COBBLE, ARROW, HIDE, SNOW_GRASS, SNOW, KING_CROWN, GOLD_INGOT, MOSSY_BRICKS, RAW_FISH, BAKED_FISH, WHEAT, SALMON, BAKED_SALMON, ICEFISH, BAKED_ICEFISH,
+import { AIR, WATER, LEAVES, isLeaves, LOG, GRASS, SAND, DIRT, WOOL, BUCKET, MILK_BUCKET, SLIME_BUCKET, FEATHER, COAL, COBBLE, ARROW, HIDE, SNOW_GRASS, SNOW, KING_CROWN, GOLD_INGOT, MOSSY_BRICKS, RAW_FISH, BAKED_FISH, WHEAT, SALMON, BAKED_SALMON, ICEFISH, BAKED_ICEFISH,
   SUN_SCARAB, FROST_HEART, EMBER_CORE, SUN_MASK, FROST_CIRCLET, EMBER_CROWN, SILVER_INGOT, OBSIDIAN, STRING, BLOCKS, LAVA, SEEDS, BERRIES, EGG, TRUFFLE, SADDLE } from './blocks.js';
 import { SEA_LEVEL, H } from './terrain.js';
 import { skyBrightness, lightBrightness } from './world.js';
@@ -803,7 +803,7 @@ export class MobManager {
     for (let y = H - 1; y > 0; y--) {
       const id = w.get(x, y, z);
       if (id === AIR) continue;
-      if (id === LEAVES || id === LOG) return null;
+      if (isLeaves(id) || id === LOG) return null;
       return { y, id };
     }
     return null;
