@@ -1208,6 +1208,7 @@ function renderInventory() {
       if (!r.in.every(([id, n]) => countOf(id) >= n)) return;
       const charge = batteriesTaken(r);
       for (const [id, n] of r.in) takeOf(id, n);
+      for (const id of r.tools ?? []) wearTool(id);
       const cap = chargeCap(r.out[0]);
       let lost = cap ? inventory.addItem({ id: r.out[0], count: 1, ...(charge < cap ? { wear: cap - charge } : {}) }) : inventory.add(r.out[0], r.out[1]);
       for (const [id, n] of r.also ?? []) lost += inventory.add(id, n);
@@ -2025,6 +2026,24 @@ async function sleepUntilMorning() {
   sound.wake();
   toast(`Good morning! Day ${day}`, 2500);
   paused = false;
+}
+
+// A tool a recipe needs but doesn't use up (the mortar and pestle) wears by one each time: the most worn one
+// you carry, so a spare stays fresh. If the one in your hand breaks, the next moves in.
+function wearTool(id) {
+  if (creative || !settings.wear || !maxWear(id)) return;
+  let best = -1;
+  inventory.slots.forEach((s, i) => { if (s?.id === id && (best < 0 || (s.wear ?? 0) > (inventory.slots[best].wear ?? 0))) best = i; });
+  if (best < 0) return;
+  const s = inventory.slots[best];
+  s.wear = (s.wear ?? 0) + 1;
+  if (s.wear >= maxWear(id)) {
+    inventory.slots[best] = null;
+    sound.breakBlock('stone');
+    toast(`Your ${itemName(id).toLowerCase()} broke!`, 2000);
+    if (best === inventory.selected) inventory.refill(id);
+  }
+  inventory.onChange();
 }
 
 // ---------- wear and repair ----------
