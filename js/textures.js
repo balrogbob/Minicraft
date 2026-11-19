@@ -858,6 +858,27 @@ P[T.CRAFTER_FRONT] = (t) => {
   }
 };
 P[T.TANK_WATER] = (t) => { for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) t.set(x, y, t.vary(Math.sin(x * 0.8 + y * 0.4) > 0.6 ? [96, 150, 232] : [52, 104, 210], 0.05)); };
+// farm machines: a planter's soil-filled mouth with a sprout; a placer's hatch; an animal station's
+// hay-packed slats; netting
+P[T.PLANTER_FRONT] = (t) => {
+  P[T.PLANKS](t);
+  for (let y = 7; y < 15; y++) for (let x = 2; x < 14; x++) t.set(x, y, t.vary([104, 74, 50], 0.12));
+  for (let y = 3; y < 8; y++) t.set(8, y, [90, 160, 60]);
+  t.set(7, 4, [110, 180, 70]); t.set(9, 5, [110, 180, 70]); t.set(6, 3, [110, 180, 70]);
+};
+P[T.PLACER_FRONT] = (t) => {
+  P[T.OBSERVER_SIDE](t);
+  for (let y = 3; y < 13; y++) for (let x = 3; x < 13; x++) t.set(x, y, x === 3 || x === 12 || y === 3 || y === 12 ? [70, 70, 76] : [96, 72, 48]);
+  for (let x = 5; x < 11; x++) t.set(x, 8, [60, 46, 30]);
+};
+P[T.RANCH_SIDE] = (t) => {
+  P[T.PLANKS](t);
+  for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) if (y % 4 === 1 || y % 4 === 2) t.set(x, y, t.vary([214, 188, 92], 0.12));
+};
+P[T.NET] = (t) => {
+  for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) t.set(x, y, [0, 0, 0], 0);
+  for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) if ((x + y) % 4 === 0 || (x - y + 16) % 4 === 0) t.set(x, y, [222, 210, 170]);
+};
 P[T.LOGIC_BASE] = (t) => {
   for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) t.set(x, y, t.vary([172, 172, 168], 0.04));
   frame(t, [128, 128, 126], 1);

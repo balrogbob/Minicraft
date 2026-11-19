@@ -20,12 +20,13 @@
 //  - An ejector throws what's in the chest or machine behind it out onto the ground, while it's signalled.
 //  - A collector is a hopper that also pulls in loose things lying near it.
 //  - Splitting belts send things left and right in turn; sorting belts send what matches their frames left.
+//  - Farm machines: tree fellers, planters, block breakers and placers, animal stations, fishing nets.
 //  - A bucket elevator, while driven, lifts what's put into it up its column and out of the top.
 import * as THREE from 'three';
 import {
-  BLOCKS, AIR, WATER, LAVA, PIPE, PUMP, SPOUT, DRILL, FILAMENT_LAMP, BELT, FACING_DIRS, TOOL_MATERIALS,
+  BLOCKS, AIR, WATER, LAVA, isWaterId, PIPE, PUMP, SPOUT, DRILL, FILAMENT_LAMP, BELT, FACING_DIRS, TOOL_MATERIALS,
   metalTool, maxStack, dropsFor, isFlowing, stationKind, CAULDRON, WHEAT_0, WHEAT_3, SEEDS, BERRY_BUSH, BERRIES, SUGAR_CANE,
-  STEAM_ENGINE, MAX_HONEY, TANK, TANK_CAP, tankId,
+  STEAM_ENGINE, MAX_HONEY, TANK, TANK_CAP, tankId, LOG, SAPLING, GRASS, DIRT, isBlock, WOOL, FEATHER, BUCKET, MILK_BUCKET, WHEAT,
 } from './blocks.js';
 import { STATION_KINDS, isFuel, FUEL_ITEMS } from './stations.js';
 import { CHUNK } from './terrain.js';
@@ -46,6 +47,10 @@ const EJECT_EVERY = 0.5; // seconds between things an ejector throws while it's 
 const COLLECT_REACH = 4; // how far a collector pulls loose things from
 const LIFT_SPEED = 2; // blocks a second a bucket elevator lifts things at 1x
 const LIFT_GAP = 0.35;
+const FELL_TIME = 4; // seconds a tree feller takes over a tree at 1x
+const RANCH_EVERY = 3; // seconds between an animal station's rounds
+const RANCH_REACH = 5;
+const NET_TIME = 60; // average seconds between a fishing net's catches
 
 // The way a drill, hopper or belt points: [dx, dy, dz].
 export function pointing(def) {
@@ -147,7 +152,8 @@ export class Machines {
     if (kind) {
       const K = STATION_KINDS[kind];
       const st = stations.get(x, y, z, kind);
-      if (fuel && !K.storage && !K.powered && !K.crafter && isFuel(id)) {
+      if (K.accepts && !K.accepts.includes(id)) return 0;
+      if (fuel && !K.storage && !K.powered && !K.crafter && !K.holder && isFuel(id)) {
         if (!st.fuel) { const k = Math.min(n, maxStack(id)); st.fuel = { id, count: k }; return k; }
         if (st.fuel.id !== id) return 0;
         const k = Math.min(n, maxStack(id) - st.fuel.count);
@@ -234,7 +240,7 @@ export class Machines {
   tick(dt, world, kinetics, stations, light) {
     // gather the machines in the loaded world
     this.world = world; this.kinetics = kinetics;
-    const pumps = [], drills = [], lamps = [], hoppers = [], sensors = [], harvesters = [], engines = [], ejectors = [], collectors = [];
+    const pumps = [], drills = [], lamps = [], hoppers = [], sensors = [], harvesters = [], engines = [], ejectors = [], collectors = [], farms = [];
     for (const c of world.chunks.values()) {
       for (const li of c.machines) {
         const id = c.data[li], def = BLOCKS[id];
@@ -242,6 +248,7 @@ export class Machines {
         if (id === PUMP) pumps.push([x, y, z]);
         else if (def.machine && id >= DRILL && id <= DRILL + 4) drills.push([x, y, z, def]);
         else if (id === FILAMENT_LAMP || id === FILAMENT_LAMP + 1) lamps.push([x, y, z, id]);
+        else if (def.farm) farms.push([x, y, z, def]);
         else if (def.hopper) { hoppers.push([x, y, z, def]); if (def.collector) collectors.push([x, y, z, def]); }
         else if (def.ejector) ejectors.push([x, y, z, def]);
         else if (def.sensor) sensors.push([x, y, z, def]);
@@ -271,6 +278,7 @@ export class Machines {
     this.tickBelts(dt, world, kinetics, stations, light);
     this.tickLifts(dt, world, kinetics, stations, light);
     for (const e of ejectors) this.tickEjector(dt, world, stations, e);
+    for (const f of farms) this.tickFarm(dt, world, kinetics, stations, f);
     if (collectors.length) this.tickCollectors(dt, world, stations, collectors);
   }
 
@@ -295,6 +303,109 @@ export class Machines {
     const most = stack ? maxStack(id) : 1;
     while (n < most && this.takeOne(world, stations, bx, y, bz, true) === id) { this.takeOne(world, stations, bx, y, bz); n++; }
     this.throwItem?.({ id, count: n }, { x: x + 0.5 + dx * 0.7, y: y + 0.35, z: z + 0.5 + dz * 0.7 }, { x: dx * 4, y: 2, z: dz * 4 });
+  }
+
+  // ---------- farm machines ----------
+
+  // Pass on what a machine holds out of its back (as a drill does). Returns false while it's stuck.
+  passBack(world, stations, d, x, y, z, def) {
+    const [dx, dz] = FACING_DIRS[def.facing];
+    while (d.held.length) {
+      const [id, n] = d.held[0];
+      const put = this.insert(world, stations, x - dx, y, z - dz, id, n, false);
+      if (put >= n) d.held.shift(); else { d.held[0][1] = n - put; break; }
+    }
+    return !d.held.length;
+  }
+
+  tickFarm(dt, world, kinetics, stations, [x, y, z, def]) {
+    const k = key(x, y, z);
+    let d = this.drills.get(k);
+    if (!d) { d = { progress: 0, target: '', held: [], status: '', sig: false, t: Math.random() * 2 }; this.drills.set(k, d); }
+    const [dx, dz] = FACING_DIRS[def.facing], fx = x + dx, fz = z + dz;
+    const sig = def.farm === 'breaker' || def.farm === 'placer' ? !!this.signalAt?.(x, y, z) : false, rising = sig && !d.sig;
+    d.sig = sig;
+    if (def.farm !== 'net' && def.farm !== 'planter' && !this.passBack(world, stations, d, x, y, z, def)) { d.status = 'Stopped: there\'s nowhere behind it to put what it gets'; return; }
+    if (def.farm === 'feller') {
+      const speed = kinetics.powerAt(x, y, z);
+      if (speed <= 0) { d.status = 'Not turning'; d.progress = 0; return; }
+      const ty = [y, y + 1].find((cy) => world.get(fx, cy, fz) === LOG);
+      if (ty === undefined) { d.status = 'Waiting for a tree in front of it'; d.progress = 0; return; }
+      d.status = 'Cutting down a tree';
+      if ((d.progress += dt * speed) < FELL_TIME) return;
+      d.progress = 0;
+      const logs = [[fx, ty, fz], ...(this.farmHooks?.treeAbove(fx, ty, fz) ?? [])];
+      for (const [lx, ly, lz] of logs) world.setBlock(lx, ly, lz, AIR);
+      d.held.push([LOG, logs.length]);
+      if (logs.length > 1) d.held.push([SAPLING, Math.random() < 0.5 ? 2 : 1]);
+      return;
+    }
+    if (def.farm === 'breaker') {
+      if (!rising) return;
+      const id = world.get(fx, y, fz), b = BLOCKS[id];
+      if (id === AIR || !b || b.liquid || b.hardness === Infinity || b.station || b.kinetic || b.machine || b.hopper || b.farm || b.rail) return;
+      d.held.push(...dropsFor(id, TUNGSTEN_PICK).map(([i, n]) => [i, n]));
+      world.setBlock(fx, y, fz, AIR);
+      this.onBlockChanged?.(fx, y, fz);
+      return;
+    }
+    if (def.farm === 'placer') {
+      if (!rising) return;
+      const there = world.get(fx, y, fz);
+      if (there !== AIR && !isFlowing(there)) return;
+      // the first plain block in the chest behind it
+      const bx = x - dx, bz = z - dz, kind = stationKind(world.get(bx, y, bz));
+      if (!kind || !STATION_KINDS[kind].storage) return;
+      const st = stations.get(bx, y, bz, kind);
+      const i = st.inputs.findIndex((s) => s && isBlock(s.id) && BLOCKS[s.id].shape === 'cube' && !BLOCKS[s.id].station && !BLOCKS[s.id].kinetic && !BLOCKS[s.id].machine && !BLOCKS[s.id].farm);
+      if (i < 0) return;
+      const id = st.inputs[i].id;
+      if (!--st.inputs[i].count) st.inputs[i] = null;
+      world.setBlock(fx, y, fz, id);
+      this.onBlockChanged?.(fx, y, fz);
+      return;
+    }
+    if ((d.t -= dt) > 0) return;
+    if (def.farm === 'planter') {
+      d.t = 2;
+      const below = world.get(fx, y - 1, fz);
+      if (world.get(fx, y, fz) !== AIR || (below !== GRASS && below !== DIRT)) return;
+      const st = stations.get(x, y, z, 'planter');
+      const i = st.inputs.findIndex((s) => s?.id === SAPLING);
+      if (i < 0) return;
+      if (!--st.inputs[i].count) st.inputs[i] = null;
+      world.setBlock(fx, y, fz, SAPLING);
+      return;
+    }
+    if (def.farm === 'net') {
+      d.t = 5;
+      const wet = SIDES6.filter(([ex, ey, ez]) => ey <= 0 && isWaterId(world.get(x + ex, y + ey, z + ez))).length;
+      if (wet < 2) { d.status = 'It needs to be in water'; return; }
+      d.status = 'Fishing';
+      if (Math.random() >= 5 / NET_TIME) return;
+      const c = this.farmHooks?.catchAt({ x: x + 0.5, y, z: z + 0.5 });
+      if (c) addToSlots(stations.get(x, y, z, 'net').inputs, c[0], c[1]);
+      return;
+    }
+    if (def.farm === 'ranch') {
+      d.t = RANCH_EVERY;
+      const st = stations.get(x, y, z, 'ranch'), mobs = this.farmHooks?.mobs;
+      if (!mobs) return;
+      const near = mobs.mobs.filter((m) => !m.dying && Math.hypot(m.pos.x - x - 0.5, m.pos.z - z - 0.5) <= RANCH_REACH && Math.abs(m.pos.y - y) <= 3);
+      const take = (id) => { const i = st.inputs.findIndex((s) => s?.id === id); if (i < 0) return false; if (!--st.inputs[i].count) st.inputs[i] = null; return true; };
+      let got = 0;
+      for (const m of near) {
+        if (m.spec.wool && m.shornFor <= 0) { m.shornFor = 150; m.parts.shear?.(true); d.held.push([WOOL, Math.random() < 0.5 ? 2 : 1]); got++; }
+        else if (m.kind === 'duck' && m.featherFor <= 0) { m.featherFor = 30; d.held.push([FEATHER, 1]); got++; }
+        else if (m.spec.milk && !(m.milkFor > 0) && take(BUCKET)) { m.milkFor = 60; d.held.push([MILK_BUCKET, 1]); got++; }
+        if (m.milkFor > 0) m.milkFor -= RANCH_EVERY;
+      }
+      // feeding: a wheat now and then makes coats and feathers grow back twice as fast
+      const hungry = near.filter((m) => m.shornFor > 0 || m.featherFor > 0);
+      if (hungry.length && (d.fed = (d.fed ?? 0) - RANCH_EVERY) <= 0 && take(WHEAT)) d.fed = 30;
+      if (d.fed > 0) for (const m of hungry) { if (m.shornFor > 0) m.shornFor -= RANCH_EVERY; if (m.featherFor > 0) m.featherFor -= RANCH_EVERY; }
+      d.status = near.length ? `${near.length} animal${near.length > 1 ? 's' : ''} nearby${got ? `: got ${got} thing${got > 1 ? 's' : ''}` : ''}${d.fed > 0 ? ', fed' : ''}` : 'No animals within 5 blocks';
+    }
   }
 
   // Tapping an ejector switches it between one at a time and a stack per signal. Returns true for stacks.

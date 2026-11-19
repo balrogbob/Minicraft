@@ -22,7 +22,7 @@ import {
   TINTS, WALL, LANTERN, HANGING_LANTERN, CHANDELIER, PAINTING, ART, isWall,
   ENCHANT_ALTAR, LAIRS, ENCHANTS, hasEnch, HONEY_TEA, CRYSTAL_BLOCK, SUN_SCARAB, FROST_HEART, EMBER_CORE, OBSIDIAN, SANDSTONE,
   STICK, STRING, PAPER, CAKE, COOKIE, LEATHER, FISHING_ROD as ROD, WEIGHTED_ROD as WROD, SEEDS, FLOUR, BUTTER, COPY_WAND,
-  WIRE, INVERTER, DELAY, LATCH, DETECTOR_RAIL, DRIVE_BELT, EJECTOR, COLLECTOR, BELT_SPLITTER, BELT_SORTER,
+  WIRE, INVERTER, DELAY, LATCH, DETECTOR_RAIL, DRIVE_BELT, TREE_FELLER, PLANTER, BREAKER, PLACER, ANIMAL_STATION, EJECTOR, COLLECTOR, BELT_SPLITTER, BELT_SORTER,
 } from './blocks.js';
 import { createAtlas, createIcons, createCrackCanvases, createWaterCanvas, createHudIcons, paintSeason } from './textures.js';
 import { World, CHUNK, WORLD_SIZE, chunkKey } from './world.js';
@@ -1146,9 +1146,9 @@ function openStation(x, y, z, cart = null) {
   for (let i = 0; i < K.inputs; i++) make(ins, 'in', i);
   for (const [id, area] of [['st-fuel', 'fuel'], ['st-out', 'out']]) {
     $(id).innerHTML = '';
-    if (!K.storage && (area === 'out' || !(K.powered || K.crafter))) make($(id), area, 0);
+    if (!K.storage && !K.holder && (area === 'out' || !(K.powered || K.crafter))) make($(id), area, 0);
   }
-  $('station').querySelector('.st-fuel-row').style.display = K.powered || K.crafter ? 'none' : '';
+  $('station').querySelector('.st-fuel-row').style.display = K.powered || K.crafter || K.holder ? 'none' : '';
   $('st-inv').innerHTML = ''; $('st-hotbar').innerHTML = '';
   for (let i = 9; i < SLOTS; i++) make($('st-inv'), 'inv', i);
   for (let i = 0; i < 9; i++) make($('st-hotbar'), 'inv', i);
@@ -1159,7 +1159,9 @@ function openStation(x, y, z, cart = null) {
     const tools = (r.tools ?? []).map((id) => `<span class="ing tool" title="${itemName(id)} (not used up)"><img src="${icons[id]}" alt="">kept</span>`).join('');
     return `<div class="recipe">${ing}${tools}<span class="arrow">→</span><img class="outimg" src="${icons[r.out[0]]}" alt="">` +
       `<span class="name">${r.out[1] > 1 ? r.out[1] + ' × ' : ''}${itemName(r.out[0])}</span></div>`;
-  }).join('') + (K.crafter ? '<p class="hint">Hang an item frame on it showing what to make. Whenever the ingredients are inside, ' +
+  }).join('') + (K.holder ? `<p class="hint">${kind === 'planter' ? 'Put saplings in (or feed them in with a hopper): it plants one on the grass or dirt in front of it whenever there\'s room.'
+    : 'Put empty buckets in for milking yaks, and wheat to feed the animals (their coats grow back faster). What it gets comes out of its back, into a chest, hopper or belt.'}</p>`
+    : K.crafter ? '<p class="hint">Hang an item frame on it showing what to make. Whenever the ingredients are inside, ' +
     'it makes one, a second at a time, into the output slot: fill it with hoppers or belts and empty it with a hopper underneath.</p>'
     : K.powered ? '<p class="hint">Times are at 1x speed. Drive it with a water wheel or windmill by turning a shaft or gear ' +
     'against any face; gear it up for more speed.' + (kind === 'crusher' ? ' Ore dust smelts into ingots, so crushing ore doubles what you get.' : '') + '</p>'
@@ -1193,6 +1195,10 @@ function renderStation() {
   }
   const r = stations.recipeFor(st, `${openStationAt.x},${openStationAt.y},${openStationAt.z}`);
   $('st-progress').style.width = `${r ? Math.min(100, (st.progress / r.time) * 100) : 0}%`;
+  if (K.holder) {
+    $('st-status').textContent = st.kind === 'ranch' ? `${machines.drillStatus(openStationAt.x, openStationAt.y, openStationAt.z)}` : `${st.inputs.filter(Boolean).reduce((t, s) => t + s.count, 0)} saplings to plant`;
+    return;
+  }
   if (K.crafter) {
     const want = crafterRecipe(openStationAt.x, openStationAt.y, openStationAt.z);
     $('st-status').textContent = !want ? 'Hang an item frame on it showing what to make' : r ? `Making ${itemName(want.out[0]).toLowerCase()}…` : `Put in what ${itemName(want.out[0]).toLowerCase()} needs`;
@@ -1949,6 +1955,8 @@ function signalAt(x, y, z) {
 }
 kinetics.signalAt = signalAt;
 machines.onSwitch = (x, y, z, on) => setSwitch(x, y, z, on);
+machines.farmHooks = { treeAbove: (x, y, z) => treeAbove(x, y, z), catchAt: (pos) => catchAt(pos), mobs };
+machines.onBlockChanged = (x, y, z) => { logic.near(world, x, y, z); dropUnsupported(x, y, z); };
 machines.signalAt = signalAt;
 
 function setSwitch(x, y, z, on) {
@@ -2304,6 +2312,13 @@ function place() {
       }
       if (!(held && isBlock(held.id))) { toast(`Tank: ${machines.tankText(tx, ty, tz)}`, 2000); return; }
     }
+    if (BLOCKS[tid].farm && !BLOCKS[tid].station && !(held && isBlock(held.id))) {
+      const f = BLOCKS[tid].farm;
+      const about = f === 'breaker' ? 'breaks the block in front of it each time its signal comes on' : f === 'placer' ? 'puts a block from the chest behind it in front of it each time its signal comes on'
+        : machines.drillStatus(tx, ty, tz);
+      toast(`${BLOCKS[tid].name}: ${about}`, 2500);
+      return;
+    }
     if (BLOCKS[tid].valve && !(held && isBlock(held.id))) { toast(`Valve: ${signalAt(tx, ty, tz) ? 'open (it has a signal)' : 'shut: give it a signal to let liquid through'}`, 2000); return; }
     if (BLOCKS[tid].elevator && !(held && isBlock(held.id))) { toast(`Bucket elevator: ${machines.liftStatus(world, kinetics, tx, ty, tz)}`, 2500); return; }
     if (BLOCKS[tid].sensor === 'gauge' && !(held && isBlock(held.id))) {
@@ -2491,8 +2506,8 @@ function place() {
     // chairs face you; curtains hang across your line of sight
     if ([CHAIR, OVEN, SMELTER, BLAST_SMELTER, CRUSHER, CHEST, IRON_CHEST, SAW, TRIP_HAMMER].includes(id)) id += facingTowardPlayer(x, z); // the front faces you
     else if (id === DRILL) id += player.pitch < -0.75 ? 4 : (facingTowardPlayer(x, z) + 2) % 4; // drills the way you're looking
-    else if (id === OBSERVER || id === GAUGE || id === HARVESTER || id === EJECTOR) id += (facingTowardPlayer(x, z) + 2) % 4; // looks (or reaps) the way you're looking
-    else if (id === STEAM_ENGINE) id += facingTowardPlayer(x, z); // its firebox door faces you
+    else if ([OBSERVER, GAUGE, HARVESTER, EJECTOR, TREE_FELLER, PLANTER, BREAKER, PLACER].includes(id)) id += (facingTowardPlayer(x, z) + 2) % 4; // looks (or reaps) the way you're looking
+    else if (id === STEAM_ENGINE || id === ANIMAL_STATION) id += facingTowardPlayer(x, z); // its firebox door faces you
     else if (id === BELT || id === BELT_SPLITTER || id === BELT_SORTER) id += (facingTowardPlayer(x, z) + 2) % 4; // carries things away from you
     else if (id === HOPPER || id === COLLECTOR) id += target.ny === 1 ? 4 : FACING_DIRS.findIndex(([dx, dz]) => dx === -target.nx && dz === -target.nz); // into the block you tapped
     else if (BLOCKS[id].kinetic) id = kineticVariant(id);
@@ -2746,7 +2761,7 @@ function breakBlock(x, y, z) {
   if (isSign(id) || isBed(id)) { dropWaypoint(x, y, z); dropWaypoint(...bedPartnerOr(x, y, z, id)); }
   if (isFrame(id)) { const item = frames.remove(x, y, z); if (item) drops.push([item, 1]); }
   if (stationKind(id)) loose.spill(stations.removeStacks(x, y, z), x, y, z); // whatever was inside spills out
-  if (def.machine || def.engine || def.sensor || def.ejector || def.hopper || def.tank) loose.spill(machines.removeAt(x, y, z).map(([i, n]) => ({ id: i, count: n })), x, y, z); // and whatever was on a belt or in a drill
+  if (def.machine || def.engine || def.sensor || def.ejector || def.hopper || def.tank || def.farm) loose.spill(machines.removeAt(x, y, z).map(([i, n]) => ({ id: i, count: n })), x, y, z); // and whatever was on a belt or in a drill
   if (isBed(id)) {
     // either half takes the whole bed with it
     const [ox, oy, oz] = bedPartner(x, y, z);

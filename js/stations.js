@@ -11,7 +11,7 @@ import {
   BRONZE_INGOT, ELECTRUM_INGOT, STAINLESS_INGOT, STEEL_INGOT, AL_BRONZE_INGOT,
   GRAVEL, FLINT, FLINT_DUST, CLAY_BALL, CLAY_DUST, BRICK, FIRE_CLAY, FIRE_BRICK, oreDust, HIDE, LEATHER,
   LAVA_BUCKET, LEAD_BUCKET, SALTPETRE, SANDSTONE, WHEAT, SUGAR_CANE, COAL_DUST, PLATE_METALS, PLATES, TUNGSTEN_INGOT, FILAMENT,
-  GLASS_BOTTLE, NIGHT_TEA, HASTE_TEA, FIRE_TEA, HEAL_TEA, BERRIES, CORNFLOWER, DANDELION, POPPY, CACTUS, LAVENDER, DAISY, CAULDRON,
+  SAPLING, GLASS_BOTTLE, NIGHT_TEA, HASTE_TEA, FIRE_TEA, HEAL_TEA, BERRIES, CORNFLOWER, DANDELION, POPPY, CACTUS, LAVENDER, DAISY, CAULDRON,
 } from './blocks.js';
 
 // A recipe ingredient can be one id or a list of alternatives (coal or charcoal).
@@ -128,6 +128,11 @@ STATION_KINDS.ironchest = { name: 'Iron-Banded Chest', inputs: 36, storage: true
 // put into it; no fuel or power.
 export const CRAFT_TIME = 1;
 STATION_KINDS.crafter = { name: 'Auto-Crafter', inputs: 9, crafter: true, recipes: [] };
+// Farm machines that hold things: a planter's saplings, an animal station's buckets and wheat (both just
+// hold them: see machines.js), and a fishing net's catch (taken out by a hopper underneath).
+STATION_KINDS.planter = { name: 'Planter', inputs: 4, holder: true, accepts: [SAPLING], recipes: [] };
+STATION_KINDS.ranch = { name: 'Animal Station', inputs: 6, holder: true, accepts: [BUCKET, WHEAT], recipes: [] };
+STATION_KINDS.net = { name: 'Fishing Net', inputs: 4, storage: true, recipes: [] };
 
 const key = (x, y, z) => `${x},${y},${z}`;
 
@@ -211,7 +216,7 @@ export class Stations {
       const id = world.get(x, y, z);
       if (stationKind(id) !== st.kind) { this.map.delete(k); continue; }
       const K = STATION_KINDS[st.kind];
-      if (K.storage) continue;
+      if (K.storage || K.holder) continue;
       if (K.crafter) {
         const want = recipeAt(x, y, z);
         if (want) this.chosen.set(k, { ...want, time: CRAFT_TIME }); else this.chosen.delete(k);

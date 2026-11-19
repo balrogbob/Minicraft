@@ -128,7 +128,7 @@ export const T = {
   PAINTED_DOOR: 176, // 176..195: the lower then upper half of a door painted in each colour
   GLOW_LAMP: 196, // 196..205: a glow lamp in each colour
   PILLAR_SIDE: 206, PILLAR_TOP: 207, SAND_PILLAR_SIDE: 208, SAND_PILLAR_TOP: 209, CANDLE: 210,
-  WIRE_OFF: 211, WIRE_ON: 212, LOGIC_BASE: 213, EJECTOR_FRONT: 214, CRAFTER_FRONT: 215, TANK_WATER: 216,
+  WIRE_OFF: 211, WIRE_ON: 212, LOGIC_BASE: 213, EJECTOR_FRONT: 214, CRAFTER_FRONT: 215, TANK_WATER: 216, PLANTER_FRONT: 217, PLACER_FRONT: 218, RANCH_SIDE: 219, NET: 220,
 };
 
 // Ores, deepest-reaching last. tier: the pickaxe tier needed to mine it (see TOOL_TIERS);
@@ -232,6 +232,7 @@ function block(id, o) {
     sorts: o.sorts ?? null, // a belt that sends things off to the side: 'split' (left and right in turn) | 'sort' (matches go left)
     ejector: !!o.ejector, collector: !!o.collector, elevator: !!o.elevator, // more automation (see machines.js)
     tank: !!o.tank, valve: !!o.valve, sprinkler: !!o.sprinkler, // liquids (see machines.js)
+    farm: o.farm ?? null, // 'feller' | 'planter' | 'breaker' | 'placer' | 'ranch' | 'net' (see machines.js)
   };
 }
 
@@ -1690,4 +1691,40 @@ RECIPES.push(
   { out: [TANK, 1], in: [[IRON_INGOT, 4], [GLASS, 4], [PIPE, 1]], table: true, metal: IRON_INGOT },
   { out: [VALVE, 1], in: [[PIPE, 1], [IRON_INGOT, 1], [LEVER, 1]], table: true, metal: LEAD_INGOT },
   { out: [SPRINKLER, 1], in: [[SPOUT, 1], [PIPE, 2]], table: true, metal: LEAD_INGOT },
+);
+
+// ---------- farms: tree fellers, planters, block breakers and placers, animal stations, fishing nets ----------
+// A tree feller, driven by a shaft, cuts down the tree in front of it (and keeps a sapling or two from
+// it), passing the logs behind it like a drill. A planter plants a sapling put into it on the grass or dirt
+// in front of it. A block breaker breaks the block in front of it each time its signal comes on (passing
+// what it gives behind it); a block placer puts a block from the chest behind it into the space in front.
+// An animal station shears alpacas, takes feathers from ducks and milks yaks (into empty buckets put in
+// it) within 5 blocks, passing what it gets behind it; wheat put in it is fed to them, so their coats
+// grow back twice as fast. A fishing net in water catches a fish every minute or so; a hopper under it
+// takes them out.
+export const TREE_FELLER = 1171, // 1171..1174: + facing (the way it cuts)
+  PLANTER = 1175, // 1175..1178: + facing
+  BREAKER = 1179, // 1179..1182: + facing
+  PLACER = 1183, // 1183..1186: + facing
+  ANIMAL_STATION = 1187, // 1187..1190: + facing (what it gets goes out of the back)
+  FISH_NET = 1191;
+const farmBase = { hardness: 2.5, tool: 'pick', sound: 'stone', side: T.DRILL_SIDE, top: T.DRILL_SIDE, bottom: T.DRILL_SIDE };
+for (let f = 0; f < 4; f++) {
+  block(TREE_FELLER + f, { ...farmBase, name: 'Tree Feller', front: T.SAW_FRONT, facing: f, farm: 'feller', machine: { load: 3 }, variantOf: f ? TREE_FELLER : 0, drop: TREE_FELLER });
+  block(PLANTER + f, { ...farmBase, name: 'Planter', sound: 'wood', tool: 'axe', side: T.PLANKS, top: T.PLANKS, bottom: T.PLANKS, front: T.PLANTER_FRONT, facing: f, farm: 'planter', station: 'planter', variantOf: f ? PLANTER : 0, drop: PLANTER });
+  block(BREAKER + f, { ...farmBase, name: 'Block Breaker', side: T.OBSERVER_SIDE, top: T.OBSERVER_SIDE, bottom: T.OBSERVER_SIDE, front: T.DRILL_FRONT, facing: f, farm: 'breaker', variantOf: f ? BREAKER : 0, drop: BREAKER });
+  block(PLACER + f, { ...farmBase, name: 'Block Placer', side: T.OBSERVER_SIDE, top: T.OBSERVER_SIDE, bottom: T.OBSERVER_SIDE, front: T.PLACER_FRONT, facing: f, farm: 'placer', variantOf: f ? PLACER : 0, drop: PLACER });
+  block(ANIMAL_STATION + f, { ...farmBase, name: 'Animal Station', sound: 'wood', tool: 'axe', side: T.RANCH_SIDE, top: T.PLANKS, bottom: T.PLANKS, front: T.RANCH_SIDE, facing: f, farm: 'ranch', station: 'ranch', variantOf: f ? ANIMAL_STATION : 0, drop: ANIMAL_STATION });
+}
+block(FISH_NET, {
+  name: 'Fishing Net', sound: 'wool', hardness: 0.5, tool: 'axe', transparent: true, solid: false, farm: 'net', station: 'net',
+  model: [[0, 0, 7.5, 16, 16, 8.5, T.NET], [7.5, 0, 0, 8.5, 16, 16, T.NET], [7, 13, 7, 9, 16, 9, T.LOG_SIDE]],
+});
+RECIPES.push(
+  { out: [TREE_FELLER, 1], in: [[STEEL_INGOT, 2], [IRON_INGOT, 3], [kineticId('gear', 1), 1], [LOG, 2]], table: true, metal: STEEL_INGOT },
+  { out: [PLANTER, 1], in: [[PLANKS, 4], [SAPLING, 1], [DIRT, 2], [HOPPER, 1]], table: true, metal: IRON_INGOT },
+  { out: [BREAKER, 1], in: [[COBBLE, 5], [IRON_INGOT, 2], [metalTool(TOOL_MATERIALS.findIndex((m) => m.key === 'iron'), 'pick'), 1]], table: true, metal: IRON_INGOT },
+  { out: [PLACER, 1], in: [[COBBLE, 5], [IRON_INGOT, 2], [HOPPER, 1]], table: true, metal: IRON_INGOT },
+  { out: [ANIMAL_STATION, 1], in: [[PLANKS, 6], [IRON_INGOT, 2], [BUCKET, 1], [WHEAT, 4]], table: true, metal: IRON_INGOT },
+  { out: [FISH_NET, 1], in: [[STRING, 6], [STICK, 2]], table: true },
 );
