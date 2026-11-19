@@ -12,14 +12,21 @@
 //    machine it fills the ingredients; from the side it fills the fuel slot (if it's fuel).
 //  - A conveyor belt, while driven, carries things along to whatever its end points at.
 //  - A pump beside lava pumps lava instead; a spout over a cauldron fills it with water.
+//  - Pipes also fill tanks, water sprinklers, and carry lava to ovens, smelters and engines as fuel;
+//    valves only let it through while signalled. A pump beside a tank pumps out of it.
 //  - A harvester reaps the ripe crops in front of it and passes them back, like a drill.
 //  - A steam engine burns the fuel put into it while there's water beside it, and drives shafts.
 //  - Observers and storage gauges watch the block in front of them and switch on (see onSwitch).
+//  - An ejector throws what's in the chest or machine behind it out onto the ground, while it's signalled.
+//  - A collector is a hopper that also pulls in loose things lying near it.
+//  - Splitting belts send things left and right in turn; sorting belts send what matches their frames left.
+//  - Farm machines: tree fellers, planters, block breakers and placers, animal stations, fishing nets.
+//  - A bucket elevator, while driven, lifts what's put into it up its column and out of the top.
 import * as THREE from 'three';
 import {
-  BLOCKS, AIR, WATER, LAVA, PIPE, PUMP, SPOUT, DRILL, FILAMENT_LAMP, BELT, FACING_DIRS, TOOL_MATERIALS,
+  BLOCKS, AIR, WATER, LAVA, isWaterId, PIPE, PUMP, SPOUT, DRILL, FILAMENT_LAMP, BELT, FACING_DIRS, TOOL_MATERIALS,
   metalTool, maxStack, dropsFor, isFlowing, stationKind, CAULDRON, WHEAT_0, WHEAT_3, SEEDS, BERRY_BUSH, BERRIES, SUGAR_CANE,
-  STEAM_ENGINE, MAX_HONEY,
+  STEAM_ENGINE, MAX_HONEY, TANK, TANK_CAP, tankId, LOG, SAPLING, GRASS, DIRT, isBlock, WOOL, FEATHER, BUCKET, MILK_BUCKET, WHEAT,
 } from './blocks.js';
 import { STATION_KINDS, isFuel, FUEL_ITEMS } from './stations.js';
 import { CHUNK } from './terrain.js';
@@ -36,6 +43,14 @@ const HOPPER_EVERY = 0.4; // seconds between items a hopper moves
 const HARVEST_TIME = 1.5; // seconds a harvester takes over each crop at 1x
 const ENGINE_BURN = 30; // seconds a steam engine runs on one "item" of fuel (a coal runs it for 5 minutes)
 const PULSE = 0.4; // seconds an observer's signal lasts
+const EJECT_EVERY = 0.5; // seconds between things an ejector throws while it's signalled
+const COLLECT_REACH = 4; // how far a collector pulls loose things from
+const LIFT_SPEED = 2; // blocks a second a bucket elevator lifts things at 1x
+const LIFT_GAP = 0.35;
+const FELL_TIME = 4; // seconds a tree feller takes over a tree at 1x
+const RANCH_EVERY = 3; // seconds between an animal station's rounds
+const RANCH_REACH = 5;
+const NET_TIME = 60; // average seconds between a fishing net's catches
 
 // The way a drill, hopper or belt points: [dx, dy, dz].
 export function pointing(def) {
@@ -69,6 +84,12 @@ export class Machines {
     this.seen = new Map(); // observer "x,y,z" -> the block it last saw in front of it
     this.pulses = new Map(); // observer "x,y,z" -> seconds left of its signal
     this.gaugeFull = new Set(); // gauges set to signal only when what they watch is full
+    this.ejectors = new Map(); // "x,y,z" -> { t: seconds to the next throw, sig: signalled last time }
+    this.ejectStacks = new Set(); // ejectors set to throw a whole stack each time their signal comes on
+    this.split = new Map(); // splitting belt "x,y,z" -> which side the next thing goes (0 left, 1 right)
+    this.tanks = new Map(); // "x,y,z" -> { liquid, amount (buckets) }
+    this.sprinkling = []; // sprinklers watering now
+    this.lifts = new Map(); // bucket elevator column, by its bottom "x,y,z" -> [{ id, h, sprite }] (h: height climbed)
     this.sensorTimer = 0;
     this.world = null;
     this.hopperTimer = 0;
@@ -85,6 +106,39 @@ export class Machines {
     this.seen.clear();
     this.pulses.clear();
     this.gaugeFull.clear();
+    this.ejectors.clear(); this.ejectStacks.clear(); this.split.clear();
+    for (const items of this.lifts.values()) for (const it of items) this.dropSprite(it);
+    this.lifts.clear();
+    this.tanks.clear();
+  }
+
+  // ---------- tanks ----------
+
+  tank(x, y, z) {
+    const k = key(x, y, z);
+    let t = this.tanks.get(k);
+    if (!t) { t = { liquid: WATER, amount: 0 }; this.tanks.set(k, t); }
+    return t;
+  }
+
+  // Show how full a tank is.
+  showTank(world, x, y, z) {
+    const t = this.tank(x, y, z), id = tankId(t.liquid, t.amount);
+    if (world.get(x, y, z) !== id && BLOCKS[world.get(x, y, z)]?.tank) world.setBlock(x, y, z, id);
+  }
+
+  // Pour a bucket of liquid into a tank (n = 1) or take one out (n = -1). Returns true if it could.
+  pourTank(world, x, y, z, liquid, n) {
+    const t = this.tank(x, y, z);
+    if (n > 0) { if ((t.amount > 0 && t.liquid !== liquid) || t.amount > TANK_CAP - 1) return false; t.liquid = liquid; t.amount += 1; }
+    else { if (t.liquid !== liquid || t.amount < 1) return false; t.amount -= 1; }
+    this.showTank(world, x, y, z);
+    return true;
+  }
+
+  tankText(x, y, z) {
+    const t = this.tanks.get(key(x, y, z));
+    return t?.amount > 0 ? `${Math.floor(t.amount * 10) / 10} of ${TANK_CAP} buckets of ${t.liquid === LAVA ? 'lava' : 'water'}` : 'Empty';
   }
 
   // ---------- putting things into blocks ----------
@@ -98,7 +152,8 @@ export class Machines {
     if (kind) {
       const K = STATION_KINDS[kind];
       const st = stations.get(x, y, z, kind);
-      if (fuel && !K.storage && !K.powered && isFuel(id)) {
+      if (K.accepts && !K.accepts.includes(id)) return 0;
+      if (fuel && !K.storage && !K.powered && !K.crafter && !K.holder && isFuel(id)) {
         if (!st.fuel) { const k = Math.min(n, maxStack(id)); st.fuel = { id, count: k }; return k; }
         if (st.fuel.id !== id) return 0;
         const k = Math.min(n, maxStack(id) - st.fuel.count);
@@ -129,6 +184,17 @@ export class Machines {
       const k = Math.min(n, maxStack(id) - (e.fuel?.count ?? 0));
       if (k > 0) e.fuel = { id, count: (e.fuel?.count ?? 0) + k };
       return Math.max(0, k);
+    }
+    if (def.elevator) {
+      // into the bucket elevator column, at this height
+      let by = y;
+      while (BLOCKS[world.get(x, by - 1, z)]?.elevator) by--;
+      const k = key(x, by, z), items = this.lifts.get(k) ?? [], h = y - by;
+      if (items.some((it) => Math.abs(it.h - h) < LIFT_GAP)) return 0;
+      items.push({ id, h, sprite: null });
+      items.sort((a, b) => b.h - a.h);
+      this.lifts.set(k, items);
+      return 1;
     }
     if (def.belt) {
       const items = this.belts.get(key(x, y, z)) ?? [];
@@ -173,8 +239,8 @@ export class Machines {
 
   tick(dt, world, kinetics, stations, light) {
     // gather the machines in the loaded world
-    this.world = world;
-    const pumps = [], drills = [], lamps = [], hoppers = [], sensors = [], harvesters = [], engines = [];
+    this.world = world; this.kinetics = kinetics;
+    const pumps = [], drills = [], lamps = [], hoppers = [], sensors = [], harvesters = [], engines = [], ejectors = [], collectors = [], farms = [];
     for (const c of world.chunks.values()) {
       for (const li of c.machines) {
         const id = c.data[li], def = BLOCKS[id];
@@ -182,7 +248,9 @@ export class Machines {
         if (id === PUMP) pumps.push([x, y, z]);
         else if (def.machine && id >= DRILL && id <= DRILL + 4) drills.push([x, y, z, def]);
         else if (id === FILAMENT_LAMP || id === FILAMENT_LAMP + 1) lamps.push([x, y, z, id]);
-        else if (def.hopper) hoppers.push([x, y, z, def]);
+        else if (def.farm) farms.push([x, y, z, def]);
+        else if (def.hopper) { hoppers.push([x, y, z, def]); if (def.collector) collectors.push([x, y, z, def]); }
+        else if (def.ejector) ejectors.push([x, y, z, def]);
         else if (def.sensor) sensors.push([x, y, z, def]);
         else if (def.harvester) harvesters.push([x, y, z, def]);
         else if (def.engine) engines.push([x, y, z, def]);
@@ -192,7 +260,7 @@ export class Machines {
       const lit = kinetics.powerAt(x, y, z) > 0;
       if (lit !== (id === FILAMENT_LAMP + 1)) world.setBlock(x, y, z, FILAMENT_LAMP + (lit ? 1 : 0));
     }
-    if ((this.pumpTimer -= dt) <= 0) { this.pumpTimer = 0.5; this.tickPumps(world, kinetics, pumps); }
+    if ((this.pumpTimer -= dt) <= 0) { this.pumpTimer = 0.5; this.tickPumps(world, kinetics, pumps, stations); }
     for (const d of drills) this.tickDrill(dt, world, kinetics, stations, d);
     for (const h of harvesters) this.tickHarvester(dt, world, kinetics, stations, h);
     for (const e of engines) this.tickEngine(dt, world, e);
@@ -208,28 +276,264 @@ export class Machines {
       }
     }
     this.tickBelts(dt, world, kinetics, stations, light);
+    this.tickLifts(dt, world, kinetics, stations, light);
+    for (const e of ejectors) this.tickEjector(dt, world, stations, e);
+    for (const f of farms) this.tickFarm(dt, world, kinetics, stations, f);
+    if (collectors.length) this.tickCollectors(dt, world, stations, collectors);
   }
 
-  tickPumps(world, kinetics, pumps) {
+  // ---------- ejectors and collectors ----------
+
+  tickEjector(dt, world, stations, [x, y, z, def]) {
+    const k = key(x, y, z);
+    let e = this.ejectors.get(k);
+    if (!e) { e = { t: 0, sig: false }; this.ejectors.set(k, e); }
+    const sig = !!this.signalAt?.(x, y, z), rising = sig && !e.sig;
+    e.sig = sig;
+    e.t -= dt;
+    const stack = this.ejectStacks.has(k);
+    if (stack ? !rising : !sig || e.t > 0) return;
+    e.t = EJECT_EVERY;
+    const [dx, dz] = FACING_DIRS[def.facing];
+    if (world.isSolid(x + dx, y, z + dz)) return; // nowhere to throw it
+    const bx = x - dx, bz = z - dz;
+    const id = this.takeOne(world, stations, bx, y, bz, true);
+    if (!id) return;
+    let n = 0;
+    const most = stack ? maxStack(id) : 1;
+    while (n < most && this.takeOne(world, stations, bx, y, bz, true) === id) { this.takeOne(world, stations, bx, y, bz); n++; }
+    this.throwItem?.({ id, count: n }, { x: x + 0.5 + dx * 0.7, y: y + 0.35, z: z + 0.5 + dz * 0.7 }, { x: dx * 4, y: 2, z: dz * 4 });
+  }
+
+  // ---------- farm machines ----------
+
+  // Pass on what a machine holds out of its back (as a drill does). Returns false while it's stuck.
+  passBack(world, stations, d, x, y, z, def) {
+    const [dx, dz] = FACING_DIRS[def.facing];
+    while (d.held.length) {
+      const [id, n] = d.held[0];
+      const put = this.insert(world, stations, x - dx, y, z - dz, id, n, false);
+      if (put >= n) d.held.shift(); else { d.held[0][1] = n - put; break; }
+    }
+    return !d.held.length;
+  }
+
+  tickFarm(dt, world, kinetics, stations, [x, y, z, def]) {
+    const k = key(x, y, z);
+    let d = this.drills.get(k);
+    if (!d) { d = { progress: 0, target: '', held: [], status: '', sig: false, t: Math.random() * 2 }; this.drills.set(k, d); }
+    const [dx, dz] = FACING_DIRS[def.facing], fx = x + dx, fz = z + dz;
+    const sig = def.farm === 'breaker' || def.farm === 'placer' ? !!this.signalAt?.(x, y, z) : false, rising = sig && !d.sig;
+    d.sig = sig;
+    if (def.farm !== 'net' && def.farm !== 'planter' && !this.passBack(world, stations, d, x, y, z, def)) { d.status = 'Stopped: there\'s nowhere behind it to put what it gets'; return; }
+    if (def.farm === 'feller') {
+      const speed = kinetics.powerAt(x, y, z);
+      if (speed <= 0) { d.status = 'Not turning'; d.progress = 0; return; }
+      const ty = [y, y + 1].find((cy) => world.get(fx, cy, fz) === LOG);
+      if (ty === undefined) { d.status = 'Waiting for a tree in front of it'; d.progress = 0; return; }
+      d.status = 'Cutting down a tree';
+      if ((d.progress += dt * speed) < FELL_TIME) return;
+      d.progress = 0;
+      const logs = [[fx, ty, fz], ...(this.farmHooks?.treeAbove(fx, ty, fz) ?? [])];
+      for (const [lx, ly, lz] of logs) world.setBlock(lx, ly, lz, AIR);
+      d.held.push([LOG, logs.length]);
+      if (logs.length > 1) d.held.push([SAPLING, Math.random() < 0.5 ? 2 : 1]);
+      return;
+    }
+    if (def.farm === 'breaker') {
+      if (!rising) return;
+      const id = world.get(fx, y, fz), b = BLOCKS[id];
+      if (id === AIR || !b || b.liquid || b.hardness === Infinity || b.station || b.kinetic || b.machine || b.hopper || b.farm || b.rail) return;
+      d.held.push(...dropsFor(id, TUNGSTEN_PICK).map(([i, n]) => [i, n]));
+      world.setBlock(fx, y, fz, AIR);
+      this.onBlockChanged?.(fx, y, fz);
+      return;
+    }
+    if (def.farm === 'placer') {
+      if (!rising) return;
+      const there = world.get(fx, y, fz);
+      if (there !== AIR && !isFlowing(there)) return;
+      // the first plain block in the chest behind it
+      const bx = x - dx, bz = z - dz, kind = stationKind(world.get(bx, y, bz));
+      if (!kind || !STATION_KINDS[kind].storage) return;
+      const st = stations.get(bx, y, bz, kind);
+      const i = st.inputs.findIndex((s) => s && isBlock(s.id) && BLOCKS[s.id].shape === 'cube' && !BLOCKS[s.id].station && !BLOCKS[s.id].kinetic && !BLOCKS[s.id].machine && !BLOCKS[s.id].farm);
+      if (i < 0) return;
+      const id = st.inputs[i].id;
+      if (!--st.inputs[i].count) st.inputs[i] = null;
+      world.setBlock(fx, y, fz, id);
+      this.onBlockChanged?.(fx, y, fz);
+      return;
+    }
+    if ((d.t -= dt) > 0) return;
+    if (def.farm === 'planter') {
+      d.t = 2;
+      const below = world.get(fx, y - 1, fz);
+      if (world.get(fx, y, fz) !== AIR || (below !== GRASS && below !== DIRT)) return;
+      const st = stations.get(x, y, z, 'planter');
+      const i = st.inputs.findIndex((s) => s?.id === SAPLING);
+      if (i < 0) return;
+      if (!--st.inputs[i].count) st.inputs[i] = null;
+      world.setBlock(fx, y, fz, SAPLING);
+      return;
+    }
+    if (def.farm === 'net') {
+      d.t = 5;
+      const wet = SIDES6.filter(([ex, ey, ez]) => ey <= 0 && isWaterId(world.get(x + ex, y + ey, z + ez))).length;
+      if (wet < 2) { d.status = 'It needs to be in water'; return; }
+      d.status = 'Fishing';
+      if (Math.random() >= 5 / NET_TIME) return;
+      const c = this.farmHooks?.catchAt({ x: x + 0.5, y, z: z + 0.5 });
+      if (c) addToSlots(stations.get(x, y, z, 'net').inputs, c[0], c[1]);
+      return;
+    }
+    if (def.farm === 'ranch') {
+      d.t = RANCH_EVERY;
+      const st = stations.get(x, y, z, 'ranch'), mobs = this.farmHooks?.mobs;
+      if (!mobs) return;
+      const near = mobs.mobs.filter((m) => !m.dying && Math.hypot(m.pos.x - x - 0.5, m.pos.z - z - 0.5) <= RANCH_REACH && Math.abs(m.pos.y - y) <= 3);
+      const take = (id) => { const i = st.inputs.findIndex((s) => s?.id === id); if (i < 0) return false; if (!--st.inputs[i].count) st.inputs[i] = null; return true; };
+      let got = 0;
+      for (const m of near) {
+        if (m.spec.wool && m.shornFor <= 0) { m.shornFor = 150; m.parts.shear?.(true); d.held.push([WOOL, Math.random() < 0.5 ? 2 : 1]); got++; }
+        else if (m.kind === 'duck' && m.featherFor <= 0) { m.featherFor = 30; d.held.push([FEATHER, 1]); got++; }
+        else if (m.spec.milk && !(m.milkFor > 0) && take(BUCKET)) { m.milkFor = 60; d.held.push([MILK_BUCKET, 1]); got++; }
+        if (m.milkFor > 0) m.milkFor -= RANCH_EVERY;
+      }
+      // feeding: a wheat now and then makes coats and feathers grow back twice as fast
+      const hungry = near.filter((m) => m.shornFor > 0 || m.featherFor > 0);
+      if (hungry.length && (d.fed = (d.fed ?? 0) - RANCH_EVERY) <= 0 && take(WHEAT)) d.fed = 30;
+      if (d.fed > 0) for (const m of hungry) { if (m.shornFor > 0) m.shornFor -= RANCH_EVERY; if (m.featherFor > 0) m.featherFor -= RANCH_EVERY; }
+      d.status = near.length ? `${near.length} animal${near.length > 1 ? 's' : ''} nearby${got ? `: got ${got} thing${got > 1 ? 's' : ''}` : ''}${d.fed > 0 ? ', fed' : ''}` : 'No animals within 5 blocks';
+    }
+  }
+
+  // Tapping an ejector switches it between one at a time and a stack per signal. Returns true for stacks.
+  toggleEjector(x, y, z) {
+    const k = key(x, y, z);
+    if (this.ejectStacks.has(k)) this.ejectStacks.delete(k); else this.ejectStacks.add(k);
+    return this.ejectStacks.has(k);
+  }
+
+  // Collectors draw in loose things lying near them; when one gets there, it goes in like a dropped one.
+  tickCollectors(dt, world, stations, collectors) {
+    if (!this.loose) return;
+    for (const it of this.loose.items) {
+      if (it.age < it.delay || it.stack.wear || it.stack.ench?.length || (it.noCollect -= dt) > 0) continue;
+      let best = null, bd = Infinity;
+      for (const c of collectors) {
+        const cx = c[0] + 0.5, cy = c[1] + 1, cz = c[2] + 0.5;
+        const d = Math.hypot(it.pos.x - cx, it.pos.y - cy, it.pos.z - cz);
+        if (d < bd && d <= COLLECT_REACH + 0.5 && it.pos.y > c[1] - 1.5) { bd = d; best = c; }
+      }
+      if (!best) continue;
+      const [x, y, z] = best;
+      if (bd < 0.9) {
+        const took = this.insert(world, stations, x, y, z, it.stack.id, it.stack.count, false);
+        if (took > 0) it.stack.count -= took; else it.noCollect = 3; // (the collector has nowhere to put it: leave it be a while)
+        continue;
+      }
+      const dx = x + 0.5 - it.pos.x, dy = y + 1.1 - it.pos.y, dz = z + 0.5 - it.pos.z, d = Math.hypot(dx, dy, dz) || 1;
+      it.vel.set((dx / d) * 4, Math.max(it.vel.y, (dy / d) * 4 + 1), (dz / d) * 4);
+    }
+  }
+
+  // ---------- bucket elevators ----------
+
+  tickLifts(dt, world, kinetics, stations, light) {
+    for (const [k, items] of this.lifts) {
+      const [x, y, z] = unkey(k);
+      if (!world.chunkAt(x, z)) continue;
+      if (!BLOCKS[world.get(x, y, z)]?.elevator || BLOCKS[world.get(x, y - 1, z)]?.elevator) {
+        // the column was broken up: what it held spills out
+        for (const it of items) { this.dropSprite(it); this.throwItem?.({ id: it.id, count: 1 }, { x: x + 0.5, y: y + it.h + 0.5, z: z + 0.5 }, { x: 0, y: 1, z: 0 }); }
+        this.lifts.delete(k);
+        continue;
+      }
+      let top = y, speed = 0;
+      for (; BLOCKS[world.get(x, top, z)]?.elevator; top++) speed = Math.max(speed, kinetics.powerAt(x, top, z));
+      const height = top - y; // things come out at this height (the top of the column)
+      for (let i = 0; i < items.length; i++) {
+        const limit = i === 0 ? height : items[i - 1].h - LIFT_GAP;
+        items[i].h = Math.max(items[i].h, Math.min(limit, items[i].h + dt * speed * LIFT_SPEED));
+      }
+      if (items.length && items[0].h >= height - 1e-6 && speed > 0) {
+        // out of the top: into what's above, or onto it
+        const it = items[0];
+        const above = world.get(x, top, z);
+        const out = above === 0 ? (this.throwItem?.({ id: it.id, count: 1 }, { x: x + 0.5, y: top + 0.1, z: z + 0.5 }, { x: 0, y: 2.5, z: 0 }), 1)
+          : this.insert(world, stations, x, top, z, it.id, 1, false);
+        if (out) { this.dropSprite(items.shift()); if (!items.length) { this.lifts.delete(k); continue; } }
+      }
+      const sun = light.day * skyBrightness(world.skyAt(x, y, z)), t = lightBrightness(world.lightAt(x, y, z)) * light.flicker;
+      for (const it of items) {
+        if (!it.sprite) it.sprite = this.makeSprite(it.id);
+        it.sprite.position.set(x + 0.5, y + Math.min(it.h, height - 0.5) + 0.4, z + 0.5);
+        it.sprite.material.color.setRGB(Math.max(sun, t, light.ambient), Math.max(sun, t * 0.86, light.ambient), Math.max(sun, t * 0.66, light.ambient));
+      }
+    }
+  }
+
+  // What a bucket elevator is doing, for a toast.
+  liftStatus(world, kinetics, x, y, z) {
+    let by = y;
+    while (BLOCKS[world.get(x, by - 1, z)]?.elevator) by--;
+    let top = by, speed = 0;
+    for (; BLOCKS[world.get(x, top, z)]?.elevator; top++) speed = Math.max(speed, kinetics.powerAt(x, top, z));
+    const n = this.lifts.get(key(x, by, z))?.length ?? 0;
+    return `${top - by} block${top - by > 1 ? 's' : ''} high, ${n ? `lifting ${n} thing${n > 1 ? 's' : ''}` : 'empty'}; ${speed > 0 ? `running at ${+speed.toFixed(2)}x` : 'not turning: drive it with a shaft'}`;
+  }
+
+  tickPumps(world, kinetics, pumps, stations) {
     const active = new Map(); // cell below a spout -> WATER or LAVA
+    const sprinkled = [];
     for (const [x, y, z] of pumps) {
       if (kinetics.powerAt(x, y, z) <= 0) continue;
-      const near = SIDES6.map(([dx, dy, dz]) => world.get(x + dx, y + dy, z + dz));
-      const liquid = near.includes(WATER) ? WATER : near.includes(LAVA) ? LAVA : 0;
+      const near = SIDES6.map(([dx, dy, dz]) => [x + dx, y + dy, z + dz]);
+      const ids = near.map(([nx, ny, nz]) => world.get(nx, ny, nz));
+      let liquid = ids.includes(WATER) ? WATER : ids.includes(LAVA) ? LAVA : 0, from = null;
+      if (!liquid) {
+        // or out of a tank beside it
+        const i = ids.findIndex((id) => BLOCKS[id]?.tank && id !== TANK);
+        if (i >= 0) { from = key(...near[i]); liquid = this.tank(...near[i]).liquid; }
+      }
       if (!liquid) continue;
-      // follow the pipes from the pump; spouts touching any of them pour
+      // follow the pipes (and open valves) from the pump; spouts, tanks, sprinklers and fires touching them take it
       const seen = new Set([key(x, y, z)]);
       const queue = [[x, y, z]];
+      const tanks = [], fires = [];
       while (queue.length && seen.size < 512) {
         const [px, py, pz] = queue.shift();
         for (const [dx, dy, dz] of SIDES6) {
           const nx = px + dx, ny = py + dy, nz = pz + dz, k = key(nx, ny, nz);
           if (seen.has(k)) continue;
-          const id = world.get(nx, ny, nz);
-          if (id === PIPE) { seen.add(k); queue.push([nx, ny, nz]); } else if (id === SPOUT) { seen.add(k); if (!active.has(key(nx, ny - 1, nz))) active.set(key(nx, ny - 1, nz), liquid); }
+          const id = world.get(nx, ny, nz), d = BLOCKS[id];
+          if (id === PIPE || (d?.valve && this.signalAt?.(nx, ny, nz))) { seen.add(k); queue.push([nx, ny, nz]); continue; }
+          if (id === SPOUT) { seen.add(k); if (!active.has(key(nx, ny - 1, nz))) active.set(key(nx, ny - 1, nz), liquid); }
+          else if (d?.tank) { seen.add(k); if (k !== from) tanks.push([nx, ny, nz]); }
+          else if (d?.sprinkler) { seen.add(k); if (liquid === WATER) sprinkled.push([nx, ny, nz]); }
+          else if (liquid === LAVA && (d?.engine || ['oven', 'smelter', 'blast'].includes(d?.station))) { seen.add(k); fires.push([nx, ny, nz, d]); }
         }
       }
+      const src = from ? this.tank(...from.split(',').map(Number)) : null;
+      const draw = (n) => { if (!src) return true; if (src.amount < n) return false; src.amount -= n; return true; };
+      // tanks fill a bucket each time round
+      for (const [tx, ty, tz] of tanks) {
+        const t = this.tank(tx, ty, tz);
+        if ((t.amount > 0 && t.liquid !== liquid) || t.amount >= TANK_CAP || !draw(1)) continue;
+        t.liquid = liquid; t.amount = Math.min(TANK_CAP, t.amount + 1);
+      }
+      // lava burns as fuel (a hundredth of a bucket for each thing cooked, or half a minute of steam)
+      for (const [fx, fy, fz, d] of fires) {
+        if (d.engine) { const e = this.engine(fx, fy, fz); if (e.burn < 2 && draw(0.01)) e.burn += ENGINE_BURN; continue; }
+        const st = stations.get(fx, fy, fz, d.station);
+        if (st.burn < 0.5 && draw(0.01)) { st.burn += 1; st.burnMax = Math.max(st.burnMax, 1); }
+      }
+      if (src) this.showTank(world, ...from.split(',').map(Number));
+      for (const [tx, ty, tz] of tanks) this.showTank(world, tx, ty, tz);
     }
+    world.sprinkled = sprinkled;
+    this.sprinkling = sprinkled;
     for (const [k, liquid] of active) {
       const [x, y, z] = unkey(k);
       const id = world.get(x, y, z), def = BLOCKS[id];
@@ -386,6 +690,7 @@ export class Machines {
     if (!def) return false;
     if (def.stationBase === CAULDRON) return full ? def.water >= 3 : def.water > 0;
     if (def.hive >= 0) return full ? def.hive >= MAX_HONEY : def.hive > 0;
+    if (def.tank) { const t = this.tanks.get(key(x, y, z)); return full ? (t?.amount ?? 0) >= TANK_CAP : (t?.amount ?? 0) > 0; }
     if (def.engine) { const e = this.engines.get(key(x, y, z)); return full ? (e?.fuel?.count ?? 0) >= maxStack(e?.fuel?.id ?? 0) : !!e?.fuel; }
     if (def.rail?.loader) {
       const cart = this.carts?.storageAt(x, y, z);
@@ -414,6 +719,10 @@ export class Machines {
         const now = world.get(fx, y, fz), was = this.seen.get(k);
         this.seen.set(k, now);
         if (was !== undefined && was !== now && !this.pulses.has(k)) { this.pulses.set(k, PULSE); this.onSwitch?.(x, y, z, true); }
+      } else if (def.sensor === 'tacho') {
+        // a tachometer signals while its network is stopped or overloaded
+        const want = !(this.kinetics?.powerAt(x, y, z) > 0);
+        if (want !== def.on) this.onSwitch?.(x, y, z, want);
       } else {
         const want = this.holds(world, stations, fx, y, fz, this.gaugeFull.has(k));
         if (want !== def.on) this.onSwitch?.(x, y, z, want);
@@ -450,9 +759,12 @@ export class Machines {
         }
         if (!items.length) { this.belts.delete(k); continue; }
       }
-      // at the end: on to the next belt, or into whatever it points at
+      // at the end: on to the next belt, or into whatever it points at (or off to the side)
       if (items.length && items[0].t >= 1 && speed > 0) {
-        if (this.insert(world, stations, x + dx, y, z + dz, items[0].id, 1, false)) {
+        const outs = this.beltOuts(world, x, y, z, def, items[0].id);
+        const i = outs.findIndex(([ox, oz]) => this.insert(world, stations, ox, y, oz, items[0].id, 1, false));
+        if (i >= 0) {
+          if (def.sorts === 'split') this.split.set(k, (outs[i][2] + 1) % 2);
           this.dropSprite(items.shift());
           if (!items.length) this.belts.delete(k);
         }
@@ -466,6 +778,22 @@ export class Machines {
         it.sprite.material.color.setRGB(Math.max(sun, t, light.ambient), Math.max(sun, t * 0.86, light.ambient), Math.max(sun, t * 0.66, light.ambient));
       }
     }
+  }
+
+  // Where the front thing on a belt can go next, in the order to try: [[x, z, side], ...].
+  beltOuts(world, x, y, z, def, id) {
+    const f = def.facing, step = (g) => [x + FACING_DIRS[g][0], z + FACING_DIRS[g][1]];
+    const left = (f + 3) % 4, right = (f + 1) % 4;
+    if (def.sorts === 'split') {
+      const first = this.split.get(key(x, y, z)) ?? 0;
+      const sides = [[...step(left), 0], [...step(right), 1]];
+      return first ? [sides[1], sides[0]] : sides;
+    }
+    if (def.sorts === 'sort') {
+      const filter = this.frames?.around(world, x, y, z) ?? [];
+      return filter.includes(id) ? [[...step(left), 0]] : [[...step(f), 0]];
+    }
+    return [[...step(f), 0]];
   }
 
   makeSprite(id) {
@@ -500,6 +828,19 @@ export class Machines {
     this.engines.delete(k);
     this.gaugeFull.delete(k);
     this.seen.delete(k);
+    this.ejectors.delete(k); this.ejectStacks.delete(k); this.split.delete(k); this.tanks.delete(k);
+    if (BLOCKS[this.world?.get(x, y, z)]?.elevator) {
+      // the column it was part of: what it holds comes back
+      for (const [lk, items] of this.lifts) {
+        const [lx, ly, lz] = unkey(lk);
+        if (lx !== x || lz !== z || ly > y) continue;
+        let joined = true;
+        for (let cy = ly; cy < y && joined; cy++) joined = !!BLOCKS[this.world.get(x, cy, z)]?.elevator;
+        if (!joined) continue;
+        for (const it of items) { out.push([it.id, 1]); this.dropSprite(it); }
+        this.lifts.delete(lk);
+      }
+    }
     return out;
   }
 
@@ -513,6 +854,9 @@ export class Machines {
       drills: [...this.drills].filter(([, d]) => d.held.length).map(([k, d]) => [k, d.held]),
       engines: [...this.engines].filter(([, e]) => e.fuel || e.burn > 0).map(([k, e]) => [k, +e.burn.toFixed(1), e.fuel ? [e.fuel.id, e.fuel.count] : 0]),
       gaugeFull: [...this.gaugeFull],
+      ejectStacks: [...this.ejectStacks],
+      tanks: [...this.tanks].filter(([, t]) => t.amount > 0).map(([k, t]) => [k, t.liquid, +t.amount.toFixed(2)]),
+      lifts: [...this.lifts].map(([k, items]) => [k, items.map((it) => [it.id, +it.h.toFixed(2)])]),
     };
   }
 
@@ -530,6 +874,13 @@ export class Machines {
       this.engines.set(k, { burn: Math.max(0, +burn || 0), fuel: Array.isArray(fuel) && fuel[0] > 0 && fuel[1] > 0 ? { id: fuel[0], count: fuel[1] } : null });
     }
     for (const k of o?.gaugeFull ?? []) if (typeof k === 'string') this.gaugeFull.add(k);
+    for (const k of o?.ejectStacks ?? []) if (typeof k === 'string') this.ejectStacks.add(k);
+    for (const [k, liquid, amount] of o?.tanks ?? []) {
+      if (typeof k === 'string' && (liquid === WATER || liquid === LAVA)) this.tanks.set(k, { liquid, amount: Math.min(TANK_CAP, Math.max(0, +amount || 0)) });
+    }
+    for (const [k, items] of o?.lifts ?? []) {
+      if (typeof k === 'string' && Array.isArray(items)) this.lifts.set(k, items.filter((it) => it?.[0] > 0).map(([id, h]) => ({ id, h: Math.max(0, +h || 0), sprite: null })));
+    }
     for (const [k, held] of o?.drills ?? []) {
       if (typeof k === 'string' && Array.isArray(held)) this.drills.set(k, { progress: 0, target: '', held: held.filter((h) => h?.[0] > 0 && h[1] > 0), status: '' });
     }

@@ -1,7 +1,7 @@
 // Loose items lying in the world: things you throw (Q, or hold a hotbar slot), and what spills out of a
 // chest or machine when you break it. They fly in an arc, bounce, roll to a stop and slowly spin. Walk
 // over one to pick it up (things you've just thrown wait a moment first). One that comes to rest on a
-// conveyor belt rides off along it, and one that lands on a hopper drops in. They're saved with the world,
+// conveyor belt rides off along it, and one that lands on a hopper (or a bucket elevator) drops in. They're saved with the world,
 // and vanish after a few minutes so they can't pile up forever.
 import * as THREE from 'three';
 import { BLOCKS, isWaterId, LAVA } from './blocks.js';
@@ -106,7 +106,7 @@ export class ItemDrops {
         const bx = Math.floor(p.x), bz = Math.floor(p.z);
         for (const by of [Math.floor(p.y + 0.01), Math.floor(p.y - 0.05)]) {
           const def = BLOCKS[world.get(bx, by, bz)];
-          if (!def?.belt && !def?.hopper) continue;
+          if (!def?.belt && !def?.hopper && !def?.elevator) continue;
           const took = hooks.insert(bx, by, bz, it.stack.id, def.belt ? 1 : it.stack.count);
           if (took > 0) it.stack.count -= took;
           break;

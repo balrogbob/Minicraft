@@ -7,7 +7,8 @@
 //  - a large gear meshes with a small gear one cell diagonally across the axle: the small one turns
 //    twice as fast as the large one (and the large one half as fast as the small one);
 //  - a machine (crusher, millstone, saw, trip hammer, bellows, pump, drill, filament lamp, belt) is driven
-//    by any shaft, gear or wheel whose axle points into one of its faces; belts side by side share it.
+//    by any shaft, gear or wheel whose axle points into one of its faces; belts side by side share it (and a
+//    bucket elevator's column).
 //
 // Each connected set of parts is a network. Every water wheel with flowing water beside it turns at 1x
 // and gives WHEEL_POWER; a windmill with room for its sails gives less, more the higher up it stands.
@@ -15,9 +16,13 @@
 // is all a crusher needs, and going faster needs more wheels. Every shaft and gear also has a
 // limit to the load it can carry (by material). Too much load, or wheels geared to different speeds,
 // and the whole network stops.
+//
+// Drive belts join two parts on parallel axles further apart (see links). A flywheel stores spin while its
+// network has power to spare and gives it back (FLY_POWER each) when the network is short. A gear shift
+// doubles the speed across it, from its - end to its + end, while it gets a signal.
 import * as THREE from 'three';
 import {
-  BLOCKS, KINETIC_MATS, WHEEL_POWER, ENGINE_POWER, isFlowing, T, AIR,
+  BLOCKS, KINETIC_MATS, WHEEL_POWER, ENGINE_POWER, isFlowing, T, AIR, BELT_REACH,
 } from './blocks.js';
 import { TILE, ATLAS_COLS } from './textures.js';
 import { CHUNK, SEA_LEVEL } from './terrain.js';
@@ -27,6 +32,9 @@ const SOLVE_EVERY = 0.4; // seconds between re-checking the networks (and which 
 const TURN_RATE = Math.PI; // radians per second at 1x (a slow half turn a second)
 const UNIT = [[1, 0, 0], [0, 1, 0], [0, 0, 1]];
 const key = (x, y, z) => `${x},${y},${z}`;
+export const FLY_CAP = 240; // power-seconds a flywheel can hold
+const FLY_POWER = 8; // power a spinning flywheel can give
+const FLY_CHARGE = 4; // power a flywheel can soak up while there's some to spare
 
 // A windmill's power: 1 at sea level, rising a point every 5 blocks higher, up to 6. Its sails need the
 // 8 cells around its hub (across the axle) clear of blocks, or it won't turn.
@@ -48,7 +56,26 @@ export class Kinetics {
     this.meshes = new Map(); // key -> { id, group, spin, material, angle }
     this.geoCache = new Map();
     this.timer = 0;
+    this.belts = []; // drive belts: [["x,y,z", "x,y,z"], ...]
+    this.beltMeshes = new Map(); // "a|b" -> THREE.Mesh
+    this.fly = new Map(); // flywheel "x,y,z" -> stored power-seconds
+    this.since = 0; // seconds since the networks were last worked out
+    this.dropped = []; // [x, y, z] where a drive belt came off (its parts were taken away), for main.js to drop
   }
+
+  // Link two parts with a drive belt. Returns a reason it can't, or ''.
+  canBelt(a, b) {
+    const n = this.nodes.get(key(...a)), m = this.nodes.get(key(...b));
+    if (!n || !m || n === m || n.axis < 0 || m.axis < 0 || n.part === 'machine' || m.part === 'machine') return 'Drive belts go on shafts and gears';
+    if (n.axis !== m.axis) return 'The two axles need to point the same way';
+    const d = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+    if (d[n.axis] !== 0) return 'The two need to be side by side, not along the same axle';
+    if (Math.hypot(...d) > BELT_REACH) return `A drive belt reaches ${BELT_REACH} blocks at most`;
+    if (this.belts.some(([p, q]) => (p === key(...a) && q === key(...b)) || (p === key(...b) && q === key(...a)))) return 'Those are already linked';
+    return '';
+  }
+
+  addBelt(a, b) { this.belts.push([key(...a), key(...b)]); this.timer = 0; }
 
   // Speed (x 1) a machine at this position is being driven at, or 0.
   powerAt(x, y, z) {
@@ -59,6 +86,8 @@ export class Kinetics {
   // A short description of what's driving a machine (for its panel), or a power source's output.
   statusAt(x, y, z) {
     const n = this.nodes.get(key(x, y, z));
+    if (n?.part === 'flywheel') return `Flywheel: ${Math.round((this.fly.get(key(x, y, z)) ?? 0) / FLY_CAP * 100)}% spun up · ${n.net != null ? this.nets[n.net].status || `turning at ${fmt(Math.abs(n.speed))}x` : ''}`;
+    if (n?.part === 'shift') return `Gear shift: ${n.r > 1 ? 'doubling the speed (it has a signal)' : 'straight through (give it a signal to double the speed toward its + end)'}`;
     if (n?.part === 'clutch' && !n.engaged) return 'Disengaged: switch it on with a lever, button or pressure plate beside it';
     if (n && n.part !== 'machine' && n.net != null) {
       const net = this.nets[n.net];
@@ -83,16 +112,32 @@ export class Kinetics {
         const id = c.data[li];
         const def = BLOCKS[id];
         if (def.kinetic) nodes.set(key(x, y, z), { x, y, z, id, ...def.kinetic, speed: 0, rel: null, net: null });
-        else if (def.machine) nodes.set(key(x, y, z), { x, y, z, id, part: 'machine', load: def.machine.load, belt: def.belt, speed: 0, net: null });
+        else if (def.machine) nodes.set(key(x, y, z), { x, y, z, id, part: 'machine', load: def.machine.load, belt: def.belt || def.elevator, lift: def.elevator, speed: 0, net: null });
       }
     }
     const at = (x, y, z) => nodes.get(key(x, y, z));
     // the parts a part turns, with the speed ratio (sign: which way round)
     // a clutch only passes power on while it's switched on
     for (const n of nodes.values()) if (n.part === 'clutch') n.engaged = !!this.signalAt?.(n.x, n.y, n.z);
+    for (const n of nodes.values()) if (n.part === 'shift') n.r = this.signalAt?.(n.x, n.y, n.z) ? 2 : 1;
+    // drive belts whose parts are gone come off
+    const linked = new Map();
+    this.belts = this.belts.filter(([p, q]) => {
+      const [px, , pz] = p.split(',').map(Number), [qx, , qz] = q.split(',').map(Number);
+      if (!world.chunkAt(px, pz) || !world.chunkAt(qx, qz)) return true; // (can't tell yet)
+      const n = nodes.get(p), m = nodes.get(q);
+      if (!n || !m || n.axis !== m.axis || n.axis < 0 || n.part === 'machine' || m.part === 'machine') { this.dropped.push(p.split(',').map(Number)); return false; }
+      linked.set(p, [...(linked.get(p) ?? []), m]);
+      linked.set(q, [...(linked.get(q) ?? []), n]);
+      return true;
+    });
+    for (const k of this.fly.keys()) if (nodes.get(k)?.part !== 'flywheel' && world.chunkAt(+k.split(',')[0], +k.split(',')[2])) this.fly.delete(k);
     // a steam engine is a hub like a gearbox: every face drives a shaft or gear pointing into it
     const hub = (m) => m.part === 'gearbox' || m.part === 'engine';
     const open = (m) => m && m.part !== 'machine' && !(m.part === 'clutch' && !m.engaged);
+    // the speed ratio from n to its neighbour m, a step s (+1 or -1) along their axle: a gear shift
+    // multiplies it by r going toward its + end
+    const ratio = (n, m, s) => (n.part === 'shift' && s === 1 ? n.r : 1) * (m.part === 'shift' && s === -1 ? 1 / m.r : 1);
     const links = (n) => {
       const out = [];
       if (n.part === 'clutch' && !n.engaged) return out;
@@ -100,16 +145,17 @@ export class Kinetics {
         // every face of a gearbox is the end of an axle: it turns whatever shaft or gear points into it
         for (let a = 0; a < 3; a++) for (const s of [1, -1]) {
           const m = at(n.x + UNIT[a][0] * s, n.y + UNIT[a][1] * s, n.z + UNIT[a][2] * s);
-          if (open(m) && (m.axis === a || hub(m))) out.push([m, 1, null, true]);
+          if (open(m) && (m.axis === a || hub(m))) out.push([m, m.axis === a ? ratio(n, m, s) : 1, null, true]);
         }
         return out;
       }
       const a = UNIT[n.axis];
       for (const s of [1, -1]) {
         const m = at(n.x + a[0] * s, n.y + a[1] * s, n.z + a[2] * s);
-        if (open(m) && m.axis === n.axis) out.push([m, 1, null]);
-        else if (open(m) && hub(m)) out.push([m, 1, null, true]);
+        if (open(m) && m.axis === n.axis) out.push([m, ratio(n, m, s), null]);
+        else if (open(m) && hub(m)) out.push([m, ratio(n, m, s), null, true]);
       }
+      for (const m of linked.get(key(n.x, n.y, n.z)) ?? []) if (open(m)) out.push([m, 1, null, true]); // drive belts
       if (n.part === 'gear' || n.part === 'large') {
         const [u, v] = [UNIT[(n.axis + 1) % 3], UNIT[(n.axis + 2) % 3]];
         const off = (du, dv) => [u[0] * du + v[0] * dv, u[1] * du + v[1] * dv, u[2] * du + v[2] * dv];
@@ -176,9 +222,10 @@ export class Kinetics {
       while (queue.length) {
         const b = queue.pop();
         group.push(b);
-        for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
-          const m = at(b.x + dx, b.y, b.z + dz);
-          if (m?.belt && !seenBelt.has(m)) { seenBelt.add(m); queue.push(m); }
+        // (a bucket elevator's column, likewise, up and down)
+        for (const [dx, dy, dz] of b.lift ? [[0, 1, 0], [0, -1, 0]] : [[1, 0, 0], [-1, 0, 0], [0, 0, 1], [0, 0, -1]]) {
+          const m = at(b.x + dx, b.y + dy, b.z + dz);
+          if (m?.belt && !!m.lift === !!b.lift && !seenBelt.has(m)) { seenBelt.add(m); queue.push(m); }
         }
       }
       const driven = group.find((b) => b.drive);
@@ -206,16 +253,22 @@ export class Kinetics {
         }
       }
       net.power = net.wheels.reduce((t, w) => t + w.power, 0);
+      const flys = net.parts.filter((n) => n.part === 'flywheel');
+      const stored = flys.reduce((t, n) => t + (this.fly.get(key(n.x, n.y, n.z)) ?? 0), 0);
+      const wheelPower = net.power;
+      if (stored > 1e-6) net.power += FLY_POWER * flys.length;
+      // with its wheels stopped, a spinning flywheel keeps the network turning
+      const sources = net.wheels.length ? net.wheels : stored > 1e-6 ? flys : [];
       let scale = 0;
       if (net.jammed) net.status = 'Stuck: the gears are locked against each other';
-      else if (!net.wheels.length) {
+      else if (!sources.length) {
         net.status = net.parts.some((n) => n.part === 'wheel') ? 'No power: a water wheel needs flowing water beside it'
           : net.parts.some((n) => n.part === 'windmill') ? 'No power: a windmill needs clear space all round its sails'
             : net.parts.some((n) => n.part === 'engine') ? 'No power: the steam engine needs fuel, and water beside it'
             : 'No power: connect a water wheel, windmill or steam engine';
       } else {
-        const base = Math.abs(net.wheels[0].rel);
-        if (net.wheels.some((w) => Math.abs(Math.abs(w.rel) - base) > 1e-6)) net.status = 'Stuck: wheels or windmills are geared to different speeds';
+        const base = Math.abs(sources[0].rel);
+        if (sources.some((w) => Math.abs(Math.abs(w.rel) - base) > 1e-6)) net.status = 'Stuck: wheels or windmills are geared to different speeds';
         else scale = 1 / base;
       }
       for (const c of net.machines) net.load += c.load * Math.abs(c.drive.rel * scale);
@@ -225,6 +278,19 @@ export class Kinetics {
       } else if (scale && net.load > net.limit + 1e-6) {
         net.status = `Overloaded: ${net.weakest} parts can only carry ${fmt(net.limit)} (load ${fmt(net.load)})`;
         scale = 0;
+      }
+      // flywheels spin up on spare power, and spin down giving what's short
+      if (flys.length && !net.jammed) {
+        const k = (n) => key(n.x, n.y, n.z);
+        if (scale && net.load > wheelPower) {
+          let short = (net.load - wheelPower) * this.since;
+          for (const n of flys) { const have = this.fly.get(k(n)) ?? 0, take = Math.min(have, short / flys.length + 1e-9); this.fly.set(k(n), have - take); }
+          short = Math.max(0, stored - (net.load - wheelPower) * this.since);
+          if (!net.wheels.length || wheelPower <= 0) net.status = `Running on the flywheel${flys.length > 1 ? 's' : ''}: about ${Math.round(short / Math.max(net.load - wheelPower, 1e-6))} s of spin left`;
+        } else if (net.wheels.length && wheelPower > net.load) {
+          const spare = Math.min(wheelPower - net.load, FLY_CHARGE * flys.length) * this.since;
+          for (const n of flys) this.fly.set(k(n), Math.min(FLY_CAP, (this.fly.get(k(n)) ?? 0) + spare / flys.length));
+        }
       }
       for (const n of net.parts) n.speed = n.rel * scale;
       for (const c of net.machines) c.speed = Math.abs(c.drive.rel * scale);
@@ -245,7 +311,9 @@ export class Kinetics {
 
   update(dt, world, light) {
     this.timer -= dt;
-    if (this.timer <= 0 || world.machinesChanged) { this.timer = SOLVE_EVERY; this.solve(world); }
+    this.since += dt;
+    if (this.timer <= 0 || world.machinesChanged) { this.timer = SOLVE_EVERY; this.solve(world); this.since = 0; }
+    this.drawBelts(world, light);
     // keep a turning model for every part in the loaded world
     for (const [k, m] of this.meshes) {
       const n = this.nodes.get(k);
@@ -261,6 +329,41 @@ export class Kinetics {
       const t = lightBrightness(world.lightAt(n.x, n.y, n.z)) * light.flicker;
       m.material.color.setRGB(Math.max(sun, t, light.ambient), Math.max(sun, t * 0.86, light.ambient), Math.max(sun, t * 0.66, light.ambient));
     }
+  }
+
+  // Drive belts: a thin strap from one part to the other.
+  drawBelts(world, light) {
+    const want = new Set();
+    for (const [p, q] of this.belts) {
+      const id = `${p}|${q}`;
+      want.add(id);
+      let mesh = this.beltMeshes.get(id);
+      if (!mesh) {
+        const a = new THREE.Vector3(...p.split(',').map(Number)).addScalar(0.5), b = new THREE.Vector3(...q.split(',').map(Number)).addScalar(0.5);
+        const len = a.distanceTo(b);
+        mesh = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.08, len), new THREE.MeshBasicMaterial({ color: 0x5c3e28 }));
+        mesh.position.copy(a).add(b).multiplyScalar(0.5);
+        mesh.lookAt(b);
+        this.scene.add(mesh);
+        this.beltMeshes.set(id, mesh);
+      }
+      const [x, y, z] = p.split(',').map(Number);
+      const sun = light.day * skyBrightness(world.skyAt(x, y, z)), t = lightBrightness(world.lightAt(x, y, z)) * light.flicker;
+      const v = Math.max(sun, t, light.ambient);
+      mesh.material.color.setRGB(0.36 * v, 0.24 * v, 0.16 * v);
+    }
+    for (const [id, mesh] of this.beltMeshes) {
+      if (want.has(id)) continue;
+      this.scene.remove(mesh); mesh.geometry.dispose(); mesh.material.dispose();
+      this.beltMeshes.delete(id);
+    }
+  }
+
+  serialize() { return { belts: this.belts, fly: [...this.fly].map(([k, v]) => [k, Math.round(v)]) }; }
+
+  load(o) {
+    this.belts = (o?.belts ?? []).filter((b) => Array.isArray(b) && typeof b[0] === 'string' && typeof b[1] === 'string');
+    this.fly = new Map((o?.fly ?? []).filter((f) => typeof f?.[0] === 'string').map(([k, v]) => [k, Math.min(FLY_CAP, Math.max(0, +v || 0))]));
   }
 
   addMesh(k, n) {
@@ -285,6 +388,8 @@ export class Kinetics {
 
   clear() {
     for (const [k, m] of this.meshes) this.removeMesh(k, m);
+    this.belts = []; this.fly.clear(); this.dropped = [];
+    this.drawBelts(null, null);
     this.nodes.clear();
     this.nets = [];
   }
@@ -324,6 +429,14 @@ export class Kinetics {
       }
     } else if (part === 'shaft') {
       boxes.push([1, 0.22, 0.22, 0, 0, 0, tile]);
+    } else if (part === 'flywheel') {
+      // a heavy stone disc on its shaft
+      boxes.push([1, 0.22, 0.22, 0, 0, 0, tile]);
+      for (let i = 0; i < 8; i++) boxes.push([0.3, 0.36, 0.8, Math.cos((i / 8) * Math.PI * 2) * 0.28, Math.sin((i / 8) * Math.PI * 2) * 0.28, (i / 8) * Math.PI * 2 + Math.PI / 2, T.STONE]);
+      boxes.push([0.34, 0.3, 0.3, 0, 0, 0, T.IRON]);
+    } else if (part === 'shift') {
+      // a shaft with a small and a large gear wheel, side by side
+      boxes.push([1, 0.22, 0.22, 0, 0, 0, tile], [0.14, 0.5, 0.5, 0, 0, 0, T.IRON, -0.2], [0.14, 0.8, 0.8, 0, 0, Math.PI / 4, T.IRON, 0.2], [0.14, 0.8, 0.8, 0, 0, 0, T.IRON, 0.2]);
     } else if (part === 'clutch') {
       // a shaft with an iron collar round the middle
       boxes.push([1, 0.22, 0.22, 0, 0, 0, tile], [0.36, 0.42, 0.42, 0, 0, 0, T.IRON], [0.08, 0.5, 0.5, 0, 0, 0, T.LEAD]);

@@ -11,7 +11,7 @@ import {
   BRONZE_INGOT, ELECTRUM_INGOT, STAINLESS_INGOT, STEEL_INGOT, AL_BRONZE_INGOT,
   GRAVEL, FLINT, FLINT_DUST, CLAY_BALL, CLAY_DUST, BRICK, FIRE_CLAY, FIRE_BRICK, oreDust, HIDE, LEATHER,
   LAVA_BUCKET, LEAD_BUCKET, SALTPETRE, SANDSTONE, WHEAT, SUGAR_CANE, COAL_DUST, PLATE_METALS, PLATES, TUNGSTEN_INGOT, FILAMENT,
-  GLASS_BOTTLE, NIGHT_TEA, HASTE_TEA, FIRE_TEA, HEAL_TEA, BERRIES, CORNFLOWER, DANDELION, POPPY, CACTUS, LAVENDER, DAISY, CAULDRON,
+  SAPLING, GLASS_BOTTLE, NIGHT_TEA, HASTE_TEA, FIRE_TEA, HEAL_TEA, BERRIES, CORNFLOWER, DANDELION, POPPY, CACTUS, LAVENDER, DAISY, CAULDRON,
 } from './blocks.js';
 
 // A recipe ingredient can be one id or a list of alternatives (coal or charcoal).
@@ -124,12 +124,22 @@ STATION_KINDS.cauldron = {
 // Chests just hold things.
 STATION_KINDS.chest = { name: 'Chest', inputs: 18, storage: true, recipes: [] };
 STATION_KINDS.ironchest = { name: 'Iron-Banded Chest', inputs: 36, storage: true, recipes: [] };
+// The auto-crafter makes whatever the item frame on it shows (see recipeAt), once a second, from what's
+// put into it; no fuel or power.
+export const CRAFT_TIME = 1;
+STATION_KINDS.crafter = { name: 'Auto-Crafter', inputs: 9, crafter: true, recipes: [] };
+// Farm machines that hold things: a planter's saplings, an animal station's buckets and wheat (both just
+// hold them: see machines.js), and a fishing net's catch (taken out by a hopper underneath).
+STATION_KINDS.planter = { name: 'Planter', inputs: 4, holder: true, accepts: [SAPLING], recipes: [] };
+STATION_KINDS.ranch = { name: 'Animal Station', inputs: 6, holder: true, accepts: [BUCKET, WHEAT], recipes: [] };
+STATION_KINDS.net = { name: 'Fishing Net', inputs: 4, storage: true, recipes: [] };
 
 const key = (x, y, z) => `${x},${y},${z}`;
 
 export class Stations {
   constructor() {
     this.map = new Map(); // "x,y,z" -> station state
+    this.chosen = new Map(); // auto-crafter "x,y,z" -> the recipe its frame shows (worked out each tick)
   }
 
   // The station at a position, created empty the first time it's used.
@@ -167,8 +177,10 @@ export class Stations {
   }
 
   // The recipe this station can make right now (ingredients present, room in the output), or null.
-  recipeFor(st) {
-    for (const r of STATION_KINDS[st.kind].recipes) {
+  recipeFor(st, k) {
+    const K = STATION_KINDS[st.kind];
+    const list = K.crafter ? [this.chosen.get(k)].filter(Boolean) : K.recipes;
+    for (const r of list) {
       if (!r.in.every(([id, n]) => this.count(st, id) >= n)) continue;
       if (!(r.tools ?? []).every((id) => this.count(st, id) > 0)) continue;
       const [oid, on] = r.out;
@@ -196,14 +208,24 @@ export class Stations {
   // Advance every loaded station by dt seconds. setLit(x, y, z, lit) is called when one lights or goes out.
   // powerAt(x, y, z) gives a powered station's speed (0 when it isn't turning).
   // boostAt(x, y, z): how much faster a fuelled station works (1, or 1.5 with bellows blowing into it).
-  tick(dt, world, setLit, powerAt = () => 0, boostAt = () => 1) {
+  // recipeAt(x, y, z): the recipe an auto-crafter is set to make (from its item frame), or null.
+  tick(dt, world, setLit, powerAt = () => 0, boostAt = () => 1, recipeAt = () => null) {
     for (const [k, st] of this.map) {
       const [x, y, z] = k.split(',').map(Number);
       if (!world.chunkAt(x, z)) continue;
       const id = world.get(x, y, z);
       if (stationKind(id) !== st.kind) { this.map.delete(k); continue; }
       const K = STATION_KINDS[st.kind];
-      if (K.storage) continue;
+      if (K.storage || K.holder) continue;
+      if (K.crafter) {
+        const want = recipeAt(x, y, z);
+        if (want) this.chosen.set(k, { ...want, time: CRAFT_TIME }); else this.chosen.delete(k);
+        const r = this.recipeFor(st, k);
+        if (!r) { st.progress = 0; continue; }
+        st.progress += dt;
+        if (st.progress >= CRAFT_TIME) { this.make(st, r); st.progress = 0; }
+        continue;
+      }
       const r = K.water && !(BLOCKS[id].water > 0) ? null : this.recipeFor(st); // a dry cauldron can't brew
       if (!r) st.progress = 0;
       if (K.powered) {

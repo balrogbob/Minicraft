@@ -12,7 +12,7 @@ import {
   PLATE_METALS, PLATES,
   PIPE, SPOUT, BELT, HOPPER, WINDMILL, FILAMENT, DRILL_BIT,
   RAIL, POWERED_RAIL, CACTUS, MINECART, MAP, PAPER,
-  COLORS, DYE, CLUTCH, STORAGE_CART, LOADER_RAIL, SWITCH_RAIL, PAINTED_DOOR, PAINTING,
+  COLORS, DYE, CLUTCH, DRIVE_BELT, FLYWHEEL, GEAR_SHIFT, STORAGE_CART, LOADER_RAIL, SWITCH_RAIL, PAINTED_DOOR, PAINTING,
   BERRIES, GLASS_BOTTLE, NIGHT_TEA, HASTE_TEA, FIRE_TEA, HEAL_TEA, WOOD_SHIELD, IRON_SHIELD, KING_CROWN,
   SUN_SCARAB, FROST_HEART, EMBER_CORE, SUN_MASK, FROST_CIRCLET, EMBER_CROWN, HONEY_TEA, MUSHROOM_STEW, FISH_PIE, COPY_WAND,
   CRYSTAL_SHARD, HONEY_BOTTLE, HONEYCOMB, SALMON, BAKED_SALMON, ICEFISH, BAKED_ICEFISH, PUFFERFISH, OLD_BOOT,
@@ -838,6 +838,51 @@ P[T.PILLAR_TOP] = pillarTop([196, 194, 190]);
 P[T.SAND_PILLAR_SIDE] = pillarSide([226, 208, 152]);
 P[T.SAND_PILLAR_TOP] = pillarTop([226, 208, 152]);
 P[T.CANDLE] = (t) => { for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) t.set(x, y, t.vary([240, 232, 206], 0.03)); };
+
+// signals: copper wire, dull or glowing; the smooth stone plate logic blocks sit on
+P[T.WIRE_OFF] = (t) => { for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) t.set(x, y, t.vary((x + y) % 4 ? [150, 82, 46] : [186, 110, 64], 0.06)); };
+P[T.WIRE_ON] = (t) => { for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) t.set(x, y, t.vary((x + y) % 4 ? [255, 120, 50] : [255, 214, 120], 0.05)); };
+// an ejector's dark mouth with a push plate; an auto-crafter's side: a little grid with gears
+P[T.EJECTOR_FRONT] = (t) => {
+  P[T.OBSERVER_SIDE](t);
+  for (let y = 3; y < 13; y++) for (let x = 3; x < 13; x++) t.set(x, y, x === 3 || x === 12 || y === 3 || y === 12 ? [70, 70, 76] : [28, 26, 30]);
+  for (let y = 6; y < 10; y++) for (let x = 6; x < 10; x++) t.set(x, y, [200, 120, 70]);
+};
+P[T.CRAFTER_FRONT] = (t) => {
+  P[T.TABLE_SIDE](t);
+  for (let y = 2; y < 9; y++) for (let x = 2; x < 9; x++) t.set(x, y, (x - 2) % 2 && (y - 2) % 2 ? [150, 110, 64] : [90, 90, 98]);
+  for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+    const d = Math.hypot(x - 11.5, y - 11.5);
+    if (d < 3.6 && (d > 2.4 || d < 1)) t.set(x, y, [176, 176, 184]);
+    else if (d >= 3.6 && d < 4.4 && (Math.round(Math.atan2(y - 11.5, x - 11.5) * 4 / Math.PI) & 1)) t.set(x, y, [150, 150, 160]);
+  }
+};
+P[T.TANK_WATER] = (t) => { for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) t.set(x, y, t.vary(Math.sin(x * 0.8 + y * 0.4) > 0.6 ? [96, 150, 232] : [52, 104, 210], 0.05)); };
+// farm machines: a planter's soil-filled mouth with a sprout; a placer's hatch; an animal station's
+// hay-packed slats; netting
+P[T.PLANTER_FRONT] = (t) => {
+  P[T.PLANKS](t);
+  for (let y = 7; y < 15; y++) for (let x = 2; x < 14; x++) t.set(x, y, t.vary([104, 74, 50], 0.12));
+  for (let y = 3; y < 8; y++) t.set(8, y, [90, 160, 60]);
+  t.set(7, 4, [110, 180, 70]); t.set(9, 5, [110, 180, 70]); t.set(6, 3, [110, 180, 70]);
+};
+P[T.PLACER_FRONT] = (t) => {
+  P[T.OBSERVER_SIDE](t);
+  for (let y = 3; y < 13; y++) for (let x = 3; x < 13; x++) t.set(x, y, x === 3 || x === 12 || y === 3 || y === 12 ? [70, 70, 76] : [96, 72, 48]);
+  for (let x = 5; x < 11; x++) t.set(x, 8, [60, 46, 30]);
+};
+P[T.RANCH_SIDE] = (t) => {
+  P[T.PLANKS](t);
+  for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) if (y % 4 === 1 || y % 4 === 2) t.set(x, y, t.vary([214, 188, 92], 0.12));
+};
+P[T.NET] = (t) => {
+  for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) t.set(x, y, [0, 0, 0], 0);
+  for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) if ((x + y) % 4 === 0 || (x - y + 16) % 4 === 0) t.set(x, y, [222, 210, 170]);
+};
+P[T.LOGIC_BASE] = (t) => {
+  for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) t.set(x, y, t.vary([172, 172, 168], 0.04));
+  frame(t, [128, 128, 126], 1);
+};
 
 // A plank door: a frame with a centre board; the upper half has a four-pane window you can see through,
 // the lower half has the handle.
@@ -1683,6 +1728,21 @@ ITEM_PAINTERS[COPY_WAND] = (ctx) => {
 ITEM_PAINTERS[CLUTCH] = (ctx) => {
   rect(ctx, 0, 7, 16, 3, [150, 150, 150]); rect(ctx, 0, 7, 16, 1, [180, 180, 180]);
   rect(ctx, 5, 3, 6, 11, IRON_C); rect(ctx, 7, 2, 2, 13, [104, 110, 134]); rect(ctx, 5, 3, 6, 1, [160, 164, 172]);
+};
+ITEM_PAINTERS[FLYWHEEL] = (ctx) => {
+  rect(ctx, 0, 7, 16, 3, [150, 150, 150]);
+  rect(ctx, 5, 0, 6, 16, [110, 110, 114]); rect(ctx, 6, 1, 4, 14, [140, 140, 146]); rect(ctx, 7, 6, 2, 4, [80, 80, 86]);
+};
+ITEM_PAINTERS[GEAR_SHIFT] = (ctx) => {
+  rect(ctx, 0, 7, 16, 3, [150, 150, 150]);
+  rect(ctx, 3, 4, 3, 9, [130, 130, 136]); rect(ctx, 9, 1, 3, 15, [130, 130, 136]); rect(ctx, 6, 6, 3, 5, IRON_C);
+  for (const y of [2, 5, 11, 14]) px(ctx, 12, y, [170, 170, 176]);
+};
+ITEM_PAINTERS[DRIVE_BELT] = (ctx) => {
+  for (let i = 0; i < 16; i++) {
+    const a = (i / 16) * Math.PI * 2;
+    rect(ctx, Math.round(7.5 + Math.cos(a) * 6), Math.round(7.5 + Math.sin(a) * 4), 2, 2, i % 2 ? [92, 62, 40] : [120, 84, 54]);
+  }
 };
 ITEM_PAINTERS[STORAGE_CART] = (ctx) => {
   ITEM_PAINTERS[MINECART](ctx);
