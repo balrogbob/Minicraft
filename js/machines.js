@@ -22,11 +22,19 @@
 //  - Splitting belts send things left and right in turn; sorting belts send what matches their frames left.
 //  - Farm machines: tree fellers, planters, block breakers and placers, animal stations, fishing nets.
 //  - A bucket elevator, while driven, lifts what's put into it up its column and out of the top.
+//  - Power meters and daylight sensors signal (see onSwitch) when the grid's short, or at night.
+//  - An item counter passes things on out of its front and gives a pulse after every N of them.
+//  - A teleport pad sends what's put into it to the pad it's paired with (pads pair up in the order
+//    they're put down), into the block under that, or out onto it.
+//  - A quarry, on electricity, digs out the 9 x 9 area in front of it a layer at a time, down to bedrock,
+//    and passes what it digs out of its back.
+//  - A monster spawner (found in dungeons) brings out a creature now and then while you're near and it
+//    has no signal.
 import * as THREE from 'three';
 import {
   BLOCKS, AIR, WATER, LAVA, isWaterId, PIPE, PUMP, SPOUT, DRILL, FILAMENT_LAMP, BELT, FACING_DIRS, TOOL_MATERIALS,
   metalTool, maxStack, dropsFor, isFlowing, stationKind, CAULDRON, WHEAT_0, WHEAT_3, SEEDS, BERRY_BUSH, BERRIES, SUGAR_CANE,
-  STEAM_ENGINE, MAX_HONEY, TANK, TANK_CAP, tankId, LOG, SAPLING, GRASS, DIRT, isBlock, WOOL, FEATHER, BUCKET, MILK_BUCKET, WHEAT,
+  STEAM_ENGINE, MAX_HONEY, BEDROCK, PAD_ITEM, LOOT_CHEST, TANK, TANK_CAP, tankId, LOG, SAPLING, GRASS, DIRT, isBlock, WOOL, FEATHER, BUCKET, MILK_BUCKET, WHEAT,
 } from './blocks.js';
 import { STATION_KINDS, isFuel, FUEL_ITEMS } from './stations.js';
 import { CHUNK } from './terrain.js';
@@ -51,6 +59,11 @@ const FELL_TIME = 4; // seconds a tree feller takes over a tree at 1x
 const RANCH_EVERY = 3; // seconds between an animal station's rounds
 const RANCH_REACH = 5;
 const NET_TIME = 60; // average seconds between a fishing net's catches
+const QUARRY_TIME = 0.5; // seconds a quarry takes over each block at 1x
+const QUARRY_SIZE = 9; // it digs a QUARRY_SIZE x QUARRY_SIZE area
+const COUNTER_STEPS = [1, 2, 4, 8, 16, 32, 64];
+const SPAWN_EVERY = [8, 16]; // seconds between a spawner's creatures (at random between these)
+const SPAWN_NEAR = 20; // a spawner only works while you're this close
 
 // The way a drill, hopper or belt points: [dx, dy, dz].
 export function pointing(def) {
@@ -108,6 +121,14 @@ export class Machines {
     this.tanks = new Map(); // "x,y,z" -> { liquid, amount (buckets) }
     this.sprinkling = []; // sprinklers watering now
     this.lifts = new Map(); // bucket elevator column, by its bottom "x,y,z" -> [{ id, h, sprite }] (h: height climbed)
+    this.counts = new Map(); // item counter "x,y,z" -> things counted since its last pulse
+    this.counterN = new Map(); // item counter "x,y,z" -> how many things for each pulse (8 if not set)
+    this.meterSpare = new Set(); // power meters set to signal when there's power to spare
+    this.dayInvert = new Set(); // daylight sensors set to signal by day
+    this.quarries = new Map(); // "x,y,z" -> { i: cell in the layer, y: the layer, progress, held: [[id, n]], done, status }
+    this.spawners = new Map(); // "x,y,z" -> seconds to its next creature
+    this.pads = new Map(); // teleport pad "x,y,z" -> the "x,y,z" of its partner, or null while it waits for one
+    this.progIndex = new Map(); // programmable crafter "x,y,z" -> { i: which frame, sig: signalled last time }
     this.sensorTimer = 0;
     this.world = null;
     this.hopperTimer = 0;
@@ -128,6 +149,8 @@ export class Machines {
     for (const items of this.lifts.values()) for (const it of items) this.dropSprite(it);
     this.lifts.clear();
     this.tanks.clear();
+    this.counts.clear(); this.counterN.clear(); this.meterSpare.clear(); this.dayInvert.clear();
+    this.quarries.clear(); this.spawners.clear(); this.pads.clear(); this.progIndex.clear();
   }
 
   // ---------- tanks ----------
@@ -197,6 +220,26 @@ export class Machines {
       const [dx, dy, dz] = pointing(def);
       return this.insert(world, stations, x + dx, y + dy, z + dz, item, n, !def.down, depth + 1);
     }
+    if (def.counter) {
+      // an item counter: straight on out of its front, counting what goes through
+      const [dx, dz] = FACING_DIRS[def.facing];
+      const k = this.insert(world, stations, x + dx, y, z + dz, item, n, fuel, depth + 1);
+      if (k > 0) this.counted(x, y, z, k);
+      return k;
+    }
+    if (def.pad) {
+      // a teleport pad: to its partner, into the block under it or out on top of it
+      const to = this.pads.get(key(x, y, z));
+      if (!to || !this.electric) return 0;
+      const [px, py, pz] = unkey(to);
+      if (!world.chunkAt(px, pz) || !BLOCKS[world.get(px, py, pz)]?.pad) return 0;
+      const k = Math.min(n, Math.floor((this.electric.store.get(key(x, y, z)) ?? 0) / PAD_ITEM + 1e-6));
+      if (k <= 0 || !this.electric.drawPad(x, y, z, k * PAD_ITEM)) return 0;
+      const below = this.insert(world, stations, px, py - 1, pz, item, k, false, depth + 1);
+      if (below < k) this.throwItem?.({ id, count: k - below, ...state }, { x: px + 0.5, y: py + 0.4, z: pz + 0.5 }, { x: 0, y: 2.5, z: 0 });
+      this.teleported?.(px, py, pz);
+      return k;
+    }
     if (def.engine) {
       if (!isFuel(id) || state) return 0;
       const e = this.engine(x, y, z);
@@ -261,12 +304,14 @@ export class Machines {
   tick(dt, world, kinetics, stations, light) {
     // gather the machines in the loaded world
     this.world = world; this.kinetics = kinetics;
-    const pumps = [], drills = [], lamps = [], hoppers = [], sensors = [], harvesters = [], engines = [], ejectors = [], collectors = [], farms = [];
+    const pumps = [], drills = [], lamps = [], hoppers = [], sensors = [], harvesters = [], engines = [], ejectors = [], collectors = [], farms = [], quarries = [], spawners = [];
     for (const c of world.chunks.values()) {
       for (const li of c.machines) {
         const id = c.data[li], def = BLOCKS[id];
         const x = c.cx * CHUNK + (li & 15), z = c.cz * CHUNK + ((li >> 4) & 15), y = li >> 8;
         if (id === PUMP) pumps.push([x, y, z]);
+        else if (def.quarry) quarries.push([x, y, z, def]);
+        else if (def.spawner) spawners.push([x, y, z]);
         else if (def.machine && id >= DRILL && id <= DRILL + 4) drills.push([x, y, z, def]);
         else if (id === FILAMENT_LAMP || id === FILAMENT_LAMP + 1) lamps.push([x, y, z, id]);
         else if (def.farm) farms.push([x, y, z, def]);
@@ -301,6 +346,124 @@ export class Machines {
     for (const e of ejectors) this.tickEjector(dt, world, stations, e);
     for (const f of farms) this.tickFarm(dt, world, kinetics, stations, f);
     if (collectors.length) this.tickCollectors(dt, world, stations, collectors);
+    for (const q of quarries) this.tickQuarry(dt, world, stations, q);
+    for (const sp of spawners) this.tickSpawner(dt, world, sp);
+  }
+
+  // ---------- v22: quarries, spawners, counters, teleport pads ----------
+
+  // Can a quarry dig this block out?
+  quarryable(id) {
+    const d = BLOCKS[id];
+    if (!id || !d || id === BEDROCK || !(d.hardness > 0) || !isFinite(d.hardness)) return false;
+    if (isWaterId(id) || id === LAVA || d.variantOf === LAVA) return false;
+    if (d.station || d.machine || d.kinetic || d.electric || d.hopper || d.belt || d.sensor || d.rail || d.spawner || d.logic || d.switch) return false;
+    if (id === LOOT_CHEST || d.blastproof || d.doorBase || d.frame || d.sign || d.painting || d.lampBase) return false; // (things that hold something, or come in pairs)
+    return !d.tier || d.tier <= 5;
+  }
+
+  quarry(x, y, z) {
+    const k = key(x, y, z);
+    let q = this.quarries.get(k);
+    if (!q) { q = { i: 0, y, progress: 0, held: [], done: false, status: '' }; this.quarries.set(k, q); }
+    return q;
+  }
+
+  // the cell in front of a quarry it's on now (its layer, and cell i of the area)
+  quarryCell(x, z, def, q) {
+    const [dx, dz] = FACING_DIRS[def.facing], [rx, rz] = [dz, -dx]; // (to its right)
+    const a = Math.floor(q.i / QUARRY_SIZE) + 1, b = (q.i % QUARRY_SIZE) - (QUARRY_SIZE >> 1);
+    return [x + dx * a + rx * b, q.y, z + dz * a + rz * b];
+  }
+
+  // Does a quarry want electricity (is it still digging, with somewhere to put things)?
+  quarryWants(x, y, z) { const q = this.quarries.get(key(x, y, z)); return !q || (!q.done && !q.held.length); }
+
+  tickQuarry(dt, world, stations, [x, y, z, def]) {
+    const q = this.quarry(x, y, z);
+    if (!this.passBack(world, stations, q, x, y, z, def)) { q.status = 'Stuck: nowhere to put what it digs (a chest, hopper or belt behind it)'; return; }
+    if (q.done) { q.status = 'Finished: it has dug all the way down'; return; }
+    const speed = this.electric?.speedAt(x, y, z) ?? 0;
+    if (!(speed > 0)) { q.status = `No power: ${this.electric?.statusAt(x, y, z) ?? 'join it to a generator'}`; return; }
+    // on to the next block there's something to dig (looking at a fair few cells each tick)
+    for (let tries = 0; tries < 40; tries++) {
+      if (q.i >= QUARRY_SIZE * QUARRY_SIZE) { q.i = 0; q.y--; }
+      if (q.y < 1) { q.done = true; q.status = 'Finished: it has dug all the way down'; return; }
+      const [cx, cy, cz] = this.quarryCell(x, z, def, q);
+      if (!world.chunkAt(cx, cz)) { q.status = 'Waiting: the area it digs isn\'t loaded'; return; }
+      if (this.quarryable(world.get(cx, cy, cz))) break;
+      q.i++; q.progress = 0;
+      if (tries === 39) return;
+    }
+    const [cx, cy, cz] = this.quarryCell(x, z, def, q);
+    q.status = `Digging layer ${y - q.y + 1} (at height ${q.y})`;
+    q.progress += dt * speed;
+    if (q.progress < QUARRY_TIME) return;
+    q.progress = 0;
+    const id = world.get(cx, cy, cz);
+    q.held.push(...dropsFor(id, TUNGSTEN_PICK).map(([i, n]) => [i, n]));
+    world.setBlock(cx, cy, cz, AIR);
+    this.onBlockChanged?.(cx, cy, cz);
+    q.i++;
+  }
+
+  quarryStatus(x, y, z) { return this.quarries.get(key(x, y, z))?.status || 'Waiting for power'; }
+
+  tickSpawner(dt, world, [x, y, z]) {
+    const k = key(x, y, z), h = this.farmHooks;
+    let t = this.spawners.get(k) ?? SPAWN_EVERY[0] / 2;
+    t -= dt;
+    if (t > 0) { this.spawners.set(k, t); return; }
+    this.spawners.set(k, SPAWN_EVERY[0] + Math.random() * (SPAWN_EVERY[1] - SPAWN_EVERY[0]));
+    if (!h?.mobs || h.peaceful?.() || this.signalAt?.(x, y, z)) return; // a signal stops it
+    const p = h.playerPos?.();
+    if (!p || Math.hypot(p.x - x - 0.5, p.y - y, p.z - z - 0.5) > SPAWN_NEAR) return;
+    h.mobs.spawnNear?.(x, y, z);
+  }
+
+  // An item counter counted k more things: a pulse each time it gets to its number.
+  counted(x, y, z, k) {
+    const key_ = key(x, y, z), n = this.counterN.get(key_) ?? 8;
+    let c = (this.counts.get(key_) ?? 0) + k;
+    if (c >= n) {
+      c %= n;
+      if (!this.pulses.has(key_)) { this.pulses.set(key_, PULSE); this.onSwitch?.(x, y, z, true); }
+    }
+    this.counts.set(key_, c);
+  }
+
+  // Tapping an item counter steps on how many things it counts for each pulse.
+  cycleCounter(x, y, z) {
+    const k = key(x, y, z), n = this.counterN.get(k) ?? 8;
+    const next = COUNTER_STEPS[(COUNTER_STEPS.indexOf(n) + 1) % COUNTER_STEPS.length];
+    this.counterN.set(k, next); this.counts.delete(k);
+    return next;
+  }
+  counterText(x, y, z) { const k = key(x, y, z); return `${this.counts.get(k) ?? 0} of ${this.counterN.get(k) ?? 8}`; }
+
+  toggleMeter(x, y, z) { const k = key(x, y, z); if (this.meterSpare.has(k)) this.meterSpare.delete(k); else this.meterSpare.add(k); return this.meterSpare.has(k); }
+  toggleDaylight(x, y, z) { const k = key(x, y, z); if (this.dayInvert.has(k)) this.dayInvert.delete(k); else this.dayInvert.add(k); return this.dayInvert.has(k); }
+
+  // A teleport pad was put down: it pairs with the oldest pad still waiting for a partner.
+  padPlaced(x, y, z) {
+    const k = key(x, y, z);
+    const waiting = [...this.pads].find(([o, p]) => p === null && o !== k);
+    if (waiting) { this.pads.set(waiting[0], k); this.pads.set(k, waiting[0]); return unkey(waiting[0]); }
+    this.pads.set(k, null);
+    return null;
+  }
+  padPartner(x, y, z) { const p = this.pads.get(key(x, y, z)); return p ? unkey(p) : null; }
+
+  // A programmable crafter: which of its frames it's on, stepping on to the next as its signal comes on.
+  progFrame(x, y, z, frames, sig) {
+    const k = key(x, y, z);
+    let p = this.progIndex.get(k);
+    if (!p) { p = { i: 0, sig: false }; this.progIndex.set(k, p); }
+    if (sig && !p.sig && frames.length) p.i = (p.i + 1) % frames.length;
+    p.sig = sig;
+    if (!frames.length) return null;
+    p.i %= frames.length;
+    return frames[p.i];
   }
 
   // ---------- ejectors and collectors ----------
@@ -730,7 +893,8 @@ export class Machines {
       if (t - dt > 0) { this.pulses.set(k, t - dt); continue; }
       this.pulses.delete(k);
       const [x, y, z] = unkey(k);
-      if (BLOCKS[world.get(x, y, z)]?.sensor === 'observer') this.onSwitch?.(x, y, z, false);
+      const ps = BLOCKS[world.get(x, y, z)]?.sensor;
+      if (ps === 'observer' || ps === 'counter') this.onSwitch?.(x, y, z, false);
     }
     if ((this.sensorTimer -= dt) > 0) return;
     this.sensorTimer = 0.1;
@@ -741,6 +905,17 @@ export class Machines {
         const now = world.get(fx, y, fz), was = this.seen.get(k);
         this.seen.set(k, now);
         if (was !== undefined && was !== now && !this.pulses.has(k)) { this.pulses.set(k, PULSE); this.onSwitch?.(x, y, z, true); }
+      } else if (def.sensor === 'counter') {
+        continue; // (it pulses as things go through it)
+      } else if (def.sensor === 'meter') {
+        // a power meter signals while its grid is short of power (or, set to, while there's some to spare)
+        const want = this.meterSpare.has(k) ? !!this.electric?.spareAt(x, y, z) : !!this.electric?.shortAt(x, y, z);
+        if (want !== def.on) this.onSwitch?.(x, y, z, want);
+      } else if (def.sensor === 'daylight') {
+        // a daylight sensor signals at night (or, set to, by day); under a roof it's always night
+        const day = (this.daylight?.() ?? 1) > 0.45 && world.skyAt(x, y, z) >= 12;
+        const want = this.dayInvert.has(k) ? day : !day;
+        if (want !== def.on) this.onSwitch?.(x, y, z, want);
       } else if (def.sensor === 'tacho') {
         // a tachometer signals while its network is stopped or overloaded
         const want = !(this.kinetics?.powerAt(x, y, z) > 0);
@@ -851,6 +1026,15 @@ export class Machines {
     this.gaugeFull.delete(k);
     this.seen.delete(k);
     this.ejectors.delete(k); this.ejectStacks.delete(k); this.split.delete(k); this.tanks.delete(k);
+    for (const [id, n] of this.quarries.get(k)?.held ?? []) out.push([id, n]);
+    this.quarries.delete(k); this.spawners.delete(k); this.counts.delete(k); this.counterN.delete(k);
+    this.meterSpare.delete(k); this.dayInvert.delete(k); this.progIndex.delete(k);
+    if (this.pads.has(k)) {
+      // its partner waits for a new one
+      const p = this.pads.get(k);
+      this.pads.delete(k);
+      if (p && this.pads.get(p) === k) this.pads.set(p, null);
+    }
     if (BLOCKS[this.world?.get(x, y, z)]?.elevator) {
       // the column it was part of: what it holds comes back
       for (const [lk, items] of this.lifts) {
@@ -879,6 +1063,12 @@ export class Machines {
       ejectStacks: [...this.ejectStacks],
       tanks: [...this.tanks].filter(([, t]) => t.amount > 0).map(([k, t]) => [k, t.liquid, +t.amount.toFixed(2)]),
       lifts: [...this.lifts].map(([k, items]) => [k, items.map((it) => [it.id, +it.h.toFixed(2), ...(stateOf(it) ? [stateOf(it)] : [])])]),
+      counters: [...new Set([...this.counts.keys(), ...this.counterN.keys()])].map((k) => [k, this.counts.get(k) ?? 0, this.counterN.get(k) ?? 8]),
+      meterSpare: [...this.meterSpare],
+      dayInvert: [...this.dayInvert],
+      quarries: [...this.quarries].map(([k, q]) => [k, q.i, q.y, q.done ? 1 : 0, q.held]),
+      pads: [...this.pads],
+      progIndex: [...this.progIndex].map(([k, p]) => [k, p.i, p.sig ? 1 : 0]),
     };
   }
 
@@ -903,6 +1093,19 @@ export class Machines {
     for (const [k, items] of o?.lifts ?? []) {
       if (typeof k === 'string' && Array.isArray(items)) this.lifts.set(k, items.filter((it) => it?.[0] > 0).map(([id, h, st]) => ({ id, h: Math.max(0, +h || 0), sprite: null, ...cleanState(st) })));
     }
+    for (const [k, c, n] of o?.counters ?? []) {
+      if (typeof k !== 'string') continue;
+      if (COUNTER_STEPS.includes(n)) this.counterN.set(k, n);
+      if (c > 0) this.counts.set(k, c | 0);
+    }
+    for (const k of o?.meterSpare ?? []) if (typeof k === 'string') this.meterSpare.add(k);
+    for (const k of o?.dayInvert ?? []) if (typeof k === 'string') this.dayInvert.add(k);
+    for (const [k, i, y, done, held] of o?.quarries ?? []) {
+      if (typeof k !== 'string') continue;
+      this.quarries.set(k, { i: Math.max(0, i | 0), y: y | 0, done: !!done, progress: 0, status: '', held: Array.isArray(held) ? held.filter((h) => h?.[0] > 0 && h[1] > 0) : [] });
+    }
+    for (const [k, p] of o?.pads ?? []) if (typeof k === 'string' && (p === null || typeof p === 'string')) this.pads.set(k, p);
+    for (const [k, i, sig] of o?.progIndex ?? []) if (typeof k === 'string') this.progIndex.set(k, { i: Math.max(0, i | 0), sig: !!sig });
     for (const [k, held] of o?.drills ?? []) {
       if (typeof k === 'string' && Array.isArray(held)) this.drills.set(k, { progress: 0, target: '', held: held.filter((h) => h?.[0] > 0 && h[1] > 0), status: '' });
     }

@@ -240,7 +240,7 @@ export class World {
     // water nearby may now flow in, or drain away
     this.flow.push([x, y, z], [x + 1, y, z], [x - 1, y, z], [x, y + 1, z], [x, y - 1, z], [x, y, z + 1], [x, y, z - 1]);
     const def = BLOCKS[id];
-    const isMachine = (d) => !!(d?.kinetic || d?.machine || d?.hopper || d?.sensor || d?.painting || d?.ejector || d?.farm || d?.electric);
+    const isMachine = (d) => !!(d?.kinetic || d?.machine || d?.hopper || d?.sensor || d?.painting || d?.ejector || d?.farm || d?.electric || d?.spawner);
     if (isMachine(def)) c.machines.add(li); else c.machines.delete(li);
     if (isMachine(BLOCKS[old]) || isMachine(def)) this.machinesChanged = true;
     if (BLOCKS[old]?.electric || def?.electric) this.electricChanged = true;
@@ -813,7 +813,7 @@ export class World {
       if (def?.hive >= 0) c.hives.add(li);
       if (def?.logic) c.logic.add(li);
       if (def?.grows && this.canGrow(c, li & 15, li >> 8, (li >> 4) & 15)) c.growing.add(li);
-      else if (def?.kinetic || def?.machine || def?.hopper || def?.sensor || def?.painting || def?.ejector || def?.farm || def?.electric) { c.machines.add(li); this.machinesChanged = true; }
+      else if (def?.kinetic || def?.machine || def?.hopper || def?.sensor || def?.painting || def?.ejector || def?.farm || def?.electric || def?.spawner) { c.machines.add(li); this.machinesChanged = true; }
       else if (isFlowing(id)) this.flow.push([x0 + (li & 15), li >> 8, z0 + ((li >> 4) & 15)]); // water left running
     }
     this.dirty.add(c.key);
@@ -1061,6 +1061,20 @@ export class World {
         if (joins(this.get(x, y - 1, z))) model.push([5.5, 0, 5.5, 10.5, 5, 10.5, T.LEAD]);
         if (joins(this.get(x, y, z + 1))) model.push([5.5, 5.5, 11, 10.5, 10.5, 16, T.LEAD]);
         if (joins(this.get(x, y, z - 1))) model.push([5.5, 5.5, 0, 10.5, 10.5, 5, T.LEAD]);
+        vcount = this.addModel(lx, y, lz, { model }, this.torchAt(x, y, z), skyBrightness(this.skyAt(x, y, z)),
+          pos, uv, col, tl, sl, index, vcount);
+        continue;
+      }
+      if (def.shape === 'cable') {
+        // cupronickel cable: a thin insulated run with arms out to each cable or electric block it touches
+        const model = [[6, 6, 6, 10, 10, 10, T.CABLE]];
+        const joins = (id) => !!BLOCKS[id]?.electric && BLOCKS[id].electric.role !== 'wire';
+        if (joins(this.get(x + 1, y, z))) model.push([10, 6.5, 6.5, 16, 9.5, 9.5, T.CABLE]);
+        if (joins(this.get(x - 1, y, z))) model.push([0, 6.5, 6.5, 6, 9.5, 9.5, T.CABLE]);
+        if (joins(this.get(x, y + 1, z))) model.push([6.5, 10, 6.5, 9.5, 16, 9.5, T.CABLE]);
+        if (joins(this.get(x, y - 1, z))) model.push([6.5, 0, 6.5, 9.5, 6, 9.5, T.CABLE]);
+        if (joins(this.get(x, y, z + 1))) model.push([6.5, 6.5, 10, 9.5, 9.5, 16, T.CABLE]);
+        if (joins(this.get(x, y, z - 1))) model.push([6.5, 6.5, 0, 9.5, 9.5, 6, T.CABLE]);
         vcount = this.addModel(lx, y, lz, { model }, this.torchAt(x, y, z), skyBrightness(this.skyAt(x, y, z)),
           pos, uv, col, tl, sl, index, vcount);
         continue;

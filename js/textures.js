@@ -16,7 +16,7 @@ import {
   BERRIES, GLASS_BOTTLE, NIGHT_TEA, HASTE_TEA, FIRE_TEA, HEAL_TEA, WOOD_SHIELD, IRON_SHIELD, KING_CROWN,
   SUN_SCARAB, FROST_HEART, EMBER_CORE, SUN_MASK, FROST_CIRCLET, EMBER_CROWN, HONEY_TEA, MUSHROOM_STEW, FISH_PIE, COPY_WAND,
   CRYSTAL_SHARD, HONEY_BOTTLE, HONEYCOMB, SALMON, BAKED_SALMON, ICEFISH, BAKED_ICEFISH, PUFFERFISH, OLD_BOOT,
-  BATTERY, PORTABLE_LAMP, JACKHAMMER, JETPACK,
+  BATTERY, PORTABLE_LAMP, JACKHAMMER, JETPACK, ELECTRIC_DRILL, HOVER_BOOTS, NV_GOGGLES, MAGNET_RING, WIND_TURBINE, NICKEL_INGOT, CUPRONICKEL_INGOT,
   SALTPETRE, GUNPOWDER, LEAD_SINKER, WEIGHTED_ROD, LEAD_BUCKET, LAVA_BUCKET, GOLD_CLOCK, COMPASS, SILVER_ARROW, MIRROR_LAMP,
 } from './blocks.js';
 
@@ -314,8 +314,9 @@ const P = {
 // Ores: stone with clusters of coloured, slightly shiny nuggets (bauxite is a reddish rock with bigger blobs).
 const shade = (c, k) => c.map((v) => Math.max(0, Math.min(255, Math.round(v * k))));
 ORES.forEach((o, i) => {
-  P[T.ORE0 + i] = (t) => {
+  P[o.tile ?? T.ORE0 + i] = (t) => {
     P[T.STONE](t);
+    if (o.tile) for (let k = 0; k < 7; k++) t.r(); // (nickel's seed happens to line its nuggets up in a stalk)
     const big = o.id === ORES.find((q) => q.name === 'Bauxite').id;
     const clusters = big ? 7 : 6;
     for (let n = 0; n < clusters; n++) {
@@ -927,6 +928,85 @@ P[T.ELAMP_OFF] = (t) => {
 P[T.ELAMP_ON] = (t) => {
   for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) t.set(x, y, t.vary(Math.hypot(x - 7.5, y - 7.5) < 4 ? [255, 255, 236] : [255, 244, 190], 0.03));
 };
+// v22: grid battery, motor, solar cells, power meter, daylight sensor, electric smelter, cable, spawner,
+// programmable crafter, item counter, teleport pad, quarry, turbine blades
+const fill = (t, c, k = 0.05) => { for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) t.set(x, y, t.vary(c, k)); };
+P[T.GRIDBAT_SIDE] = (t) => {
+  fill(t, [84, 92, 118]); frame(t, [60, 64, 82], 1);
+  for (const x0 of [3, 9]) for (let y = 3; y < 13; y++) for (let x = x0; x < x0 + 4; x++) t.set(x, y, t.vary(y > 8 ? [110, 200, 70] : [104, 112, 138], 0.04));
+  for (const x0 of [4, 10]) { t.set(x0, 2, [230, 204, 100]); t.set(x0 + 1, 2, [230, 204, 100]); }
+};
+P[T.GRIDBAT_TOP] = (t) => { fill(t, [84, 92, 118]); frame(t, [60, 64, 82], 1); for (const [x, y] of [[4, 4], [10, 4], [4, 10], [10, 10]]) { t.set(x, y, [230, 204, 100]); t.set(x + 1, y, [230, 204, 100]); t.set(x, y + 1, [200, 176, 80]); t.set(x + 1, y + 1, [200, 176, 80]); } };
+P[T.MOTOR_SIDE] = (t) => {
+  P[T.IRON](t);
+  for (let y = 2; y < 14; y += 2) for (let x = 1; x < 15; x++) t.set(x, y, [84, 86, 94]); // cooling fins
+  for (let y = 6; y < 10; y++) for (let x = 6; x < 10; x++) t.set(x, y, [214, 186, 80]);
+};
+P[T.MOTOR_TOP] = (t) => {
+  P[T.IRON](t);
+  for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) { const d = Math.hypot(x - 7.5, y - 7.5); if (d < 3) t.set(x, y, [70, 72, 80]); else if (d < 6) t.set(x, y, t.vary([214, 186, 80], 0.06)); }
+};
+P[T.SOLAR_TOP] = (t) => {
+  for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+    const line = x % 5 === 0 || y % 5 === 0;
+    t.set(x, y, line ? [196, 200, 210] : t.vary((x + y) % 7 === 0 ? [70, 100, 170] : [36, 56, 120], 0.05));
+  }
+};
+const dial = (t, on) => {
+  P[T.IRON](t);
+  for (let y = 3; y < 11; y++) for (let x = 3; x < 13; x++) t.set(x, y, x === 3 || x === 12 || y === 3 || y === 10 ? [60, 62, 70] : [236, 232, 214]);
+  for (let k = 0; k < 4; k++) t.set(on ? 7 - k : 8 + k, 9 - k, [200, 40, 30]); // needle
+  t.set(7, 13, on ? [255, 80, 60] : [90, 40, 36]); t.set(8, 13, on ? [255, 80, 60] : [90, 40, 36]);
+};
+P[T.METER_FACE] = (t) => dial(t, false);
+P[T.METER_FACE_ON] = (t) => dial(t, true);
+const daySense = (t, on) => {
+  for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) t.set(x, y, t.vary([180, 200, 214], 0.04));
+  frame(t, [120, 85, 45], 2);
+  for (let y = 4; y < 12; y++) for (let x = 4; x < 12; x++) if (Math.hypot(x - 7.5, y - 7.5) < 3.5) t.set(x, y, on ? [255, 214, 90] : [80, 90, 130]);
+};
+P[T.DAYSENSE_TOP] = (t) => daySense(t, false);
+P[T.DAYSENSE_TOP_ON] = (t) => daySense(t, true);
+P[T.ESMELT_SIDE] = (t) => { P[T.STAINLESS](t); for (let y = 4; y < 12; y += 2) for (let x = 3; x < 13; x++) t.set(x, y, [120, 126, 136]); for (let x = 0; x < TILE; x++) t.set(x, 13, [214, 186, 80]); };
+P[T.ESMELT_FRONT] = (t) => {
+  P[T.STAINLESS](t);
+  for (let y = 4; y < 13; y++) for (let x = 3; x < 13; x++) t.set(x, y, x === 3 || x === 12 || y === 4 || y === 12 ? [90, 94, 104] : y % 2 ? [255, 120, 40] : [200, 60, 20]); // glowing coils
+  t.set(13, 2, [90, 220, 90]); t.set(14, 2, [90, 220, 90]);
+};
+P[T.CABLE] = (t) => { for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) t.set(x, y, t.vary((x + 2 * y) % 6 < 1 ? [214, 170, 140] : [60, 62, 70], 0.06)); };
+P[T.SPAWNER] = (t) => {
+  for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+    const bar = x % 5 === 0 || y % 5 === 0 || x === 15 || y === 15;
+    if (bar) t.set(x, y, t.vary([50, 54, 64], 0.08)); else t.set(x, y, [0, 0, 0], 0); // a cage you can see into
+  }
+  for (const [x, y] of [[7, 7], [8, 7], [7, 8], [8, 8], [2, 12], [12, 2]]) t.set(x, y, [200, 60, 220]);
+};
+P[T.PCRAFT_TOP] = (t) => { P[T.TABLE_TOP](t); for (let x = 2; x < 14; x++) t.set(x, 14, [236, 218, 140]); t.set(2, 2, [90, 220, 90]); };
+P[T.PCRAFT_SIDE] = (t) => { P[T.CRAFTER_FRONT](t); for (let x = 1; x < 15; x += 3) t.set(x, 1, [236, 218, 140]); };
+const counter = (t, on) => {
+  P[T.IRON](t);
+  for (let y = 4; y < 11; y++) for (let x = 2; x < 14; x++) t.set(x, y, x === 2 || x === 13 || y === 4 || y === 10 ? [60, 62, 70] : [30, 32, 36]);
+  for (const x0 of [4, 8]) for (let y = 6; y < 9; y++) { t.set(x0, y, [255, 170, 60]); t.set(x0 + 2, y, [255, 170, 60]); } // digits
+  t.set(7, 12, on ? [255, 80, 60] : [90, 40, 36]); t.set(8, 12, on ? [255, 80, 60] : [90, 40, 36]);
+};
+P[T.COUNTER_FRONT] = (t) => counter(t, false);
+P[T.COUNTER_FRONT_ON] = (t) => counter(t, true);
+const pad = (t, on) => {
+  P[T.STAINLESS](t);
+  for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+    const d = Math.hypot(x - 7.5, y - 7.5);
+    if (d < 6.5 && d > 5) t.set(x, y, on ? [140, 240, 255] : [70, 90, 110]);
+    else if (d < 3) t.set(x, y, on ? [210, 250, 255] : [90, 100, 120]);
+  }
+};
+P[T.TELEPAD] = (t) => pad(t, false);
+P[T.TELEPAD_ON] = (t) => pad(t, true);
+P[T.QUARRY_SIDE] = (t) => { P[T.STAINLESS](t); frame(t, [214, 186, 80], 1); for (let y = 5; y < 11; y++) for (let x = 5; x < 11; x++) t.set(x, y, [120, 126, 136]); };
+P[T.QUARRY_FRONT] = (t) => {
+  P[T.STAINLESS](t);
+  for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) { const d = Math.hypot(x - 7.5, y - 7.5); if (d < 6) t.set(x, y, (Math.atan2(y - 7.5, x - 7.5) * 3 / Math.PI + 6 + d / 3) % 2 < 1 ? [124, 120, 152] : [80, 76, 100]); } // a tungsten bit
+};
+P[T.TURBINE] = (t) => fill(t, [236, 238, 240], 0.03);
 P[T.LOGIC_BASE] = (t) => {
   for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) t.set(x, y, t.vary([172, 172, 168], 0.04));
   frame(t, [128, 128, 126], 1);
@@ -1079,6 +1159,7 @@ const METAL_COLORS = {
   [ZINC_INGOT]: [172, 198, 208], [ALUMINIUM_INGOT]: [226, 230, 236], [SILVER_INGOT]: [240, 242, 250], [GOLD_INGOT]: [250, 210, 70],
   [TUNGSTEN_INGOT]: [124, 120, 152], [BRONZE_INGOT]: [198, 146, 72], [ELECTRUM_INGOT]: [236, 218, 140],
   [STAINLESS_INGOT]: [210, 218, 224], [STEEL_INGOT]: [146, 154, 166], [AL_BRONZE_INGOT]: [226, 186, 100],
+  [NICKEL_INGOT]: [190, 200, 176], [CUPRONICKEL_INGOT]: [214, 170, 140],
 };
 const dim = (c, k) => c.map((v) => Math.round(v * k));
 for (const m of TOOL_MATERIALS) MAT[m.key] = [METAL_COLORS[m.ingot], dim(METAL_COLORS[m.ingot], 0.62)];
@@ -1839,6 +1920,32 @@ ITEM_PAINTERS[JETPACK] = (ctx) => {
   rect(ctx, 6, 4, 4, 6, [84, 92, 118]); rect(ctx, 7, 5, 2, 1, [230, 204, 100]);
   rect(ctx, 3, 12, 3, 2, [80, 80, 86]); rect(ctx, 10, 12, 3, 2, [80, 80, 86]);
   rect(ctx, 3, 14, 3, 2, [255, 170, 60]); rect(ctx, 10, 14, 3, 2, [255, 170, 60]);
+};
+
+ITEM_PAINTERS[WIND_TURBINE] = (ctx) => {
+  rect(ctx, 7, 7, 2, 9, [150, 154, 164]); rect(ctx, 6, 5, 4, 3, [118, 122, 130]); // mast and hub
+  rect(ctx, 7, 0, 2, 5, [236, 238, 240]); rect(ctx, 1, 6, 5, 2, [236, 238, 240]); rect(ctx, 10, 6, 5, 2, [236, 238, 240]); // blades
+  px(ctx, 7, 6, [70, 72, 80]);
+};
+// v22 battery gear: an electric drill, hover boots, night-vision goggles, a magnet ring
+ITEM_PAINTERS[ELECTRIC_DRILL] = (ctx) => {
+  rect(ctx, 2, 4, 8, 6, [196, 200, 210]); rect(ctx, 3, 5, 6, 2, [84, 92, 118]); rect(ctx, 4, 8, 3, 1, [230, 204, 100]);
+  rect(ctx, 4, 10, 3, 5, [60, 60, 66]); // grip
+  rect(ctx, 10, 6, 2, 2, [150, 154, 164]); rect(ctx, 12, 6, 3, 2, [124, 120, 152]); px(ctx, 15, 7, [100, 96, 128]);
+};
+ITEM_PAINTERS[HOVER_BOOTS] = (ctx) => {
+  rect(ctx, 2, 3, 4, 8, [120, 84, 50]); rect(ctx, 10, 3, 4, 8, [120, 84, 50]);
+  rect(ctx, 1, 10, 6, 3, [226, 230, 236]); rect(ctx, 9, 10, 6, 3, [226, 230, 236]);
+  rect(ctx, 2, 13, 4, 2, [140, 240, 255]); rect(ctx, 10, 13, 4, 2, [140, 240, 255]);
+  rect(ctx, 3, 5, 2, 1, [230, 204, 100]); rect(ctx, 11, 5, 2, 1, [230, 204, 100]);
+};
+ITEM_PAINTERS[NV_GOGGLES] = (ctx) => {
+  rect(ctx, 0, 7, 16, 2, [60, 50, 40]);
+  for (const x of [2, 9]) { rect(ctx, x, 5, 5, 6, [60, 62, 70]); rect(ctx, x + 1, 6, 3, 4, [90, 230, 110]); px(ctx, x + 1, 6, [200, 255, 200]); }
+};
+ITEM_PAINTERS[MAGNET_RING] = (ctx) => {
+  for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) { const d = Math.hypot(x - 7.5, y - 8.5); if (d > 3.5 && d < 6) px(ctx, x, y, y < 8 ? [200, 50, 40] : [190, 200, 176]); }
+  rect(ctx, 6, 1, 4, 2, [84, 92, 118]); px(ctx, 7, 1, [230, 204, 100]);
 };
 
 // An isometric drawing of a model block (furniture, stairs, fences...) for blocks with no painted icon,

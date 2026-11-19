@@ -309,6 +309,25 @@ export class Sound {
     }
   }
 
+  // The hum of machinery nearby: a low drone for turning shafts and machines (mech), and a higher mains
+  // buzz for electricity (elec), each 0..1.
+  hum(mech, elec) {
+    if (!this.ctx) return;
+    if (!this.humNodes) {
+      const c = this.ctx, mk = (type, freq, cut) => {
+        const o = c.createOscillator(); o.type = type; o.frequency.value = freq;
+        const f = c.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = cut;
+        const g = c.createGain(); g.gain.value = 0;
+        o.connect(f); f.connect(g); g.connect(this.master); o.start();
+        return g;
+      };
+      this.humNodes = { mech: mk('sawtooth', 46, 160), elec: mk('square', 100, 420) };
+    }
+    const t = this.ctx.currentTime;
+    this.humNodes.mech.gain.setTargetAtTime(this.muted ? 0 : mech * 0.07, t, 0.5);
+    this.humNodes.elec.gain.setTargetAtTime(this.muted ? 0 : elec * 0.025, t, 0.5);
+  }
+
   // A steady hiss of rain (or the wind of a sandstorm), faded in and out: level 0..1.
   weather(level, kind = 'rain') {
     if (!this.ctx) return;

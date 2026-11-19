@@ -22,7 +22,7 @@
 // doubles the speed across it, from its - end to its + end, while it gets a signal.
 import * as THREE from 'three';
 import {
-  BLOCKS, KINETIC_MATS, WHEEL_POWER, ENGINE_POWER, isFlowing, T, AIR, BELT_REACH,
+  BLOCKS, KINETIC_MATS, WHEEL_POWER, ENGINE_POWER, MOTOR_POWER, isFlowing, T, AIR, BELT_REACH,
 } from './blocks.js';
 import { TILE, ATLAS_COLS } from './textures.js';
 import { CHUNK, SEA_LEVEL } from './terrain.js';
@@ -92,6 +92,7 @@ export class Kinetics {
     if (n && n.part !== 'machine' && n.net != null) {
       const net = this.nets[n.net];
       if (n.part === 'windmill') return n.power ? `Windmill: ${fmt(n.power)} power at this height` : 'Becalmed: the sails need clear space all round';
+      if (n.motor && !n.power) return 'Electric motor: no electricity (join it to a generator with electrum wire or cable)';
       if (n.part === 'engine' && !n.power) return this.engineStatus?.(n.x, n.y, n.z) ?? 'Cold: put fuel in it';
       return net.status || `Turning at ${fmt(Math.abs(n.speed))}x · load ${fmt(net.load)} of ${fmt(net.power)} power`;
     }
@@ -235,7 +236,8 @@ export class Kinetics {
       for (const n of net.parts) {
         if (n.part === 'engine') {
           // a steam engine gives its power while it's burning (see machines.js)
-          n.power = this.engineOn?.(n.x, n.y, n.z) ? ENGINE_POWER : 0;
+          // (an electric motor gives its power for the share of electricity it gets: see electric.js)
+          n.power = n.motor ? MOTOR_POWER * (this.motorShare?.(n.x, n.y, n.z) ?? 0) : this.engineOn?.(n.x, n.y, n.z) ? ENGINE_POWER : 0;
           if (n.power) net.wheels.push(n);
         } else if (n.part === 'windmill') {
           n.power = windPower(world, n);
@@ -264,6 +266,7 @@ export class Kinetics {
       else if (!sources.length) {
         net.status = net.parts.some((n) => n.part === 'wheel') ? 'No power: a water wheel needs flowing water beside it'
           : net.parts.some((n) => n.part === 'windmill') ? 'No power: a windmill needs clear space all round its sails'
+            : net.parts.some((n) => n.motor) ? 'No power: the electric motor needs electricity'
             : net.parts.some((n) => n.part === 'engine') ? 'No power: the steam engine needs fuel, and water beside it'
             : 'No power: connect a water wheel, windmill or steam engine';
       } else {

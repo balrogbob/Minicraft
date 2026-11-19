@@ -1,16 +1,24 @@
-// Electricity: generators, electrum wire, and the machines that run on it (electric lamps, pulverizers and
-// battery chargers).
+// Electricity: what makes it (generators, solar panels, wind turbines), what carries it (electrum wire,
+// cupronickel cable), what stores it (grid batteries) and the machines that run on it.
 //
-// Electric blocks join up when they touch (any face), and through electrum wire, which joins like copper
-// wire does (side by side, or up or down a block round an edge). Each joined set is a network:
-//  - every generator in it makes GEN_POWER for each 1x its shaft turns it at (see kinetics.js);
-//  - each machine takes its draw (ELECTRIC_DRAW) while it has work: a lamp always, a pulverizer while
-//    it has something to pulverize, a charger while what's in it isn't full.
-// When the generators make less than the machines want, everything runs on the share there is: a
-// pulverizer works that much slower, a charger fills that much slower, and lamps go out below half.
-import { BLOCKS, GEN_POWER, ELECTRIC_LAMP, CHARGE_RATE, chargeCap, stationKind } from './blocks.js';
+// Electric blocks join up when they touch (any face), through electrum wire, which joins like copper
+// wire does (side by side, or up or down a block round an edge), and through cupronickel cable, which
+// runs straight on in any direction (up a wall or across a ceiling) and carries no signals. Each joined
+// set is a network:
+//  - every generator in it makes GEN_POWER for each 1x its shaft turns it at (see kinetics.js); a solar
+//    panel makes up to SOLAR_POWER under open sky by day; a wind turbine makes more the higher it stands;
+//  - each machine takes its draw (ELECTRIC_DRAW) while it has work: a lamp while it's on, a pulverizer or
+//    electric smelter while it has something to work on, a charger while what's in it isn't full, a motor
+//    while it has something to turn, a teleport pad while it isn't full, a quarry while it's digging;
+//  - grid batteries soak up what's spare (up to STORE_RATE each) and give it back when the network's short.
+// When there's less than the machines want, everything runs on the share there is: a pulverizer works that
+// much slower, a charger fills that much slower, a motor gives that much less, and lamps go out below half.
+import {
+  BLOCKS, GEN_POWER, ELECTRIC_LAMP, CHARGE_RATE, chargeCap, stationKind, MAX_LIGHT, SOLAR_POWER, STORE_CAP, STORE_RATE,
+  PAD_CAP, PAD_PLAYER, TELEPAD,
+} from './blocks.js';
 import { STATION_KINDS } from './stations.js';
-import { CHUNK } from './terrain.js';
+import { CHUNK, SEA_LEVEL } from './terrain.js';
 
 const SOLVE_EVERY = 0.25; // seconds between working the networks out again
 const key = (x, y, z) => `${x},${y},${z}`;
@@ -18,23 +26,53 @@ const SIDES = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -
 // wire to wire: up or down a block beside it, as well as straight on
 const WIRE_STEPS = [[1, 1, 0], [-1, 1, 0], [0, 1, 1], [0, 1, -1], [1, -1, 0], [-1, -1, 0], [0, -1, 1], [0, -1, -1]];
 const fmt = (n) => (Math.round(n * 10) / 10).toString();
+const AROUND = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]];
+
+// A wind turbine's power: 1 at sea level, a point more every 6 blocks higher (up to 6), and half as much
+// again in a storm. It needs the 8 cells around it clear to turn.
+export function turbinePower(world, x, y, z, raining) {
+  for (const [dx, dz] of AROUND) if (world.get(x + dx, y, z + dz)) return 0;
+  return Math.min(6, 1 + Math.max(0, y - SEA_LEVEL) / 6) * (raining ? 1.5 : 1);
+}
 
 export class Electric {
   constructor() {
     this.nodes = new Map(); // "x,y,z" -> { x, y, z, id, role, draw, net }
-    this.nets = []; // { supply, demand, share, gens, users }
+    this.nets = []; // { supply, demand, share, gens, users, stores, stored, parts }
+    this.store = new Map(); // grid battery or teleport pad "x,y,z" -> power-seconds held
+    this.signalLamps = new Set(); // electric lamps switched to come on only with a signal
     this.timer = 0;
+    this.hooks = {};
   }
 
-  // Does an electric machine at (x, y, z) want power right now?
-  wants(n, stations) {
+  // Does an electric machine want power right now?
+  wants(n, stations, kinetics) {
     if (n.role !== 'use') return false;
+    const k = key(n.x, n.y, n.z), def = BLOCKS[n.id];
+    const said = this.hooks.wants?.(n);
+    if (said !== undefined) return said;
+    if (def.pad) return (this.store.get(k) ?? 0) < PAD_CAP;
+    if (def.kinetic) {
+      // a motor: while there's something on its shafts to turn
+      const m = kinetics.nodes.get(k);
+      return m?.net != null && !!kinetics.nets[m.net]?.machines.length;
+    }
     const kind = stationKind(n.id);
-    if (!kind) return true; // a lamp
-    const st = stations.map.get(key(n.x, n.y, n.z));
+    if (!kind) return !this.signalLamps.has(k) || !!this.hooks.signalAt?.(n.x, n.y, n.z); // a lamp
+    const st = stations.map.get(k);
     if (!st) return false;
     if (kind === 'charger') { const s = st.inputs[0]; return !!s && chargeCap(s.id) > 0 && (s.wear ?? 0) > 0; }
     return !!stations.recipeFor(st);
+  }
+
+  made(n, world, kinetics) {
+    if (n.solar) {
+      if (world.skyAt(n.x, n.y, n.z) < MAX_LIGHT - 1) return 0; // under a roof
+      const day = Math.max(0, ((this.hooks.daylight?.() ?? 1) - 0.3) / 0.7);
+      return SOLAR_POWER * day;
+    }
+    if (n.wind) return turbinePower(world, n.x, n.y, n.z, this.hooks.raining?.());
+    return GEN_POWER * kinetics.powerAt(n.x, n.y, n.z);
   }
 
   solve(world, kinetics, stations) {
@@ -44,13 +82,20 @@ export class Electric {
         const def = BLOCKS[c.data[li]];
         if (!def?.electric) continue;
         const x = c.cx * CHUNK + (li & 15), z = c.cz * CHUNK + ((li >> 4) & 15), y = li >> 8;
-        nodes.set(key(x, y, z), { x, y, z, id: c.data[li], ...def.electric, draw: def.electric.draw ?? 0, net: null });
+        nodes.set(key(x, y, z), { x, y, z, id: c.data[li], ...def.electric, draw: def.electric.draw ?? 0, net: null, flow: 0 });
       }
+    }
+    // forget the charge of batteries and pads that have gone (where the world's loaded)
+    for (const k of this.store.keys()) {
+      const n = nodes.get(k);
+      if (n && (n.role === 'store' || BLOCKS[n.id].pad)) continue;
+      const [x, , z] = k.split(',').map(Number);
+      if (world.chunkAt(x, z)) this.store.delete(k);
     }
     const nets = [];
     for (const start of nodes.values()) {
       if (start.net !== null) continue;
-      const net = { supply: 0, demand: 0, share: 0, gens: 0, users: 0, parts: [] };
+      const net = { supply: 0, demand: 0, share: 0, gens: 0, users: 0, stores: 0, stored: 0, give: 0, take: 0, parts: [] };
       start.net = nets.length;
       const queue = [start];
       while (queue.length) {
@@ -69,16 +114,32 @@ export class Electric {
           queue.push(m);
         }
       }
+      const stores = [];
       for (const n of net.parts) {
-        if (n.role === 'gen') { n.made = GEN_POWER * kinetics.powerAt(n.x, n.y, n.z); net.supply += n.made; net.gens++; }
-        else if (n.role === 'use') { net.users++; n.want = this.wants(n, stations); if (n.want) net.demand += n.draw; }
+        if (n.role === 'gen') { n.made = this.made(n, world, kinetics); net.supply += n.made; net.gens++; }
+        else if (n.role === 'use') { net.users++; n.want = this.wants(n, stations, kinetics); if (n.want) net.demand += n.draw; }
+        else if (n.role === 'store') { stores.push(n); net.stores++; net.stored += this.store.get(key(n.x, n.y, n.z)) ?? 0; }
       }
-      net.share = net.demand > 0 ? Math.min(1, net.supply / net.demand) : net.supply > 0 ? 1 : 0;
+      // grid batteries: make up what's short, or soak up what's spare
+      const k = (n) => key(n.x, n.y, n.z);
+      if (net.demand > net.supply) {
+        const full = stores.filter((n) => (this.store.get(k(n)) ?? 0) > 1e-6);
+        net.give = Math.min(net.demand - net.supply, STORE_RATE * full.length);
+        for (const n of full) n.flow = -net.give / full.length;
+      } else if (net.supply > net.demand) {
+        const room = stores.filter((n) => (this.store.get(k(n)) ?? 0) < STORE_CAP - 1e-6);
+        net.take = Math.min(net.supply - net.demand, STORE_RATE * room.length);
+        for (const n of room) n.flow = net.take / room.length;
+      }
+      const have = net.supply + net.give;
+      net.share = net.demand > 0 ? Math.min(1, have / net.demand) : have > 0 ? 1 : 0;
       nets.push(net);
     }
     this.nodes = nodes;
     this.nets = nets;
   }
+
+  netAt(x, y, z) { const n = this.nodes.get(key(x, y, z)); return n ? this.nets[n.net] : null; }
 
   // How fast an electric machine runs (0 when it has no power): its speed x the network's share.
   speedAt(x, y, z) {
@@ -87,42 +148,106 @@ export class Electric {
     return (n.speed ?? 1) * this.nets[n.net].share;
   }
 
+  // Is the network at (x, y, z) short of power (its machines want more than it has)?
+  shortAt(x, y, z) { const net = this.netAt(x, y, z); return !!net && net.demand > net.supply + net.give + 1e-6; }
+  // Has it power to spare (making more than its machines use)?
+  spareAt(x, y, z) { const net = this.netAt(x, y, z); return !!net && net.supply > net.demand + 1e-6; }
+
+  // Take power-seconds out of a teleport pad; false if it hasn't that much.
+  drawPad(x, y, z, amount) {
+    const k = key(x, y, z), have = this.store.get(k) ?? 0;
+    if (have < amount - 1e-6) return false;
+    this.store.set(k, have - amount);
+    return true;
+  }
+  padCharge(x, y, z) { return (this.store.get(key(x, y, z)) ?? 0) / PAD_CAP; }
+
   // A line about the network an electric block is on, for its panel or when it's tapped.
   statusAt(x, y, z) {
     const n = this.nodes.get(key(x, y, z));
     if (!n) return 'Not connected';
     const net = this.nets[n.net];
-    if (n.role === 'gen' && !n.made) return 'Still: turn a shaft or gear against it to make electricity';
-    const gen = n.role === 'gen' ? `Making ${fmt(n.made)} power. ` : '';
-    if (!net.gens) return `${gen}No power: join it to a generator with electrum wire`;
-    if (!net.supply) return `${gen}No power: the generators aren't turning`;
-    if (net.demand > net.supply + 1e-6) return `${gen}Short of power: needs ${fmt(net.demand)}, the generators make ${fmt(net.supply)}, so everything runs at ${Math.round(net.share * 100)}%`;
-    return `${gen}Using ${fmt(net.demand)} of ${fmt(net.supply)} power`;
+    if (n.role === 'gen' && !n.made) {
+      return n.solar ? 'Dark: a solar panel needs open sky and daylight' : n.wind ? 'Becalmed: a wind turbine needs the 8 blocks around it clear'
+        : 'Still: turn a shaft or gear against it to make electricity';
+    }
+    let pre = n.role === 'gen' ? `Making ${fmt(n.made)} power. ` : '';
+    if (n.role === 'store') {
+      const e = this.store.get(key(x, y, z)) ?? 0;
+      pre = `${Math.round(e / STORE_CAP * 100)}% full${n.flow > 1e-6 ? `, charging at ${fmt(n.flow)}` : n.flow < -1e-6 ? `, giving ${fmt(-n.flow)}` : ''}. `;
+    }
+    if (BLOCKS[n.id]?.pad) pre = `${Math.round(this.padCharge(x, y, z) * 100)}% charged. `;
+    const stored = net.stores ? ` (batteries ${Math.round(net.stored / (STORE_CAP * net.stores) * 100)}% full)` : '';
+    if (!net.gens && !net.stored) return `${pre}No power: join it to a generator with electrum wire or cable`;
+    if (!net.supply && !net.give) return `${pre}No power: the generators aren't making any${stored}`;
+    if (net.demand > net.supply + net.give + 1e-6) return `${pre}Short of power: needs ${fmt(net.demand)}, has ${fmt(net.supply + net.give)}, so everything runs at ${Math.round(net.share * 100)}%${stored}`;
+    if (net.give > 1e-6) return `${pre}Using ${fmt(net.demand)} power: ${fmt(net.supply)} made, ${fmt(net.give)} from the batteries${stored}`;
+    return `${pre}Using ${fmt(net.demand)} of ${fmt(net.supply)} power${stored}`;
   }
 
-  // hooks: { setBlock(x, y, z, id) }
+  // Tapping an electric lamp switches it between always on and on only with a signal.
+  toggleLampMode(x, y, z) {
+    const k = key(x, y, z);
+    if (this.signalLamps.has(k)) this.signalLamps.delete(k); else this.signalLamps.add(k);
+    this.timer = 0;
+    return this.signalLamps.has(k);
+  }
+
+  // hooks: { setBlock(x, y, z, id), signalAt(x, y, z), daylight(), raining(), wants(node) -> bool | undefined }
   update(dt, world, kinetics, stations, hooks) {
+    Object.assign(this.hooks, hooks);
     this.timer -= dt;
     if (this.timer <= 0 || world.electricChanged) {
       world.electricChanged = false;
       this.timer = SOLVE_EVERY;
       this.solve(world, kinetics, stations);
-      // lamps light while they've at least half the power they want
+      // lamps light while they've at least half the power they want (and, if they're set to, a signal)
       for (const n of this.nodes.values()) {
         if (n.id !== ELECTRIC_LAMP && n.id !== ELECTRIC_LAMP + 1) continue;
-        const lit = this.nets[n.net].share >= 0.5;
+        const lit = n.want && this.nets[n.net].share >= 0.5;
         if (lit !== (n.id === ELECTRIC_LAMP + 1)) { n.id = ELECTRIC_LAMP + (lit ? 1 : 0); hooks.setBlock(n.x, n.y, n.z, n.id); }
       }
     }
-    // chargers fill what's in them
     for (const n of this.nodes.values()) {
-      if (n.role !== 'use' || !n.want || stationKind(n.id) !== 'charger') continue;
+      const k = key(n.x, n.y, n.z);
+      // grid batteries fill and empty
+      if (n.role === 'store' && n.flow) this.store.set(k, Math.max(0, Math.min(STORE_CAP, (this.store.get(k) ?? 0) + n.flow * dt)));
+      if (n.role !== 'use' || !n.want) continue;
       const share = this.nets[n.net].share;
-      const s = stations.map.get(key(n.x, n.y, n.z))?.inputs[0];
-      if (!share || !s?.wear) continue;
+      if (!share) continue;
+      if (BLOCKS[n.id].pad) {
+        // teleport pads charge up, and glow when they're full enough to send you
+        const e = Math.min(PAD_CAP, (this.store.get(k) ?? 0) + n.draw * share * dt);
+        this.store.set(k, e);
+        if (e >= PAD_CAP - 1e-6) n.want = false;
+        continue;
+      }
+      // chargers fill what's in them
+      if (stationKind(n.id) !== 'charger') continue;
+      const s = stations.map.get(k)?.inputs[0];
+      if (!s?.wear) continue;
       s.wear = Math.max(0, s.wear - n.draw * share * CHARGE_RATE * dt);
       if (!s.wear) { delete s.wear; n.want = false; }
     }
+    // pads show when they've enough to send you
+    for (const n of this.nodes.values()) {
+      if (!BLOCKS[n.id].pad) continue;
+      const ready = (this.store.get(key(n.x, n.y, n.z)) ?? 0) >= PAD_PLAYER - 1e-6;
+      if (ready !== (n.id === TELEPAD + 1)) { n.id = TELEPAD + (ready ? 1 : 0); hooks.setBlock(n.x, n.y, n.z, n.id); }
+    }
+  }
+
+  serialize() {
+    return { store: [...this.store].map(([k, v]) => [k, Math.round(v * 10) / 10]), signalLamps: [...this.signalLamps] };
+  }
+
+  load(o) {
+    this.store.clear(); this.signalLamps.clear();
+    for (const e of Array.isArray(o?.store) ? o.store : []) {
+      if (Array.isArray(e) && typeof e[0] === 'string' && Number.isFinite(e[1])) this.store.set(e[0], Math.max(0, Math.min(STORE_CAP, e[1])));
+    }
+    for (const k of Array.isArray(o?.signalLamps) ? o.signalLamps : []) if (typeof k === 'string') this.signalLamps.add(k);
+    this.timer = 0;
   }
 }
 
