@@ -7,7 +7,7 @@ import {
   COAL, CHARCOAL, LOG, PLANKS, STICK, COBBLE, STONE, SAND, GLASS, SLIME_FUEL, BUCKET,
   SALMON, BAKED_SALMON, ICEFISH, BAKED_ICEFISH, HONEY_TEA, HONEYCOMB, MUSHROOM_STEW, FISH_PIE, GLOW_MUSHROOM,
   FLOUR, SUGAR, BUTTER, MILK_BUCKET, BREAD, COOKIE, CAKE, RAW_FISH, BAKED_FISH, BLOCKS, maxStack, stationKind,
-  ORES, COAL_OR_CHARCOAL, IRON_INGOT, COPPER_INGOT, TIN_INGOT, ZINC_INGOT, ALUMINIUM_INGOT, SILVER_INGOT, GOLD_INGOT,
+  ORES, COAL_OR_CHARCOAL, CUPRONICKEL_INGOT, NICKEL_INGOT, IRON_INGOT, COPPER_INGOT, TIN_INGOT, ZINC_INGOT, ALUMINIUM_INGOT, SILVER_INGOT, GOLD_INGOT,
   BRONZE_INGOT, ELECTRUM_INGOT, STAINLESS_INGOT, STEEL_INGOT, AL_BRONZE_INGOT,
   GRAVEL, FLINT, FLINT_DUST, CLAY_BALL, CLAY_DUST, BRICK, FIRE_CLAY, FIRE_BRICK, oreDust, HIDE, LEATHER,
   LAVA_BUCKET, LEAD_BUCKET, SALTPETRE, SANDSTONE, WHEAT, SUGAR_CANE, COAL_DUST, PLATE_METALS, PLATES, TUNGSTEN_INGOT, FILAMENT,
@@ -55,6 +55,7 @@ export const STATION_KINDS = {
       { out: [BRONZE_INGOT, 4], in: [[COPPER_INGOT, 3], [TIN_INGOT, 1]], time: 6 },
       { out: [AL_BRONZE_INGOT, 4], in: [[ALUMINIUM_INGOT, 1], [COPPER_INGOT, 3]], time: 6 },
       { out: [ELECTRUM_INGOT, 2], in: [[SILVER_INGOT, 1], [GOLD_INGOT, 1]], time: 6 },
+      { out: [CUPRONICKEL_INGOT, 4], in: [[COPPER_INGOT, 3], [NICKEL_INGOT, 1]], time: 6 },
       // ores into ingots
       ...ORES.filter((o) => o.ingot).map((o) => ({ out: [o.ingot, 1], in: [[o.id, 1]], time: o.tier >= 5 ? 8 : 5 })),
       // crushed ore: each dust is a whole ingot, so crushing first doubles what an ore gives
@@ -129,6 +130,9 @@ STATION_KINDS.pulverizer = {
 };
 // The battery charger holds one battery (or anything that runs on one) and fills it while it has power.
 STATION_KINDS.charger = { name: 'Battery Charger', inputs: 1, holder: true, accepts: ELECTRIC_ITEMS, electric: true, recipes: [] };
+// The electric smelter smelts everything the smelter does with no fuel, on electricity (see electric.js):
+// at 2x speed with all the power it wants, slower when the grid's short.
+STATION_KINDS.esmelter = { ...STATION_KINDS.smelter, name: 'Electric Smelter', verb: 'Smelting', powered: true, electric: true };
 // Chests just hold things.
 STATION_KINDS.chest = { name: 'Chest', inputs: 18, storage: true, recipes: [] };
 STATION_KINDS.ironchest = { name: 'Iron-Banded Chest', inputs: 36, storage: true, recipes: [] };
@@ -136,6 +140,8 @@ STATION_KINDS.ironchest = { name: 'Iron-Banded Chest', inputs: 36, storage: true
 // put into it; no fuel or power.
 export const CRAFT_TIME = 1;
 STATION_KINDS.crafter = { name: 'Auto-Crafter', inputs: 9, crafter: true, recipes: [] };
+// The programmable crafter: an auto-crafter that steps on to the next item frame on it each time it gets a signal.
+STATION_KINDS.pcrafter = { name: 'Programmable Crafter', inputs: 9, crafter: true, recipes: [] };
 // Farm machines that hold things: a planter's saplings, an animal station's buckets and wheat (both just
 // hold them: see machines.js), and a fishing net's catch (taken out by a hopper underneath).
 STATION_KINDS.planter = { name: 'Planter', inputs: 4, holder: true, accepts: [SAPLING], recipes: [] };

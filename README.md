@@ -85,9 +85,14 @@ It is designed for Android tablets (touch controls) but also plays with keyboard
   an **auto-crafter**, **drive belts**, **flywheels**, **tachometers**, **gear shifts**, **tanks**, **valves**, lava
   piped in as fuel, **sprinklers**, **tree fellers**, **planters**, **block breakers** and **placers**,
   **animal stations** and **fishing nets**
-- Electricity: **generators** turned by shafts, **electrum wire** (which carries signals too), **electric lamps**,
-  an **electric pulverizer** that gets more out of ore, **batteries** and a **battery charger**, and battery-powered
-  **portable lamps**, **jackhammers** and **jetpacks**
+- Electricity: **generators** turned by shafts, **solar panels**, **wind turbines**, **electrum wire** (which carries
+  signals too) and **cupronickel cable**, **grid batteries**, **electric motors**, **power meters**, **electric lamps**
+  you can switch with a signal, **daylight sensors**, an **electric pulverizer** that gets more out of ore, an
+  **electric smelter**, **batteries** and a **battery charger**, and battery-powered **portable lamps**,
+  **jackhammers**, **jetpacks**, **electric drills**, **hover boots**, **night-vision goggles** and **magnet rings**
+- More automation: a **programmable crafter**, **item counters**, **teleport pads** (for things and for you) and a
+  **quarry**; **monster spawners** in dungeons for mob farms; **nickel** and **cupronickel**; and a low hum from
+  the machines working around you
 - **Three world slots** with export to a file and import, a **creative mode** (flying, every block, instant
   breaking and a **copy wand**), rebindable keys, a field-of-view slider, a full-screen **world map** with
   waypoints, and **22 achievements** with an in-game guide
@@ -265,6 +270,7 @@ Without a good enough pickaxe an ore breaks slowly and drops nothing.
 | Silver ore | 2–22 | iron-class | silver ingot |
 | Gold ore | 1–16 | iron-class | gold ingot |
 | Tungsten ore | 1–9 (deep) | stainless steel | tungsten ingot |
+| Nickel ore | 4–36 | copper-class | nickel ingot |
 
 Alloys, made in the smelter (coal or charcoal here is an ingredient, not the fuel):
 
@@ -273,6 +279,7 @@ Alloys, made in the smelter (coal or charcoal here is an ingredient, not the fue
 | 4 Bronze ingots | 3 copper + 1 tin |
 | 4 Aluminium bronze ingots | 1 aluminium + 3 copper |
 | 2 Electrum ingots | 1 silver + 1 gold |
+| 4 Cupronickel ingots | 3 copper + 1 nickel |
 | 1 Steel ingot | 1 iron + 1 coal or charcoal |
 | 2 Stainless steel ingots | 1 zinc + 1 iron + 1 coal or charcoal |
 
@@ -804,6 +811,63 @@ own colour. Hang a **painting** on a wall: it picks the biggest of eight picture
     better than your hands.
   - The **electric jetpack** (4 stainless steel, 2 batteries, 4 electrum wire, 2 leather) is worn in place of a
     chestplate. Hold jump in the air to climb, or to slow a fall. A charge gives 50 seconds of thrust.
+  - The **electric drill** (a jackhammer, a tungsten drill bit, 2 cupronickel) digs a 3 × 3 square at a time
+    across the face you're digging: the 8 blocks round the one you dig go too, if they're rock or earth that digs
+    no slower. 4 charge a block, from 2000.
+  - **Hover boots** (a battery, 4 leather, 2 aluminium, 2 electrum wire), worn as boots, let you fall no faster
+    than a slow drift, so falls can't hurt you. Hold sneak to drop. 50 seconds of hovering from a charge.
+  - **Night-vision goggles** (a battery, 2 glass, 2 leather, a crystal shard), worn as a helmet, let you see in
+    the dark like a night tea, for 25 minutes on a charge.
+  - The **magnet ring** (a battery, 2 nickel, 2 iron): tap with it in hand to switch it on, and it pulls loose
+    things within 8 blocks to you while it's anywhere in your inventory. It only uses charge while it's pulling.
+
+#### Making, storing and using more electricity
+
+- A **solar panel** (3 glass, silver, 2 iron, 2 electrum wire) makes up to 2 power in full sun under open sky,
+  less in the morning, evening and rain, and none at night.
+- A **wind turbine** (a generator, 3 aluminium, 2 iron) makes 1 power at sea level, a point more every 6 blocks
+  higher (up to 6), and half as much again in a storm. It needs the 8 blocks around it clear.
+- **Cupronickel cable** (16 from a cupronickel ingot and a wool) carries electricity straight on in any
+  direction: up walls, down shafts and across ceilings. It carries no signals, so it can run past levers and
+  copper wire without mixing them up.
+- A **grid battery** (4 batteries, 4 lead, 2 electrum wire) stores up to 2400 power-seconds. It soaks up whatever
+  the generators make that the machines don't need (up to 8 power each) and gives it back when they're short, so
+  solar panels can light your lamps at night.
+- An **electric motor** (3 iron, 4 copper, 2 electrum wire, an iron gear) turns shafts like a steam engine: 6
+  power with all the electricity it wants (it takes 8 while it has something to turn), less when the grid's short.
+- A **power meter** (2 copper, glass, electrum wire) gives a signal while its grid is short of power. Tap it to
+  have it signal while there's power to spare instead (to switch on an extra machine, say).
+- Tap an **electric lamp** to have it come on only while it has a signal: a lever, a button, or a **daylight
+  sensor** (3 glass, 2 copper, copper wire), which signals at night (or in the dark under a roof). Tap the sensor
+  to have it signal by day instead.
+- The **electric smelter** (a smelter, 4 stainless steel, 4 electrum wire) smelts everything the smelter does with
+  no fuel, at twice the speed with all the power it wants (8).
+
+#### Automation
+
+- The **programmable crafter** (an auto-crafter, gold, 2 copper wire) takes up to four item frames: it makes the
+  first, and steps on to the next each time it gets a signal.
+- An **item counter** (a hopper, 3 copper, copper wire) passes things straight on out of its far side (the way you
+  were looking when you put it down) and gives a short pulse after every 8 of them. Tap it to count 1, 2, 4, 8,
+  16, 32 or 64.
+- **Teleport pads** (2 from 4 crystal shards, 4 electrum, 4 cupronickel, 2 gold) pair up in the order you put them
+  down. Each charges up on electricity (6 power, up to 60). Things put into one (by a hopper, belt or ejector)
+  come out at the other, into the block under it or onto it, for 1 charge each. Stand on a pad with 40 charge
+  (it glows) for a moment and you're sent to the other one, while its part of the world is loaded.
+- The **quarry** (6 stainless steel, a tungsten drill bit, a chest, 4 cupronickel) digs out the 9 × 9 area in front
+  of it a layer at a time, from its own level down to bedrock, and passes what it digs out of its back into a chest,
+  hopper or belt. It takes 10 power, and half a second a block with all of it. It leaves machines, liquids and
+  bedrock alone. Tap it to see how far it's got.
+
+#### Mob farms
+
+Every new dungeon has a **monster spawner** in a corner. While you're within 20 blocks it brings out a creature
+every 8 to 16 seconds (one kind per spawner), unless there are already four about or it has a signal. Night
+creatures are now hurt by lava, by cactus beside them and by falls of more than four blocks, and what they drop
+falls where they die: walk them off a ledge or into cactus, and catch the drops with a collector. A stainless steel
+pickaxe (or better) takes a spawner with it.
+
+Machines make a low hum while they turn, and electric ones a faint buzz, so you can hear a busy workshop.
 
 ### Worlds, creative mode, the map and achievements
 
@@ -838,9 +902,9 @@ guide to how everything works.
 | `js/fishing.js` | Fishing: the bobber's cast, bites and the line |
 | `js/stations.js` | Ovens, smelters, blast smelters, chests, the auto-crafter and the shaft-driven machines that make things: their contents, fuel, recipes and cooking |
 | `js/kinetics.js` | Water wheels, windmills, shafts, gears, gearboxes, clutches, gear shifts, flywheels and drive belts: power networks, gear ratios, load, and the turning models |
-| `js/machines.js` | Pumps, pipes, valves, tanks and sprinklers, drills, filament lamps, hoppers, collectors, ejectors, belts (splitting and sorting), bucket elevators, sensors and the farm machines |
+| `js/machines.js` | Pumps, pipes, valves, tanks and sprinklers, drills, filament lamps, hoppers, collectors, ejectors, belts (splitting and sorting), bucket elevators, sensors (observers, gauges, power meters, daylight sensors, item counters), the farm machines, quarries, spawners and teleport pads |
 | `js/logic.js` | Copper wire and the logic blocks: inverters, delay blocks and latches |
-| `js/electric.js` | Electricity: generators, electrum wire and the machines that run on it (lamps, pulverizers, chargers) |
+| `js/electric.js` | Electricity: generators, solar panels, wind turbines, wire and cable, grid batteries, and what runs on it (lamps, pulverizers, smelters, chargers, motors, teleport pads, quarries) |
 | `js/carts.js` | Minecarts and storage carts: rolling along rails, slopes, powered and loader rails, riding |
 | `js/signs.js` | Sign text (and its colour) and the panels that show it |
 | `js/frames.js` | Item frames: what each holds, the pictures in them, and hopper filters |

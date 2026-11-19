@@ -10,6 +10,7 @@ const JUMP_V = 8.6;
 const WALK = 4.3;
 const JET_THRUST = 16; // how much harder than gravity a jetpack pushes up
 const JET_RISE = 6; // the fastest it climbs
+const HOVER_FALL = 3; // the fastest hover boots let you fall
 
 export class Player {
   constructor(world) {
@@ -28,6 +29,8 @@ export class Player {
     this.climbing = false; // on a ladder or in scaffolding
     this.jetpack = false; // wearing a jetpack with charge in it (main.js)
     this.thrusting = false; // the jetpack is firing (main.js uses its charge)
+    this.hover = false; // wearing hover boots with charge in them (main.js)
+    this.hovering = false; // they're slowing a fall
   }
 
   updateWaterState() {
@@ -111,6 +114,7 @@ export class Player {
     if (len > 1) { wx /= len; wz /= len; }
     this.updateWaterState();
     this.thrusting = false;
+    this.hovering = false;
     const control = this.flying ? 2.2 : this.inLava ? 0.3 : this.inWater ? 0.55 : this.onGround ? 1 : 0.85;
     this.vel.x = wx * WALK * control * this.speedMul + this.kx;
     this.vel.z = wz * WALK * control * this.speedMul + this.kz;
@@ -136,6 +140,8 @@ export class Player {
         this.thrusting = true;
       }
       this.vel.y = Math.max(this.vel.y - GRAVITY * dt, -40);
+      // hover boots: a gentle fall, unless you hold sneak (or are using a jetpack)
+      if (this.hover && !this.thrusting && !input.down && !this.onGround && this.vel.y < -HOVER_FALL) { this.vel.y = -HOVER_FALL; this.hovering = true; }
     }
 
     // sub-step so fast falls never tunnel through blocks

@@ -7,7 +7,7 @@
 // They aren't saved: they're spawned fresh around wherever you are.
 import * as THREE from 'three';
 import { AIR, WATER, LEAVES, LOG, GRASS, SAND, DIRT, WOOL, BUCKET, MILK_BUCKET, SLIME_BUCKET, FEATHER, COAL, COBBLE, ARROW, HIDE, SNOW_GRASS, SNOW, KING_CROWN, GOLD_INGOT, MOSSY_BRICKS, RAW_FISH, BAKED_FISH, WHEAT, SALMON, BAKED_SALMON, ICEFISH, BAKED_ICEFISH,
-  SUN_SCARAB, FROST_HEART, EMBER_CORE, SUN_MASK, FROST_CIRCLET, EMBER_CROWN, SILVER_INGOT, OBSIDIAN, STRING } from './blocks.js';
+  SUN_SCARAB, FROST_HEART, EMBER_CORE, SUN_MASK, FROST_CIRCLET, EMBER_CROWN, SILVER_INGOT, OBSIDIAN, STRING, BLOCKS, LAVA } from './blocks.js';
 import { SEA_LEVEL, H } from './terrain.js';
 import { skyBrightness, lightBrightness } from './world.js';
 import { THORN_SPEED, THORN_GRAVITY } from './arrows.js';
@@ -788,6 +788,36 @@ export class MobManager {
     return m;
   }
 
+  // A monster spawner at (x, y, z) brings out one of the cave creatures (always the same kind for the same
+  // spawner) on open floor near it, unless there are already a few about. Returns the creature, or null.
+  spawnNear(x, y, z) {
+    const w = this.world;
+    const near = this.mobs.filter((m) => m.spec.hostile && !m.dying && Math.hypot(m.pos.x - x - 0.5, m.pos.y - y, m.pos.z - z - 0.5) < 9).length;
+    if (near >= 4) return null;
+    const kinds = HOSTILE_KINDS.filter((k) => !SPECIES[k].heavy);
+    const kind = kinds[Math.abs((x * 73856093) ^ (y * 19349663) ^ (z * 83492791)) % kinds.length];
+    for (let tries = 0; tries < 8; tries++) {
+      const sx = x + Math.floor(rand(-3, 4)), sz = z + Math.floor(rand(-3, 4)), sy = y + Math.floor(rand(-1, 2));
+      if (!w.isSolid(sx, sy - 1, sz) || w.isWater(sx, sy, sz) || !this.hasRoom(kind, sx + 0.5, sy, sz + 0.5)) continue;
+      const m = this.spawn(kind, sx + 0.5, sy, sz + 0.5);
+      this.sound?.poof();
+      return m;
+    }
+    return null;
+  }
+
+  // A creature hurt by where it is rather than by you: lava, cactus, or a long fall. It isn't angered or
+  // knocked back, and what it drops falls where it dies (so a mob farm's collectors can gather it).
+  hurtByWorld(m, amount) {
+    if (m.dying || !m.spec.hostile || m.spec.boss) return;
+    m.hp -= amount;
+    m.flash = 0.25;
+    if (m.hp > 0) return;
+    m.dying = 0.4;
+    this.sound?.poof();
+    this.onWorldKill?.(m, m.spec.drops());
+  }
+
   // Night creatures appear in the dark: on the surface at night, or in caves at any time,
   // and never where a torch lights the ground well enough (light level 7 or more).
   trySpawnHostile(player, ctx) {
@@ -891,6 +921,7 @@ export class MobManager {
         this.think(m, dt, player);
       }
       this.move(m, dt);
+      if (m.spec.hostile) this.worldHarm(m, dt);
       this.animate(m, dt);
       if (m.burn > 0) m.root.scale.setScalar((1 - m.burn * 0.4) * m.baseScale);
       this.light(m, light, dt);
@@ -1132,6 +1163,25 @@ export class MobManager {
     diff = Math.atan2(Math.sin(diff), Math.cos(diff));
     m.yaw += diff * Math.min(1, dt * (m.state === 'flee' || hunting ? 10 : 5));
     m.moving = speed > 0;
+  }
+
+  // What hurts a night creature where it is: lava (and it burns), cactus beside it, and falls of more than
+  // four blocks.
+  worldHarm(m, dt) {
+    const w = this.world, fx = Math.floor(m.pos.x), fy = Math.floor(m.pos.y + 0.1), fz = Math.floor(m.pos.z);
+    if (m.inWater || m.onGround) {
+      const fall = (m.fallTop ?? m.pos.y) - m.pos.y;
+      m.fallTop = m.pos.y;
+      if (fall > 4 && !m.inWater) this.hurtByWorld(m, Math.round((fall - 3) * 2));
+    } else m.fallTop = Math.max(m.fallTop ?? m.pos.y, m.pos.y);
+    m.harmT = (m.harmT ?? 0) - dt;
+    if (m.harmT > 0) return;
+    const at = (x, y, z) => { const id = w.get(x, y, z); return id === LAVA || BLOCKS[id]?.variantOf === LAVA ? 'lava' : BLOCKS[id]?.prickly ? 'prickly' : null; };
+    if (at(fx, fy, fz) === 'lava') { m.harmT = 0.5; this.hurtByWorld(m, 4); return; }
+    const hw = m.spec.w / 2 + 0.1;
+    for (const [dx, dz] of [[hw, 0], [-hw, 0], [0, hw], [0, -hw]]) {
+      if (at(Math.floor(m.pos.x + dx), fy, Math.floor(m.pos.z + dz)) === 'prickly' || at(fx, fy - 1, fz) === 'prickly') { m.harmT = 0.5; this.hurtByWorld(m, 2); return; }
+    }
   }
 
   animate(m, dt) {

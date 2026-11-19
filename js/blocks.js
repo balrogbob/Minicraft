@@ -130,6 +130,10 @@ export const T = {
   PILLAR_SIDE: 206, PILLAR_TOP: 207, SAND_PILLAR_SIDE: 208, SAND_PILLAR_TOP: 209, CANDLE: 210,
   WIRE_OFF: 211, WIRE_ON: 212, LOGIC_BASE: 213, EJECTOR_FRONT: 214, CRAFTER_FRONT: 215, TANK_WATER: 216, PLANTER_FRONT: 217, PLACER_FRONT: 218, RANCH_SIDE: 219, NET: 220,
   ELWIRE_OFF: 221, ELWIRE_ON: 222, GEN_SIDE: 223, GEN_TOP: 224, CHARGER_TOP: 225, CHARGER_SIDE: 226, PULV_FRONT: 227, PULV_SIDE: 228, ELAMP_OFF: 229, ELAMP_ON: 230,
+  GRIDBAT_SIDE: 231, GRIDBAT_TOP: 232, MOTOR_SIDE: 233, MOTOR_TOP: 234, SOLAR_TOP: 235, METER_FACE: 236, METER_FACE_ON: 237,
+  DAYSENSE_TOP: 238, DAYSENSE_TOP_ON: 239, ESMELT_FRONT: 240, ESMELT_SIDE: 241, NICKEL_ORE: 242, CABLE: 243, SPAWNER: 244,
+  PCRAFT_TOP: 245, PCRAFT_SIDE: 246, COUNTER_FRONT: 247, COUNTER_FRONT_ON: 248, TELEPAD: 249, TELEPAD_ON: 250, QUARRY_FRONT: 251,
+  QUARRY_SIDE: 252, TURBINE: 253,
 };
 
 // Ores, deepest-reaching last. tier: the pickaxe tier needed to mine it (see TOOL_TIERS);
@@ -233,7 +237,8 @@ function block(id, o) {
     sorts: o.sorts ?? null, // a belt that sends things off to the side: 'split' (left and right in turn) | 'sort' (matches go left)
     ejector: !!o.ejector, collector: !!o.collector, elevator: !!o.elevator, // more automation (see machines.js)
     tank: !!o.tank, valve: !!o.valve, sprinkler: !!o.sprinkler, // liquids (see machines.js)
-    electric: o.electric ?? null, // { role: 'wire' | 'gen' | 'use', draw, speed }: joined up by electrum wire (see electric.js)
+    electric: o.electric ?? null, // { role: 'wire' | 'cable' | 'gen' | 'use' | 'store' | 'meter', draw, speed, solar, wind }: joined up by electrum wire (see electric.js)
+    spawner: !!o.spawner, counter: !!o.counter, quarry: !!o.quarry, pad: !!o.pad, // v22 machines (see machines.js)
     farm: o.farm ?? null, // 'feller' | 'planter' | 'breaker' | 'placer' | 'ranch' | 'net' (see machines.js)
   };
 }
@@ -263,7 +268,7 @@ ORES.forEach((o, i) => block(o.id, {
   name: o.name, tex: T.ORE0 + i, hardness: o.hardness, tool: 'pick', needsTool: true, tier: o.tier,
   drop: o.drop ? () => [[o.drop, 1 + (Math.random() < 0.4 ? 1 : 0)]] : o.id,
 }));
-export const isOre = (id) => id >= IRON_ORE && id <= TUNGSTEN_ORE;
+export const isOre = (id) => (id >= IRON_ORE && id <= TUNGSTEN_ORE) || id === NICKEL_ORE;
 // cold and dry places
 block(SNOW_GRASS, { name: 'Snowy Grass', sound: 'grass', top: T.SNOW, bottom: T.DIRT, side: T.SNOW_GRASS_SIDE, hardness: 0.9, tool: 'shovel', drop: DIRT });
 block(SNOW, { name: 'Snow', sound: 'sand', tex: T.SNOW, hardness: 0.5, tool: 'shovel' });
@@ -714,7 +719,7 @@ const INGOT_NAMES = {
 for (const [id, name] of Object.entries(INGOT_NAMES)) ITEMS[id] = { name, ingot: true };
 ITEMS[SULPHUR] = { name: 'Sulphur' };
 // Ore dust from the rock crusher: one kind for each ore that smelts into an ingot.
-export const oreDust = (oreId) => ORE_DUST + ORES.findIndex((o) => o.id === oreId);
+export const oreDust = (oreId) => { const i = ORES.findIndex((o) => o.id === oreId); return ORES[i]?.dust ?? ORE_DUST + i; };
 for (const o of ORES) if (o.ingot) ITEMS[oreDust(o.id)] = { name: o.name.replace(' Ore', '') + ' Dust', dust: o };
 // Swords: the best weapons, and quicker to swing. They don't help with digging.
 export const metalSword = (matIndex) => METAL_SWORDS + matIndex;
@@ -1800,4 +1805,129 @@ RECIPES.push(
   { out: [PORTABLE_LAMP, 1], in: [[ELECTRIC_LAMP, 1], [BATTERY, 1], [IRON_INGOT, 1]], table: true, metal: ELECTRIC_LAMP },
   { out: [JACKHAMMER, 1], in: [[STAINLESS_INGOT, 4], [BATTERY, 1], [ELECTRUM_WIRE, 2]], table: true, metal: ELECTRUM_WIRE },
   { out: [JETPACK, 1], in: [[STAINLESS_INGOT, 4], [BATTERY, 2], [ELECTRUM_WIRE, 4], [LEATHER, 2]], table: true, metal: ELECTRUM_WIRE },
+);
+
+// ---------- v22: more electricity, battery gear, automation, nickel ----------
+export const GRID_BATTERY = 1210,
+  ELECTRIC_MOTOR = 1211,
+  SOLAR_PANEL = 1212,
+  WIND_TURBINE = 1213,
+  POWER_METER = 1214, // 1215 = signalling
+  DAYLIGHT_SENSOR = 1216, // 1217 = signalling
+  E_SMELTER = 1218, // 1218..1221: + facing
+  NICKEL_ORE = 1222,
+  CABLE = 1223,
+  SPAWNER = 1224,
+  PROG_CRAFTER = 1225,
+  ITEM_COUNTER = 1226, // 1226..1233: + facing * 2 + 1 while signalling
+  TELEPAD = 1234, // 1235 = charged
+  QUARRY = 1236; // 1236..1239: + facing
+export const ELECTRIC_DRILL = 1035, HOVER_BOOTS = 1036, NV_GOGGLES = 1037, MAGNET_RING = 1038,
+  NICKEL_INGOT = 1039, CUPRONICKEL_INGOT = 1040, NICKEL_DUST = 1041;
+Object.assign(ELECTRIC_DRAW, { motor: 8, smelter: 8, pad: 6, quarry: 10 });
+Object.assign(CHARGE_USE, { drill: 4, hover: 20, goggles: 1, magnet: 2 });
+export const SOLAR_POWER = 2; // what a solar panel makes in full sun
+export const MOTOR_POWER = 6; // shaft power an electric motor gives with all the electricity it wants
+export const STORE_CAP = 2400; // power-seconds a grid battery holds
+export const STORE_RATE = 8; // most power a grid battery can take in or give out
+export const PAD_CAP = 60; // power-seconds a teleport pad holds
+export const PAD_PLAYER = 40, PAD_ITEM = 1; // what sending you, or one thing, takes out of it
+
+// nickel: an ore like the others (with its own tile and dust, as the ore tiles and dust ids in ORES order
+// are all taken), and cupronickel, its alloy with copper
+ORES.push({ id: NICKEL_ORE, name: 'Nickel Ore', ingot: NICKEL_INGOT, tier: 3, hardness: 3.5, y: [4, 36], chance: 0.03, color: [206, 184, 118], tile: T.NICKEL_ORE, dust: NICKEL_DUST });
+block(NICKEL_ORE, { name: 'Nickel Ore', tex: T.NICKEL_ORE, hardness: 3.5, tool: 'pick', needsTool: true, tier: 3 });
+ITEMS[NICKEL_INGOT] = { name: 'Nickel Ingot', ingot: true };
+ITEMS[CUPRONICKEL_INGOT] = { name: 'Cupronickel Ingot', ingot: true };
+ITEMS[NICKEL_DUST] = { name: 'Nickel Dust', dust: ORES[ORES.length - 1] };
+
+const plain = { sound: 'stone', hardness: 2.5, tool: 'pick' };
+block(GRID_BATTERY, { ...plain, name: 'Grid Battery', side: T.GRIDBAT_SIDE, top: T.GRIDBAT_TOP, bottom: T.GRIDBAT_TOP, electric: { role: 'store' } });
+block(ELECTRIC_MOTOR, {
+  ...plain, name: 'Electric Motor', side: T.MOTOR_SIDE, top: T.MOTOR_TOP, bottom: T.MOTOR_TOP,
+  kinetic: { part: 'engine', mat: 1, axis: -1, motor: true }, electric: { role: 'use', draw: ELECTRIC_DRAW.motor },
+});
+block(SOLAR_PANEL, {
+  ...plain, name: 'Solar Panel', hardness: 1.5, transparent: true, model: [[0, 0, 0, 16, 5, 16, { top: T.SOLAR_TOP, side: T.IRON, bottom: T.IRON }]],
+  boxes: [[0, 0, 0, 16, 5, 16]], electric: { role: 'gen', solar: true },
+});
+block(WIND_TURBINE, {
+  ...plain, name: 'Wind Turbine', hardness: 2, transparent: true, electric: { role: 'gen', wind: true },
+  model: [[7, 0, 7, 9, 10, 9, T.IRON], [6, 9, 6, 10, 13, 12, T.IRON], [7.5, 10.5, 4.5, 8.5, 11.5, 6, T.IRON],
+    [7, 11.5, 4, 9, 16, 4.5, T.TURBINE], [7, 6, 4, 9, 10.5, 4.5, T.TURBINE], [1, 10, 4, 7.5, 12, 4.5, T.TURBINE], [8.5, 10, 4, 15, 12, 4.5, T.TURBINE]],
+});
+for (let k = 0; k < 2; k++) {
+  block(POWER_METER + k, {
+    ...plain, name: 'Power Meter', hardness: 1.5, side: k ? T.METER_FACE_ON : T.METER_FACE, top: T.IRON, bottom: T.IRON,
+    electric: { role: 'meter' }, sensor: 'meter', switch: 'meter', on: !!k, flip: POWER_METER + 1 - k, light: k ? 4 : 0,
+    variantOf: k ? POWER_METER : 0, drop: POWER_METER,
+  });
+  block(DAYLIGHT_SENSOR + k, {
+    ...plain, name: 'Daylight Sensor', sound: 'glass', hardness: 1, transparent: true,
+    model: [[0, 0, 0, 16, 6, 16, { top: k ? T.DAYSENSE_TOP_ON : T.DAYSENSE_TOP, side: T.PLANKS, bottom: T.PLANKS }]], boxes: [[0, 0, 0, 16, 6, 16]],
+    sensor: 'daylight', switch: 'daylight', on: !!k, flip: DAYLIGHT_SENSOR + 1 - k, light: k ? 3 : 0,
+    variantOf: k ? DAYLIGHT_SENSOR : 0, drop: DAYLIGHT_SENSOR,
+  });
+}
+for (let f = 0; f < 4; f++) {
+  block(E_SMELTER + f, {
+    name: 'Electric Smelter', station: 'esmelter', side: T.ESMELT_SIDE, top: T.STAINLESS, bottom: T.STAINLESS, front: T.ESMELT_FRONT,
+    facing: f, hardness: 3, tool: 'pick', variantOf: f ? E_SMELTER : 0, drop: E_SMELTER, stationBase: E_SMELTER,
+    electric: { role: 'use', draw: ELECTRIC_DRAW.smelter, speed: 2 },
+  });
+  block(QUARRY + f, {
+    name: 'Quarry', side: T.QUARRY_SIDE, top: T.STAINLESS, bottom: T.STAINLESS, front: T.QUARRY_FRONT, facing: f, hardness: 3, tool: 'pick',
+    variantOf: f ? QUARRY : 0, drop: QUARRY, quarry: true, electric: { role: 'use', draw: ELECTRIC_DRAW.quarry, speed: 1 },
+  });
+  for (let k = 0; k < 2; k++) {
+    block(ITEM_COUNTER + f * 2 + k, {
+      ...plain, name: 'Item Counter', hardness: 1.5, side: k ? T.COUNTER_FRONT_ON : T.COUNTER_FRONT, top: T.IRON, bottom: T.IRON, facing: f,
+      counter: true, sensor: 'counter', switch: 'counter', on: !!k, flip: ITEM_COUNTER + f * 2 + 1 - k, light: k ? 4 : 0,
+      variantOf: f || k ? ITEM_COUNTER : 0, drop: ITEM_COUNTER,
+    });
+  }
+}
+// cupronickel cable: carries electricity only (no signals), straight on in any direction, up walls and across ceilings
+block(CABLE, {
+  name: 'Cupronickel Cable', shape: 'cable', sound: 'stone', hardness: 0.3, transparent: true, solid: false,
+  model: [[6, 6, 0, 10, 10, 16, T.CABLE]], electric: { role: 'cable' },
+});
+block(SPAWNER, {
+  name: 'Monster Spawner', sound: 'stone', hardness: 5, tool: 'pick', needsTool: true, tier: 5, tex: T.SPAWNER, transparent: true, light: 3, spawner: true,
+});
+block(PROG_CRAFTER, {
+  name: 'Programmable Crafter', station: 'pcrafter', hardness: 2.5, tool: 'axe', sound: 'wood', top: T.PCRAFT_TOP, bottom: T.PLANKS, side: T.PCRAFT_SIDE,
+});
+for (let k = 0; k < 2; k++) {
+  block(TELEPAD + k, {
+    ...plain, name: 'Teleport Pad', hardness: 2, transparent: true, light: k ? 8 : 2, pad: true,
+    model: [[0, 0, 0, 16, 2, 16, { top: k ? T.TELEPAD_ON : T.TELEPAD, side: T.STAINLESS, bottom: T.STAINLESS }]], boxes: [[0, 0, 0, 16, 2, 16]],
+    variantOf: k ? TELEPAD : 0, drop: TELEPAD, electric: { role: 'use', draw: ELECTRIC_DRAW.pad },
+  });
+}
+
+// battery gear
+ITEMS[ELECTRIC_DRILL] = { name: 'Electric Drill', stack: 1, charge: 2000, drill: true, tool: { type: 'pick', speed: 10, tier: 5, damage: 4 } };
+ITEMS[HOVER_BOOTS] = { name: 'Hover Boots', stack: 1, charge: 1000, armour: { piece: 3, points: 1, mat: 'hover' } };
+ITEMS[NV_GOGGLES] = { name: 'Night-Vision Goggles', stack: 1, charge: 1500, armour: { piece: 0, points: 1, mat: 'goggles' } };
+ITEMS[MAGNET_RING] = { name: 'Magnet Ring', stack: 1, charge: 1000, magnet: true };
+ELECTRIC_ITEMS.push(ELECTRIC_DRILL, HOVER_BOOTS, NV_GOGGLES, MAGNET_RING);
+
+RECIPES.push(
+  { out: [GRID_BATTERY, 1], in: [[BATTERY, 4], [LEAD_INGOT, 4], [ELECTRUM_WIRE, 2]], table: true, metal: BATTERY },
+  { out: [ELECTRIC_MOTOR, 1], in: [[IRON_INGOT, 3], [COPPER_INGOT, 4], [ELECTRUM_WIRE, 2], [kineticId('gear', 1), 1]], table: true, metal: ELECTRUM_WIRE },
+  { out: [SOLAR_PANEL, 1], in: [[GLASS, 3], [SILVER_INGOT, 1], [IRON_INGOT, 2], [ELECTRUM_WIRE, 2]], table: true, metal: ELECTRUM_WIRE },
+  { out: [WIND_TURBINE, 1], in: [[GENERATOR, 1], [ALUMINIUM_INGOT, 3], [IRON_INGOT, 2]], table: true, metal: GENERATOR },
+  { out: [POWER_METER, 1], in: [[COPPER_INGOT, 2], [GLASS, 1], [ELECTRUM_WIRE, 1]], table: true, metal: ELECTRUM_WIRE },
+  { out: [DAYLIGHT_SENSOR, 1], in: [[GLASS, 3], [COPPER_INGOT, 2], [WIRE, 1]], table: true, metal: COPPER_INGOT },
+  { out: [E_SMELTER, 1], in: [[SMELTER, 1], [STAINLESS_INGOT, 4], [ELECTRUM_WIRE, 4]], table: true, metal: ELECTRUM_WIRE },
+  { out: [CABLE, 16], in: [[CUPRONICKEL_INGOT, 1], [WOOL, 1]], table: true, metal: CUPRONICKEL_INGOT },
+  { out: [PROG_CRAFTER, 1], in: [[AUTO_CRAFTER, 1], [GOLD_INGOT, 1], [WIRE, 2]], table: true, metal: AUTO_CRAFTER },
+  { out: [ITEM_COUNTER, 1], in: [[HOPPER, 1], [COPPER_INGOT, 3], [WIRE, 1]], table: true, metal: COPPER_INGOT },
+  { out: [TELEPAD, 2], in: [[CRYSTAL_SHARD, 4], [ELECTRUM_INGOT, 4], [CUPRONICKEL_INGOT, 4], [GOLD_INGOT, 2]], table: true, metal: CUPRONICKEL_INGOT },
+  { out: [QUARRY, 1], in: [[STAINLESS_INGOT, 6], [DRILL_BIT, 1], [CHEST, 1], [CUPRONICKEL_INGOT, 4]], table: true, metal: CUPRONICKEL_INGOT },
+  { out: [ELECTRIC_DRILL, 1], in: [[JACKHAMMER, 1], [DRILL_BIT, 1], [CUPRONICKEL_INGOT, 2]], table: true, metal: JACKHAMMER },
+  { out: [HOVER_BOOTS, 1], in: [[BATTERY, 1], [LEATHER, 4], [ALUMINIUM_INGOT, 2], [ELECTRUM_WIRE, 2]], table: true, metal: BATTERY },
+  { out: [NV_GOGGLES, 1], in: [[BATTERY, 1], [GLASS, 2], [LEATHER, 2], [CRYSTAL_SHARD, 1]], table: true, metal: BATTERY },
+  { out: [MAGNET_RING, 1], in: [[BATTERY, 1], [NICKEL_INGOT, 2], [IRON_INGOT, 2]], table: true, metal: NICKEL_INGOT },
 );

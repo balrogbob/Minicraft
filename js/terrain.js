@@ -7,7 +7,7 @@
 import {
   AIR, GRASS, DIRT, STONE, LOG, LEAVES, SAND, COAL_ORE, BEDROCK, WATER, WHEAT_3, SUGAR_CANE, MAX_CANE_HEIGHT, ORES, GRAVEL, CLAY,
   LAVA, SALTPETRE_ORE, SNOW_GRASS, SNOW, ICE, SANDSTONE, CACTUS, FLOWERS,
-  BRICKS, MOSSY_BRICKS, COBBLE, BOSS_SHRINE, LOOT_CHEST, BERRY_BUSH,
+  BRICKS, MOSSY_BRICKS, COBBLE, BOSS_SHRINE, LOOT_CHEST, BERRY_BUSH, SPAWNER,
   GLOW_MUSHROOM, CRYSTAL_BLOCK, CRYSTAL_CLUSTER, GEODE_SHELL, BEE_HIVE, MAX_HONEY, VILLAGE_BELL,
   PLANKS, GLASS_PANE, FURN_TABLE, CHEST, TORCH_WALL_W, doorId, slabId, WHEAT_0, BLOCKS,
   LAIRS, CUT_SANDSTONE, TRAP_PLATE, DART_TRAP, FROST_BRICKS, FORT_BRICKS, OBSIDIAN,
@@ -545,7 +545,8 @@ export class Generator {
     return { x: x0 + 8, y: y0 + 1, z: z0 + 8, y0 };
   }
 
-  // A stone-brick room, 9 x 9 inside and 5 high, with a shrine in the middle and a chest or two of loot.
+  // A stone-brick room, 9 x 9 inside and 5 high, with a shrine in the middle, a chest or two of loot and a
+// monster spawner.
   dungeon(data, cx, cz) {
     const d = this.dungeonAt(cx, cz);
     if (!d) return;
@@ -566,6 +567,7 @@ export class Generator {
     data[localIndex(8, y0 + 1, 8)] = BOSS_SHRINE;
     data[localIndex(4, y0 + 1, 12)] = LOOT_CHEST;
     if (r(0x0a1b2c40, 0, 0, 0) < 0.5) data[localIndex(12, y0 + 1, 4)] = LOOT_CHEST;
+    data[localIndex(4, y0 + 1, 4)] = SPAWNER; // a monster spawner in the far corner
   }
 
   // The other lairs: a sandstone tomb under the desert (with dart traps), a crypt of frost bricks under
