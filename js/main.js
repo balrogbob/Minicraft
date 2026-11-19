@@ -4,8 +4,8 @@ import {
   GRASS, DIRT, SAND, CHURN, SUGAR_CANE, BREAD, ITEMS, BOW, ARROW, BUCKET,
   WOOD_PICK, STONE_PICK, WOOD_AXE, STONE_AXE, WOOD_SHOVEL, STONE_SHOVEL,
   BED, BED_FOOT, CHAIR, LAMP, CARPET, CURTAIN, DOOR, SLIME_FUEL, FACING_DIRS, MAX_LAMP_FUEL,
-  isBed, isChair, isLamp, isCurtain, isDoor, doorId,
-  OVEN, SMELTER, stationKind, maxStack, FISHING_ROD, RAW_FISH, TOOL_TIERS, LOG, LEAVES, SAPLING,
+  isBed, isChair, isLamp, isCurtain, isDoor, doorId, IRON_BARS, FLOWER_POT, HANGING_PLANT, WINDOW_BOX, POT_PLANTS, potOf,
+  OVEN, SMELTER, stationKind, maxStack, FISHING_ROD, RAW_FISH, TOOL_TIERS, LOG, LEAVES, SAPLING, WHEAT_3, isLeaves, FRUITS, fruitLeaves, FRUIT_SAPLING, SCARECROW, COOK_POT, SNOW_LAYER, LIGHTHOUSE_LAMP, EXPLORER_MAP, TREASURE_MAP, STARSTEEL_INGOT, MAX_LIGHT, APIARY, MAX_APIARY, BEESWAX, CANDLE_BLOCK, CABLE_CAR, FARM_REACH, MARKET_STALL, COIN, GLASS_PANE, FURN_TABLE, GRAVEL, FIRE, isFlammable, isCrop, GRAPES, TRELLIS, GRAPE_VINE, PUMPKIN_SEEDS, CARROT, POTATO, AGING, WINE, FINE_WINE, CHEESE, AGED_CHEESE, VAULT_GATE, AIR_PUMP, PEARL, DIVING_HELMET, FLIPPERS, SEA_LANTERN,
   BLAST_SMELTER, CRUSHER, WATER_BUCKET, WATER_WHEEL, isWaterId, isFlowing,
   CHEST, IRON_CHEST, LADDER, SCAFFOLD, SIGN, SIGN_POST, isSign, isSword, ARMOUR_PIECES,
   SAW, TRIP_HAMMER, DRILL, HOPPER, BELT, WINDMILL, BELLOWS, PUMP, FILAMENT_LAMP, MILLSTONE,
@@ -28,10 +28,12 @@ import {
   ELECTRIC_RAIL, LIFT, LIFT_REACH, WIRELESS_REACH, CHAINSAW, SAWDUST, SPANNER, GRAPPLE, isBackpack, kineticId, MELTDOWN, REACTOR_POWER, ROD_LIFE, BOOK,
   BOOKSHELF, JOURNAL, FERTILISER, SHELF_DISCOUNT, LEAD_CHEST, FREEZER, ARC_FURNACE, SPENT_ROD, RADIATION_REACH, hazmatId, TESLA_REACH, TESLA_DAMAGE, ELECTRIC_FENCE,
   RAIL_STATION, ZIP_POST, ZIP_LINE, ZIP_REACH, BOAT, BALLOON, CHARCOAL, METEORITE, METEORIC_IRON, metalSword, TRUFFLE,
+  RADIO_TX, RADIO_RX, SORTING_MACHINE, LOCOMOTIVE, FIREPLACE, CHIMNEY, HEARTH_FUEL,
 } from './blocks.js';
+import { Smoke } from './smoke.js';
 import { createAtlas, createIcons, createCrackCanvases, createWaterCanvas, createHudIcons, paintSeason } from './textures.js';
 import { World, CHUNK, WORLD_SIZE, chunkKey } from './world.js';
-import { localIndex, CHUNK_VOLUME, H } from './terrain.js';
+import { localIndex, CHUNK_VOLUME, H, SEA_LEVEL } from './terrain.js';
 import { ChunkStore } from './store.js';
 import { buildLegacyWorld, LEGACY_W } from './legacy.js';
 import { Sky, DAY_LENGTH } from './sky.js';
@@ -53,7 +55,9 @@ import { Machines } from './machines.js';
 import { Carts, railBeyond } from './carts.js';
 import { Vehicles } from './vehicles.js';
 import { MiniMap } from './minimap.js';
-import { Frames } from './frames.js';
+import { Frames, isDisplay } from './frames.js';
+import { Crows } from './birds.js';
+import { Critters } from './critters.js';
 import { Weather } from './weather.js';
 import { Bees } from './bees.js';
 import { Paintings, paintingCells } from './paintings.js';
@@ -61,7 +65,7 @@ import { Logic } from './logic.js';
 
 // v2 = the 16k x 16k streaming world (player state here, edited chunks in IndexedDB).
 // v1 = the old 128 x 128 world, migrated into the middle of the big world on first launch.
-const GAME_VERSION = '24'; // shown in the menu; bump with each release
+const GAME_VERSION = '26'; // shown in the menu; bump with each release
 const SAVE_KEY = 'minicraft-save-v2';
 const LEGACY_SAVE_KEY = 'minicraft-save-v1';
 const SETTINGS_KEY = 'minicraft-settings-v1';
@@ -80,12 +84,13 @@ function writeSave(obj, slot = settings.slot) {
 }
 // Settings live apart from the world so they survive "New world".
 const settings = (() => {
-  const defaults = { sens: 6, volume: 70, viewDistance: 6, perf: false, difficulty: 'worrying', wear: true, favs: [], slot: 0, fov: 72, keys: {}, tips: true, doubleTap: true };
+  const defaults = { sens: 6, volume: 70, viewDistance: 6, perf: false, difficulty: 'worrying', wear: true, favs: [], pins: [], slot: 0, fov: 72, keys: {}, tips: true, doubleTap: true };
   let s;
   try { s = { ...defaults, ...JSON.parse(localStorage.getItem(SETTINGS_KEY)) }; } catch { s = { ...defaults }; }
   s.slot = Math.max(0, Math.min(SLOT_COUNT - 1, s.slot | 0));
   s.fov = Math.max(50, Math.min(110, +s.fov || 72));
   if (!s.keys || typeof s.keys !== 'object') s.keys = {};
+  if (!Array.isArray(s.pins)) s.pins = [];
   return s;
 })();
 function saveSettings() {
@@ -285,6 +290,7 @@ function loadPacks(list, next) {
     }
     if (v.charge > 0) c.charge = +v.charge;
     if (typeof v.note === 'string') c.note = v.note.slice(0, 4000);
+    if (Number.isInteger(v.treasure)) c.treasure = v.treasure;
     packs.set(Math.floor(e[0]), c);
   }
   nextPack = Math.max(1, Math.floor(+next || 0), ...[...packs.keys()].map((k) => k + 1));
@@ -293,17 +299,47 @@ const signs = new Signs(scene); // what's written on each sign
 const machines = new Machines(scene, icons); // pumps, drills, hoppers and belts
 const loose = new ItemDrops(scene, (id) => machines.makeSprite(id)); // items lying on the ground
 const carts = new Carts(scene); // minecarts on rails
+carts.onLoco = (c, what) => {
+  const d = Math.hypot(c.pos.x - player.pos.x, c.pos.y - player.pos.y, c.pos.z - player.pos.z);
+  const g = riding === c ? 1 : Math.max(0, 1 - d / 40);
+  if (what === 'chuff') {
+    sound.chuff(g * 0.8);
+    if (d < 80) smoke.puff(c.pos.x + Math.sin(c.yaw) * 0.34, c.pos.y + 1.1, c.pos.z + Math.cos(c.yaw) * 0.34, { grey: 0.8, size: 0.45, life: 2.5, rise: 1.4 });
+  }
+  else if (what === 'hoot') sound.hoot(g);
+  else if (what === 'couple') sound.place('stone');
+};
 const vehicles = new Vehicles(scene); // boats and balloons
+const crows = new Crows(scene); // after ripe wheat (see birds.js)
+const critters = new Critters(scene, sound); // owls, bats and fireflies
 let riding = null; // the minecart you're sitting in
 const minimap = new MiniMap($('map'), atlasCanvas);
 const frames = new Frames(scene, icons); // what's shown in each item frame
 const paintings = new Paintings(scene); // the pictures in paintings
 const weather = new Weather(scene);
+const smoke = new Smoke(scene); // chimney and locomotive smoke
 const bees = new Bees(scene, sound);
 let ridingMob = null; // the camel you're riding
 let boarded = null; // the boat or balloon you're in
+let seated = null; // the chair you're sitting on: { x, y, z }
 let targetVehicle = null; // { v, t } when the crosshair is on a boat or balloon
 let zipping = null; // sliding along a zipline
+// a cable car: a little red gondola that hangs from the line and carries you along it at an even speed
+const CABLE_SPEED = 5;
+const gondola = (() => {
+  const g = new THREE.Group(), red = new THREE.MeshBasicMaterial({ color: 0xc82828 }), dark = new THREE.MeshBasicMaterial({ color: 0x5a5a60 });
+  const glass = new THREE.MeshBasicMaterial({ color: 0xa8d4e8, transparent: true, opacity: 0.35 });
+  const box = (w, h, d, m, x, y, z) => { const b = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m); b.position.set(x, y, z); g.add(b); };
+  box(1.3, 0.12, 1.3, red, 0, 0, 0); // floor
+  box(1.36, 0.1, 1.36, red, 0, 2.05, 0); // roof
+  for (const [x, z] of [[-0.63, -0.63], [0.63, -0.63], [-0.63, 0.63], [0.63, 0.63]]) box(0.08, 2, 0.08, red, x, 1.03, z);
+  for (const [w, d, x, z] of [[1.3, 0.04, 0, -0.64], [1.3, 0.04, 0, 0.64], [0.04, 1.3, -0.64, 0], [0.04, 1.3, 0.64, 0]]) { box(w, 0.6, d, red, x, 0.35, z); box(w, 1.2, d, glass, x, 1.25, z); }
+  box(0.08, 0.7, 0.08, dark, 0, 2.45, 0); box(0.5, 0.12, 0.2, dark, 0, 2.8, 0); // hanger and wheels
+  g.userData.mats = [red, dark, glass].map((m) => [m, m.color.clone()]);
+  g.visible = false;
+  scene.add(g);
+  return g;
+})();
 machines.frames = frames; machines.carts = carts; machines.loose = loose;
 machines.throwItem = (stack, pos, vel) => loose.spawn(stack, pos, vel, 0.5);
 // An auto-crafter makes what the item frame on it shows: the first recipe for that thing.
@@ -413,10 +449,10 @@ async function startWorld(save, opts = {}) {
   world.onLeafDecay = (x, y, z) => {
     const p = player.pos;
     if (dead || (x + 0.5 - p.x) ** 2 + (y + 0.5 - p.y) ** 2 + (z + 0.5 - p.z) ** 2 > 16 * 16) return;
-    const drops = dropsFor(LEAVES, 0);
+    const drops = dropsFor(LEAVES, 0); // (fruit trees' leaves too: not their fruit, which you'd pick)
     if (drops.length) giveDrops(drops);
   };
-  mobs.reset(world); bees.clear(); shownSeason = -1;
+  mobs.reset(world); bees.clear(); crows.clear(); critters.clear(); fires.clear(); hearths.clear(); smoke.clear(); strikeIn = 20; catGiftDay = -1; bellDay = -1; villageGrowth = new Map(); shownSeason = -1;
   kinetics.clear();
   kinetics.load(save?.kinetics);
   beltStart = null;
@@ -435,7 +471,7 @@ async function startWorld(save, opts = {}) {
   loadZips(save?.zips);
   riding = null;
   ridingMob = null;
-  boarded = null; zipping = null;
+  boarded = null; zipping = null; gondola.visible = false; seated = null;
   arrows.reset();
   lastSwing = 0;
   applyViewDistance();
@@ -475,6 +511,16 @@ async function startWorld(save, opts = {}) {
   for (const k of Object.keys(effects)) effects[k] = Math.max(0, +save?.effects?.[k] || 0);
   caneToday = Number.isFinite(save?.caneToday) ? save.caneToday : 0;
   waypoints = Array.isArray(save?.waypoints) ? save.waypoints.filter((w) => w && [w.x, w.y, w.z].every(Number.isFinite)).map((w) => ({ x: w.x, y: w.y, z: w.z, name: String(w.name ?? 'Mark').slice(0, 16) })).slice(0, 12) : [];
+  places = Array.isArray(save?.places) ? save.places.filter((p) => p && typeof p.kind === 'string' && [p.x, p.z].every(Number.isFinite)).slice(0, 400) : [];
+  treasures = Array.isArray(save?.treasures) ? save.treasures.filter((t) => t && [t.x, t.z].every(Number.isFinite)) : [];
+  catGiftDay = Number.isInteger(save?.catGiftDay) ? save.catGiftDay : -1;
+  bellDay = Number.isInteger(save?.bellDay) ? save.bellDay : -1;
+  world.soil = new Map((Array.isArray(save?.soil) ? save.soil : []).filter((e) => Array.isArray(e) && typeof e[0] === 'string' && e[1] && typeof e[1].kind === 'string'));
+  for (const e of Array.isArray(save?.hearths) ? save.hearths : []) if (Array.isArray(e) && typeof e[0] === 'string' && Number.isFinite(e[1])) hearths.set(e[0], e[1]);
+  for (const e of Array.isArray(save?.fires) ? save.fires : []) if (Array.isArray(e) && typeof e[0] === 'string' && Number.isFinite(e[1])) fires.set(e[0], e[1]);
+  villageGrowth = new Map((Array.isArray(save?.villageGrowth) ? save.villageGrowth : []).filter((e) => Array.isArray(e) && typeof e[0] === 'string' && e[1] && Number.isFinite(e[1].deals))
+    .map(([k, g]) => [k, { deals: g.deals, built: (Array.isArray(g.built) ? g.built : []).filter((h) => h && [h.x, h.y, h.z].every(Number.isFinite) && Array.isArray(h.door)) }]));
+  beaconSpots = new Set(Array.isArray(save?.beacons) ? save.beacons.filter((k) => typeof k === 'string') : []);
   if (save?.weather) weather.set(!!save.weather.raining, Math.max(10, +save.weather.timer || 60));
   else weather.set(false);
   creative = !!(save ? save.creative : opts.creative);
@@ -572,6 +618,7 @@ function saveGame() {
     weather: { raining: weather.raining, timer: Math.round(weather.timer) },
     pets: mobs.pets(),
     waypoints,
+    places, treasures, beacons: [...beaconSpots], catGiftDay, villageGrowth: [...villageGrowth], bellDay, fires: [...fires], hearths: [...hearths], soil: [...(world.soil ?? [])].slice(-4000),
     time: sky.time,
     creative,
     flying: player.flying,
@@ -654,7 +701,7 @@ function takeFromHeld(n) {
   const s = inventory.held();
   if (!s || creative) return;
   s.count -= n;
-  if (s.count <= 0) inventory.slots[inventory.selected] = null;
+  if (s.count <= 0) { inventory.slots[inventory.selected] = null; inventory.refill(s.id); }
   inventory.onChange();
 }
 
@@ -666,7 +713,8 @@ function throwHeld(all) {
   const dir = player.lookDir();
   const from = player.eye.clone().addScaledVector(dir, 0.4);
   from.y -= 0.35;
-  loose.spawn({ ...s, count: n }, from, { x: dir.x * 5.5 + player.vel.x * 0.5, y: dir.y * 5.5 + 2, z: dir.z * 5.5 + player.vel.z * 0.5 }, 1.5);
+  const it = loose.spawn({ ...s, count: n }, from, { x: dir.x * 5.5 + player.vel.x * 0.5, y: dir.y * 5.5 + 2, z: dir.z * 5.5 + player.vel.z * 0.5 }, 1.5);
+  if (it && s.id === STICK) it.thrown = true; // a tame wolf will fetch it
   takeFromHeld(n);
   sound.click?.() ?? sound.pop();
   return true;
@@ -700,6 +748,7 @@ function selectSlot(i) {
 
 inventory.onChange = () => {
   renderHotbar();
+  renderPins();
   if (openStationAt) renderStation();
   if (!$('inventory').classList.contains('hidden')) renderInventory();
 };
@@ -737,7 +786,7 @@ function updateHunger(dt) {
     (effects.fed > 0 ? 0.5 : 1) * (ailments.heat >= 1 ? 2 : 1);
   hunger = Math.max(0, hunger - rate * dt);
   // starving: you can only stagger along until you eat something; the cold slows you too
-  player.speedMul = (hunger <= 0 ? 0.45 : 1) * (ailments.chill >= 1 ? 0.7 : 1);
+  player.speedMul = (hunger <= 0 ? 0.45 : 1) * (ailments.chill >= 1 ? 0.7 : 1) * (effects.swift > 0 ? 1.3 : 1);
   if (hunger <= 0 && !starvingWarned) { starvingWarned = true; toast('You\'re starving! Eat something to get your strength back.', 4000); }
   if (hunger > 2) starvingWarned = false;
   renderHunger();
@@ -828,7 +877,7 @@ function respawnPlayer() {
 //   a well-fed player (hunger 16+) heals a point every 3 s, using up a little hunger.
 function updateHealth(dt, wasGround, prevY) {
   // falling: track the highest point since leaving the ground (including where this step started)
-  if (riding || ridingMob || boarded || zipping || player.flying || player.thrusting || player.hovering || player.inWater || player.inLava || player.climbing || player.onGround && wasGround) fallTop = null;
+  if (riding || ridingMob || boarded || zipping || seated || player.flying || player.thrusting || player.hovering || player.inWater || player.inLava || player.climbing || player.onGround && wasGround) fallTop = null;
   if (!player.onGround && !player.inWater) fallTop = Math.max(fallTop ?? prevY, prevY, player.pos.y);
   else if (player.onGround && !wasGround && fallTop === null && !player.inWater) fallTop = prevY;
   if (player.onGround && !wasGround && fallTop !== null) {
@@ -838,8 +887,12 @@ function updateHealth(dt, wasGround, prevY) {
     if (fall > 3.5 && hurt > 0) damage(hurt, 'You fell from a high place.');
   }
   // drowning
+  player.swimMul = guarded('swim') ? 1.9 : 1; // flippers
+  sky.diving = guarded('water');
   if (player.eyeInWater) {
-    air = Math.max(0, air - dt);
+    // a diving helmet: breath lasts five times as long, and an air pump near you keeps it topped up
+    if (sky.diving && airPumpNear(dt)) air = Math.min(MAX_AIR, air + dt * 2);
+    else air = Math.max(0, air - dt / (sky.diving ? 5 : 1));
     if (air <= 0 && (timers.drown += dt) >= 1) { timers.drown = 0; damage(2, 'You drowned.'); }
   } else {
     air = Math.min(MAX_AIR, air + dt * 5);
@@ -937,7 +990,8 @@ function buildInventoryGrid() {
   const make = (i, parent) => {
     const el = document.createElement('div');
     el.className = 'slot';
-    el.addEventListener('click', () => { onInvSlot(i); showSlotTip(i); });
+    el.addEventListener('click', (e) => { if (e.shiftKey && i < SLOTS) quickMoveInv(i); else onInvSlot(i); showSlotTip(i); });
+    if (i < SLOTS) holdOn(el, () => quickMoveInv(i));
     if (i < SLOTS) splitOn(el, () => ({ slot: { get: () => inventory.slots[i], set: (v) => { inventory.slots[i] = v; } }, list: inventory.slots, i, room: [inventory.slots], done: () => { picked = -1; inventory.onChange(); renderInventory(); } }));
     el.addEventListener('mouseenter', () => showSlotTip(i));
     el.addEventListener('mouseleave', () => { if (tipSlot === i) showSlotTip(picked); });
@@ -965,8 +1019,11 @@ function itemTipHTML(s) {
   if (mw) bits.push(`${Math.max(0, Math.round(100 - (s.wear ?? 0) / mw * 100))}% left`);
   if (chargeCap(s.id)) bits.push(`${Math.round(chargeLeft(s) / chargeCap(s.id) * 100)}% charged${s.on ? ' · switched on' : ''}`);
   const ench = (s.ench ?? []).map((k) => ENCHANTS[k]?.name).filter(Boolean);
+  const uses = usedIn(s.id), names = [...new Set(uses.map((o) => itemName(o)))];
+  const usedTxt = names.length ? `Used in: ${names.slice(0, 6).join(', ')}${names.length > 6 ? ` and ${names.length - 6} more` : ''}` : '';
   return `<b>${itemName(s.id)}</b>${s.count > 1 ? ` × ${s.count}` : ''}` +
-    (ench.length ? `<span class="ench">${ench.join(', ')}</span>` : '') + (bits.length ? `<span>${bits.join(' · ')}</span>` : '');
+    (ench.length ? `<span class="ench">${ench.join(', ')}</span>` : '') + (bits.length ? `<span>${bits.join(' · ')}</span>` : '') +
+    (usedTxt ? `<span class="used-in">${usedTxt}</span>` : '');
 }
 function showSlotTip(i) {
   const tip = $('inv-tip');
@@ -982,7 +1039,11 @@ function showSlotTip(i) {
 }
 const capital = (t) => t.charAt(0).toUpperCase() + t.slice(1);
 function lookName() {
-  if (targetCart) return targetCart.cart.store ? 'Storage Cart' : 'Minecart';
+  if (targetCart) {
+    const c = targetCart.cart, l = c.loco;
+    if (l) return `Locomotive${l.burn > 0 || l.coal > 0 ? ` (coal: ${l.coal}${l.burn > 0 ? ` + ${Math.ceil(l.burn)}s` : ''})` : ' (no coal)'}${c.towed?.length ? `, pulling ${c.towed.length}` : ''}`;
+    return (c.store ? 'Storage Cart' : 'Minecart') + (c.tow ? ' (coupled)' : '');
+  }
   if (targetVehicle) return targetVehicle.v.kind === 'boat' ? 'Boat' : 'Hot-Air Balloon';
   if (targetMob) {
     const m = targetMob.mob;
@@ -1007,7 +1068,19 @@ function updateLookTip() {
 buildInventoryGrid();
 
 const armourPiece = (id) => ITEMS[id]?.armour?.piece ?? -1;
+let lastInvTap = { i: -1, t: 0 };
 function onInvSlot(i) {
+  // a quick second tap on the same slot gathers up all the same things from the rest of the backpack into it
+  const now = performance.now();
+  if (lastInvTap.i === i && now - lastInvTap.t < DOUBLE_TAP && i < ARMOUR_SLOT && inventory.slots[i]) {
+    lastInvTap = { i: -1, t: 0 };
+    picked = -1;
+    gatherInto(inventory.slots, i, [inventory.slots]);
+    inventory.onChange();
+    renderInventory();
+    return;
+  }
+  lastInvTap = { i, t: now };
   if (picked < 0) {
     if (i >= ARMOUR_SLOT ? armour[i - ARMOUR_SLOT] : inventory.slots[i]) picked = i;
   } else if (picked === i) {
@@ -1119,6 +1192,14 @@ function renderInventory() {
       renderInventory();
     });
     row.appendChild(star);
+    // pin it to the screen, to keep track of what you still need for it
+    const pinned = settings.pins.includes(recipeKey(r));
+    const pin = document.createElement('button');
+    pin.className = 'pinb' + (pinned ? ' on' : '');
+    pin.textContent = '📌';
+    pin.title = pinned ? 'Unpin from the screen' : 'Pin to the screen';
+    pin.addEventListener('click', () => togglePin(r));
+    row.appendChild(pin);
     const btn = document.createElement('button');
     btn.className = 'btn';
     btn.textContent = 'Craft';
@@ -1139,8 +1220,36 @@ function renderInventory() {
   if (!count) list.innerHTML = `<p class="hint">${query ? `Nothing matches "${query.replace(/[<>&"]/g, '')}".` : favOnly ? 'No favourites yet: tap the ☆ beside a recipe.' : 'Nothing you can make right now.'}</p>`;
 }
 
+// Pinned recipes: up to three, shown at the side of the screen with how many of each thing you have
+// and still need. Pinned recipes stay pinned until you unpin them (or make the thing, if you like).
+const MAX_PINS = 3;
+function togglePin(r) {
+  const k = recipeKey(r);
+  if (settings.pins.includes(k)) settings.pins = settings.pins.filter((p) => p !== k);
+  else {
+    settings.pins = [...settings.pins, k].slice(-MAX_PINS);
+    toast(`Pinned: ${itemName(r.out[0])}`, 1200);
+  }
+  saveSettings();
+  renderPins();
+  renderInventory();
+}
+function renderPins() {
+  const el = $('pins');
+  if (!el) return;
+  const rs = settings.pins.map((k) => RECIPES.find((r) => recipeKey(r) === k)).filter(Boolean);
+  el.innerHTML = rs.map((r) => {
+    const ings = r.in.map(([id, n]) => {
+      const have = countOf(id), first = idsOf(id)[0];
+      return `<span class="${have >= n ? 'have' : 'need'}"><img src="${icons[first]}" alt="">${Math.min(have, n)}/${n}</span>`;
+    }).join(' ');
+    const ready = r.in.every(([id, n]) => countOf(id) >= n);
+    return `<div class="pin${ready ? ' ready' : ''}"><img src="${icons[r.out[0]]}" alt=""><span class="pname">${itemName(r.out[0])}${r.table ? ' 🛠' : ''}</span>${ings}</div>`;
+  }).join('');
+}
+
 // What a recipe is called in the favourites list: what it makes and from what.
-const recipeKey = (r) => `${r.out[0]}x${r.out[1]}:${r.in.map(([id, n]) => idsOf(id).join('|') + 'x' + n).join(',')}`;
+function recipeKey(r) { return `${r.out[0]}x${r.out[1]}:${r.in.map(([id, n]) => idsOf(id).join('|') + 'x' + n).join(',')}`; }
 let favOnly = false, canMakeOnly = false;
 $('recipe-search').addEventListener('input', () => renderInventory());
 $('btn-fav-only').addEventListener('click', (e) => { favOnly = !favOnly; e.currentTarget.classList.toggle('on', favOnly); renderInventory(); });
@@ -1166,8 +1275,8 @@ $('btn-sort').addEventListener('click', () => { sortSlots(inventory.slots, 9); p
 $('btn-chest-sort').addEventListener('click', () => { const st = currentStation(); if (!st) return; sortSlots(st.inputs); stPicked = null; sound.pop(); renderStation(); });
 
 // A recipe ingredient can be one id or a list of alternatives (coal or charcoal).
-const idsOf = (spec) => (Array.isArray(spec) ? spec : [spec]);
-const countOf = (spec) => idsOf(spec).reduce((t, id) => t + inventory.count(id), 0);
+function idsOf(spec) { return Array.isArray(spec) ? spec : [spec]; }
+function countOf(spec) { return idsOf(spec).reduce((t, id) => t + inventory.count(id), 0); }
 // The charge in the batteries a recipe uses up (the ones inventory.remove takes: from the last slot back),
 // which goes into what it makes. (A new battery comes flat.)
 function batteriesTaken(r) {
@@ -1230,6 +1339,8 @@ function stationSlot(area, i) {
 }
 
 function openStation(x, y, z, cart = null) {
+  const t = !cart && treasures.find((tr) => tr.placed && !tr.found && tr.x === x && tr.y === y && tr.z === z);
+  if (t) { t.found = true; toast('You found the buried treasure!', 2500); sound.ding?.(); achieve('treasure'); }
   const kind = cart ? 'chest' : stationKind(world.get(x, y, z));
   const nIn = cart ? cart.store.inputs.length : STATION_KINDS[kind].inputs;
   if (!cart) stations.get(x, y, z, kind);
@@ -1247,7 +1358,8 @@ function openStation(x, y, z, cart = null) {
     el.className = 'slot';
     el.dataset.area = area;
     el.dataset.i = i;
-    el.addEventListener('click', () => onStationSlot(area, i));
+    el.addEventListener('click', (e) => { if (e.shiftKey) quickMoveStation(area, i); else onStationSlot(area, i); });
+    holdOn(el, () => quickMoveStation(area, i));
     if (area === 'in' || area === 'inv') splitOn(el, () => {
       const st = currentStation();
       return st && { slot: stationSlot(area, i), list: area === 'in' ? st.inputs : inventory.slots, i, room: area === 'in' && STATION_KINDS[st.kind].storage ? [st.inputs, inventory.slots] : [inventory.slots],
@@ -1279,8 +1391,9 @@ function openStation(x, y, z, cart = null) {
     : kind === 'reactor' ? `<p class="hint">Put fuel rods in: each burns for ${ROD_LIFE / 60} minutes (an enriched rod twice as long), making ${REACTOR_POWER} power, and heats the reactor. ` +
     'A burnt-out rod is left spent: nuclear waste, so keep it in a lead-lined chest. Water, ice or packed ice touching it (each face counts) cools it. If it gets too hot it melts down, so keep plenty of water round it, take rods out, or give it a ' +
     'signal (a lever, or a power meter set to signal a shortfall) to push its control rods in and stop it.</p>'
-    : K.holder ? `<p class="hint">${kind === 'planter' ? 'Put saplings in (or feed them in with a hopper): it plants one on the grass or dirt in front of it whenever there\'s room.'
+    : K.holder ? `<p class="hint">${kind === 'planter' ? 'Put saplings, seeds, carrots or potatoes in (or feed them in with a hopper): it plants one on the grass or dirt in front of it whenever there\'s room.'
     : 'Put empty buckets in for milking yaks, and wheat to feed the animals (their coats grow back faster). Wheat, seeds or berries also feed pairs of animals so they have young. What it gets comes out of its back, into a chest, hopper or belt.'}</p>`
+    : kind === 'winepress' || kind === 'cheesepress' ? `<p class="hint">It needs no fuel or power. Lay what it makes down in an oak barrel to age: ${kind === 'winepress' ? 'juice becomes wine in a day, and fine wine three days later' : 'curds become cheese in a day, and aged cheese three days later'}.</p>`
     : kind === 'compost' ? '<p class="hint">It needs no fuel or power: scraps just rot down, given time. Tap a crop or sapling with fertiliser to grow it a step.</p>'
     : kind === 'pcrafter' ? '<p class="hint">Hang item frames on it (up to four) showing what to make: it makes the first, and steps on ' +
     'to the next each time it gets a signal (a lever, button, item counter...). Fill it with hoppers or belts and empty it with a hopper underneath.</p>'
@@ -1321,6 +1434,13 @@ function renderStation() {
   const K = STATION_KINDS[st.kind];
   if (K.storage) {
     $('st-status').textContent = `${st.inputs.filter(Boolean).length} of ${st.inputs.length} slots used`;
+    if (K.ages) {
+      // a barrel: how the first thing that's ageing is coming along
+      const i = st.inputs.findIndex((s) => s && AGING[s.id]);
+      const s = st.inputs[i];
+      $('st-status').textContent = s ? `${itemName(s.id)} → ${itemName(AGING[s.id][0])}: ${Math.floor(Math.min(1, (st.age?.[i] ?? 0) / (AGING[s.id][1] * DAY_LENGTH)) * 100)}% (${AGING[s.id][1]} day${AGING[s.id][1] > 1 ? 's' : ''} in all)`
+        : 'Lay down grape juice or curds to age: juice becomes wine in a day, then fine wine after three more; curds become cheese, then aged cheese';
+    }
     return;
   }
   const r = stations.recipeFor(st, `${openStationAt.x},${openStationAt.y},${openStationAt.z}`);
@@ -1438,9 +1558,22 @@ $('btn-chest-match').addEventListener('click', () => {
 $('btn-chest-in').addEventListener('click', () => chestMove(true));
 $('btn-chest-out').addEventListener('click', () => chestMove(false));
 
+let lastStTap = { area: '', i: -1, t: 0 };
 function onStationSlot(area, i) {
   const st = currentStation();
   if (!st) return;
+  // a quick second tap gathers the same things (from the chest and your backpack) into the slot
+  const now = performance.now();
+  if (lastStTap.area === area && lastStTap.i === i && now - lastStTap.t < DOUBLE_TAP && (area === 'in' || area === 'inv') && stationSlot(area, i).get()) {
+    lastStTap = { area: '', i: -1, t: 0 };
+    stPicked = null;
+    const storage = STATION_KINDS[st.kind].storage;
+    gatherInto(area === 'in' ? st.inputs : inventory.slots, i, area === 'in' ? (storage ? [st.inputs, inventory.slots] : [inventory.slots]) : (storage ? [inventory.slots, st.inputs] : [inventory.slots]));
+    inventory.onChange();
+    renderStation();
+    return;
+  }
+  lastStTap = { area, i, t: now };
   // tapping the result collects it
   if (area === 'out' && !stPicked) {
     if (st.out) {
@@ -1476,6 +1609,110 @@ function onStationSlot(area, i) {
   }
   inventory.onChange();
   renderStation();
+}
+
+// ---------- v25: gathering stacks, quick moves ----------
+const DOUBLE_TAP = 350; // ms
+// Pull everything that stacks with list[i] out of the `sources` lists into it (up to a full stack).
+function gatherInto(list, i, sources) {
+  const s = list[i];
+  if (!s || s.pack || s.wear || s.ench || maxStack(s.id) <= 1) return 0;
+  let got = 0;
+  for (const src of sources) for (let j = 0; j < src.length && s.count < maxStack(s.id); j++) {
+    const t = src[j];
+    if (!t || t === s || t.id !== s.id || t.pack || t.wear || t.ench) continue;
+    const k = Math.min(t.count, maxStack(s.id) - s.count);
+    s.count += k; t.count -= k; got += k;
+    if (!t.count) src[j] = null;
+  }
+  if (got) { sound.pop(); toast(`Gathered ${got} more ${itemName(s.id).toLowerCase()}`, 1200); }
+  return got;
+}
+// Put the stack from[i] into `slots` (topping up stacks first, then empty slots). Returns how many went.
+function moveStack(slots, from, i, ok = () => true) {
+  const s = from[i];
+  if (!s || !ok(s)) return 0;
+  const n0 = s.count;
+  for (let j = 0; j < slots.length && s.count; j++) {
+    const t = slots[j];
+    if (t && t !== s && t.id === s.id && !t.pack && !s.pack && !t.wear && !s.wear && t.count < maxStack(s.id)) { const k = Math.min(s.count, maxStack(s.id) - t.count); t.count += k; s.count -= k; }
+  }
+  for (let j = 0; j < slots.length && s.count; j++) if (!slots[j]) { slots[j] = { ...s }; s.count = 0; }
+  if (!s.count) from[i] = null;
+  return n0 - s.count;
+}
+// Shift-click (or press and hold) a slot in the backpack screen: between the hotbar and the backpack.
+function quickMoveInv(i) {
+  picked = -1;
+  const into = i < 9 ? inventory.slots.slice(9) : inventory.slots.slice(0, 9);
+  const moved = moveStack(into, inventory.slots, i);
+  if (moved) {
+    if (i < 9) for (let j = 9; j < SLOTS; j++) inventory.slots[j] = into[j - 9]; else for (let j = 0; j < 9; j++) inventory.slots[j] = into[j];
+    sound.pop();
+  }
+  inventory.onChange();
+  renderInventory();
+}
+// Shift-click (or press and hold) a slot with a chest, backpack or machine open: the whole stack goes across.
+function quickMoveStation(area, i) {
+  const st = currentStation();
+  if (!st) return;
+  stPicked = null;
+  const K = STATION_KINDS[st.kind];
+  let moved = 0;
+  if (area === 'inv') {
+    const a = inventory.slots[i];
+    if (!a) return;
+    if (openStationAt.cart?.backpack && isBackpack(a.id)) { toast('A backpack won\'t go inside a backpack'); return; }
+    if (K.accepts && !K.accepts.includes(a.id)) { toast(`The ${K.name.toLowerCase()} won't take ${itemName(a.id).toLowerCase()}`); return; }
+    const ingredient = (K.recipes ?? []).some?.((r) => (r.in ?? []).some(([ing]) => (Array.isArray(ing) ? ing : [ing]).includes(a.id)));
+    if (!K.storage && !K.crafter && !K.powered && !K.holder && isFuel(a.id) && !(st.fuel && st.fuel.id !== a.id) && !ingredient) {
+      // fuel into the fuel slot
+      const fuel = [st.fuel];
+      moved = moveStack(fuel, inventory.slots, i);
+      st.fuel = fuel[0];
+    } else moved = moveStack(st.inputs, inventory.slots, i);
+  } else {
+    const slot = stationSlot(area, i), a = slot.get();
+    if (!a) return;
+    const left = inventory.addItem(a);
+    moved = a.count - left;
+    slot.set(left ? { ...a, count: left } : null);
+    if (left) toast('Inventory full');
+  }
+  if (moved) sound.pop();
+  inventory.onChange();
+  renderStation();
+}
+// Press and hold a slot (on a touch screen) to do `fn` instead of a tap.
+function holdOn(el, fn) {
+  let timer = 0, x0 = 0, y0 = 0;
+  const cancel = () => { clearTimeout(timer); timer = 0; };
+  el.addEventListener('pointerdown', (e) => {
+    if (e.pointerType === 'mouse') return;
+    x0 = e.clientX; y0 = e.clientY;
+    cancel();
+    timer = setTimeout(() => { timer = 0; noClickUntil = performance.now() + 600; navigator.vibrate?.(15); fn(); }, 480);
+  });
+  el.addEventListener('pointermove', (e) => { if (timer && Math.hypot(e.clientX - x0, e.clientY - y0) > 10) cancel(); });
+  for (const t of ['pointerup', 'pointercancel', 'pointerleave']) el.addEventListener(t, cancel);
+}
+
+// What each thing is used to make (crafting, and the machines and stations), worked out once.
+let usedInMap = null;
+function usedIn(id) {
+  if (!usedInMap) {
+    usedInMap = new Map();
+    const add = (ing, out) => {
+      for (const x of Array.isArray(ing) ? ing : [ing]) {
+        if (!usedInMap.has(x)) usedInMap.set(x, new Set());
+        usedInMap.get(x).add(out);
+      }
+    };
+    for (const r of RECIPES) for (const [ing] of r.in) add(ing, r.out[0]);
+    for (const K of Object.values(STATION_KINDS)) for (const r of Array.isArray(K.recipes) ? K.recipes : []) for (const [ing] of r.in ?? []) if (r.out) add(ing, r.out[0]);
+  }
+  return [...(usedInMap.get(id) ?? [])].filter((o) => o !== id);
 }
 
 // ---------- splitting a stack ----------
@@ -1607,13 +1844,22 @@ function eat(id) {
   if (foodValue(id) >= 6) {
     const was = effects.fed > 0;
     effects.fed = Math.max(effects.fed, foodValue(id) * 20); // a hearty meal keeps you going: the better the meal, the longer
-    if (!was) toast(`Ate ${itemName(id).toLowerCase()}: you feel well fed`, 1600);
+    if (!was) toast(`${ITEMS[id]?.bottle ? "Drank" : "Ate"} ${itemName(id).toLowerCase()}: you feel well fed`, 1600);
     achieve('eat');
   }
+  const meal = ITEMS[id]?.meal;
+  if (meal) {
+    // a good meal does you good for a while
+    effects[meal[0]] = Math.max(effects[meal[0]], meal[1]);
+    if (meal[0] === 'heal') { poisoned = 0; renderHealth(); }
+    if (meal[0] === 'warm') ailments.chill = 0;
+    toast(`${itemName(id)}: you ${ITEMS[id].about}`, 1800);
+  }
+  if (ITEMS[id]?.bottle && inventory.add(GLASS_BOTTLE, 1)) toast('Inventory full');
   if (id === HONEY_BOTTLE) { inventory.add(GLASS_BOTTLE, 1); health = Math.min(MAX_HEALTH, health + 2); renderHealth(); }
   if (id === PUFFERFISH) { poisoned = Math.max(poisoned, 15); toast('Ugh! The pufferfish was poisonous.', 2500); renderHealth(); }
   sound.eat();
-  toast(`Ate ${itemName(id).toLowerCase()}`, 1000);
+  toast(`${ITEMS[id]?.bottle ? "Drank" : "Ate"} ${itemName(id).toLowerCase()}`, 1000);
   renderHunger();
 }
 
@@ -1792,7 +2038,7 @@ function wearOutHeld(n) {
   if (s.wear >= maxWear(s.id)) {
     inventory.slots[inventory.selected] = null;
     sound.breakBlock('stone');
-    toast(`Your ${itemName(s.id).toLowerCase()} broke!`, 2000);
+    toast(`Your ${itemName(s.id).toLowerCase()} broke!${inventory.refill(s.id) ? ' You take out another.' : ''}`, 2000);
   }
   inventory.onChange();
 }
@@ -2135,6 +2381,14 @@ $('btn-journal-here').addEventListener('click', () => {
 // Tap a crop or a sapling with it to grow it a step (a sapling into a tree; sugar cane a block taller).
 function fertilise(x, y, z) {
   const id = world.get(x, y, z), grows = BLOCKS[id]?.grows;
+  // fertiliser on soil (or on a crop growing in it) freshens worn-out ground
+  const soilY = [GRASS, DIRT].includes(id) ? y : y - 1;
+  const freshened = world.restSoil(x, soilY, z);
+  if (freshened && (soilY === y || !grows)) { toast('The soil is fresh again', 1500); sound.place('grass'); return true; }
+  if (grows === 'pumpkin') {
+    if (!world.growPumpkin(x, y, z)) { toast('A pumpkin vine needs open grass or dirt beside it, and no pumpkin there already', 2000); return false; }
+    sound.place('grass'); return true;
+  }
   if (!grows || grows === 'fill' || grows === 'honey') { toast('Fertiliser helps crops and saplings grow', 1500); return false; }
   if (grows === 'tree') world.growTree(x, y, z);
   else if (grows === 'up') {
@@ -2235,8 +2489,8 @@ function useAnvil() {
 }
 
 // ---------- teas ----------
-const effects = { night: 0, haste: 0, fire: 0, heal: 0, warm: 0, fed: 0 }; // seconds left of each
-const EFFECT_ICONS = { night: '🌙', haste: '⛏', fire: '🔥', heal: '💚', warm: '🍯', fed: '🍗' };
+const effects = { night: 0, haste: 0, fire: 0, heal: 0, warm: 0, fed: 0, swift: 0 }; // seconds left of each
+const EFFECT_ICONS = { night: '🌙', haste: '⛏', fire: '🔥', heal: '💚', warm: '🍯', fed: '🍗', swift: '🏃' };
 function drinkTea(id) {
   const [kind, secs] = ITEMS[id].tea;
   effects[kind] = Math.max(effects[kind], secs);
@@ -2369,7 +2623,7 @@ function tickAilments(dt) {
   const cold = coldLand && outside && (sky.light < 0.45 || (weather.raining && weather.level > 0.3));
   const warm = effects.warm > 0 || guarded('chill') || armourEnch.some((e) => e?.includes('warmth')) ||
     armour.slice(0, 4).filter(Boolean).length >= 3 || world.lightAt(x, head, z) >= 9 || ridingMob;
-  ailments.chill = Math.max(0, ailments.chill + (cold && !warm ? dt / 45 : -dt / 12));
+  ailments.chill = Math.max(0, ailments.chill + (cold && !warm ? dt / 45 : hearths.size && hearthNear() ? -dt / 3 : -dt / 12));
   const sun = sky.light > 0.95 && sky.time > 0.15 && sky.time < 0.35;
   const hot = biome === 'desert' && outside && (sun || (weather.raining && weather.level > 0.5));
   const shaded = armour[0] || effects.fire > 0 || guarded('heat');
@@ -2413,11 +2667,30 @@ const RUIN_LOOT = [
   [BOOK, 1, 3, 0.8], [MAP, 1, 1, 0.35], [JOURNAL, 1, 1, 0.25], [PAPER, 2, 6, 0.6], [CRYSTAL_SHARD, 1, 4, 0.5],
   [metalTool(ironAt, 'pick'), 1, 1, 0.3], [metalTool(ironAt, 'axe'), 1, 1, 0.25], [metalTool(ironAt, 'shovel'), 1, 1, 0.25], [metalSword(ironAt), 1, 1, 0.2],
 ];
+const TEMPLE_LOOT = [
+  [PEARL, 1, 3, 0.9], [COIN, 4, 12, 0.8], [GOLD_INGOT, 2, 5, 0.6], [SEA_LANTERN, 1, 3, 0.5], [DIVING_HELMET, 1, 1, 0.3], [FLIPPERS, 1, 1, 0.3], [TREASURE_MAP, 1, 1, 0.3],
+];
+const SKY_LOOT = [
+  [STARSTEEL_INGOT, 1, 2, 0.4], [COIN, 6, 14, 0.8], [FEATHER, 4, 10, 0.6], [GOLD_INGOT, 2, 4, 0.5], [HASTE_TEA, 1, 1, 0.4], [EXPLORER_MAP, 1, 1, 0.3], [PEARL, 1, 1, 0.3],
+];
 const WRECK_LOOT = [
-  [GOLD_INGOT, 2, 6, 0.8], [COMPASS, 1, 1, 0.45], [MAP, 1, 1, 0.35], [GUNPOWDER, 2, 6, 0.6], [RAW_FISH, 2, 5, 0.6], [SALMON, 1, 3, 0.4], [PAPER, 1, 3, 0.3],
+  [TREASURE_MAP, 1, 1, 0.45], [GOLD_INGOT, 2, 6, 0.8], [COMPASS, 1, 1, 0.45], [MAP, 1, 1, 0.35], [GUNPOWDER, 2, 6, 0.6], [RAW_FISH, 2, 5, 0.6], [SALMON, 1, 3, 0.4], [PAPER, 1, 3, 0.3],
+];
+// a lighthouse keeper's things
+const LIGHTHOUSE_LOOT = [
+  [TREASURE_MAP, 1, 1, 0.7], [EXPLORER_MAP, 1, 1, 0.25], [LANTERN, 1, 2, 0.5], [COMPASS, 1, 1, 0.3], [RAW_FISH, 2, 6, 0.6], [PAPER, 1, 4, 0.4], [COAL, 3, 8, 0.6],
+];
+// buried treasure: a pirate's hoard
+const TREASURE_LOOT = [
+  [GOLD_INGOT, 6, 14, 1], [SILVER_INGOT, 3, 8, 0.6], [CRYSTAL_SHARD, 3, 8, 0.6], [STARSTEEL_INGOT, 1, 2, 0.25], [COMPASS, 1, 1, 0.3], [GUNPOWDER, 2, 6, 0.4],
 ];
 function placeLoot(x, y, z) {
   const cx = Math.floor(x / CHUNK), cz = Math.floor(z / CHUNK), g = world.generator;
+  const tp = g.templeAt?.(cx, cz), il = g.islandAt?.(cx, cz);
+  if (tp && tp.chest[0] === x && tp.chest[1] === y && tp.chest[2] === z) return TEMPLE_LOOT;
+  if (il && il.chest[0] === x && il.chest[1] === y && il.chest[2] === z) return SKY_LOOT;
+  const l = g.lighthouseAt?.(cx, cz);
+  if (l && Math.abs(l.x - x) <= 2 && Math.abs(l.z - z) <= 2) return LIGHTHOUSE_LOOT;
   const r = g.ruinAt?.(cx, cz), w = g.wreckAt?.(cx, cz);
   if (r && Math.abs(r.x - x) <= 6 && Math.abs(r.z - z) <= 6 && Math.abs(r.y - y) <= 2) return RUIN_LOOT;
   if (w && Math.abs(w.x - x) <= 8 && Math.abs(w.z - z) <= 6 && Math.abs(w.y - y) <= 2) return WRECK_LOOT;
@@ -2619,6 +2892,8 @@ const TRADES = [
   [[SAND, 32], [STAINLESS_INGOT, 1]], [[FEATHER, 6], [SILVER_ARROW, 6]], [[IRON_INGOT, 4], [TUNGSTEN_INGOT, 1]],
   [[COAL, 16], [STEEL_INGOT, 2]], [[BERRIES, 12], [HEAL_TEA, 1]], [[SUGAR_CANE, 16], [COPPER_INGOT, 4]],
   [[CORNFLOWER, 4], [HASTE_TEA, 1]], [[TRUFFLE, 3], [GOLD_INGOT, 2]], [[COPPER_INGOT, 8], [IRON_SHIELD, 1]],
+  [[COIN, 10], [TUNGSTEN_INGOT, 1]], [[COIN, 8], [GOLD_INGOT, 2]],
+  [[WHEAT, 8], [GRAPES, 4]], [[SEEDS, 12], [PUMPKIN_SEEDS, 3]], [[BREAD, 2], [CARROT, 6]], [[STICK, 16], [POTATO, 6]],
 ];
 mobs.onTraderSpawn = (m) => {
   const pool = [...TRADES];
@@ -2628,10 +2903,10 @@ mobs.onTraderSpawn = (m) => {
 };
 // Villagers each have a trade, and offer three swaps from its list.
 const VILLAGER_TRADES = {
-  farmer: [[[LOG, 8], [BREAD, 4]], [[COBBLE, 24], [CAKE, 1]], [[STICK, 16], [WHEAT, 12]], [[FEATHER, 6], [BUTTER, 2]], [[BERRIES, 10], [COOKIE, 6]], [[COAL, 6], [FLOUR, 6]]],
-  smith: [[[COAL, 12], [IRON_INGOT, 3]], [[LOG, 16], [STEEL_INGOT, 1]], [[GOLD_INGOT, 1], [STAINLESS_INGOT, 1]], [[COBBLE, 32], [COPPER_INGOT, 4]], [[LEATHER, 4], [IRON_SHIELD, 1]], [[CRYSTAL_SHARD, 4], [TUNGSTEN_INGOT, 1]]],
-  fisher: [[[STICK, 12], [BAKED_FISH, 3]], [[STRING, 4], [WROD, 1]], [[WHEAT, 16], [SALMON, 4]], [[COAL, 8], [BAKED_SALMON, 3]], [[BREAD, 4], [ROD, 1]], [[OLD_BOOT, 2], [LEATHER, 3]]],
-  cleric: [[[GOLD_INGOT, 1], [HEAL_TEA, 2]], [[BERRIES, 8], [NIGHT_TEA, 1]], [[HONEYCOMB, 3], [HASTE_TEA, 1]], [[SILVER_INGOT, 2], [CRYSTAL_SHARD, 4]], [[PAPER, 6], [FIRE_TEA, 1]], [[GLOW_MUSHROOM, 4], [NIGHT_TEA, 1]]],
+  farmer: [[[LOG, 8], [BREAD, 4]], [[COBBLE, 24], [CAKE, 1]], [[STICK, 16], [WHEAT, 12]], [[FEATHER, 6], [BUTTER, 2]], [[BERRIES, 10], [COOKIE, 6]], [[COAL, 6], [FLOUR, 6]], [[COIN, 4], [CAKE, 1]], [[COIN, 2], [BREAD, 3]], [[COIN, 2], [CARROT, 4]], [[COIN, 2], [POTATO, 4]], [[COIN, 3], [PUMPKIN_SEEDS, 3]], [[COIN, 3], [GRAPES, 4]]],
+  smith: [[[COAL, 12], [IRON_INGOT, 3]], [[LOG, 16], [STEEL_INGOT, 1]], [[GOLD_INGOT, 1], [STAINLESS_INGOT, 1]], [[COBBLE, 32], [COPPER_INGOT, 4]], [[LEATHER, 4], [IRON_SHIELD, 1]], [[CRYSTAL_SHARD, 4], [TUNGSTEN_INGOT, 1]], [[COIN, 6], [STEEL_INGOT, 2]], [[COIN, 5], [IRON_INGOT, 4]]],
+  fisher: [[[STICK, 12], [BAKED_FISH, 3]], [[STRING, 4], [WROD, 1]], [[WHEAT, 16], [SALMON, 4]], [[COAL, 8], [BAKED_SALMON, 3]], [[BREAD, 4], [ROD, 1]], [[OLD_BOOT, 2], [LEATHER, 3]], [[COIN, 3], [BAKED_SALMON, 3]]],
+  cleric: [[[GOLD_INGOT, 1], [HEAL_TEA, 2]], [[BERRIES, 8], [NIGHT_TEA, 1]], [[HONEYCOMB, 3], [HASTE_TEA, 1]], [[SILVER_INGOT, 2], [CRYSTAL_SHARD, 4]], [[PAPER, 6], [FIRE_TEA, 1]], [[GLOW_MUSHROOM, 4], [NIGHT_TEA, 1]], [[COIN, 5], [HEAL_TEA, 1]]],
 };
 const PROFESSION_NAMES = { farmer: 'Farmer', smith: 'Smith', fisher: 'Fisher', cleric: 'Cleric' };
 mobs.onVillagerSpawn = (m) => {
@@ -2686,6 +2961,7 @@ function renderTrades() {
       inventory.add(oid, on);
       sound.pop();
       achieve('trade');
+      if (tradingWith.home) growVillage(tradingWith.home);
       renderTrades();
     });
     row.appendChild(btn);
@@ -2866,6 +3142,61 @@ function useFrame(x, y, z, held) {
   sound.place('wood');
 }
 
+// ---------- v25 A: shelves and tables, flower pots, chairs ----------
+// Tap the top of a shelf or table holding something (not a block) to stand it there; tap it again to take it back.
+function useDisplay(x, y, z, held) {
+  const item = frames.get(x, y, z);
+  if (item) { frames.remove(x, y, z); giveDrops([[item, 1]]); return; }
+  if (world.get(x, y + 1, z) !== AIR) { toast('There\'s no room on top of it', 1500); return; }
+  if (held.wear || held.ench || held.pack || held.on) { toast('Only plain things stand on a shelf', 1500); return; }
+  frames.set(x, y, z, held.id);
+  inventory.consumeHeld();
+  sound.place('wood');
+}
+// Tap an empty flower pot holding a flower, sapling, glowcap or cactus to plant it; tap a planted pot to take it out.
+function usePot(x, y, z, id, held) {
+  const k = potOf(id);
+  if (k > 0) {
+    world.setBlock(x, y, z, FLOWER_POT);
+    giveDrops([[POT_PLANTS[k], 1]]);
+    sound.breakBlock('grass');
+    return true;
+  }
+  const j = POT_PLANTS.indexOf(held?.id ?? -1);
+  if (j <= 0) { if (!held || !isBlock(held.id)) { toast('Tap the pot holding a flower, sapling, glowcap or cactus to plant it', 2500); return true; } return false; }
+  world.setBlock(x, y, z, FLOWER_POT + j);
+  inventory.consumeHeld();
+  sound.place('grass');
+  return true;
+}
+// Sit on a chair: you face the way it faces until you move or jump.
+function sitOn(x, y, z) {
+  if (world.isSolid(x, y + 1, z)) { toast('There\'s no room to sit there', 1500); return; }
+  seated = { x, y, z };
+  const [dx, dz] = FACING_DIRS[BLOCKS[world.get(x, y, z)].facing];
+  player.yaw = Math.atan2(-dx, -dz);
+  player.vel.set(0, 0, 0);
+  sound.place('wood');
+  toast('Move or jump to get up', 1500);
+}
+function standUp() {
+  const s = seated;
+  seated = null;
+  if (!s) return;
+  const [dx, dz] = FACING_DIRS[BLOCKS[world.get(s.x, s.y, s.z)]?.facing ?? 0];
+  const fx = s.x + dx, fz = s.z + dz;
+  if (!world.isSolid(fx, s.y, fz) && !world.isSolid(fx, s.y + 1, fz)) player.spawn(fx + 0.5, s.y, fz + 0.5);
+  else player.spawn(s.x + 0.5, s.y + 1, s.z + 0.5);
+}
+function followSeat() {
+  const s = seated;
+  if (!isChair(world.get(s.x, s.y, s.z)) || controls.jump || Math.abs(controls.moveX) + Math.abs(controls.moveZ) > 0.3) { standUp(); return; }
+  player.pos.set(s.x + 0.5, s.y - 0.3, s.z + 0.5);
+  player.vel.set(0, 0, 0);
+  player.onGround = true;
+  player.updateWaterState();
+}
+
 // ---------- rails and minecarts ----------
 // A rail you place joins up to two rails beside it (or a block higher or lower, as a slope), preferring
 // ones already pointing at it, and they bend round to meet it.
@@ -3043,7 +3374,7 @@ function unlinkZips(x, y, z) {
   for (const l of gone) { scene.remove(l.line); l.line.geometry.dispose(); zips.splice(zips.indexOf(l), 1); }
   return gone.length ? [[ZIP_LINE, gone.length]] : [];
 }
-function startZip(x, y, z) {
+function startZip(x, y, z, cable = false) {
   const lines = zipsAt(x, y, z);
   if (!lines.length) { toast('That post has no zipline: join it to another with a zipline rope', 2000); return; }
   // the line that runs most nearly the way you're looking
@@ -3051,24 +3382,29 @@ function startZip(x, y, z) {
   const other = (l) => (l.ends[0] === x && l.ends[1] === y && l.ends[2] === z ? l.ends.slice(3) : l.ends.slice(0, 3));
   const best = lines.map((l) => ({ l, to: other(l) })).sort((a, b) => zipTop(...b.to).sub(here).normalize().dot(look) - zipTop(...a.to).sub(here).normalize().dot(look))[0];
   const from = here, to = zipTop(...best.to);
-  zipping = { from, to, end: best.to, len: from.distanceTo(to), d: 0, speed: 4 };
+  zipping = { from, to, end: best.to, len: from.distanceTo(to), d: 0, speed: cable ? CABLE_SPEED : 4, cable };
+  if (cable) { gondola.visible = true; toast('Off you go! (sneak to get out)', 1800); }
   sound.swish?.();
 }
-function letGoZip() { zipping = null; player.vel.set(0, 0, 0); }
+function letGoZip() { zipping = null; gondola.visible = false; player.vel.set(0, 0, 0); }
 function tickZip(dt) {
   const z = zipping;
   if (controls.down || dead) { letGoZip(); return; }
   const drop = (z.from.y - z.to.y) / Math.max(1, z.len);
-  z.speed = Math.max(4, Math.min(16, z.speed + drop * 14 * dt));
+  if (!z.cable) z.speed = Math.max(4, Math.min(16, z.speed + drop * 14 * dt));
   z.d = Math.min(z.len, z.d + z.speed * dt);
   const k = z.d / z.len, p = z.from.clone().lerp(z.to, k);
-  p.y -= Math.sin(k * Math.PI) * z.len * 0.03 + 2.0; // hanging under the rope
+  p.y -= Math.sin(k * Math.PI) * z.len * 0.03 + (z.cable ? 2.9 : 2.0); // hanging under the rope (in the gondola, lower)
   player.pos.copy(p);
+  if (z.cable) {
+    const lit = Math.max(0.3, lightUniforms.uDay.value);
+    for (const [m, c] of gondola.userData.mats) m.color.copy(c).multiplyScalar(lit);
+    gondola.position.set(p.x, p.y - 0.06, p.z); gondola.rotation.y = Math.atan2(z.to.x - z.from.x, z.to.z - z.from.z); }
   player.vel.set(0, 0, 0);
   fallTop = null;
   if (z.d < z.len) return;
   // off at the far post: step down beside it, back toward where you came from
-  zipping = null;
+  zipping = null; gondola.visible = false;
   const [ex, ey, ez] = z.end, back = z.from.clone().sub(z.to).setY(0).normalize();
   let fx = Math.floor(ex + 0.5 + back.x * 1.1), fz = Math.floor(ez + 0.5 + back.z * 1.1), fy = ey;
   while (fy < ey + 4 && (world.isSolid(fx, fy, fz) || world.isSolid(fx, fy + 1, fz))) fy++;
@@ -3152,6 +3488,15 @@ function placeInner() {
   if (zipping) { letGoZip(); return; }
   if (targetCart) {
     const c = targetCart.cart;
+    if (c.loco && (held?.id === COAL || held?.id === CHARCOAL)) {
+      // stoke the locomotive's firebox
+      const n = held.count;
+      c.loco.coal += n; c.loco.running = true;
+      takeFromHeld(n);
+      sound.crackle(1);
+      toast(`The locomotive has ${c.loco.coal} coal${c.loco.burn > 0 ? ' and a fire going' : ''}`, 1800);
+      return;
+    }
     if (c.store) { sound.click(); openStation(c.x, c.y, c.z, c); } else getInCart(c);
     return;
   }
@@ -3159,7 +3504,15 @@ function placeInner() {
   if (held && ITEMS[held.id]?.vehicle && putVehicle(ITEMS[held.id].vehicle)) { inventory.consumeHeld(); return; }
   if (held?.id === ZIP_LINE && target?.id === ZIP_POST) { linkZip(target.x, target.y, target.z); return; }
   if (held?.id === GRAPPLE && target?.id === ZIP_POST) { startZip(target.x, target.y, target.z); return; }
+  if (held?.id === CABLE_CAR && target?.id === ZIP_POST) { startZip(target.x, target.y, target.z, true); return; }
   if (targetMob) { hitMob(); return; }
+  if (held?.id === LOCOMOTIVE && target && isRail(target.id)) {
+    if (carts.add(world, target.x, target.y, target.z, player.lookDir(), false, true)) {
+      inventory.consumeHeld(); sound.place('stone');
+      toast('Tap the locomotive with coal to fire it up', 2500);
+    }
+    return;
+  }
   if ((held?.id === MINECART || held?.id === STORAGE_CART) && target && isRail(target.id)) {
     if (carts.add(world, target.x, target.y, target.z, player.lookDir(), held.id === STORAGE_CART)) { inventory.consumeHeld(); sound.place('stone'); }
     return;
@@ -3169,6 +3522,7 @@ function placeInner() {
   if (held && isBackpack(held.id)) { openBackpack(held); return; }
   if (held?.id === BOOK) { openGuide(); return; }
   if (held?.id === JOURNAL) { openJournal(held); return; }
+  if (held?.id === TREASURE_MAP) { readTreasureMap(held); return; }
   if (held?.id === FERTILISER && target && fertilise(target.x, target.y, target.z)) { inventory.consumeHeld(); return; }
   if (held?.id === GRAPPLE) { if (grapple) releaseGrapple(); else throwGrapple(); return; }
   if (held?.id === SPANNER && target && spannerTurn(target.x, target.y, target.z)) return;
@@ -3187,9 +3541,38 @@ function placeInner() {
     if (isCurtain(tid)) { toggleCurtain(tx, ty, tz); return; }
     if (isGate(tid) || isTrapdoor(tid)) { toggleHatch(tx, ty, tz); return; }
     if (BLOCKS[tid].switch === 'lever') { setSwitch(tx, ty, tz, !BLOCKS[tid].on); return; }
+    if (BLOCKS[tid].hearth) {
+      if (held && HEARTH_FUEL[held.id]) { feedHearth(tx, ty, tz, held); return; }
+      if (!(held && isBlock(held.id))) {
+        const left = hearths.get(`${tx},${ty},${tz}`);
+        toast(left ? `The fire will burn for ${hearthTime(left)}` : 'Tap the fireplace with logs, planks, sticks or coal to light it', 2000);
+        return;
+      }
+    }
+    if ((BLOCKS[tid].sensor === 'radio' || BLOCKS[tid].sensor === 'radiotx') && !(held && isBlock(held.id))) {
+      const ch = machines.nextChannel(tx, ty, tz);
+      sound.click();
+      toast(`${BLOCKS[tid].sensor === 'radio' ? 'Radio receiver' : 'Radio transmitter'}: channel ${ch}`, 1500);
+      return;
+    }
     if (BLOCKS[tid].logic && !(held && isBlock(held.id))) { useLogic(tx, ty, tz, BLOCKS[tid]); return; }
     if (BLOCKS[tid].switch === 'button') { setSwitch(tx, ty, tz, true); pressedButtons.set(lampKey(tx, ty, tz), 1.5); return; }
     if (isFrame(tid)) { useFrame(tx, ty, tz, held); return; }
+    if (isDisplay(tid) && target.ny === 1 && (frames.get(tx, ty, tz) || (held && !isBlock(held.id)))) { useDisplay(tx, ty, tz, held); return; }
+    if (isChair(tid) && !(held && isBlock(held.id))) { sitOn(tx, ty, tz); return; }
+    if (potOf(tid) >= 0 && usePot(tx, ty, tz, tid, held)) return;
+    if (BLOCKS[tid].apiary && (held?.id === GLASS_BOTTLE || !held || !isBlock(held.id))) {
+      // an apiary: take the comb and wax by hand (and a bottle of honey too, if you hold a bottle)
+      const lv = BLOCKS[tid].hive;
+      if (lv >= MAX_APIARY) {
+        world.setBlock(tx, ty, tz, APIARY);
+        if (held?.id === GLASS_BOTTLE) { inventory.consumeHeld(); giveDrops([[HONEY_BOTTLE, 1], [HONEYCOMB, 2], [BEESWAX, 2]]); }
+        else giveDrops([[HONEYCOMB, 3], [BEESWAX, 2]]);
+        sound.pop();
+        toast('You take the frames of comb from the apiary', 1500);
+      } else toast(`The bees are filling the frames (${lv}/${MAX_APIARY})`, 2000);
+      return;
+    }
     if (BLOCKS[tid].hive >= 0 && (held?.id === GLASS_BOTTLE || !held || !isBlock(held.id))) {
       const lv = BLOCKS[tid].hive;
       if (held?.id === GLASS_BOTTLE && lv >= MAX_HONEY) {
@@ -3206,6 +3589,14 @@ function placeInner() {
       const v = world.generator.nearestVillage(tx, tz, 1);
       sound.ding?.() ?? sound.pop();
       toast(v ? `Welcome to ${v.name}` : 'Ding!', 2200);
+      return;
+    }
+    if (BLOCKS[tid].fruit?.ripe) {
+      // pick the fruit off a fruit tree's leaves
+      const f = BLOCKS[tid].fruit;
+      world.setBlock(tx, ty, tz, fruitLeaves(f.kind));
+      sound.breakBlock('leaves');
+      giveDrops([[FRUITS[f.kind].item, 1 + (Math.random() < 0.3 ? 1 : 0)]]);
       return;
     }
     if (tid === BERRY_BUSH + 1) {
@@ -3287,6 +3678,12 @@ function placeInner() {
       toast(machines.toggleMeter(tx, ty, tz) ? `Power meter: signals while there's power to spare. ${electric.statusAt(tx, ty, tz)}` : `Power meter: signals while the grid is short of power. ${electric.statusAt(tx, ty, tz)}`, 3000);
       return;
     }
+    if (BLOCKS[tid].sensor === 'farm' && handFree) {
+      const r = machines.farmReport(world, tx, ty, tz);
+      sound.click();
+      toast(r.total ? `Farm controller: ${r.total} wheat within ${FARM_REACH} blocks, ${r.ripe} ripe and ${r.growing} growing. It signals once half is ripe.` : `Farm controller: no wheat within ${FARM_REACH} blocks`, 3500);
+      return;
+    }
     if (BLOCKS[tid].sensor === 'daylight' && handFree) {
       sound.click();
       toast(machines.toggleDaylight(tx, ty, tz) ? 'Daylight sensor: signals by day' : 'Daylight sensor: signals at night (and in the dark under a roof)', 2500);
@@ -3327,7 +3724,15 @@ function placeInner() {
   }
   if (held?.id === BUCKET || held?.id === WATER_BUCKET) { useBucket(held.id); return; }
   if (held?.id === LEAD_BUCKET || held?.id === LAVA_BUCKET) { useLeadBucket(held.id); return; }
-  if (held && (foodValue(held.id) || ITEMS[held.id]?.drink)) { eat(held.id); return; }
+  // grapes on a trellis plant a vine; a carrot or potato aimed at the top of soil is planted, not eaten
+  if (held?.id === GRAPES && target?.id === TRELLIS) {
+    if (![GRASS, DIRT].includes(world.get(target.x, target.y - 1, target.z))) { toast('The trellis needs to stand on grass or dirt for a vine to grow', 2000); return; }
+    world.setBlock(target.x, target.y, target.z, GRAPE_VINE);
+    notePlanting(target.x, target.y, target.z, GRAPE_VINE);
+    sound.place('leaves'); inventory.consumeHeld(); return;
+  }
+  const plantsCrop = held && isCrop(ITEMS[held.id]?.places) && target?.ny === 1 && [GRASS, DIRT].includes(target.id) && world.get(target.x, target.y + 1, target.z) === AIR;
+  if (held && !plantsCrop && (foodValue(held.id) || ITEMS[held.id]?.drink)) { eat(held.id); return; }
   if (held && ITEMS[held.id]?.tea) { drinkTea(held.id); return; }
   if (held?.id === PORTABLE_LAMP) { switchHandLamp(held); return; }
   if (held?.id === MAGNET_RING) { switchMagnet(held); return; }
@@ -3353,7 +3758,7 @@ function placeInner() {
     // torches need a solid block to stand on or hang from, and can't go underwater or on ceilings
     if (there !== AIR || target.ny < 0 || !BLOCKS[target.id].solid || isTorch(target.id)) return;
     if (target.ny === 0) id = TORCH_WALL_W + WALL_TORCH_DIRS.findIndex(([dx, dz]) => dx === -target.nx && dz === -target.nz);
-  } else if (isWheat(id)) {
+  } else if (isWheat(id) || isCrop(id)) {
     // seeds go on top of grass or dirt
     if (there !== AIR || target.ny !== 1 || (target.id !== GRASS && target.id !== DIRT)) { toast('Plant seeds on top of grass or dirt'); return; }
   } else if (id === BERRY_BUSH) {
@@ -3407,6 +3812,14 @@ function placeInner() {
     world.setBlock(x, y, z, BED_FOOT + f);
     world.setBlock(hx, y, hz, BED + f);
     sound.place('wool');
+    inventory.consumeHeld();
+    return;
+  } else if (id === HANGING_PLANT || id === WINDOW_BOX) {
+    // a basket hangs under a block; a window box hangs on the side of one
+    const up = id === HANGING_PLANT;
+    if (there !== AIR || !BLOCKS[target.id].solid || (up ? target.ny !== -1 : target.ny !== 0)) { toast(up ? 'A hanging basket hangs from the underside of a block' : 'A window box hangs on the side of a block'); return; }
+    world.setBlock(x, y, z, up ? id : id + FACING_DIRS.findIndex(([dx, dz]) => dx === -target.nx && dz === -target.nz));
+    sound.place('grass');
     inventory.consumeHeld();
     return;
   } else if (id === LANTERN || id === CHANDELIER) {
@@ -3490,7 +3903,7 @@ function placeInner() {
     if (there !== AIR || !world.isSolid(x, y - 1, z)) { toast(`${BLOCKS[id].name}s need something solid underneath`); return; }
   } else {
     // chairs face you; curtains hang across your line of sight
-    if ([CHAIR, OVEN, SMELTER, BLAST_SMELTER, CRUSHER, PULVERIZER, E_SMELTER, CHEST, IRON_CHEST, SAW, TRIP_HAMMER, LEAD_CHEST, FREEZER, ARC_FURNACE].includes(id)) id += facingTowardPlayer(x, z); // the front faces you
+    if ([CHAIR, SCARECROW, COOK_POT, OVEN, SMELTER, BLAST_SMELTER, CRUSHER, PULVERIZER, E_SMELTER, CHEST, IRON_CHEST, SAW, TRIP_HAMMER, LEAD_CHEST, FREEZER, ARC_FURNACE, MARKET_STALL, FIREPLACE].includes(id)) id += facingTowardPlayer(x, z); // the front faces you
     else if (id === DRILL) id += player.pitch < -0.75 ? 4 : (facingTowardPlayer(x, z) + 2) % 4; // drills the way you're looking
     else if (id === ITEM_COUNTER) id += ((facingTowardPlayer(x, z) + 2) % 4) * 2; // passes things on the way you're looking
     else if ([OBSERVER, GAUGE, HARVESTER, EJECTOR, TREE_FELLER, PLANTER, BREAKER, PLACER, QUARRY].includes(id)) id += (facingTowardPlayer(x, z) + 2) % 4; // looks (or reaps) the way you're looking
@@ -3508,6 +3921,8 @@ function placeInner() {
   logic.near(world, x, y, z); // (a block put down beside a wire or logic block can change what it gets)
   sound.place(BLOCKS[id].sound);
   inventory.consumeHeld();
+  if (isWheat(id) || isCrop(id)) notePlanting(x, y, z, id);
+  if (id === LIGHTHOUSE_LAMP) beaconSpots.add(`${x},${y},${z}`);
   if (id === TELEPAD) {
     const p = machines.padPlaced(x, y, z);
     toast(p ? `Teleport pad: paired with the pad at ${p[0]}, ${p[1]}, ${p[2]}` : 'Teleport pad: put down another one to pair it with this', 3000);
@@ -3750,7 +4165,8 @@ function updateBreaking(dt) {
       carts.remove(c);
       targetCart = null;
       breakState.cart = 0;
-      giveDrops([[c.store ? STORAGE_CART : MINECART, 1], ...(c.store?.inputs ?? []).filter(Boolean).map((it) => [it.id, it.count])]);
+      giveDrops([[c.loco ? LOCOMOTIVE : c.store ? STORAGE_CART : MINECART, 1], ...(c.loco?.coal ? [[COAL, c.loco.coal]] : []),
+        ...(c.store?.inputs ?? []).filter(Boolean).map((it) => [it.id, it.count])]);
     }
     crack.visible = false;
     return;
@@ -3855,8 +4271,9 @@ function breakBlock(x, y, z) {
   if (isLamp(id)) lamps.delete(lampKey(x, y, z));
   if (isSign(id)) signs.remove(x, y, z);
   if (isSign(id) || isBed(id)) { dropWaypoint(x, y, z); dropWaypoint(...bedPartnerOr(x, y, z, id)); }
-  if (isFrame(id)) { const item = frames.remove(x, y, z); if (item) drops.push([item, 1]); }
+  if (isFrame(id) || isDisplay(id)) { const item = frames.remove(x, y, z); if (item) drops.push([item, 1]); }
   if (id === ZIP_POST) drops.push(...unlinkZips(x, y, z));
+  if (id === LIGHTHOUSE_LAMP) beaconSpots.delete(`${x},${y},${z}`);
   if (stationKind(id)) loose.spill(stations.removeStacks(x, y, z), x, y, z); // whatever was inside spills out
   if (isElectricLamp(id)) electric.signalLamps.delete(`${x},${y},${z}`);
   if (def.machine || def.engine || def.sensor || def.ejector || def.hopper || def.tank || def.farm || def.quarry || def.pad || def.spawner) loose.spill(machines.removeAt(x, y, z).map(([i, n, st]) => ({ id: i, count: n, ...st })), x, y, z); // and whatever was on a belt or in a drill
@@ -3928,7 +4345,7 @@ function treeAbove(x, y, z) {
       if (seen.has(key)) continue;
       seen.add(key);
       const id = world.get(nx, ny, nz);
-      if (id === LEAVES) leafy = true;
+      if (isLeaves(id)) leafy = true;
       else if (id === LOG && logs.length < MAX_FELL) { logs.push([nx, ny, nz]); queue.push([nx, ny, nz]); }
     }
   }
@@ -4004,6 +4421,9 @@ $('btn-menu').addEventListener('click', () => {
 $('btn-close-menu').addEventListener('click', () => { $('menu').classList.add('hidden'); paused = false; });
 $('btn-autojump').addEventListener('click', () => { player.autoJump = !player.autoJump; updateAutoJumpLabel(); saveGame(); });
 function updateWearLabel() { $('btn-wear').textContent = `Tool wear: ${settings.wear ? 'on' : 'off'}`; }
+function updateRefillLabel() { inventory.autoRefill = settings.autoRefill !== false; $('btn-refill').textContent = `Auto-refill hotbar: ${inventory.autoRefill ? 'on' : 'off'}`; }
+updateRefillLabel();
+$('btn-refill').addEventListener('click', () => { settings.autoRefill = settings.autoRefill === false; updateRefillLabel(); saveSettings(); });
 updateWearLabel();
 $('btn-wear').addEventListener('click', () => { settings.wear = !settings.wear; updateWearLabel(); saveSettings(); });
 $('btn-save').addEventListener('click', () => toast(saveGame() ? 'World saved' : 'Could not save (storage unavailable)'));
@@ -4287,6 +4707,7 @@ $('btn-close-guide').addEventListener('click', () => { $('guide').classList.add(
 // ---------- world map ----------
 const worldMap = new WorldMap($('worldmap'), $('bigmap'), minimap, {
   marks: () => waypoints,
+  places: () => [...places, ...treasures.filter((t) => !t.found).map((t) => ({ kind: 'treasure', x: t.x, z: t.z, name: 'X' }))],
   home: () => bedSpawn ?? (world.spawnCache ??= world.generator.findSpawn()),
   toggleMark(x, z, near) {
     if (near) { waypoints = waypoints.filter((w) => w !== near); toast(`Removed ${near.name}`, 1200); sound.click(); return; }
@@ -4503,6 +4924,557 @@ function toggleWaypoint(x, y, z, id) {
 }
 const dropWaypoint = (x, y, z) => { waypoints = waypoints.filter((w) => !(w.x === x && w.y === y && w.z === z)); };
 
+// ---------- v25 C: explorer's map, treasure maps, lighthouse beams, morning fog, settling snow ----------
+// Carrying an explorer's map, the ruins, wrecks, lighthouses, volcanoes and villages you come near are marked on
+// the world map.
+let places = []; // [{ kind, x, z, name }]
+const PLACE_NAMES = { ruin: 'Ruin', wreck: 'Shipwreck', lighthouse: 'Lighthouse', volcano: 'Volcano', village: 'Village', temple: 'Sunken Temple', island: 'Sky Island' };
+let exploreTimer = 0;
+function tickExplore(dt) {
+  if ((exploreTimer -= dt) > 0) return;
+  exploreTimer = 2;
+  if (!inventory.count(EXPLORER_MAP)) return;
+  const g = world.generator, p = player.pos, pcx = Math.floor(p.x / CHUNK), pcz = Math.floor(p.z / CHUNK);
+  const mark = (kind, x, z, name) => {
+    if (Math.hypot(x - p.x, z - p.z) > 48 || places.some((q) => q.kind === kind && Math.abs(q.x - x) < 8 && Math.abs(q.z - z) < 8)) return;
+    places.push({ kind, x: Math.round(x), z: Math.round(z), name: name ?? PLACE_NAMES[kind] });
+    toast(`Explorer's map: marked ${name ?? `a ${PLACE_NAMES[kind].toLowerCase()}`}`, 2000);
+    sound.pop();
+  };
+  for (let cz = pcz - 3; cz <= pcz + 3; cz++) for (let cx = pcx - 3; cx <= pcx + 3; cx++) {
+    const r = g.ruinAt?.(cx, cz); if (r) mark('ruin', r.x + 3, r.z + 3);
+    const w = g.wreckAt?.(cx, cz); if (w) mark('wreck', w.x + 2, w.z);
+    const l = g.lighthouseAt?.(cx, cz); if (l) mark('lighthouse', l.x, l.z);
+    const v = g.volcanoAt?.(cx, cz); if (v) mark('volcano', v.x, v.z);
+    const tp = g.templeAt?.(cx, cz); if (tp) mark('temple', tp.x, tp.z);
+    const il = g.islandAt?.(cx, cz); if (il) mark('island', il.x, il.z);
+  }
+  const v = g.nearestVillage(p.x, p.z, 1);
+  if (v) mark('village', v.x, v.z, v.name);
+}
+
+// A treasure map, the first time it's read, leads to a chest buried somewhere 120-280 blocks away on dry land.
+// The chest is put in the ground once that part of the world is loaded.
+let treasures = []; // [{ id, x, z, y, placed, found }]
+const pointName = (dx, dz) => ['north', 'north-east', 'east', 'south-east', 'south', 'south-west', 'west', 'north-west'][(Math.round(Math.atan2(dx, -dz) / (Math.PI / 4)) + 8) % 8];
+function readTreasureMap(s) {
+  let t = s.pack > 0 && packs.get(s.pack)?.treasure !== undefined ? treasures.find((tr) => tr.id === packs.get(s.pack).treasure) : null;
+  if (!t) {
+    const g = world.generator;
+    for (let tries = 0; tries < 40 && !t; tries++) {
+      const a = Math.random() * Math.PI * 2, d = 120 + Math.random() * 160;
+      const x = Math.floor(player.pos.x + Math.cos(a) * d), z = Math.floor(player.pos.z + Math.sin(a) * d);
+      if (x < 8 || z < 8 || x >= WORLD_SIZE - 8 || z >= WORLD_SIZE - 8) continue;
+      const h = g.height(x, z);
+      if (h <= SEA_LEVEL + 1 || h >= H - 4) continue;
+      t = { id: treasures.reduce((m, tr) => Math.max(m, tr.id), 0) + 1, x, z, y: null, placed: false, found: false };
+    }
+    if (!t) { toast('The map is too faded to read', 1800); return; }
+    treasures.push(t);
+    s.pack = newPack({ treasure: t.id });
+    inventory.onChange();
+  }
+  if (t.found) { toast('This treasure has been found', 1800); return; }
+  const dx = t.x + 0.5 - player.pos.x, dz = t.z + 0.5 - player.pos.z, d = Math.hypot(dx, dz);
+  toast(d < 3 ? 'X marks the spot: dig here!' : `X marks the spot: ${Math.round(d)} blocks ${pointName(dx, dz)} (it's on your world map)`, 3000);
+  sound.click();
+}
+let treasureTimer = 0;
+function tickTreasure(dt) {
+  if ((treasureTimer -= dt) > 0) return;
+  treasureTimer = 2;
+  for (const t of treasures) {
+    if (t.placed || !world.chunkAt(t.x, t.z)) continue;
+    let y = H - 2;
+    while (y > 1 && !(world.isSolid(t.x, y, t.z) && !isLeaves(world.get(t.x, y, t.z)))) y--;
+    t.y = Math.max(1, y - 2);
+    world.setBlock(t.x, t.y, t.z, CHEST);
+    const st = stations.get(t.x, t.y, t.z, 'chest');
+    TREASURE_LOOT.forEach(([id, a, b, p], i) => { if (Math.random() < p) st.inputs[i * 2] = { id, count: a + Math.floor(Math.random() * (b - a + 1)) }; });
+    t.placed = true;
+  }
+}
+
+// Lighthouse lamps sweep two beams of light round at night.
+let beaconSpots = new Set(); // lamps you've put down: "x,y,z"
+const beams = new Map(); // "x,y,z" -> mesh
+const beamMat = new THREE.MeshBasicMaterial({ color: 0xfff0b8, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide });
+function beamMesh() {
+  const g = new THREE.Group();
+  for (const s of [1, -1]) {
+    const cone = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 3.2, 36, 12, 1, true), beamMat);
+    cone.rotation.z = s * Math.PI / 2;
+    cone.position.x = s * 18.4;
+    g.add(cone);
+  }
+  return g;
+}
+let beamTimer = 0;
+function tickBeams(dt) {
+  const night = Math.max(0, Math.min(1, (0.55 - lightUniforms.uDay.value) * 2.5));
+  beamMat.opacity = night * 0.32;
+  for (const m of beams.values()) { m.rotation.y += dt * 0.9; m.visible = night > 0.02; }
+  if ((beamTimer -= dt) > 0) return;
+  beamTimer = 1;
+  const want = new Set();
+  const g = world.generator, pcx = Math.floor(player.pos.x / CHUNK), pcz = Math.floor(player.pos.z / CHUNK), r = Math.ceil(settings.viewDistance ?? 4) + 2;
+  for (let cz = pcz - r; cz <= pcz + r; cz++) for (let cx = pcx - r; cx <= pcx + r; cx++) {
+    const l = g.lighthouseAt?.(cx, cz);
+    if (l && world.chunkAt(l.x, l.z) && world.get(l.x, l.lamp, l.z) === LIGHTHOUSE_LAMP) want.add(`${l.x},${l.lamp},${l.z}`);
+  }
+  for (const k of [...beaconSpots]) {
+    const [x, y, z] = k.split(',').map(Number);
+    if (!world.chunkAt(x, z)) continue;
+    if (world.get(x, y, z) !== LIGHTHOUSE_LAMP) { beaconSpots.delete(k); continue; }
+    if (Math.hypot(x - player.pos.x, z - player.pos.z) < (r + 2) * CHUNK) want.add(k);
+  }
+  for (const [k, m] of beams) if (!want.has(k)) { scene.remove(m); m.traverse((o) => o.geometry?.dispose()); beams.delete(k); }
+  for (const k of want) {
+    if (beams.has(k)) continue;
+    const [x, y, z] = k.split(',').map(Number), m = beamMesh();
+    m.position.set(x + 0.5, y + 0.45, z + 0.5);
+    scene.add(m);
+    beams.set(k, m);
+  }
+}
+
+// Some mornings, mist lies in the valleys: thickest at dawn, gone by mid-morning, and thinner up high.
+function mistNow() {
+  const hours = (sky.time * 24 + 6) % 24;
+  if (hours < 4.5 || hours > 9.5) return 0;
+  const foggy = ((Math.imul(day + 1, 0x9e3779b1) ^ world.seed) >>> 0) % 100 < 40;
+  if (!foggy || world.generator.biomeAt(Math.floor(player.pos.x), Math.floor(player.pos.z)) === 'desert') return 0;
+  const t = hours < 6.5 ? (hours - 4.5) / 2 : 1 - (hours - 6.5) / 3;
+  const low = Math.max(0.25, Math.min(1, 1 - (player.pos.y - SEA_LEVEL - 10) / 25));
+  return Math.max(0, Math.min(1, t)) * low;
+}
+
+// Snow settles on the ground (and on leaves) under the open sky while it snows, and melts away out of winter
+// (but not in the tundra).
+let snowTimer = 0;
+function tickSnow(dt) {
+  if ((snowTimer -= dt) > 0) return;
+  snowTimer = 0.25;
+  const winter = seasonOf(day) === 3;
+  const snowing = weather.raining && weather.kind === 'snow' && weather.level > 0.3;
+  for (let k = 0; k < 4; k++) {
+    const x = Math.floor(player.pos.x + (Math.random() - 0.5) * 48), z = Math.floor(player.pos.z + (Math.random() - 0.5) * 48);
+    if (!world.chunkAt(x, z)) continue;
+    let y = Math.min(H - 2, Math.floor(player.pos.y) + 24);
+    while (y > Math.floor(player.pos.y) - 24 && world.get(x, y, z) === AIR) y--;
+    const id = world.get(x, y, z);
+    if (id === SNOW_LAYER) {
+      const tundra = world.generator.biomeAt(x, z) === 'tundra';
+      if (!winter && !tundra && Math.random() < 0.5) world.setBlock(x, y, z, AIR);
+      continue;
+    }
+    if (!snowing || world.skyAt(x, y + 1, z) < MAX_LIGHT) continue;
+    const d = BLOCKS[id];
+    if ((d?.shape === 'cube' && d.solid && !d.liquid && !d.station) || isLeaves(id)) world.setBlock(x, y + 1, z, SNOW_LAYER);
+  }
+}
+
+// ---------- v25 D: pets that fetch and bring presents ----------
+// Throw a stick (the drop key, or drag it out of your bag) and a tame wolf that isn't told to stay runs after it
+// and brings it back. A tame cat, now and then of a morning, leaves you a present.
+let catGiftDay = -1;
+const CAT_GIFTS = [[FEATHER, 1, 2], [STRING, 1, 2], [RAW_FISH, 1, 1], [SEEDS, 2, 4], [BERRIES, 1, 3], [OLD_BOOT, 1, 1], [CARROT, 1, 2], [POTATO, 1, 2]];
+function tickPets(dt) {
+  for (const m of mobs.mobs) {
+    if (m.kind !== 'wolf' || !m.tame) continue;
+    if (m.sitting || m.dying) { if (m.fetch) { m.fetch = null; m.goal = null; } continue; }
+    if (m.carrying) {
+      // bring it back and drop it at your feet
+      m.goal = player.pos;
+      if (Math.hypot(m.pos.x - player.pos.x, m.pos.z - player.pos.z) < 2) {
+        const dx = player.pos.x - m.pos.x, dz = player.pos.z - m.pos.z; // dropped (tossed) at your feet
+        loose.spawn(m.carrying, { x: m.pos.x, y: m.pos.y + 0.5, z: m.pos.z }, { x: dx * 2, y: 2.5, z: dz * 2 }, 0);
+        m.carrying = null; m.goal = null; m.parts.carry?.(false);
+        sound.mob('wolf', 0.7);
+      }
+      continue;
+    }
+    if (m.fetch) {
+      if (!loose.items.includes(m.fetch)) { m.fetch = null; m.goal = null; continue; } // someone picked it up
+      m.goal = m.fetch.pos;
+      if (m.fetch.ground && Math.hypot(m.pos.x - m.fetch.pos.x, m.pos.z - m.fetch.pos.z) < 1.1 && Math.abs(m.pos.y - m.fetch.pos.y) < 1.5) {
+        m.carrying = { ...m.fetch.stack };
+        loose.remove(m.fetch);
+        m.fetch = null; m.parts.carry?.(true);
+      }
+      continue;
+    }
+    // look for a stick you've thrown
+    const stick = loose.items.find((it) => it.thrown && !mobs.mobs.some((o) => o.fetch === it) && it.pos.distanceTo(m.pos) < 24);
+    if (stick) { m.fetch = stick; m.goal = stick.pos; sound.mob('wolf', 0.5); }
+  }
+  // a cat's morning present
+  const hours = (sky.time * 24 + 6) % 24;
+  if (catGiftDay !== day && hours > 6.2 && hours < 10) {
+    const cat = mobs.mobs.find((m) => m.kind === 'cat' && m.tame && !m.dying && Math.hypot(m.pos.x - player.pos.x, m.pos.z - player.pos.z) < 32);
+    if (cat) {
+      catGiftDay = day;
+      if (Math.random() < 0.6) {
+        const [id, a, b] = CAT_GIFTS[Math.floor(Math.random() * CAT_GIFTS.length)];
+        loose.spawn({ id, count: a + Math.floor(Math.random() * (b - a + 1)) }, { x: cat.pos.x, y: cat.pos.y + 0.4, z: cat.pos.z }, { x: 0, y: 2, z: 0 }, 0.5);
+        sound.mob('cat', 0.8);
+        toast(`Your cat has left you a present: ${itemName(id)}`, 2500);
+      }
+    }
+  }
+}
+
+// ---------- v26 A: village life ----------
+// Villagers go home at dusk and come out again when the bell rings in the morning. Trading with them, and
+// selling to them from a market stall, makes a village prosper: every so many deals it builds another house
+// (and another villager moves in).
+let villageGrowth = new Map(); // "x,z" of the well -> { deals, built: [house, ...] }
+let bellDay = -1;
+const DEALS_PER_HOUSE = 12;
+const villageKey = (v) => `${v.x},${v.z}`;
+// The houses a village has built since it was first found go back on its list (the blocks themselves are
+// saved with the world like any others).
+function villageHouses(v) {
+  if (!v || v.grown) return;
+  v.grown = true;
+  for (const h of villageGrowth.get(villageKey(v))?.built ?? []) if (!v.houses.some((o) => o.x === h.x && o.z === h.z)) v.houses.push({ ...h });
+}
+function growVillage(v, n = 1) {
+  villageHouses(v);
+  const g = villageGrowth.get(villageKey(v)) ?? { deals: 0, built: [] };
+  villageGrowth.set(villageKey(v), g);
+  g.deals += n;
+  if (g.deals >= DEALS_PER_HOUSE * (g.built.length + 1) && g.built.length < 6) {
+    const h = buildVillageHouse(v);
+    if (h) { g.built.push(h); v.houses.push({ ...h }); toast(`${v.name} is doing well: the villagers have built a new house`, 3000); }
+  }
+}
+// Find a level, clear patch 16-22 blocks from the well (in loaded ground) and build a house like the others.
+function groundAt(x, z) {
+  for (let y = H - 2; y > 1; y--) {
+    const id = world.get(x, y, z);
+    if (id === AIR || !BLOCKS[id]?.solid || isLeaves(id) || id === LOG) { if (id !== AIR && id !== undefined && (isLeaves(id) || id === LOG)) return null; continue; }
+    return y;
+  }
+  return null;
+}
+function buildVillageHouse(v) {
+  const base = Math.random() * Math.PI * 2;
+  for (let i = 0; i < 24; i++) {
+    const a = base + i * 0.9, d = 16 + (i % 4) * 2;
+    const hx = Math.round(v.x + Math.cos(a) * d), hz = Math.round(v.z + Math.sin(a) * d);
+    if (v.houses.some((o) => Math.hypot(o.x - hx, o.z - hz) < 8) || (v.farm && Math.hypot(v.farm.x - hx, v.farm.z - hz) < 7)) continue;
+    let ok = true, hy = null;
+    for (let dz = -3; dz <= 3 && ok; dz++) for (let dx = -3; dx <= 3 && ok; dx++) {
+      if (!world.chunkAt(hx + dx, hz + dz)) { ok = false; break; }
+      const g = groundAt(hx + dx, hz + dz);
+      if (g === null || world.isWater(hx + dx, g, hz + dz) || world.isWater(hx + dx, g + 1, hz + dz)) { ok = false; break; }
+      if (hy === null && !dx && !dz) hy = g;
+    }
+    if (!ok) continue;
+    hy = groundAt(hx, hz);
+    for (let dz = -2; dz <= 2 && ok; dz++) for (let dx = -2; dx <= 2 && ok; dx++) if (Math.abs(groundAt(hx + dx, hz + dz) - hy) > 2) ok = false;
+    if (!ok) continue;
+    const ddx = v.x - hx, ddz = v.z - hz;
+    const door = Math.abs(ddx) > Math.abs(ddz) ? [Math.sign(ddx) * 2, 0] : [0, Math.sign(ddz) * 2];
+    const h = { x: hx, y: hy, z: hz, door };
+    placeHouse(h);
+    return h;
+  }
+  return null;
+}
+function placeHouse({ x, y, z, door }) {
+  const set = (bx, by, bz, id) => world.setBlock(bx, by, bz, id);
+  for (let dz = -2; dz <= 2; dz++) for (let dx = -2; dx <= 2; dx++) {
+    const wx = x + dx, wz = z + dz, edge = Math.abs(dx) === 2 || Math.abs(dz) === 2, corner = Math.abs(dx) === 2 && Math.abs(dz) === 2;
+    for (let yy = y - 1; yy > y - 6; yy--) { const id = world.get(wx, yy, wz); if (id !== AIR && BLOCKS[id]?.solid && !world.isWater(wx, yy, wz)) break; set(wx, yy, wz, COBBLE); }
+    set(wx, y, wz, edge ? COBBLE : PLANKS);
+    for (let k = 1; k <= 3; k++) set(wx, y + k, wz, corner ? LOG : edge ? (k === 2 && (dx === 0 || dz === 0) ? GLASS_PANE : PLANKS) : AIR);
+    set(wx, y + 4, wz, PLANKS);
+    set(wx, y + 5, wz, edge ? AIR : slabId(0));
+    for (let k = 6; k <= 8; k++) if (world.get(wx, y + k, wz) !== AIR && !BLOCKS[world.get(wx, y + k, wz)]?.solid) set(wx, y + k, wz, AIR);
+  }
+  const dx = x + door[0], dz = z + door[1], facing = door[1] ? 0 : 1;
+  set(dx, y + 1, dz, doorId(facing, false, false));
+  set(dx, y + 2, dz, doorId(facing, false, true));
+  const bx = x - Math.sign(door[0]), bz = z - Math.sign(door[1]);
+  const tw = door[0] > 0 ? 0 : door[0] < 0 ? 1 : door[1] > 0 ? 2 : 3;
+  set(bx, y + 2, bz, TORCH_WALL_W + tw);
+  const side = door[0] ? [0, 1] : [1, 0];
+  set(x + side[0], y + 1, z + side[1], FURN_TABLE);
+  set(x - side[0], y + 1, z - side[1], CHEST);
+  // a path of gravel out of the door
+  for (let k = 1; k <= 3; k++) {
+    const px = dx + Math.sign(door[0]) * k, pz = dz + Math.sign(door[1]) * k, g = groundAt(px, pz);
+    if (g !== null && [GRASS, DIRT].includes(world.get(px, g, pz))) set(px, g, pz, GRAVEL);
+  }
+}
+// What villagers pay at a stall: [how many they take, coins]. Food by how filling it is, metal well, and
+// building stuff cheaply.
+function stallPrice(id) {
+  if (id === FINE_WINE || id === AGED_CHEESE || id === PEARL) return [1, 6]; // the best things villagers can buy
+  if (id === WINE || id === CHEESE) return [1, 3];
+  const food = foodValue(id);
+  if (food) return food >= 6 ? [1, 2] : food >= 3 ? [1, 1] : [2, 1];
+  if (id === GOLD_INGOT || id === STARSTEEL_INGOT) return [1, 5];
+  if (/Ingot$/.test(ITEMS[id]?.name ?? '')) return [1, 2];
+  if (id === COIN) return null;
+  if (isBlock(id)) return [8, 1];
+  return [4, 1];
+}
+const STALL_REACH = 9;
+let stallTimer = 0;
+// A villager near a stall, in the daytime, buys one lot of whatever is on it every so often and pays into it.
+function tickStalls(dt) {
+  stallTimer -= dt;
+  if (stallTimer > 0) return;
+  stallTimer = 2;
+  if (mobs.villagerNight()) return;
+  for (const [k, st] of stations.map) {
+    if (st.kind !== 'stall') continue;
+    st.sellIn = (st.sellIn ?? 18) - 2;
+    if (st.sellIn > 0) continue;
+    const [x, y, z] = k.split(',').map(Number);
+    if (Math.hypot(x - player.pos.x, z - player.pos.z) > 96) continue;
+    const buyer = mobs.mobs.find((m) => m.spec.villager && !m.indoors && !m.dying && Math.hypot(m.pos.x - x - 0.5, m.pos.z - z - 0.5) < STALL_REACH);
+    if (!buyer) continue;
+    const i = st.inputs.findIndex((s2) => s2 && s2.id !== COIN && stallPrice(s2.id));
+    if (i < 0) continue;
+    const stack = st.inputs[i], [n, coins] = stallPrice(stack.id);
+    if (stack.count < n) continue;
+    // room for the coins?
+    const ci = st.inputs.findIndex((s2) => s2 && s2.id === COIN && s2.count + coins <= maxStack(COIN));
+    const free = ci >= 0 ? ci : (stack.count === n ? i : st.inputs.findIndex((s2) => !s2));
+    if (free < 0) continue;
+    stack.count -= n;
+    if (!stack.count) st.inputs[i] = null;
+    if (st.inputs[free]?.id === COIN) st.inputs[free].count += coins; else st.inputs[free] = { id: COIN, count: coins };
+    st.sellIn = 14 + Math.random() * 10;
+    buyer.heading = Math.atan2(x + 0.5 - buyer.pos.x, z + 0.5 - buyer.pos.z); buyer.yaw = buyer.heading; buyer.state = 'idle'; buyer.timer = 2;
+    const d = Math.hypot(x - player.pos.x, y - player.pos.y, z - player.pos.z);
+    if (d < 20) { sound.mob('villager', 0.6 * (1 - d / 20)); sound.pop(); }
+    if (openStationAt && openStationAt.x === x && openStationAt.y === y && openStationAt.z === z) renderStation?.();
+    if (buyer.home) growVillage(buyer.home);
+  }
+}
+// The bell, first thing in the morning: the villagers come out.
+function tickVillages(dt) {
+  world.day = day;
+  const hours = (sky.time * 24 + 6) % 24;
+  mobs.hour = hours;
+  const v = world.generator.nearestVillage(player.pos.x, player.pos.z, 1);
+  if (v) villageHouses(v);
+  if (v && bellDay !== day && hours > 6.05 && hours < 9) {
+    bellDay = day;
+    const d = Math.hypot(v.x + 2 - player.pos.x, v.z - player.pos.z);
+    if (d < 64) { sound.ding(Math.max(0.15, 1 - d / 64)); setTimeout(() => sound.ding(Math.max(0.15, 1 - d / 64) * 0.8), 700); toast(`The bell rings in ${v.name}: the villagers are up and about`, 2600); }
+  }
+  tickStalls(dt);
+}
+
+// ---------- v26 E: temple and sky-island puzzles, diving ----------
+// A sunken temple's vault opens when each of its three levers matches the lamp above it (lit: on, dark: off).
+// A sky island's opens when you step on its plates in the order of the wool over the vault's gate.
+let puzzleTimer = 0;
+const islandSteps = new Map(); // island "x,z" -> plate indexes stepped on so far
+let lastPlate = null;
+function openVault(gate, water, msg) {
+  for (const [x, y, z] of gate) world.setBlock(x, y, z, water ? WATER : AIR);
+  sound.boom(0.4); setTimeout(() => sound.ding(0.6), 300);
+  toast(msg, 3000);
+  achieve('vault');
+}
+function tickPuzzles(dt) {
+  if ((puzzleTimer -= dt) > 0) return;
+  puzzleTimer = 0.2;
+  const g = world.generator, pcx = Math.floor(player.pos.x / CHUNK), pcz = Math.floor(player.pos.z / CHUNK);
+  const fx = Math.floor(player.pos.x), fy = Math.floor(player.pos.y + 0.05), fz = Math.floor(player.pos.z);
+  for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) {
+    const t = g.templeAt(pcx + dx, pcz + dz);
+    if (t && world.chunkAt(t.x, t.z) && world.get(...t.gate[0]) === VAULT_GATE) {
+      const ok = t.levers.every(([x, y, z], i) => { const d = BLOCKS[world.get(x, y, z)]; return d?.switch === 'lever' && d.on === t.code[i]; });
+      if (ok) openVault(t.gate, true, 'With a deep grinding, the vault gate sinks into the floor');
+    }
+    const il = g.islandAt(pcx + dx, pcz + dz);
+    if (il && world.chunkAt(il.x, il.z) && world.get(...il.gate[0]) === VAULT_GATE) {
+      const k = il.plates.findIndex(([x, y, z]) => x === fx && y === fy && z === fz);
+      const key = `${il.x},${il.z}`;
+      if (k < 0) { if (lastPlate === key) lastPlate = null; continue; }
+      if (lastPlate === key) continue; // still standing on it
+      lastPlate = key;
+      const steps = [...(islandSteps.get(key) ?? []), k];
+      if (il.order[steps.length - 1] !== k) {
+        islandSteps.set(key, []);
+        if (sound.ready) sound.tone(140, 0.35, 0.25, 'square', 90);
+        toast('Clunk. The plates reset: that wasn\'t the right order', 2000);
+      } else if (steps.length === 3) {
+        islandSteps.delete(key);
+        openVault(il.gate, false, 'Click, click, click... and the vault gate slides away');
+      } else {
+        islandSteps.set(key, steps);
+        sound.click();
+      }
+    }
+  }
+}
+let pumpTimer = 0, pumpNear = false;
+function airPumpNear(dt) {
+  if ((pumpTimer -= dt) > 0) return pumpNear;
+  pumpTimer = 1;
+  pumpNear = false;
+  const px = Math.floor(player.pos.x), py = Math.floor(player.pos.y), pz = Math.floor(player.pos.z);
+  for (let y = py; y <= Math.min(H - 1, py + 24) && !pumpNear; y++) for (let dz = -12; dz <= 12 && !pumpNear; dz++) for (let dx = -12; dx <= 12; dx++) {
+    if (world.get(px + dx, y, pz + dz) === AIR_PUMP) { pumpNear = true; break; }
+  }
+  return pumpNear;
+}
+
+// ---------- v26 C: crop rotation ----------
+// The soil remembers what grew in it last (see world.planted): the same crop again tires it.
+const CROP_NAMES = { wheat: 'wheat', carrot: 'carrots', potato: 'potatoes', pumpkin: 'pumpkins', grape: 'grapes' };
+const cropKind = (id) => (isWheat(id) ? 'wheat' : BLOCKS[id]?.crop?.kind ?? null);
+function notePlanting(x, y, z, id) {
+  const kind = cropKind(id);
+  if (!kind) return 0;
+  const tired = world.planted(x, y - 1, z, kind);
+  if (tired >= 1) toast(`This soil is ${tired >= 3 ? 'worn out' : tired === 2 ? 'tired' : 'a little tired'} from ${CROP_NAMES[kind]}: rotate crops, rest it a season, or fertilise it`, 2600);
+  return tired;
+}
+
+// ---------- v26 B: thunderstorms, fire, hail ----------
+// Some spells of rain are thunderstorms: lightning strikes the ground now and then within sight, lights up the
+// sky, and can set trees alight; the thunder follows a moment later. Up in the mountains rain falls as hail,
+// which stings if your head's bare.
+const HAIL_HEIGHT = 50;
+let strikeIn = 20, hailIn = 3, flashLevel = 0;
+const fires = new Map(); // "x,y,z" -> seconds left burning
+
+// ---------- fireplaces ----------
+// A fireplace burns what you feed it (tap it with logs, planks, sticks or coal), lighting and warming the
+// room. Smoke rises out of the top of a chimney built straight up from it; with no chimney it puffs out
+// into the room instead.
+const hearths = new Map(); // "x,y,z" -> seconds of fire left
+const MAX_HEARTH = 1800;
+let hearthTimer = 0, smokyWarned = false;
+function feedHearth(x, y, z, held) {
+  const per = HEARTH_FUEL[held.id];
+  const k = `${x},${y},${z}`, left = hearths.get(k) ?? 0;
+  const n = Math.max(0, Math.min(held.count, Math.ceil((MAX_HEARTH - left) / per)));
+  if (!n) { toast('The fireplace is full of fuel', 1500); return; }
+  takeFromHeld(n);
+  hearths.set(k, left + n * per);
+  const id = world.get(x, y, z);
+  if (!BLOCKS[id].lit) world.setBlock(x, y, z, id + 4);
+  sound.crackle(1);
+  toast(`The fire will burn for ${hearthTime(left + n * per)}${chimneyTop(x, y, z) ? '' : ' (build a chimney on top for the smoke)'}`, 2200);
+}
+const hearthTime = (t) => (t >= 90 ? `${Math.round(t / 60)} minutes` : `${Math.ceil(t)} seconds`);
+// The top of the chimney over a fireplace: the y of the topmost chimney block, or 0 for none.
+function chimneyTop(x, y, z) {
+  let top = 0;
+  for (let h = y + 1; h < H && world.get(x, h, z) === CHIMNEY; h++) top = h;
+  return top;
+}
+function tickHearths(dt) {
+  if (!hearths.size) return;
+  hearthTimer -= dt;
+  const puff = hearthTimer <= 0;
+  if (puff) hearthTimer = 0.35;
+  for (const [k, left] of [...hearths]) {
+    const [x, y, z] = k.split(',').map(Number);
+    if (!world.chunkAt(x, z)) continue;
+    const id = world.get(x, y, z);
+    if (!BLOCKS[id]?.hearth) { hearths.delete(k); continue; }
+    const t = left - dt;
+    if (t <= 0) { hearths.delete(k); if (BLOCKS[id].lit) world.setBlock(x, y, z, id - 4); continue; }
+    hearths.set(k, t);
+    if (!puff) continue;
+    const near = Math.hypot(x + 0.5 - player.pos.x, z + 0.5 - player.pos.z);
+    if (near > 96) continue;
+    const top = chimneyTop(x, y, z);
+    if (top && !world.isSolid(x, top + 1, z)) smoke.puff(x + 0.5, top + 1.05, z + 0.5, { grey: 0.62, size: 0.55, life: 5, rise: 1 });
+    else if (!top) {
+      // no chimney: smoke billows out of the front into the room
+      const [dx, dz] = FACING_DIRS[BLOCKS[id].facing];
+      if (Math.random() < 0.5) smoke.puff(x + 0.5 + dx * 0.6, y + 0.8, z + 0.5 + dz * 0.6, { grey: 0.45, size: 0.4, life: 3, rise: 0.5, spread: 0.4 });
+      if (near < 6 && !smokyWarned) { smokyWarned = true; toast('The room is filling with smoke! Build a chimney up from the fireplace.', 3000); }
+    }
+  }
+}
+// A burning fireplace close by warms you quickly.
+function hearthNear(r = 6) {
+  const px = player.pos.x, py = player.pos.y, pz = player.pos.z;
+  for (const k of hearths.keys()) {
+    const [x, y, z] = k.split(',').map(Number);
+    if (Math.abs(x + 0.5 - px) <= r && Math.abs(y - py) <= 3 && Math.abs(z + 0.5 - pz) <= r) return true;
+  }
+  return false;
+}
+function topBlock(x, z) {
+  for (let y = H - 1; y > 0; y--) { const id = world.get(x, y, z); if (id !== AIR && !(BLOCKS[id]?.liquid && !world.isWater(x, y, z))) return y; }
+  return null;
+}
+function lightning(x, z) {
+  const y = topBlock(x, z);
+  if (y === null) return false;
+  weather.bolt(x, y, z);
+  flashLevel = Math.max(flashLevel, 0.55 * Math.max(0.25, weather.level));
+  const d = Math.hypot(x + 0.5 - player.pos.x, z + 0.5 - player.pos.z);
+  setTimeout(() => sound.thunder(Math.max(0.2, 1 - d / 120), d < 24), Math.min(3000, d * 25));
+  const id = world.get(x, y, z);
+  if (isFlammable(id)) { igniteAt(x, y, z, true); for (const [dx, dy, dz] of SIDES6) if (Math.random() < 0.5) igniteAt(x + dx, y + dy, z + dz, true); }
+  else if (world.get(x, y + 1, z) === AIR && !world.isWater(x, y, z) && Math.random() < 0.3 && BLOCKS[id]?.solid) igniteAt(x, y + 1, z);
+  if (d < 3 && Math.abs(player.pos.y - y) < 4) damage(6, 'Struck by lightning');
+  for (const m of mobs.mobs) if (!m.dying && Math.hypot(m.pos.x - x - 0.5, m.pos.z - z - 0.5) < 2.5) { m.burning = 4; if (m.spec.hostile) m.dying = 0.4; }
+  return true;
+}
+// Set fire to the block at (x, y, z) (burning it away), or light the air there.
+function igniteAt(x, y, z, replace = false) {
+  if (fires.size > 240) return;
+  const id = world.get(x, y, z);
+  if (!(replace ? isFlammable(id) : id === AIR)) return;
+  world.setBlock(x, y, z, FIRE);
+  fires.set(`${x},${y},${z}`, 3 + Math.random() * 5);
+}
+let burnTimer = 0;
+function tickFires(dt) {
+  flashLevel = Math.max(0, flashLevel - dt * 2.5);
+  $('flash').style.opacity = flashLevel.toFixed(2);
+  burnTimer -= dt;
+  if (burnTimer > 0 || !fires.size) return;
+  const step = 0.5 - burnTimer; burnTimer = 0.5;
+  let nearest = Infinity;
+  for (const [k, left] of [...fires]) {
+    const [x, y, z] = k.split(',').map(Number);
+    if (world.get(x, y, z) !== FIRE) { fires.delete(k); continue; }
+    const wet = world.raining && world.skyAt(x, y + 1, z) >= MAX_LIGHT;
+    const t = left - step * (wet ? 3 : 1);
+    if (t <= 0) { fires.delete(k); world.setBlock(x, y, z, AIR); continue; }
+    fires.set(k, t);
+    for (const [dx, dy, dz] of SIDES6) if (Math.random() < (wet ? 0.015 : 0.065) * step * 2) igniteAt(x + dx, y + dy, z + dz, true);
+    nearest = Math.min(nearest, Math.hypot(x + 0.5 - player.pos.x, y + 0.5 - player.pos.y, z + 0.5 - player.pos.z));
+    // standing in it burns
+    if (Math.floor(player.pos.x) === x && Math.floor(player.pos.z) === z && (Math.floor(player.pos.y) === y || Math.floor(player.pos.y + 1) === y)) damage(1, 'Burned');
+  }
+  if (nearest < 16 && Math.random() < 0.7) sound.crackle(1 - nearest / 16);
+}
+function tickStorm(dt) {
+  if (weather.raining && weather.storm && weather.kind !== 'snow' && weather.kind !== 'sand' && (weather.overcast ?? 0) > 0.6) {
+    strikeIn -= dt;
+    if (strikeIn <= 0) {
+      strikeIn = 6 + Math.random() * 16;
+      const a = Math.random() * Math.PI * 2, d = 6 + Math.random() * 64;
+      const x = Math.floor(player.pos.x + Math.cos(a) * d), z = Math.floor(player.pos.z + Math.sin(a) * d);
+      if (world.chunkAt(x, z)) lightning(x, z);
+    }
+  }
+  // hail: a sting now and then if you're out in it with nothing on your head
+  if (weather.kind === 'hail' && weather.level > 0.5 && !armour[0]) {
+    hailIn -= dt;
+    if (hailIn <= 0) { hailIn = 3 + Math.random() * 3; damage(1, 'Pelted by hailstones'); }
+  }
+}
+
 // ---------- seasons ----------
 // The year turns through four seasons of SEASON_DAYS days each. Crops grow fastest in summer and
 // barely at all in winter; leaves turn in autumn and fall in winter, and winter frosts the grass and
@@ -4521,6 +5493,7 @@ function applySeason() {
   if (s === shownSeason || !world) return;
   shownSeason = s;
   world.growthRate = SEASONS[s].grow;
+  world.season = s;
   paintSeason(atlasCanvas, s);
   atlas.needsUpdate = true;
 }
@@ -4539,7 +5512,11 @@ function compassText() {
   let home = bedSpawn;
   if (!home) home = (world.spawnCache ??= world.generator.findSpawn());
   const dx = home.x + 0.5 - player.pos.x, dz = home.z + 0.5 - player.pos.z, d = Math.hypot(dx, dz);
-  return `facing ${pointOf(look.x, look.z)} · ${bedSpawn ? 'bed' : 'start'} ${d < 2 ? 'here' : `${Math.round(d)} ${pointOf(dx, dz)}`}`;
+  // and the nearest of your waypoints
+  let near = null, nd = Infinity;
+  for (const w of waypoints) { const wd = Math.hypot(w.x + 0.5 - player.pos.x, w.z + 0.5 - player.pos.z); if (wd < nd) { nd = wd; near = w; } }
+  const mark = near ? ` · ${near.name} ${nd < 2 ? 'here' : `${Math.round(nd)} ${pointOf(near.x + 0.5 - player.pos.x, near.z + 0.5 - player.pos.z)}`}` : '';
+  return `facing ${pointOf(look.x, look.z)} · ${bedSpawn ? 'bed' : 'start'} ${d < 2 ? 'here' : `${Math.round(d)} ${pointOf(dx, dz)}`}${mark}`;
 }
 
 // ---------- main loop ----------
@@ -4585,12 +5562,14 @@ function stepGame(now, dt) {
   if (!paused && here) {
     controls.update();
     const wasGround = player.onGround, wasWater = player.inWater, fallSpeed = -player.vel.y, prevY = player.pos.y;
+    smoke.update(dt, { x: 0.3 + (weather.storm ? 1.2 : 0), z: 0.12 }, sky.light);
     carts.update(dt, world, (x, y, z) => powerAt(x, y, z) || (signalAt(x, y, z) ? 1 : 0), riding && { cart: riding, push: controls.moveZ, look: player.lookDir() },
       { day: lightUniforms.uDay.value, flicker: lightUniforms.uFlicker.value, ambient: lightUniforms.uAmbient.value });
     vehicles.update(dt, world, boarded && { v: boarded, moveX: controls.moveX, moveZ: controls.moveZ, jump: controls.jump, down: controls.down, yaw: player.yaw },
       { day: lightUniforms.uDay.value, flicker: lightUniforms.uFlicker.value, ambient: lightUniforms.uAmbient.value }, { fuel: burnCoal });
     if (riding) followCart();
     else if (boarded) followVehicle();
+    else if (seated) followSeat();
     else if (zipping) tickZip(dt);
     else if (ridingMob) followMount();
     else if (tickGrapple(dt) || tickLift(dt)) { /* carried by the hook or a lift */ }
@@ -4601,6 +5580,20 @@ function stepGame(now, dt) {
     world.tickPlants(dt);
     world.tickLeaves(dt);
     tickLamps(dt);
+    tickExplore(dt); tickTreasure(dt); tickSnow(dt); tickVillages(dt); tickStorm(dt); tickFires(dt); tickPuzzles(dt); tickHearths(dt);
+    crows.update(dt, world, player.pos, {
+      day: lightUniforms.uDay.value,
+      eat: (x, y, z) => world.setBlock(x, y, z, WHEAT_3 - 2), // back to green shoots
+      caw: (p) => { const d = p.distanceTo(player.pos); if (d < 24) sound.mob('crow', 1 - d / 28); },
+    });
+    {
+      const hours = (sky.time * 24 + 6) % 24;
+      critters.update(dt, world, player, {
+        night: Math.max(0, Math.min(1, (0.55 - lightUniforms.uDay.value) * 2.5)), dusk: hours > 18.3 && hours < 20.5,
+        season: seasonOf(day), raining: weather.raining, light: Math.max(lightUniforms.uDay.value, lightUniforms.uAmbient.value),
+      });
+    }
+    tickPets(dt);
     tickFuses(dt);
     tickSwitches(dt);
     tickProgress(dt);
@@ -4630,6 +5623,7 @@ function stepGame(now, dt) {
     for (const id of picked) { inventory.add(id, 1); sound.pop(); }
     updateFishing(dt);
     bees.update(dt, world, player, { day: lightUniforms.uDay.value, flicker: lightUniforms.uFlicker.value, ambient: lightUniforms.uAmbient.value }, sky.light);
+    mobs.sneaking = controls.down && player.onGround; // (deer let you creep up on them)
     mobs.update(dt, player, { day: lightUniforms.uDay.value, flicker: lightUniforms.uFlicker.value, ambient: lightUniforms.uAmbient.value },
       { difficulty: difficulty(), daylight: sky.light, playerDead: dead, ride: ridingMob && { moveX: controls.moveX, moveZ: controls.moveZ, yaw: player.yaw } });
     if (ridingMob) followMount();
@@ -4670,11 +5664,13 @@ function stepGame(now, dt) {
 
   const biome = world.generator.biomeAt(Math.floor(player.pos.x), Math.floor(player.pos.z));
   // in winter it snows rather than rains in temperate land
-  weather.update(paused ? 0 : dt, eye, biome === 'temperate' && seasonOf(day) === 3 ? 'tundra' : biome, world.skyAt(Math.floor(eye.x), Math.min(H - 1, Math.floor(eye.y) + 1), Math.floor(eye.z)));
+  weather.update(paused ? 0 : dt, eye, biome === 'temperate' && seasonOf(day) === 3 ? 'tundra' : biome, world.skyAt(Math.floor(eye.x), Math.min(H - 1, Math.floor(eye.y) + 1), Math.floor(eye.z)),
+    eye.y > HAIL_HEIGHT, Math.cos(sky.time * Math.PI * 2), sky.light);
   sky.weather = { overcast: weather.overcast, level: weather.level, kind: weather.kind };
   world.raining = weather.raining && biome !== 'desert';
   sound.weather(paused ? 0 : weather.level, weather.kind);
   const before = sky.time;
+  if (world && worldReady) { tickBeams(paused ? 0 : dt); sky.mist = mistNow(); }
   sky.update(paused ? 0 : dt, eye, lightUniforms.uDay, player.eyeInWater);
   if (sky.time < before) { // the clock wrapped round to sunrise
     day++; caneToday = 0;
@@ -4726,5 +5722,5 @@ window.minicraft = {
   arrows, fishing, kinetics, electric, lightUniforms, bees, catchAt, seasonOf, applySeason, set day(v) { day = v; applySeason(); }, frames, signalAt, setSwitch, logic, machines, carts, minimap, signs, armour, damage, placeRail, getInCart, getOutOfCart,
   get riding() { return riding; }, explode, lightFuse, fuses, clockTime, compassText, place, editSign, closeSign, openInventory, closeInventory, chestMove, lamps, tickLamps, sleepUntilMorning, stations, openStation, closeStation,
   get caneToday() { return caneToday; }, get creative() { return creative; }, set creative(v) { creative = v; applyCreative(); }, toggleFly, wand, useWand, get achieved() { return achieved; }, achieve, worldMap, openMap, closeMap, openGuide, switchSlot, store, saveGame, renderWorlds, openWorlds, exportSlot, get target() { return target; }, set target(v) { target = v; }, applyKeys, renderKeys, camera, get controls() { return controls; }, loose, throwHeld, get waypoints() { return waypoints; }, toggleWaypoint, sortSlots, quickStack, dropMeteor, get meteors() { return meteors; }, weather, openTrade, closeTrade, mountMob, dismount, get ridingMob() { return ridingMob; }, effects, armourWear, useAnvil, rollLoot, settings,
-  get bedSpawn() { return bedSpawn; }, fertilise, openJournal, closeJournal, get packs() { return packs; }, radiationAt, vehicles, boardVehicle, leaveVehicle, get boarded() { return boarded; }, zips, linkZip, startZip, get zipping() { return zipping; }, burnCoal, get health() { return health; }, set health(v) { health = v; }, paintings, placeSwitchRail, signalAt, ailments, armourEnch, openAltar, lairNear, useBed, eat, drinkTea,
+  get bedSpawn() { return bedSpawn; }, fertilise, openJournal, closeJournal, get packs() { return packs; }, radiationAt, vehicles, boardVehicle, leaveVehicle, get boarded() { return boarded; }, get seated() { return seated; }, crows, onInvSlot, onStationSlot, quickMoveInv, quickMoveStation, usedIn, itemTipHTML, critters, tickPets, get catGiftDay() { return catGiftDay; }, get villageGrowth() { return villageGrowth; }, notePlanting, tickPuzzles, airPumpNear, hearths, tickHearths, feedHearth, chimneyTop, smoke, renderPins, togglePin, lightning, igniteAt, fires, tickFires, tickStorm, growVillage, buildVillageHouse, stallPrice, tickStalls, tickVillages, set catGiftDay(v) { catGiftDay = v; }, get places() { return places; }, get treasures() { return treasures; }, readTreasureMap, tickTreasure, beams, tickBeams, beaconSpots: () => beaconSpots, mistNow, tickSnow, tickExplore, sitOn, standUp, useDisplay, zips, linkZip, startZip, get zipping() { return zipping; }, burnCoal, get health() { return health; }, set health(v) { health = v; }, paintings, placeSwitchRail, signalAt, ailments, armourEnch, openAltar, lairNear, useBed, eat, drinkTea,
 };

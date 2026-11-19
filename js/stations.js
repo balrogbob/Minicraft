@@ -12,7 +12,8 @@ import {
   GRAVEL, FLINT, FLINT_DUST, CLAY_BALL, CLAY_DUST, BRICK, FIRE_CLAY, FIRE_BRICK, oreDust, HIDE, LEATHER,
   LAVA_BUCKET, LEAD_BUCKET, SALTPETRE, SANDSTONE, WHEAT, SUGAR_CANE, COAL_DUST, PLATE_METALS, PLATES, TUNGSTEN_INGOT, FILAMENT,
   SAPLING, ELECTRIC_ITEMS, chargeCap, GLASS_BOTTLE, NIGHT_TEA, HASTE_TEA, FIRE_TEA, HEAL_TEA, BERRIES, CORNFLOWER, DANDELION, POPPY, CACTUS, LAVENDER, DAISY, CAULDRON,
-  EGG, FRIED_EGG,
+  EGG, FRIED_EGG, TRUFFLE, APPLE, CHERRIES, APPLE_PIE, CHERRY_PIE, FISH_SOUP, TRUFFLE_SOUP, BERRY_JAM,
+  CARROT, POTATO, BAKED_POTATO, PUMPKIN, PUMPKIN_PIE, PUMPKIN_SEEDS, GRAPES, GRAPE_JUICE, CURDS, AGING,
 } from './blocks.js';
 
 // A recipe ingredient can be one id or a list of alternatives (coal or charcoal).
@@ -148,6 +149,7 @@ STATION_KINDS.arc = {
 };
 // Chests just hold things.
 STATION_KINDS.chest = { name: 'Chest', inputs: 18, storage: true, recipes: [] };
+STATION_KINDS.stall = { name: 'Market Stall', inputs: 9, storage: true, recipes: [] }; // (villagers buy from it: see main.js)
 STATION_KINDS.ironchest = { name: 'Iron-Banded Chest', inputs: 36, storage: true, recipes: [] };
 // The auto-crafter makes whatever the item frame on it shows (see recipeAt), once a second, from what's
 // put into it; no fuel or power.
@@ -157,7 +159,7 @@ STATION_KINDS.crafter = { name: 'Auto-Crafter', inputs: 9, crafter: true, recipe
 STATION_KINDS.pcrafter = { name: 'Programmable Crafter', inputs: 9, crafter: true, recipes: [] };
 // Farm machines that hold things: a planter's saplings, an animal station's buckets and wheat (both just
 // hold them: see machines.js), and a fishing net's catch (taken out by a hopper underneath).
-STATION_KINDS.planter = { name: 'Planter', inputs: 4, holder: true, accepts: [SAPLING], recipes: [] };
+STATION_KINDS.planter = { name: 'Planter', inputs: 4, holder: true, accepts: [SAPLING, SEEDS, CARROT, POTATO, PUMPKIN_SEEDS], recipes: [] };
 STATION_KINDS.ranch = { name: 'Animal Station', inputs: 6, holder: true, accepts: [BUCKET, WHEAT, SEEDS, BERRIES], recipes: [] };
 STATION_KINDS.net = { name: 'Fishing Net', inputs: 4, storage: true, recipes: [] };
 // A reactor holds up to four fuel rods, burning them all at once (see electric.js). Burnt-out rods stay in it, spent.
@@ -182,6 +184,38 @@ STATION_KINDS.freezer = {
   ],
 };
 
+// The cooking pot: stews, soups and pies over a fire. Good meals that do something more for you (see ITEMS).
+STATION_KINDS.cookpot = {
+  name: 'Cooking Pot', verb: 'Cooking', inputs: 4,
+  recipes: [
+    { out: [APPLE_PIE, 1], in: [[APPLE, 3], [FLOUR, 2], [SUGAR, 1], [EGG, 1]], time: 10 },
+    { out: [CHERRY_PIE, 1], in: [[CHERRIES, 4], [FLOUR, 2], [SUGAR, 1], [EGG, 1]], time: 10 },
+    { out: [TRUFFLE_SOUP, 1], in: [[TRUFFLE, 1], [GLOW_MUSHROOM, 2], [WATER_BUCKET, 1]], leaves: BUCKET, time: 8 },
+    { out: [FISH_SOUP, 1], in: [[[RAW_FISH, SALMON, ICEFISH], 2], [WATER_BUCKET, 1]], leaves: BUCKET, time: 8 },
+    { out: [BERRY_JAM, 1], in: [[BERRIES, 6], [SUGAR, 2], [GLASS_BOTTLE, 1]], time: 8 },
+    { out: [MUSHROOM_STEW, 1], in: [[GLOW_MUSHROOM, 3], [BUTTER, 1]], time: 8 },
+  ],
+};
+
+// v26 D: presses (no fuel or power) and the oak barrel, where drinks and cheese age (see tick)
+STATION_KINDS.winepress = { name: 'Wine Press', verb: 'Pressing', inputs: 2, powered: true, passive: true, recipes: [
+  { out: [GRAPE_JUICE, 1], in: [[GRAPES, 6], [GLASS_BOTTLE, 1]], time: 8 },
+] };
+STATION_KINDS.cheesepress = { name: 'Cheese Press', verb: 'Pressing', inputs: 2, powered: true, passive: true, recipes: [
+  { out: [CURDS, 1], in: [[MILK_BUCKET, 1]], leaves: BUCKET, time: 10 },
+] };
+STATION_KINDS.barrel = { name: 'Oak Barrel', inputs: 6, storage: true, ages: true, recipes: [] };
+export const AGE_DAY = 12 * 60; // (a game day, in seconds)
+
+// v26: the new crops in the oven and the pot
+STATION_KINDS.oven.recipes.push(
+  { out: [BAKED_POTATO, 1], in: [[POTATO, 1]], time: 5 },
+  { out: [PUMPKIN_PIE, 1], in: [[PUMPKIN, 1], [SUGAR, 1], [EGG, 1]], time: 10 },
+);
+STATION_KINDS.cookpot.recipes.push(
+  { out: [PUMPKIN_PIE, 1], in: [[PUMPKIN, 1], [SUGAR, 1], [EGG, 1]], time: 10 },
+);
+
 // The compost bin needs no fuel or power: plant scraps just rot down into fertiliser, given time.
 STATION_KINDS.compost = {
   name: 'Compost Bin', verb: 'Rotting down', inputs: 4, powered: true, passive: true,
@@ -192,6 +226,8 @@ STATION_KINDS.compost = {
     { out: [FERTILISER, 1], in: [[WHEAT, 4]], time: 20 },
     { out: [FERTILISER, 1], in: [[SUGAR_CANE, 4]], time: 20 },
     { out: [FERTILISER, 1], in: [[BERRIES, 6]], time: 20 },
+    { out: [FERTILISER, 1], in: [[CARROT, 4]], time: 20 },
+    { out: [FERTILISER, 1], in: [[POTATO, 4]], time: 20 },
     { out: [FERTILISER, 1], in: [[[POPPY, DANDELION, CORNFLOWER, LAVENDER, DAISY], 4]], time: 20 },
   ],
 };
@@ -283,6 +319,7 @@ export class Stations {
       const id = world.get(x, y, z);
       if (stationKind(id) !== st.kind) { this.map.delete(k); continue; }
       const K = STATION_KINDS[st.kind];
+      if (K.ages) this.age(st, dt);
       if (K.storage || K.holder) continue;
       if (K.crafter) {
         const want = recipeAt(x, y, z);
@@ -328,6 +365,20 @@ export class Stations {
     }
   }
 
+  // Things laid down in a barrel age a little each second: a whole stack together. (Taking it out and putting
+  // it back starts it again.)
+  age(st, dt) {
+    st.age ??= new Array(st.inputs.length).fill(0);
+    st.ageOf ??= new Array(st.inputs.length).fill(0);
+    st.inputs.forEach((s, i) => {
+      const a = s && AGING[s.id];
+      if (!a) { st.age[i] = 0; st.ageOf[i] = 0; return; }
+      if (st.ageOf[i] !== s.id) { st.ageOf[i] = s.id; st.age[i] = 0; }
+      st.age[i] += dt;
+      if (st.age[i] >= a[1] * AGE_DAY) { s.id = a[0]; st.ageOf[i] = s.id; st.age[i] = 0; }
+    });
+  }
+
   serialize() { return [...this.map]; }
 
   load(list) {
@@ -341,6 +392,7 @@ export class Stations {
         inputs: Array.from({ length: n }, (_, i) => clean(st.inputs?.[i])),
         fuel: clean(st.fuel), out: clean(st.out),
         burn: Math.max(0, +st.burn || 0), burnMax: Math.max(0, +st.burnMax || 0), progress: Math.max(0, +st.progress || 0), brews: st.brews | 0,
+        ...(Array.isArray(st.age) && Array.isArray(st.ageOf) ? { age: Array.from({ length: n }, (_, i) => Math.max(0, +st.age[i] || 0)), ageOf: Array.from({ length: n }, (_, i) => st.ageOf[i] | 0) } : {}),
       });
     }
   }

@@ -105,9 +105,24 @@ It is designed for Android tablets (touch controls) but also plays with keyboard
   **ruins**, **shipwrecks** and **meteorites** that fall at night and give **starsteel** for the best tools;
   **cats**, **chickens** (eggs), **pigs** (truffles), **buffalo** you can saddle and ride, and young animals that
   take their parents' **coat colours**; **quick-stack** into nearby chests and **split stacks**
+- v25: **sit** on chairs, **shelves and tables** that show an item, **flower pots**, **hanging baskets**, **window
+  boxes** and **iron bars**; **fruit trees** (apple, cherry, orange) that blossom and fruit with the seasons, a
+  **cooking pot** for meals that give buffs, **greenhouses** where crops grow in winter, **scarecrows** to keep the
+  **crows** off your wheat; **lighthouses** with sweeping beams, an **explorer's map** that marks what you find,
+  **treasure maps** to buried chests, **morning mist** in the valleys and **snow that settles** and melts;
+  **deer**, **owls**, **bats**, **fireflies**, an **apiary** for **beeswax candles**, wolves that **fetch** and
+  cats that bring **presents**; **belt crossings**, a **farm controller**, **pneumatic tubes** and **cable cars**;
+  **double-tap to gather** a stack, **shift-click or hold** to move one across, **"used in"** in each item's tip,
+  and a compass that points to your nearest **waypoint**
+- v26: **village life** (villagers go home at night, a morning bell, villages that grow), **market stalls** and
+  silver **coins**; **thunderstorms** with lightning that starts fires, **hail** and **rainbows**; **carrots**,
+  **potatoes**, **pumpkins** and **grapes**, with **crop rotation**; a **wine press**, a **cheese press** and an
+  **oak barrel** where wine and cheese age; **sunken temples** and **sky islands** with puzzle vaults, **diving
+  gear** and an **air pump**; **signal radios**, a **sorting machine** and steam **locomotives** that pull trains of
+  carts; a **fireplace** with a **chimney**; **pinned recipes** on screen and an **auto-refilling hotbar**
 - **Three world slots** with export to a file and import, a **creative mode** (flying, every block, instant
   breaking and a **copy wand**), rebindable keys, a field-of-view slider, a full-screen **world map** with
-  waypoints, and **22 achievements** with an in-game guide
+  waypoints, and **24 achievements** with an in-game guide
 - Torches that light up the area around them with a warm, flickering glow. They stand on floors or hang on walls
 - Synthesised sound effects for digging, breaking, placing, footsteps and splashing, with no audio files
 - Break and place blocks, with break times that depend on the tool you hold
@@ -1003,6 +1018,153 @@ breed when there are 12 or more about.
 - **Splitting stacks**: right-click a stack (or tap it with two fingers) in the backpack or a chest to split off half,
   one, or any number into the next empty slot.
 
+### Version 25
+
+#### Building and decorating
+
+- **Sit** on a chair: tap it with an empty hand (or anything that isn't a block). Move or jump to stand up.
+- A **shelf** or a **wooden table** shows an item on top: tap it holding the item to put it there, and tap with an
+  empty hand to take it back. Breaking it drops what was on it.
+- **Flower pots** (3 bricks): tap one with a flower, a sapling, a glowcap or a cactus to plant it; tap again with
+  an empty hand to take it out.
+- **Hanging baskets** (a flower pot, 2 string, an iron, 4 leaves) hang under a ceiling; **window boxes** (3 planks,
+  dirt, 3 flowers) go on the side of a wall.
+- **Iron bars** (16 from 6 iron) join up like glass panes.
+
+#### Fruit trees, the cooking pot, greenhouses and scarecrows
+
+- Some trees in the temperate lands are **apple**, **cherry** or **orange** trees. They blossom in spring and
+  fruit in summer and autumn: tap a leaf with fruit on it to pick it (apples and oranges are 4 food, cherries 3).
+  Fruit leaves sometimes drop a **fruit sapling** to plant your own orchard.
+- A **cooking pot** (5 iron, a log; burns fuel like an oven) makes meals that also give you a buff:
+  **apple pie** (3 apples, 2 flour, sugar, an egg; warms you through), **cherry pie** (heals you), **fish soup**
+  (2 fish, a water bucket; warms you), **truffle soup** (a truffle, 2 glowcaps, a water bucket; see in the dark),
+  **berry jam** (6 berries, 2 sugar, a bottle; heals) and **mushroom stew**. At the crafting grid, **fruit salad**
+  (one of each fruit) lets you dig faster and **orange juice** (3 oranges, a bottle) lets you run faster.
+- A **greenhouse**: crops with glass over them (anywhere above, with nothing but air between) grow as well in
+  winter as in spring.
+- **Crows** come down by day to eat ripe wheat under the open sky, knocking it back to green shoots. A
+  **scarecrow** (3 sticks, 6 wheat, a wool) keeps them off everything within 8 blocks, and they fly off if you come
+  near.
+
+#### Lighthouses, maps, treasure, mist and snow
+
+- **Lighthouses** stand here and there on the coast: red and white towers with a ladder up inside, a gallery round
+  the top and a **lighthouse lamp** whose beams sweep round at night. The keeper's chest at the bottom often holds
+  a treasure map. Make your own lamp from a lantern, 4 glass and 2 gold.
+- An **explorer's map** (a map, a compass, a gold ingot): while you carry one, the ruins, shipwrecks, lighthouses,
+  volcanoes and villages you come near are marked on the world map.
+- A **treasure map** (from lighthouse and shipwreck chests): tap with it in hand to read it. It tells you how far
+  and which way the treasure is, and marks the spot with an X on the world map. Dig down there for a chest of gold,
+  silver, crystal and sometimes starsteel.
+- Some mornings a **mist** lies in the valleys, thickest at dawn and gone by mid-morning (thinner up high).
+- While it snows, **snow settles** on the ground and on the trees under the open sky, and melts away again when
+  winter is over (but not in the tundra).
+
+#### Creatures
+
+- **Deer** live in the woods and plains. They bolt when you come near, unless you creep up holding sneak. They
+  breed on berries.
+- At night **owls** come to sit in the treetops and hoot, turning their heads to watch you; they fly off if you get
+  close. **Bats** flit about in caves and out over the land at dusk. On warm (spring and summer) nights
+  **fireflies** blink over the grass.
+- An **apiary** (8 planks, 3 honeycomb, a glass) is a bee box that holds more honey than a wild hive (5 levels). When
+  it's full, tap it to take 3 honeycomb and 2 **beeswax** (or, holding a bottle, a bottle of honey, 2 honeycomb and
+  2 beeswax). Any honeycomb can be made into beeswax too. 2 beeswax and a string make 3 **beeswax candles**.
+- Throw a **stick** (the drop key, Q by default) and a tame wolf that isn't staying runs after it and brings it back
+  to your feet.
+- Now and then of a morning, a tame **cat** nearby leaves you a present: a feather, string, a fish, seeds,
+  berries... or an old boot.
+
+#### Machines
+
+- A **belt crossing** (2 belts, an iron) passes whatever a belt brings it straight on across, so two lines of belts
+  can cross.
+- A **farm controller** (2 copper, a copper wire, 4 wheat, 2 planks) watches the wheat within 7 blocks. It gives a
+  signal once half of it is ripe (to set harvesters going), and tapping it tells you how the field is doing.
+- **Pneumatic tubes** (6 from 4 glass and a copper) carry things from a belt, hopper or ejector, through all the
+  tubes joined to them (up, down and round corners), to the nearest chest, machine or belt at the far end that will
+  take them. Hang item frames on a tube beside a chest to make it take only those things.
+- A **cable car** (4 iron, 2 glass, 3 planks): hold it and tap a zipline post to ride the line in a little gondola
+  at an even speed, uphill as well as down. Sneak to get out.
+
+#### The backpack and chests
+
+- **Double-tap** a slot to gather the same things from the rest of your backpack (and the chest, if one is open)
+  into that stack.
+- **Shift-click** a slot (or **press and hold** it on a touch screen) to send the whole stack across: between the
+  hotbar and the backpack, or between your backpack and an open chest or machine.
+- Each item's tip says what it's **used in**.
+- A **compass** now also shows the way to your nearest map waypoint.
+- New achievement: **X Marks the Spot**, for digging up buried treasure.
+
+### Version 26
+
+#### Village life and market stalls
+
+- Villagers walk home at dusk and stay indoors through the night. Each morning the village **bell** rings
+  (tap a bell to hear which village you're in).
+- A **market stall** (6 planks, 4 logs, 3 wool) in a village: put things on it and passing villagers buy them for
+  silver **coins**. Food, wine, cheese and pearls sell best. Traders take coins too.
+- A village you trade with grows: after enough deals the villagers build a new house (up to six).
+
+#### Weather
+
+- **Thunderstorms**: dark skies, thunder and **lightning**, which strikes the highest thing about and can set
+  wood, leaves and wool **on fire**. Fire spreads, more slowly in the rain, and burns out. Stay under a roof.
+- Up in the mountains rain falls as **hail**: it hurts unless you wear a helmet.
+- When the rain stops there's often a **rainbow**, across the sky from the sun.
+
+#### Crops and crop rotation
+
+- **Carrots** and **potatoes** grow from themselves (village farms have rows of them). Bake a potato in the oven.
+- **Pumpkin seeds** (4 from a pumpkin) grow a stem that puts a pumpkin beside it. A pumpkin and a torch make a
+  **jack o'lantern**; a pumpkin, sugar and an egg bake a **pumpkin pie**.
+- **Grapes** grow on a **trellis** (2 from 6 sticks): plant them at its foot.
+- **Crop rotation**: planting the same crop over and over in the same soil tires it, and it grows more slowly
+  (down to about a third). Change crops, or leave the soil for six days, and it recovers. Fertiliser freshens it.
+
+#### Winery and cheese
+
+- A **wine press** (6 planks, 3 logs, an iron) presses 6 grapes and a bottle into **grape juice**; a **cheese
+  press** (the same and a string) presses a milk bucket into **curds**. Neither needs fuel.
+- An **oak barrel** (6 planks, an iron) ages what's in it: juice becomes **wine** after a day and **fine wine**
+  after three more; curds become **cheese**, and cheese becomes **aged cheese**. Tap a barrel to see how they're
+  coming on. Aged things sell for more.
+
+#### Sunken temples and sky islands
+
+- **Sunken temples** lie on the sea bed: a vault with three levers in front. Set the levers right (the lamps over
+  them hint which) and the gate opens on a chest of pearls, coins, gold, sea lanterns and sometimes diving gear.
+- **Sky islands** float high over the land, with coloured pressure plates round a vault: step on them in the
+  right order to open it.
+- **Diving gear**: a **diving helmet** (5 copper, 2 glass) makes your air last five times as long, **flippers**
+  (4 leather, a slime) make you swim faster, and an **air pump** (4 iron, 2 copper, 2 leather, a pipe) fills your
+  air up while you're near it underwater. **Sea lanterns** (2 glass, a pearl) light the deep.
+- New achievement: **Open Sesame**, for opening a temple's or an island's vault.
+
+#### Machines and trains
+
+- **Radio transmitter** and **receiver** (3 copper, 2 wire, a glass each): a receiver gives a signal while any
+  transmitter on the same channel has one, however far apart they are. Tap either with an empty hand to change its
+  channel (1-8).
+- A **sorting machine** (3 tubes, 3 iron, an item frame) sends each thing that goes into it down the pneumatic
+  tube with a matching item frame on it, or else down a tube with no frames.
+- A **locomotive** (a minecart, 6 iron, a steam engine): put it on a rail and tap it with coal or charcoal (one
+  coal lasts a minute). It couples on the carts standing behind it and pulls them along, waits a few seconds at
+  each rail station and sets off again by itself (or at once on a signal), and stops at the end of the line. Ride
+  it and hold back to stop, forward to start. Turning round leaves its train behind.
+
+#### Home comforts
+
+- A **fireplace** (5 bricks, 2 cobblestone, an iron): tap it with logs, planks, sticks or coal to light it. It
+  lights and warms the room (you thaw out fast beside it). Build **chimney** blocks (2 from 3 bricks) straight up
+  from it for the smoke, or the room fills with it.
+- **Pin a recipe** (📌 beside it) to keep it on screen with how many of each thing you have and still need; it
+  goes green when you've got everything. Up to three.
+- **Auto-refill**: when the stack in your hand runs out, or a tool breaks, the next one of the same thing moves
+  in from your backpack. Turn it off under ☰ if you'd rather not.
+
 ### Worlds, creative mode, the map and achievements
 
 ☰ → **Worlds…** holds three worlds. Play any of them, start a new **survival** or **creative** world in a slot,
@@ -1017,7 +1179,7 @@ The **world map** (M, ☰ → World map, or tap the corner map) shows all the la
 around, pinch or scroll to zoom, and tap to put down a waypoint (or tap one to take it away). Waypoints show
 on the hand-held map too.
 
-☰ → **Guide & achievements** lists 22 achievements for each world (with a pop-up as you earn them) and a short
+☰ → **Guide & achievements** lists 24 achievements for each world (with a pop-up as you earn them) and a short
 guide to how everything works.
 
 ## Code layout
@@ -1049,6 +1211,8 @@ guide to how everything works.
 | `js/worldmap.js` | The full-screen world map: explored chunks, panning, zoom and waypoints |
 | `js/achievements.js` | The list of achievements |
 | `js/bees.js` | Bees buzzing around their hives |
+| `js/birds.js` | Crows that come down to eat ripe wheat, and the scarecrows that keep them off |
+| `js/critters.js` | Owls, bats and fireflies |
 | `js/paintings.js` | Paintings: the pictures and the panels that show them |
 | `js/sky.js` | Day/night cycle: sky colour, fog, sun, moon, stars, world brightness |
 | `js/sound.js` | Web Audio sound effects |

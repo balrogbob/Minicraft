@@ -6,7 +6,7 @@
 // physics as the player (gravity, block collisions, stepping up one block) and float in water.
 // They aren't saved: they're spawned fresh around wherever you are.
 import * as THREE from 'three';
-import { AIR, WATER, LEAVES, LOG, GRASS, SAND, DIRT, WOOL, BUCKET, MILK_BUCKET, SLIME_BUCKET, FEATHER, COAL, COBBLE, ARROW, HIDE, SNOW_GRASS, SNOW, KING_CROWN, GOLD_INGOT, MOSSY_BRICKS, RAW_FISH, BAKED_FISH, WHEAT, SALMON, BAKED_SALMON, ICEFISH, BAKED_ICEFISH,
+import { AIR, WATER, LEAVES, isLeaves, LOG, GRASS, SAND, DIRT, WOOL, BUCKET, MILK_BUCKET, SLIME_BUCKET, FEATHER, COAL, COBBLE, ARROW, HIDE, SNOW_GRASS, SNOW, KING_CROWN, GOLD_INGOT, MOSSY_BRICKS, RAW_FISH, BAKED_FISH, WHEAT, SALMON, BAKED_SALMON, ICEFISH, BAKED_ICEFISH,
   SUN_SCARAB, FROST_HEART, EMBER_CORE, SUN_MASK, FROST_CIRCLET, EMBER_CROWN, SILVER_INGOT, OBSIDIAN, STRING, BLOCKS, LAVA, SEEDS, BERRIES, EGG, TRUFFLE, SADDLE } from './blocks.js';
 import { SEA_LEVEL, H } from './terrain.js';
 import { skyBrightness, lightBrightness } from './world.js';
@@ -445,6 +445,9 @@ const SPECIES = {
       }
       parts.collar = b.box(root, [0.44, 0.08, 0.1], 0xc82828, [0, 0.66, 0.38]);
       parts.collar.visible = false;
+      const stick = b.box(head, [0.5, 0.06, 0.06], 0x8a6a3a, [0, -0.08, 0.36]); // a fetched stick, held crosswise
+      stick.visible = false;
+      parts.carry = (on) => { stick.visible = on; };
       for (const [x, z] of [[-0.13, 0.28], [0.13, 0.28], [-0.13, -0.3], [0.13, -0.3]]) {
         const leg = b.pivot(root, [x, 0.38, z]);
         b.box(leg, [0.11, 0.38, 0.11], fur, [0, -0.19, 0]);
@@ -515,6 +518,42 @@ const SPECIES = {
       b.box(tail, [0.06, 0.06, 0.4], fur, [0, 0.08, -0.18]);
       parts.tail.rotation.x = 0.6;
       parts.tame = (on) => { parts.collar.visible = on; };
+      return parts;
+    },
+  },
+
+  // deer: shy forest animals that bolt when you come near, unless you creep up on them (hold sneak)
+  deer: {
+    w: 0.7, h: 1.5, speed: 1.2, fleeSpeed: 6.5, sink: 1.0, stride: 8, legSwing: 0.55,
+    group: [2, 4], cap: 6, avoidWater: true, grazes: true, shy: 9,
+    coats: [0x9a6a3a, 0x8a5c30, 0xa8784a],
+    build(b, root, opts = {}) {
+      const coat = opts.coat ?? pick(this.coats), pale = 0xe8dcc8, dark = new THREE.Color(coat).multiplyScalar(0.7).getHex();
+      const parts = { legs: [], coat };
+      b.box(root, [0.42, 0.42, 0.95], coat, [0, 0.95, 0]);
+      b.box(root, [0.3, 0.16, 0.5], pale, [0, 0.76, 0.02]); // pale belly
+      for (const [x, z] of [[-0.12, 0.3], [0.12, -0.05], [-0.1, -0.25], [0.1, 0.2]]) b.box(root, [0.06, 0.02, 0.06], pale, [x * 1.6, 1.165, z]); // dapples
+      b.box(root, [0.2, 0.5, 0.2], coat, [0, 1.25, 0.46]); // neck
+      const head = parts.head = b.pivot(root, [0, 1.5, 0.52]);
+      b.box(head, [0.24, 0.24, 0.36], coat, [0, 0.02, 0.1]);
+      b.box(head, [0.14, 0.12, 0.12], dark, [0, -0.04, 0.3]); // muzzle
+      b.box(head, [0.06, 0.04, 0.03], 0x111111, [0, 0, 0.365]);
+      for (const sx of [-1, 1]) {
+        b.box(head, [0.14, 0.08, 0.04], coat, [sx * 0.17, 0.1, 0.02]); // ears
+        b.box(head, [0.03, 0.04, 0.03], 0x111111, [sx * 0.12, 0.06, 0.2]);
+        // antlers
+        b.box(head, [0.04, 0.3, 0.04], 0xc8b48a, [sx * 0.08, 0.3, 0.02]);
+        b.box(head, [0.16, 0.04, 0.04], 0xc8b48a, [sx * 0.14, 0.38, 0.02]);
+        b.box(head, [0.04, 0.14, 0.04], 0xc8b48a, [sx * 0.2, 0.46, 0.02]);
+      }
+      for (const [x, z] of [[-0.13, 0.36], [0.13, 0.36], [-0.13, -0.36], [0.13, -0.36]]) {
+        const leg = b.pivot(root, [x, 0.75, z]);
+        b.box(leg, [0.09, 0.75, 0.09], coat, [0, -0.37, 0]);
+        b.box(leg, [0.1, 0.06, 0.1], 0x2a1e14, [0, -0.72, 0]);
+        parts.legs.push(leg);
+      }
+      const tail = parts.tail = b.pivot(root, [0, 1.08, -0.48]);
+      b.box(tail, [0.12, 0.16, 0.06], pale, [0, -0.04, -0.02]);
       return parts;
     },
   },
@@ -669,7 +708,7 @@ const SPECIES = {
 // Breeding: what each animal can be fed to look for a mate. Two of a kind that have both been fed find each
 // other and have a young one, which grows up over GROW_TIME; then they need BREED_REST before they'll breed
 // again. They won't when there are already CROWD of their kind close by.
-const BREED_FOOD = { duck: [SEEDS], buffalo: [WHEAT], alpaca: [WHEAT], yak: [WHEAT], camel: [WHEAT], newt: [BERRIES], chicken: [SEEDS], pig: [BERRIES, WHEAT] };
+const BREED_FOOD = { duck: [SEEDS], buffalo: [WHEAT], alpaca: [WHEAT], yak: [WHEAT], camel: [WHEAT], newt: [BERRIES], chicken: [SEEDS], pig: [BERRIES, WHEAT], deer: [BERRIES] };
 for (const [k, f] of Object.entries(BREED_FOOD)) SPECIES[k].breeds = f;
 SPECIES.wolf.breeds = SPECIES.wolf.tames;
 SPECIES.cat.breeds = SPECIES.cat.tames;
@@ -803,7 +842,7 @@ export class MobManager {
     for (let y = H - 1; y > 0; y--) {
       const id = w.get(x, y, z);
       if (id === AIR) continue;
-      if (id === LEAVES || id === LOG) return null;
+      if (isLeaves(id) || id === LOG) return null;
       return { y, id };
     }
     return null;
@@ -828,7 +867,7 @@ export class MobManager {
     if (this.nearWater(x, s.y, z)) return { kinds: ['duck', 'newt'], y };
     if (s.id !== GRASS) return null;
     if (s.y >= SEA_LEVEL + 12) return { kinds: ['alpaca', 'yak', 'yak'], y };
-    if (s.y >= SEA_LEVEL + 2) return { kinds: ['buffalo', 'buffalo', 'chicken', 'chicken', 'pig', 'cat'], y };
+    if (s.y >= SEA_LEVEL + 2) return { kinds: ['buffalo', 'buffalo', 'chicken', 'chicken', 'pig', 'cat', 'deer', 'deer'], y };
     return null;
   }
 
@@ -900,7 +939,7 @@ export class MobManager {
     const v = w.generator.nearestVillage(player.pos.x, player.pos.z, 1);
     if (!v || Math.hypot(v.x - player.pos.x, v.z - player.pos.z) > 80) return;
     const here = this.mobs.filter((m) => m.home === v).length;
-    if (here >= Math.min(5, v.houses.length + 1)) return;
+    if (here >= Math.min(5 + Math.max(0, v.houses.length - 5), v.houses.length + 1) || this.villagerNight()) return;
     const hs = pick(v.houses);
     const x = hs.x + hs.door[0] * 2 + Math.round(rand(-1, 1)), z = hs.z + hs.door[1] * 2 + Math.round(rand(-1, 1));
     if (!w.chunkAt(x, z)) return;
@@ -909,9 +948,36 @@ export class MobManager {
     const used = this.mobs.filter((m) => m.home === v).map((m) => m.profession);
     const profession = PROFESSIONS.find((p) => !used.includes(p)) ?? pick(PROFESSIONS);
     const m = this.spawn('villager', x + 0.5, s.y + 1, z + 0.5, { profession });
-    m.home = v;
+    m.home = v; m.house = hs;
     this.onVillagerSpawn?.(m);
     return m;
+  }
+
+  // Villagers go indoors from dusk until morning. (`hour` is set by the game each frame: 0..24.)
+  villagerNight() { return this.hour != null && (this.hour > 18.5 || this.hour < 6); }
+  // The spot just outside a house's door.
+  doorstep(hs) { return { x: hs.x + hs.door[0] + Math.sign(hs.door[0]) + 0.5, z: hs.z + hs.door[1] + Math.sign(hs.door[1]) + 0.5 }; }
+  // A villager's evening: walk to its own front door and go in; come back out in the morning.
+  // Returns true while it's indoors (hidden, and not moving).
+  villagerHome(m, dt = 0) {
+    const night = this.villagerNight();
+    if (m.indoors) {
+      if (night) return true;
+      m.indoors = false; m.root.visible = true;
+      const d = this.doorstep(m.house);
+      m.pos.set(d.x, m.pos.y, d.z); m.vel.set(0, 0, 0);
+      m.state = 'idle'; m.timer = 1;
+      return false;
+    }
+    if (!night || !m.house || m.tame) { m.lateFor = 0; return false; }
+    const d = this.doorstep(m.house), dx = d.x - m.pos.x, dz = d.z - m.pos.z;
+    m.lateFor = (m.lateFor ?? 0) + dt; // (one that gets stuck on the way home slips in anyway after a while)
+    if (Math.hypot(dx, dz) < 1.1 || m.lateFor > 40) {
+      m.indoors = true; m.root.visible = false; m.vel.set(0, 0, 0);
+      return true;
+    }
+    m.state = 'walk'; m.heading = Math.atan2(dx, dz); m.timer = Math.max(m.timer, 0.5);
+    return false;
   }
 
   // Put a specific animal at (x, y, z), feet at y. Handy for testing from the console.
@@ -1053,7 +1119,8 @@ export class MobManager {
         this.thinkPet(m, dt, player);
         if (m.love > 0) this.seekMate(m);
       } else {
-        this.think(m, dt, player);
+        if (m.house && this.villagerHome(m, dt)) continue;
+        if (!m.house || !this.villagerNight()) this.think(m, dt, player);
         if (m.love > 0) this.seekMate(m);
       }
       if (!m.spec.hostile) this.tickBreeding(m, dt);
@@ -1083,6 +1150,11 @@ export class MobManager {
   think(m, dt, player) {
     const spec = m.spec;
     m.timer -= dt;
+    // a shy animal (a deer) bolts from you when you come near, unless you creep up holding sneak
+    if (spec.shy && !m.tame && !(m.love > 0) && m.state !== 'flee' && !this.sneaking && Math.hypot(m.pos.x - player.pos.x, m.pos.z - player.pos.z) < spec.shy) {
+      m.state = 'flee'; m.timer = rand(2.5, 4);
+      this.sound?.mob(m.kind, 0.6);
+    }
     // villagers wander back toward the well if they stray too far
     if (m.home && m.state === 'walk' && Math.hypot(m.pos.x - m.home.x, m.pos.z - m.home.z) > 16) m.heading = Math.atan2(m.home.x - m.pos.x, m.home.z - m.pos.z);
     if (m.state === 'flee') {
@@ -1108,6 +1180,8 @@ export class MobManager {
   thinkPet(m, dt, player) {
     m.attackCD = Math.max(0, (m.attackCD ?? 0) - dt);
     if (m.sitting) { m.state = 'idle'; return; }
+    // fetching: run to the stick, then back to you (main.js sets and clears the goal)
+    if (m.goal) { m.state = 'follow'; m.heading = Math.atan2(m.goal.x - m.pos.x, m.goal.z - m.pos.z); return; }
     const dp = Math.hypot(player.pos.x - m.pos.x, player.pos.z - m.pos.z);
     if (m.spec.fights) {
       let target = null, best = 12;
@@ -1381,7 +1455,7 @@ export class MobManager {
   raycast(o, d, maxDist) {
     let best = null;
     for (const m of this.mobs) {
-      if (m.dying) continue;
+      if (m.dying || m.indoors) continue;
       const hw = m.spec.w / 2;
       const min = [m.pos.x - hw, m.pos.y, m.pos.z - hw], max = [m.pos.x + hw, m.pos.y + m.spec.h, m.pos.z + hw];
       const oo = [o.x, o.y, o.z], dd = [d.x, d.y, d.z];

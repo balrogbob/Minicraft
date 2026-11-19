@@ -23,6 +23,8 @@ export const ACHIEVEMENTS = [
   { id: 'paint', icon: '🖼', name: 'Art Lover', about: 'Hang a painting.' },
   { id: 'week', icon: '📅', name: 'Settled In', about: 'Live to see day 7.' },
   { id: 'diamond', icon: '💎', name: 'Crystal Clear', about: 'Mine a crystal cluster or shard deep underground.' },
+  { id: 'treasure', icon: '💰', name: 'X Marks the Spot', about: 'Dig up the chest a treasure map leads to.' },
+  { id: 'vault', icon: '🔱', name: 'Open Sesame', about: 'Solve the puzzle that opens a sunken temple\'s or a sky island\'s vault.' },
 ];
 
 export const ACHIEVEMENT_IDS = new Set(ACHIEVEMENTS.map((a) => a.id));

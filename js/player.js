@@ -115,7 +115,7 @@ export class Player {
     this.updateWaterState();
     this.thrusting = false;
     this.hovering = false;
-    const control = this.flying ? 2.2 : this.inLava ? 0.3 : this.inWater ? 0.55 : this.onGround ? 1 : 0.85;
+    const control = this.flying ? 2.2 : this.inLava ? 0.3 : this.inWater ? 0.55 * (this.swimMul ?? 1) : this.onGround ? 1 : 0.85;
     this.vel.x = wx * WALK * control * this.speedMul + this.kx;
     this.vel.z = wz * WALK * control * this.speedMul + this.kz;
     const fade = Math.exp(-6 * dt);
@@ -130,7 +130,7 @@ export class Player {
     } else if (this.inWater || this.inLava) {
       // swimming: slow sinking, jump swims upward
       this.vel.y -= 9 * dt;
-      if (input.jump) this.vel.y = Math.min(this.vel.y + 30 * dt, 3.6);
+      if (input.jump) this.vel.y = Math.min(this.vel.y + 30 * dt, 3.6 * Math.min(1.5, this.swimMul ?? 1));
       this.vel.y = Math.max(this.vel.y, -3);
     } else {
       if (input.jump && this.onGround) this.vel.y = JUMP_V;

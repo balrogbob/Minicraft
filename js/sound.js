@@ -113,10 +113,27 @@ export class Sound {
     this.noiseBurst({ type: 'bandpass', freq: 1800, q: 0.7, dur: 0.35, vol: 0.6 }, gain, 1);
   }
 
+  // thunder: a sharp crack when it's close, then a long low rumble (gain falls off with distance)
+  thunder(gain = 1, near = false) {
+    if (!this.ready || gain <= 0.01) return;
+    if (near) this.noiseBurst({ type: 'highpass', freq: 1500, q: 0.4, dur: 0.4, vol: 0.9 }, gain, 1);
+    this.tone(55, 1.4, 0.5 * gain, 'sine', 32);
+    for (let i = 0; i < 4; i++) setTimeout(() => this.noiseBurst({ type: 'lowpass', freq: 260 + Math.random() * 160, q: 0.4, dur: 1.4, vol: 0.9 - i * 0.15 }, gain, 1), i * 380 + Math.random() * 200);
+  }
+  // fire crackling
+  crackle(gain = 1) { if (this.ready && gain > 0.01) this.noiseBurst({ type: 'bandpass', freq: 2400, q: 1.5, dur: 0.08, vol: 0.25 }, gain, 1 + Math.random() * 0.5); }
+
+  // a steam locomotive: a puff of steam, and its whistle
+  chuff(gain = 1) { if (this.ready && gain > 0.01) this.noiseBurst({ type: 'bandpass', freq: 700, q: 0.7, dur: 0.18, vol: 0.35 }, gain, 1); }
+  hoot(gain = 1) {
+    if (!this.ready || gain <= 0.01) return;
+    for (const [f, v] of [[587, 0.12], [740, 0.09], [880, 0.06]]) this.voice({ type: 'triangle', from: f, to: f * 0.99, dur: 0.9, vol: v * gain, freq: 3000, attack: 0.04 });
+  }
+
   // a village bell: a bright strike with a long ring
-  ding() {
-    if (!this.ready) return;
-    for (const [f, v] of [[880, 0.25], [1320, 0.12], [2210, 0.06]]) this.voice({ type: 'sine', from: f, to: f * 0.998, dur: 2.2, vol: v, freq: 6000, attack: 0.005 });
+  ding(gain = 1) {
+    if (!this.ready || gain <= 0.01) return;
+    for (const [f, v] of [[880, 0.25], [1320, 0.12], [2210, 0.06]]) this.voice({ type: 'sine', from: f, to: f * 0.998, dur: 2.2, vol: v * gain, freq: 6000, attack: 0.005 });
   }
 
   // A reactor's alarm: a two-tone whoop, louder the nearer (k: 0..1).
@@ -302,6 +319,19 @@ export class Sound {
     } else if (kind === 'chicken') {
       // a few quick clucks
       for (const delay of hurt ? [0, 0.08, 0.16] : [0, 0.12]) this.voice({ type: 'square', from: p(620, 700), to: p(420, 480), dur: 0.07, vol: 0.12 * gain, freq: 1800, q: 2, delay });
+    } else if (kind === 'deer') {
+      // a soft nasal bleat; a sharp bark when startled
+      if (hurt || gain > 0.55) this.voice({ type: 'sawtooth', from: p(520, 580), to: p(380, 420), dur: 0.14, vol: 0.14 * gain, freq: 1400, q: 2 });
+      else this.voice({ type: 'triangle', from: p(600, 660), to: p(480, 520), dur: 0.35, vol: 0.12 * gain, freq: 1600, attack: 0.05, vibrato: 10 });
+    } else if (kind === 'owl') {
+      // hoo, hoo-hoo
+      for (const [delay, dur] of [[0, 0.32], [0.55, 0.16], [0.75, 0.4]]) this.voice({ type: 'sine', from: p(370, 390), to: p(330, 345), dur, vol: 0.2 * gain, freq: 900, attack: 0.05, delay });
+    } else if (kind === 'bat') {
+      // a few tiny squeaks
+      for (const delay of [0, 0.07, 0.15]) this.voice({ type: 'square', from: p(3200, 3600), to: p(2600, 2800), dur: 0.03, vol: 0.05 * gain, freq: 5000, delay });
+    } else if (kind === 'crow') {
+      // a harsh caw or two
+      for (const delay of [0, 0.3]) this.voice({ type: 'sawtooth', from: p(560, 640), to: p(380, 420), dur: 0.2, vol: 0.16 * gain, freq: 1500, q: 3, delay, vibrato: 30 });
     } else if (kind === 'pig') {
       // a snuffly grunt; a squeal when bumped
       if (hurt) this.voice({ type: 'sawtooth', from: p(900, 1000), to: 1400, dur: 0.3, vol: 0.18 * gain, freq: 2200 });
@@ -373,9 +403,9 @@ export class Sound {
       src.start();
       this.rain = { f, g };
     }
-    const sand = kind === 'sand', snow = kind === 'snow';
-    this.rain.f.type = sand ? 'bandpass' : 'lowpass';
-    this.rain.f.frequency.value = sand ? 700 : snow ? 500 : 2600;
+    const sand = kind === 'sand', snow = kind === 'snow', hail = kind === 'hail';
+    this.rain.f.type = sand || hail ? 'bandpass' : 'lowpass';
+    this.rain.f.frequency.value = sand ? 700 : snow ? 500 : hail ? 3800 : 2600;
     const want = this.muted ? 0 : level * (snow ? 0.08 : sand ? 0.25 : 0.18);
     this.rain.g.gain.setTargetAtTime(want, this.ctx.currentTime, 0.4);
   }

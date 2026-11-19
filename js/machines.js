@@ -33,8 +33,8 @@
 import * as THREE from 'three';
 import {
   BLOCKS, AIR, WATER, LAVA, isWaterId, PIPE, PUMP, SPOUT, DRILL, FILAMENT_LAMP, BELT, FACING_DIRS, TOOL_MATERIALS,
-  metalTool, maxStack, dropsFor, isFlowing, stationKind, CAULDRON, WHEAT_0, WHEAT_3, SEEDS, BERRY_BUSH, BERRIES, SUGAR_CANE,
-  STEAM_ENGINE, MAX_HONEY, BEDROCK, PAD_ITEM, LOOT_CHEST, TANK, TANK_CAP, tankId, LOG, SAPLING, GRASS, DIRT, isBlock, WOOL, FEATHER, BUCKET, MILK_BUCKET, WHEAT,
+  PUMPKIN, TRELLIS, ITEMS, metalTool, maxStack, dropsFor, isFlowing, stationKind, CAULDRON, WHEAT_0, WHEAT_3, SEEDS, BERRY_BUSH, BERRIES, SUGAR_CANE,
+  STEAM_ENGINE, MAX_HONEY, FARM_REACH, isWheat, BEDROCK, PAD_ITEM, LOOT_CHEST, TANK, TANK_CAP, tankId, LOG, SAPLING, GRASS, DIRT, isBlock, WOOL, FEATHER, BUCKET, MILK_BUCKET, WHEAT,
 } from './blocks.js';
 import { STATION_KINDS, isFuel, FUEL_ITEMS } from './stations.js';
 import { CHUNK } from './terrain.js';
@@ -110,6 +110,7 @@ export class Machines {
     this.scene = scene;
     this.icons = icons;
     this.belts = new Map(); // "x,y,z" -> [{ id, t, sprite }], front first (t from 0 at the start to 1 at the end)
+    this.tubeFx = []; // things flying along pneumatic tubes (just for show): { id, path, d, sprite }
     this.spoutWater = new Map(); // cells holding water (or lava) poured by a spout -> which
     this.drills = new Map(); // "x,y,z" -> { progress, target: "x,y,z", held: [[id, n]], status } (harvesters too)
     this.engines = new Map(); // "x,y,z" -> { burn: seconds left, fuel: { id, count } | null }
@@ -126,6 +127,7 @@ export class Machines {
     this.counterN = new Map(); // item counter "x,y,z" -> how many things for each pulse (8 if not set)
     this.meterSpare = new Set(); // power meters set to signal when there's power to spare
     this.dayInvert = new Set(); // daylight sensors set to signal by day
+    this.radioCh = new Map(); // radio "x,y,z" -> channel 2..8 (1 isn't stored)
     this.quarries = new Map(); // "x,y,z" -> { i: cell in the layer, y: the layer, progress, held: [[id, n]], done, status }
     this.spawners = new Map(); // "x,y,z" -> seconds to its next creature
     this.pads = new Map(); // teleport pad "x,y,z" -> the "x,y,z" of its partner, or null while it waits for one
@@ -140,6 +142,7 @@ export class Machines {
   clear() {
     for (const items of this.belts.values()) for (const it of items) this.dropSprite(it);
     this.belts.clear();
+    for (const f of this.tubeFx) this.dropSprite(f); this.tubeFx = []; this.farmCache?.clear();
     this.spoutWater.clear();
     this.drills.clear();
     this.engines.clear();
@@ -150,7 +153,7 @@ export class Machines {
     for (const items of this.lifts.values()) for (const it of items) this.dropSprite(it);
     this.lifts.clear();
     this.tanks.clear();
-    this.counts.clear(); this.counterN.clear(); this.meterSpare.clear(); this.dayInvert.clear();
+    this.counts.clear(); this.counterN.clear(); this.meterSpare.clear(); this.dayInvert.clear(); this.radioCh.clear();
     this.quarries.clear(); this.spawners.clear(); this.pads.clear(); this.progIndex.clear();
   }
 
@@ -188,10 +191,18 @@ export class Machines {
   // Put n of an item into the block at (x, y, z): a chest, a machine (as an ingredient, or as fuel when
   // `fuel` and it burns), a hopper (passed straight on) or a belt (one at a time). Returns how many went in.
   // `item` is an id, or a stack (or anything with an id) whose state goes along with it (see stateOf).
-  insert(world, stations, x, y, z, item, n, fuel = false, depth = 0) {
+  // `dir` ([dx, dy, dz]), when known, is the way the thing is moving: it came from (x - dx, y - dy, z - dz).
+  insert(world, stations, x, y, z, item, n, fuel = false, depth = 0, dir = null) {
     const id = idOf(item), state = stateOf(item);
     const bid = world.get(x, y, z), def = BLOCKS[bid];
     if (!def || depth > 6 || !id) return 0;
+    if (def.crossing) {
+      // a belt crossing: straight on across, the way it was going
+      if (!dir || dir[1]) return 0;
+      return this.insert(world, stations, x + dir[0], y, z + dir[2], item, n, fuel, depth + 1, dir);
+    }
+    if (def.tube) return this.intoTube(world, stations, x, y, z, item, n, depth, dir);
+    if (def.sortbox) return this.intoSorter(world, stations, x, y, z, item, n, depth, dir);
     const kind = stationKind(bid);
     if (kind) {
       const K = STATION_KINDS[kind];
@@ -219,12 +230,12 @@ export class Machines {
       const filter = this.frames?.around(world, x, y, z);
       if (filter?.length && !filter.includes(id)) return 0;
       const [dx, dy, dz] = pointing(def);
-      return this.insert(world, stations, x + dx, y + dy, z + dz, item, n, !def.down, depth + 1);
+      return this.insert(world, stations, x + dx, y + dy, z + dz, item, n, !def.down, depth + 1, [dx, dy, dz]);
     }
     if (def.counter) {
       // an item counter: straight on out of its front, counting what goes through
       const [dx, dz] = FACING_DIRS[def.facing];
-      const k = this.insert(world, stations, x + dx, y, z + dz, item, n, fuel, depth + 1);
+      const k = this.insert(world, stations, x + dx, y, z + dz, item, n, fuel, depth + 1, [dx, 0, dz]);
       if (k > 0) this.counted(x, y, z, k);
       return k;
     }
@@ -339,10 +350,11 @@ export class Machines {
         const it = this.takeOne(world, stations, x, y + 1, z, true, filter);
         if (!it) continue;
         const [dx, dy, dz] = pointing(def);
-        if (this.insert(world, stations, x + dx, y + dy, z + dz, it, 1, !def.down)) this.takeOne(world, stations, x, y + 1, z, false, filter);
+        if (this.insert(world, stations, x + dx, y + dy, z + dz, it, 1, !def.down, 0, [dx, dy, dz])) this.takeOne(world, stations, x, y + 1, z, false, filter);
       }
     }
     this.tickBelts(dt, world, kinetics, stations, light);
+    this.tickTubes(dt);
     this.tickLifts(dt, world, kinetics, stations, light);
     for (const e of ejectors) this.tickEjector(dt, world, stations, e);
     for (const f of farms) this.tickFarm(dt, world, kinetics, stations, f);
@@ -443,6 +455,9 @@ export class Machines {
   counterText(x, y, z) { const k = key(x, y, z); return `${this.counts.get(k) ?? 0} of ${this.counterN.get(k) ?? 8}`; }
 
   toggleMeter(x, y, z) { const k = key(x, y, z); if (this.meterSpare.has(k)) this.meterSpare.delete(k); else this.meterSpare.add(k); return this.meterSpare.has(k); }
+  // A radio's channel (1-8), and tapping it to step to the next.
+  radioChannel(x, y, z) { return this.radioCh.get(key(x, y, z)) ?? 1; }
+  nextChannel(x, y, z) { const c = this.radioChannel(x, y, z) % 8 + 1; if (c === 1) this.radioCh.delete(key(x, y, z)); else this.radioCh.set(key(x, y, z), c); return c; }
   toggleDaylight(x, y, z) { const k = key(x, y, z); if (this.dayInvert.has(k)) this.dayInvert.delete(k); else this.dayInvert.add(k); return this.dayInvert.has(k); }
 
   // A teleport pad was put down: it pairs with the oldest pad still waiting for a partner.
@@ -498,7 +513,7 @@ export class Machines {
     const [dx, dz] = FACING_DIRS[def.facing];
     while (d.held.length) {
       const [id, n] = d.held[0];
-      const put = this.insert(world, stations, x - dx, y, z - dz, id, n, false);
+      const put = this.insert(world, stations, x - dx, y, z - dz, id, n, false, 0, [-dx, 0, -dz]);
       if (put >= n) d.held.shift(); else { d.held[0][1] = n - put; break; }
     }
     return !d.held.length;
@@ -557,10 +572,12 @@ export class Machines {
       const below = world.get(fx, y - 1, fz);
       if (world.get(fx, y, fz) !== AIR || (below !== GRASS && below !== DIRT)) return;
       const st = stations.get(x, y, z, 'planter');
-      const i = st.inputs.findIndex((s) => s?.id === SAPLING);
+      const i = st.inputs.findIndex((s) => s && (s.id === SAPLING || ITEMS[s.id]?.places));
       if (i < 0) return;
+      const put = st.inputs[i].id === SAPLING ? SAPLING : ITEMS[st.inputs[i].id].places;
       if (!--st.inputs[i].count) st.inputs[i] = null;
-      world.setBlock(fx, y, fz, SAPLING);
+      world.setBlock(fx, y, fz, put);
+      if (put !== SAPLING) world.planted?.(fx, y - 1, fz, BLOCKS[put].crop?.kind ?? 'wheat');
       return;
     }
     if (def.farm === 'net') {
@@ -758,7 +775,7 @@ export class Machines {
     // pass on what it dug out of its back
     if (d.held.length) {
       const [id, n] = d.held[0];
-      const put = this.insert(world, stations, x - dx, y - dy, z - dz, id, n, false);
+      const put = this.insert(world, stations, x - dx, y - dy, z - dz, id, n, false, 0, [-dx, -dy, -dz]);
       if (put >= n) d.held.shift(); else d.held[0][1] = n - put;
       if (d.held.length) { d.status = 'Stopped: there\'s nowhere behind it to put what it digs'; return; }
     }
@@ -796,8 +813,18 @@ export class Machines {
     const id = world.get(x, y, z);
     if (id === WHEAT_3) {
       const drops = dropsFor(id).map(([i, n]) => [i, i === SEEDS ? n - 1 : n]).filter(([, n]) => n > 0); // one seed is replanted
+      world.planted?.(x, y - 1, z, 'wheat');
       return { drops, after: WHEAT_0 };
     }
+    // the v26 crops: one carrot or potato goes back in; a grape vine stays on its trellis
+    const crop = BLOCKS[id]?.crop;
+    if (crop?.ripe) {
+      const keep = crop.after ? TRELLIS : crop.seed;
+      const drops = dropsFor(id).map(([i, n]) => [i, i === keep ? n - 1 : n]).filter(([, n]) => n > 0);
+      if (!crop.after) world.planted?.(x, y - 1, z, crop.kind);
+      return { drops, after: crop.after ?? crop.first };
+    }
+    if (id === PUMPKIN) return { drops: [[PUMPKIN, 1]], after: AIR };
     if (id === BERRY_BUSH + 1) return { drops: [[BERRIES, 2]], after: BERRY_BUSH };
     if (id === SUGAR_CANE && world.get(x, y - 1, z) === SUGAR_CANE && world.get(x, y + 1, z) !== SUGAR_CANE) return { drops: [[SUGAR_CANE, 1]], after: AIR };
     return null;
@@ -810,7 +837,7 @@ export class Machines {
     const [dx, , dz] = pointing(def);
     if (d.held.length) {
       const [id, n] = d.held[0];
-      const put = this.insert(world, stations, x - dx, y, z - dz, id, n, false);
+      const put = this.insert(world, stations, x - dx, y, z - dz, id, n, false, 0, [-dx, 0, -dz]);
       if (put >= n) d.held.shift(); else d.held[0][1] = n - put;
       if (d.held.length) { d.status = 'Stopped: there\'s nowhere behind it to put the harvest'; return; }
       d.status = 'Harvesting';
@@ -886,7 +913,7 @@ export class Machines {
     const id = world.get(x, y, z), def = BLOCKS[id];
     if (!def) return false;
     if (def.stationBase === CAULDRON) return full ? def.water >= 3 : def.water > 0;
-    if (def.hive >= 0) return full ? def.hive >= MAX_HONEY : def.hive > 0;
+    if (def.hive >= 0) return full ? def.hive >= (def.apiary ? 5 : MAX_HONEY) : def.hive > 0;
     if (def.tank) { const t = this.tanks.get(key(x, y, z)); return full ? (t?.amount ?? 0) >= TANK_CAP : (t?.amount ?? 0) > 0; }
     if (def.engine) { const e = this.engines.get(key(x, y, z)); return full ? (e?.fuel?.count ?? 0) >= maxStack(e?.fuel?.id ?? 0) : !!e?.fuel; }
     if (def.rail?.loader) {
@@ -910,7 +937,17 @@ export class Machines {
     }
     if ((this.sensorTimer -= dt) > 0) return;
     this.sensorTimer = 0.1;
+    // radios: which channels a transmitter is sending on
+    const onAir = new Set();
+    for (const [x, y, z, def] of sensors) if (def.sensor === 'radiotx' && this.signalAt?.(x, y, z)) onAir.add(this.radioChannel(x, y, z));
+    this.onAir = onAir;
     for (const [x, y, z, def] of sensors) {
+      if (def.sensor === 'radiotx') continue;
+      if (def.sensor === 'radio') {
+        const want = onAir.has(this.radioChannel(x, y, z));
+        if (want !== def.on) this.onSwitch?.(x, y, z, want);
+        continue;
+      }
       const [dx, dz] = FACING_DIRS[def.facing];
       const fx = x + dx, fz = z + dz, k = key(x, y, z);
       if (def.sensor === 'observer') {
@@ -927,6 +964,11 @@ export class Machines {
         // a daylight sensor signals at night (or, set to, by day); under a roof it's always night
         const day = (this.daylight?.() ?? 1) > 0.45 && world.skyAt(x, y, z) >= 12;
         const want = this.dayInvert.has(k) ? day : !day;
+        if (want !== def.on) this.onSwitch?.(x, y, z, want);
+      } else if (def.sensor === 'farm') {
+        // a farm controller signals once half the wheat around it is ripe
+        const r = this.farmReport(world, x, y, z);
+        const want = r.ripe > 0 && r.ripe * 2 >= r.total;
         if (want !== def.on) this.onSwitch?.(x, y, z, want);
       } else if (def.sensor === 'tacho') {
         // a tachometer signals while its network is stopped or overloaded
@@ -971,7 +1013,7 @@ export class Machines {
       // at the end: on to the next belt, or into whatever it points at (or off to the side)
       if (items.length && items[0].t >= 1 && speed > 0) {
         const outs = this.beltOuts(world, x, y, z, def, items[0].id);
-        const i = outs.findIndex(([ox, oz]) => this.insert(world, stations, ox, y, oz, items[0], 1, false));
+        const i = outs.findIndex(([ox, oz]) => this.insert(world, stations, ox, y, oz, items[0], 1, false, 0, [ox - x, 0, oz - z]));
         if (i >= 0) {
           if (def.sorts === 'split') this.split.set(k, (outs[i][2] + 1) % 2);
           this.dropSprite(items.shift());
@@ -1003,6 +1045,92 @@ export class Machines {
       return filter.includes(id) ? [[...step(left), 0]] : [[...step(f), 0]];
     }
     return [[...step(f), 0]];
+  }
+
+  // ---------- v25: farm controllers and pneumatic tubes ----------
+
+  // The wheat within FARM_REACH blocks of a farm controller (counted at most once a second): { total, ripe, growing }.
+  farmReport(world, x, y, z) {
+    const k = key(x, y, z), now = performance.now();
+    this.farmCache ??= new Map();
+    const c = this.farmCache.get(k);
+    if (c && now - c.t < 1000) return c;
+    let total = 0, ripe = 0;
+    for (let dy = -2; dy <= 2; dy++) for (let dz = -FARM_REACH; dz <= FARM_REACH; dz++) for (let dx = -FARM_REACH; dx <= FARM_REACH; dx++) {
+      const id = world.get(x + dx, y + dy, z + dz);
+      if (!isWheat(id)) continue;
+      total++;
+      if (id === WHEAT_3) ripe++;
+    }
+    const r = { t: now, total, ripe, growing: total - ripe };
+    this.farmCache.set(k, r);
+    return r;
+  }
+
+  // Something put into a pneumatic tube at (x, y, z) (coming from (x, y, z) - dir) shoots through the tubes joined
+  // to it to the nearest chest, machine or belt at the far end that will take it. It arrives at once (the little
+  // icon that flies along the tubes is just for show). Returns how many went.
+  intoTube(world, stations, x, y, z, item, n, depth, dir) {
+    const id = idOf(item);
+    const src = dir ? key(x - dir[0], y - dir[1], z - dir[2]) : null;
+    const prev = new Map([[key(x, y, z), null]]), queue = [[x, y, z]];
+    const D6 = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]];
+    for (let qi = 0; qi < queue.length && queue.length < 256; qi++) {
+      const [tx, ty, tz] = queue[qi];
+      // a tube with item frames on it only lets out the things they show
+      const filter = this.frames?.around(world, tx, ty, tz);
+      for (const [ex, ey, ez] of D6) {
+        const ox = tx + ex, oy = ty + ey, oz = tz + ez, ok = key(ox, oy, oz);
+        if (prev.has(ok) || ok === src) continue;
+        const def = BLOCKS[world.get(ox, oy, oz)];
+        if (!def) continue;
+        if (def.tube) { prev.set(ok, key(tx, ty, tz)); queue.push([ox, oy, oz]); continue; }
+        if (def.hopper || def.crossing || (filter?.length && !filter.includes(id))) continue;
+        if (!stationKind(world.get(ox, oy, oz)) && !def.belt && !def.elevator && !def.rail?.loader && !def.sortbox) continue;
+        const k = this.insert(world, stations, ox, oy, oz, item, n, false, depth + 1, [ex, ey, ez]);
+        if (k <= 0) continue;
+        // show it flying along the tubes
+        const path = [[ox, oy, oz]];
+        for (let at = key(tx, ty, tz); at; at = prev.get(at)) path.unshift(unkey(at));
+        if (this.tubeFx.length < 40) this.tubeFx.push({ id, path, d: 0, sprite: null });
+        return k;
+      }
+    }
+    return 0;
+  }
+
+  // A sorting machine: out along the tube (on any side but the one it came in by) whose item frames show it; or,
+  // failing that, along a tube with no frames.
+  intoSorter(world, stations, x, y, z, item, n, depth, dir) {
+    const id = idOf(item);
+    const D6 = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]];
+    const outs = [];
+    for (const [ex, ey, ez] of D6) {
+      if (dir && ex === -dir[0] && ey === -dir[1] && ez === -dir[2]) continue; // (not back the way it came)
+      const tx = x + ex, ty = y + ey, tz = z + ez;
+      if (!BLOCKS[world.get(tx, ty, tz)]?.tube) continue;
+      const filter = this.frames?.around(world, tx, ty, tz) ?? [];
+      outs.push({ t: [tx, ty, tz], d: [ex, ey, ez], match: filter.includes(id), open: !filter.length });
+    }
+    for (const want of ['match', 'open']) {
+      for (const o of outs) {
+        if (!o[want]) continue;
+        const k = this.intoTube(world, stations, ...o.t, item, n, depth + 1, o.d);
+        if (k > 0) return k;
+      }
+    }
+    return 0;
+  }
+
+  tickTubes(dt) {
+    for (let i = this.tubeFx.length - 1; i >= 0; i--) {
+      const f = this.tubeFx[i];
+      f.d += dt * 12;
+      if (f.d >= f.path.length - 1) { this.dropSprite(f); this.tubeFx.splice(i, 1); continue; }
+      if (!f.sprite) { f.sprite = this.makeSprite(f.id); f.sprite.scale.setScalar(0.3); }
+      const j = Math.floor(f.d), u = f.d - j, a = f.path[j], b = f.path[j + 1];
+      f.sprite.position.set(a[0] + 0.5 + (b[0] - a[0]) * u, a[1] + 0.5 + (b[1] - a[1]) * u, a[2] + 0.5 + (b[2] - a[2]) * u);
+    }
   }
 
   makeSprite(id) {
@@ -1040,7 +1168,7 @@ export class Machines {
     this.ejectors.delete(k); this.ejectStacks.delete(k); this.split.delete(k); this.tanks.delete(k);
     for (const [id, n] of this.quarries.get(k)?.held ?? []) out.push([id, n]);
     this.quarries.delete(k); this.spawners.delete(k); this.counts.delete(k); this.counterN.delete(k);
-    this.meterSpare.delete(k); this.dayInvert.delete(k); this.progIndex.delete(k);
+    this.meterSpare.delete(k); this.dayInvert.delete(k); this.radioCh.delete(k); this.progIndex.delete(k);
     if (this.pads.has(k)) {
       // its partner waits for a new one
       const p = this.pads.get(k);
@@ -1078,6 +1206,7 @@ export class Machines {
       counters: [...new Set([...this.counts.keys(), ...this.counterN.keys()])].map((k) => [k, this.counts.get(k) ?? 0, this.counterN.get(k) ?? 8]),
       meterSpare: [...this.meterSpare],
       dayInvert: [...this.dayInvert],
+      radioCh: [...this.radioCh],
       quarries: [...this.quarries].map(([k, q]) => [k, q.i, q.y, q.done ? 1 : 0, q.held]),
       pads: [...this.pads],
       progIndex: [...this.progIndex].map(([k, p]) => [k, p.i, p.sig ? 1 : 0]),
@@ -1112,6 +1241,7 @@ export class Machines {
     }
     for (const k of o?.meterSpare ?? []) if (typeof k === 'string') this.meterSpare.add(k);
     for (const k of o?.dayInvert ?? []) if (typeof k === 'string') this.dayInvert.add(k);
+    for (const e of o?.radioCh ?? []) if (Array.isArray(e) && typeof e[0] === 'string' && e[1] >= 2 && e[1] <= 8) this.radioCh.set(e[0], e[1] | 0);
     for (const [k, i, y, done, held] of o?.quarries ?? []) {
       if (typeof k !== 'string') continue;
       this.quarries.set(k, { i: Math.max(0, i | 0), y: y | 0, done: !!done, progress: 0, status: '', held: Array.isArray(held) ? held.filter((h) => h?.[0] > 0 && h[1] > 0) : [] });
