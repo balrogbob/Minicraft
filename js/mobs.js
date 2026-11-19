@@ -724,12 +724,12 @@ export class MobManager {
     if (!s) return null;
     if (s.id === WATER) return { kinds: ['duck'], y: s.y + 0.875 - SPECIES.duck.sink, water: true };
     const y = s.y + 1;
-    if (s.id === SNOW_GRASS || s.id === SNOW) return { kinds: ['alpaca', 'yak', 'wolf'], y }; // the shaggy ones like the cold
+    if (s.id === SNOW_GRASS || s.id === SNOW) return { kinds: ['yak', 'yak', 'alpaca', 'wolf'], y }; // the shaggy ones like the cold, yaks most of all
     if (s.id !== GRASS && s.id !== SAND && s.id !== DIRT) return null;
     if (s.id === SAND && s.y > SEA_LEVEL + 1 && !this.nearWater(x, s.y, z) && this.world.generator.biomeAt(x, z) === 'desert') return { kinds: ['camel'], y };
     if (this.nearWater(x, s.y, z)) return { kinds: ['duck', 'newt'], y };
     if (s.id !== GRASS) return null;
-    if (s.y >= SEA_LEVEL + 12) return { kinds: ['alpaca', 'yak'], y };
+    if (s.y >= SEA_LEVEL + 12) return { kinds: ['alpaca', 'yak', 'yak'], y };
     if (s.y >= SEA_LEVEL + 2) return { kinds: ['buffalo'], y };
     return null;
   }
@@ -743,6 +743,16 @@ export class MobManager {
           if (w.isSolid(bx, by, bz)) return false;
         }
     return true;
+  }
+
+  // Where an animal standing on column (x, z) at height y fits: the middle of the block, or (for the big ones that
+  // overlap the blocks around) nudged onto one of its edges or corners. null if nowhere does.
+  fit(kind, x, y, z) {
+    for (const [ox, oz] of [[0.5, 0.5], [0, 0.5], [1, 0.5], [0.5, 0], [0.5, 1], [0, 0], [1, 0], [0, 1], [1, 1]]) {
+      if (this.hasRoom(kind, x + ox, y, z + oz)) return [x + ox, z + oz];
+      if (SPECIES[kind].w <= 1) return null; // anything narrower fits in the middle or not at all
+    }
+    return null;
   }
 
   trySpawn(player) {
@@ -762,8 +772,9 @@ export class MobManager {
       const gx = i ? x + Math.round(rand(-3, 3)) : x, gz = i ? z + Math.round(rand(-3, 3)) : z;
       if (!w.chunkAt(gx, gz)) continue;
       const h = i ? this.habitat(gx, gz) : hab;
-      if (!h || !h.kinds.includes(kind) || !this.hasRoom(kind, gx + 0.5, h.y, gz + 0.5)) continue;
-      const m = new Mob(kind, gx + 0.5, h.y, gz + 0.5);
+      const at = h && h.kinds.includes(kind) && this.fit(kind, gx, h.y, gz);
+      if (!at) continue;
+      const m = new Mob(kind, at[0], h.y, at[1]);
       this.mobs.push(m);
       this.scene.add(m.root);
     }
