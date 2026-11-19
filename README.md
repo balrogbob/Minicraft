@@ -80,6 +80,11 @@ It is designed for Android tablets (touch controls) but also plays with keyboard
   **lava** and fill cauldrons, and **switch rails** for branch lines
 - Building: **walls**, **pillars**, stairs that turn **corners**, **doors** and **glass panes** in every colour,
   **lanterns**, **chandeliers**, coloured **glow lamps** that cast coloured light, and **paintings** of eight sizes
+- Advanced automation: **copper wire**, **inverters**, **delay blocks** and **latches** for signal logic (and
+  clocks), **detector rails**, **ejectors**, **collectors**, **splitting** and **sorting belts**, **bucket elevators**,
+  an **auto-crafter**, **drive belts**, **flywheels**, **tachometers**, **gear shifts**, **tanks**, **valves**, lava
+  piped in as fuel, **sprinklers**, **tree fellers**, **planters**, **block breakers** and **placers**,
+  **animal stations** and **fishing nets**
 - **Three world slots** with export to a file and import, a **creative mode** (flying, every block, instant
   breaking and a **copy wand**), rebindable keys, a field-of-view slider, a full-screen **world map** with
   waypoints, and **22 achievements** with an in-game guide
@@ -711,6 +716,65 @@ panes** in any of the ten colours. Light rooms with an iron **lantern** (it hang
 a gold **chandelier**, or **glow lamps** (crystal shards, stained glass and a torch) that cast light in their
 own colour. Hang a **painting** on a wall: it picks the biggest of eight pictures that fits the space.
 
+### Signals and logic
+
+- **Copper wire** (8 from a copper ingot) lies on top of blocks and carries a signal along the whole line it
+  makes, side by side or a block up or down. Anything that switches on beside any part of it (a lever, button,
+  pressure plate, observer, gauge or logic block) powers the whole line, and the wire powers whatever it
+  touches, and the block it lies on, like a switch.
+- **Inverters**, **delay blocks** and **latches** sit on top of a block and point away from you as you place
+  them. Each takes its signal from the block behind it and gives its own to the block in front. An inverter
+  is on while it gets no signal. A delay block passes its signal on after a moment: tap it to set ½, 1, 1½, 2,
+  3, 4 or 5 seconds. A latch flips on or off each time its signal comes on (tap it to flip it by hand).
+- Logic blocks work out their signal a tenth of a second after what feeds them changes. An inverter whose
+  output loops back to its own input through wire flickers on and off; put a delay block in the loop for a
+  slower **clock**.
+- A **detector rail** gives a signal while a cart is on it.
+
+### Moving things around
+
+- An **ejector** throws what's in the chest or machine behind it out onto the ground in front: one thing every
+  half second while it gets a signal. Tap it to make it throw a whole stack each time the signal comes on.
+- A **collector** is a hopper that also pulls in loose things lying within 4 blocks of it.
+- A **splitting belt** sends what reaches its end off to its left and right in turn; a **sorting belt** sends
+  things matching an item frame hung on it off to the left, and the rest straight on.
+- A **bucket elevator** (stack them into a column) is driven by a shaft like a belt. Things put into it by a
+  belt, a hopper or dropped onto it are lifted up the column and out of the top, into a chest or hopper there,
+  or onto the top.
+- An **auto-crafter** makes whatever an item frame on it shows, a second at a time, whenever the ingredients
+  are inside. Fill it with hoppers or belts and empty it with a hopper underneath.
+
+### More power
+
+- A **drive belt** links two shafts or gears on parallel axles up to 8 blocks apart: hold it, tap one, then
+  the other. They turn together at the same speed.
+- A **flywheel** joins up like a shaft. While the network has power to spare it spins up, and when the
+  power drops (a steam engine runs out, say) it keeps the machines going for a while.
+- A **tachometer** is driven like a machine but takes no load. Tap it to see the speed and load; it gives a
+  signal while its network is stopped or overloaded.
+- A **gear shift** joins like a shaft, but while it gets a signal its + end turns twice as fast as the other.
+
+### Liquids
+
+- A **tank** holds 16 buckets of water or lava. Pour buckets in or take them out by hand, or fill it from a
+  pump through lead pipes; a pump set beside a tank pumps out of it. A storage gauge reads it.
+- A **valve** is a pipe that only lets liquid through while it gets a signal.
+- Lava piped to an **oven**, **smelter**, **blast smelter** or **steam engine** burns as its fuel.
+- A **sprinkler** on a water pipe makes crops in the 5 × 5 patch around it (and a block or two below) grow
+  twice as fast.
+
+### Farm machines
+
+- A **tree feller**, driven by a shaft, cuts down the tree in front of it and passes the logs (and a sapling or
+  two) to whatever is behind it.
+- A **planter** plants a sapling put into it on the grass or dirt in front of it, whenever there's room.
+- A **block breaker** breaks the block in front of it each time its signal comes on, passing what it gives
+  behind it. A **block placer** puts a block from the chest behind it into the space in front of it.
+- An **animal station** shears alpacas, plucks ducks and milks yaks (into empty buckets put into it) within 5
+  blocks, passing what it gets out of its back. Wheat put into it is fed to the animals, so coats and
+  feathers grow back twice as fast.
+- A **fishing net** set in water catches a fish every minute or so; a hopper underneath takes them out.
+
 ### Worlds, creative mode, the map and achievements
 
 ☰ → **Worlds…** holds three worlds. Play any of them, start a new **survival** or **creative** world in a slot,
@@ -742,9 +806,10 @@ guide to how everything works.
 | `js/mobs.js` | Animals, pets, the trader, night creatures and the Mossback King: box models, behaviour and hunting, physics, spawning, difficulty |
 | `js/arrows.js` | Arrows and thorns: flight, hits, sticking in blocks, pick-up |
 | `js/fishing.js` | Fishing: the bobber's cast, bites and the line |
-| `js/stations.js` | Ovens, smelters, blast smelters, chests and the shaft-driven machines that make things: their contents, fuel, recipes and cooking |
-| `js/kinetics.js` | Water wheels, windmills, shafts, gears, gearboxes and clutches: power networks, gear ratios, load, and the turning models |
-| `js/machines.js` | Pumps and pipes, drills, filament lamps, hoppers and conveyor belts |
+| `js/stations.js` | Ovens, smelters, blast smelters, chests, the auto-crafter and the shaft-driven machines that make things: their contents, fuel, recipes and cooking |
+| `js/kinetics.js` | Water wheels, windmills, shafts, gears, gearboxes, clutches, gear shifts, flywheels and drive belts: power networks, gear ratios, load, and the turning models |
+| `js/machines.js` | Pumps, pipes, valves, tanks and sprinklers, drills, filament lamps, hoppers, collectors, ejectors, belts (splitting and sorting), bucket elevators, sensors and the farm machines |
+| `js/logic.js` | Copper wire and the logic blocks: inverters, delay blocks and latches |
 | `js/carts.js` | Minecarts and storage carts: rolling along rails, slopes, powered and loader rails, riding |
 | `js/signs.js` | Sign text (and its colour) and the panels that show it |
 | `js/frames.js` | Item frames: what each holds, the pictures in them, and hopper filters |
