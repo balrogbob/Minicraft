@@ -61,7 +61,7 @@ import { Logic } from './logic.js';
 
 // v2 = the 16k x 16k streaming world (player state here, edited chunks in IndexedDB).
 // v1 = the old 128 x 128 world, migrated into the middle of the big world on first launch.
-const GAME_VERSION = '23'; // shown in the menu; bump with each release
+const GAME_VERSION = '24'; // shown in the menu; bump with each release
 const SAVE_KEY = 'minicraft-save-v2';
 const LEGACY_SAVE_KEY = 'minicraft-save-v1';
 const SETTINGS_KEY = 'minicraft-settings-v1';
@@ -1387,6 +1387,46 @@ function chestMove(intoChest) {
   inventory.onChange();
   renderStation();
 }
+// Quick-stack: backpack things (not the hotbar) that a chest already holds go into it, filling its stacks
+// first and then its empty slots. Tools, enchanted things and backpacks stay with you. Returns how many moved.
+function stackInto(slots) {
+  let moved = 0;
+  for (let i = 9; i < SLOTS; i++) {
+    const s = inventory.slots[i];
+    if (!s || s.wear || s.ench || s.pack || isBackpack(s.id) || !slots.some((t) => t && t.id === s.id)) continue;
+    for (let j = 0; j < slots.length && s.count; j++) {
+      const t = slots[j];
+      if (t && t.id === s.id && !t.wear && !t.ench && t.count < maxStack(s.id)) { const k = Math.min(s.count, maxStack(s.id) - t.count); t.count += k; s.count -= k; moved += k; }
+    }
+    for (let j = 0; j < slots.length && s.count; j++) if (!slots[j]) { slots[j] = { ...s }; moved += s.count; s.count = 0; }
+    if (!s.count) inventory.slots[i] = null;
+  }
+  return moved;
+}
+const QUICK_STACK_REACH = 6;
+const QUICK_STACK_KINDS = ['chest', 'ironchest', 'leadchest'];
+function quickStack() {
+  const bx = Math.floor(player.pos.x), by = Math.floor(player.pos.y), bz = Math.floor(player.pos.z), R = QUICK_STACK_REACH;
+  let moved = 0, chests = 0;
+  for (let dy = -R; dy <= R; dy++) for (let dz = -R; dz <= R; dz++) for (let dx = -R; dx <= R; dx++) {
+    const kind = stationKind(world.get(bx + dx, by + dy, bz + dz));
+    if (!QUICK_STACK_KINDS.includes(kind)) continue;
+    const n = stackInto(stations.get(bx + dx, by + dy, bz + dz, kind).inputs);
+    if (n) { moved += n; chests++; }
+  }
+  sound.pop();
+  inventory.onChange();
+  toast(moved ? `Stacked ${moved} item${moved > 1 ? 's' : ''} into ${chests} chest${chests > 1 ? 's' : ''} nearby` : 'No chest nearby holds any of the things in your backpack');
+  return moved;
+}
+$('btn-quick-stack').addEventListener('click', () => { picked = -1; quickStack(); });
+$('btn-chest-match').addEventListener('click', () => {
+  const st = currentStation();
+  if (!st) return;
+  const n = stackInto(st.inputs);
+  sound.pop(); inventory.onChange(); renderStation();
+  if (!n) toast('Nothing in your backpack matches what\'s in here');
+});
 $('btn-chest-in').addEventListener('click', () => chestMove(true));
 $('btn-chest-out').addEventListener('click', () => chestMove(false));
 
@@ -4614,6 +4654,6 @@ window.minicraft = {
   get poisoned() { return poisoned; }, get dead() { return dead; }, get air() { return air; }, set air(v) { air = v; },
   arrows, fishing, kinetics, electric, lightUniforms, bees, catchAt, seasonOf, applySeason, set day(v) { day = v; applySeason(); }, frames, signalAt, setSwitch, logic, machines, carts, minimap, signs, armour, damage, placeRail, getInCart, getOutOfCart,
   get riding() { return riding; }, explode, lightFuse, fuses, clockTime, compassText, place, editSign, closeSign, openInventory, closeInventory, chestMove, lamps, tickLamps, sleepUntilMorning, stations, openStation, closeStation,
-  get caneToday() { return caneToday; }, get creative() { return creative; }, set creative(v) { creative = v; applyCreative(); }, toggleFly, wand, useWand, get achieved() { return achieved; }, achieve, worldMap, openMap, closeMap, openGuide, switchSlot, store, saveGame, renderWorlds, openWorlds, exportSlot, get target() { return target; }, set target(v) { target = v; }, applyKeys, renderKeys, camera, get controls() { return controls; }, loose, throwHeld, get waypoints() { return waypoints; }, toggleWaypoint, sortSlots, dropMeteor, get meteors() { return meteors; }, weather, openTrade, closeTrade, mountMob, dismount, get ridingMob() { return ridingMob; }, effects, armourWear, useAnvil, rollLoot, settings,
+  get caneToday() { return caneToday; }, get creative() { return creative; }, set creative(v) { creative = v; applyCreative(); }, toggleFly, wand, useWand, get achieved() { return achieved; }, achieve, worldMap, openMap, closeMap, openGuide, switchSlot, store, saveGame, renderWorlds, openWorlds, exportSlot, get target() { return target; }, set target(v) { target = v; }, applyKeys, renderKeys, camera, get controls() { return controls; }, loose, throwHeld, get waypoints() { return waypoints; }, toggleWaypoint, sortSlots, quickStack, dropMeteor, get meteors() { return meteors; }, weather, openTrade, closeTrade, mountMob, dismount, get ridingMob() { return ridingMob; }, effects, armourWear, useAnvil, rollLoot, settings,
   get bedSpawn() { return bedSpawn; }, fertilise, openJournal, closeJournal, get packs() { return packs; }, radiationAt, vehicles, boardVehicle, leaveVehicle, get boarded() { return boarded; }, zips, linkZip, startZip, get zipping() { return zipping; }, burnCoal, get health() { return health; }, set health(v) { health = v; }, paintings, placeSwitchRail, signalAt, ailments, armourEnch, openAltar, lairNear, useBed, eat, drinkTea,
 };
