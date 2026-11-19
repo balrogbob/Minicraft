@@ -120,9 +120,15 @@ It is designed for Android tablets (touch controls) but also plays with keyboard
   **oak barrel** where wine and cheese age; **sunken temples** and **sky islands** with puzzle vaults, **diving
   gear** and an **air pump**; **signal radios**, a **sorting machine** and steam **locomotives** that pull trains of
   carts; a **fireplace** with a **chimney**; **pinned recipes** on screen and an **auto-refilling hotbar**
+- v27: wild **horses** to win over, saddle and ride, and **stables** to keep them; village **requests**,
+  **reputation** (better prices) and **seasonal festivals** with decorations and **fireworks**; **snowmen**;
+  **onions**, **beans**, **tomatoes** and **herbs**; **cider** and **berry wine** from the press, aged faster in a
+  **cellar**; a **kiln** for **terracotta**, **glazed tiles**, **roof tiles** and **urns**; **rope ladders** and
+  **rope bridges**; **canal locks** that lift boats between water levels; **stalactites** that fall, glowing
+  **cave beetles**, **olms** and **glow-worms**; **search across nearby chests**; and a **photo mode**
 - **Three world slots** with export to a file and import, a **creative mode** (flying, every block, instant
   breaking and a **copy wand**), rebindable keys, a field-of-view slider, a full-screen **world map** with
-  waypoints, and **24 achievements** with an in-game guide
+  waypoints, and **27 achievements** with an in-game guide
 - Torches that light up the area around them with a warm, flickering glow. They stand on floors or hang on walls
 - Synthesised sound effects for digging, breaking, placing, footsteps and splashing, with no audio files
 - Break and place blocks, with break times that depend on the tool you hold
@@ -191,6 +197,7 @@ The version number is shown at the bottom of the ☰ menu; bump `GAME_VERSION` i
 | World map | ☰ → World map, or tap the corner map | M |
 | Fly on / off (creative) | 🕊 button | F |
 | Fly up / down (creative) | ⤒ / ⤓ buttons | Space / Left Shift |
+| Photo mode (free camera, no HUD) | ☰ → 📷 Photo mode; move and look as usual, ▲ ▼ to rise and sink, 📷 to save the picture, ✕ to leave | F2 (Space / Left Shift to rise and sink, Enter or P to snap, F2 or Esc to leave) |
 | Copy and paste a build (creative) | Tap two corners with the copy wand, then tap to paste; double-tap and hold to clear | Right click / hold left button |
 
 On a touch screen, breaking needs a **double tap and hold**, so a finger resting on the look side while you
@@ -1167,6 +1174,81 @@ breed when there are 12 or more about.
 - **Auto-refill**: when the stack in your hand runs out, or a tool breaks, the next one of the same thing moves
   in from your backpack. Turn it off under ☰ if you'd rather not.
 
+### Version 27
+
+#### Horses and stables
+
+- Wild **horses** roam the grassland in small herds, in six coats. Feed one apples, carrots or sugar until it
+  trusts you (it can take a few), then put a **saddle** on it and ride: steer with the joystick or WASD, jump to
+  leap, tap to get off. Every horse has its own **speed** and **jump**, shown when you mount it; feed two tame
+  horses to breed them, and the foal takes after its parents.
+- A **stable** (6 planks, 2 logs, 6 wheat, at a table): tap it and your tame horses come home to it and wait by
+  the manger. It tells you each one's speed and jump.
+- New achievement: **Giddy-up**.
+
+#### Village requests, reputation and festivals
+
+- Each village wants something new every day: tap its **bell** to hear what, and tap it again holding the goods
+  to hand them over for coins.
+- Trading, selling at a village's stall and filling its requests earn its good opinion. A **Neighbour** is
+  welcome; a **Friend** pays a fifth less at its traders, and a **Hero** about a third less. New achievement:
+  **Local Hero**.
+- On the fourth day of every season each village holds a **festival** (Blossom Fair, Midsummer Feast, Harvest
+  Festival, Frost Fair): decorations go up round the well, stalls and requests pay double, the villagers stay up
+  late, and **fireworks** go up after dark. Make your own fireworks (3 from a paper and a gunpowder) and tap with
+  one in hand to send it up.
+- **Snowmen** (3 snow, a carrot, a coal, 2 sticks) face you when you place them, and melt when spring comes.
+
+#### New crops, cider and berry wine, cellars
+
+- **Onions**, **beans**, **tomatoes** and **herbs** grow from themselves (village farms grow them, and farmers sell
+  them). **Beans** never tire the soil: they leave it **rich**, so the next crop grows faster.
+- New meals: **vegetable stew** (an onion, carrot, potato and herbs) and **tomato soup** (3 tomatoes, an onion and
+  a water bucket) in the cooking pot, and **baked beans** (4 beans, a tomato) in the oven.
+- The **wine press** also makes **apple juice** (4 apples) and **berry juice** (8 berries). In an oak barrel
+  apple juice becomes **cider** and then **vintage cider**; berry juice becomes **berry wine** and then **fine
+  berry wine**.
+- A barrel in a **cellar** (no daylight reaching it from any side but below) ages things half as fast again.
+  Tap a barrel to see whether it's in one.
+
+#### Kiln, terracotta and pottery
+
+- A **kiln** (5 clay bricks, an iron, at a table) is fired with fuel like a furnace. It bakes clay blocks into
+  **terracotta**, clay balls into bricks, an **unfired urn** (6 clay balls) into an **urn** (a 6-slot store), and
+  coloured terracotta (4 terracotta and a dye) into shiny **glazed tiles**.
+- **Roof tiles** (4 from 4 terracotta) for warm red roofs.
+
+#### Rope ladders and rope bridges
+
+- A **rope ladder** (4 from 4 string and 3 sticks): tap the side of a block with it, or the top of a cliff edge
+  looking out over it, and it unrolls straight down to the ground, a piece for each block. Tap the ladder with
+  more to make it longer; cut it (or what it hangs from) and it rolls back up into your bag.
+- A **rope bridge** (4 from 3 planks and 3 string): tap the edge of a gap looking across it and the bridge lays
+  itself out to the far side, with rope rails, as long as you have pieces for it.
+
+#### Canal locks
+
+- Build a walled **chamber** of water between two stretches of canal at different heights, with **lock gates**
+  (2 from 6 planks and an iron) in its ends, and put a **sluice wheel** (a log, 2 planks, 2 iron) on its bank.
+- Turn the wheel: every gate shuts, the chamber fills or drains a layer at a time to the level of the next
+  canal, and then that canal's gate swings open. Float a boat in, turn the wheel, and float out at the other
+  level. New achievement: **Lock Keeper**.
+
+#### Caves
+
+- Big caverns now have **stalactites** hanging from the roof and **stalagmites** rising from the floor. Watch
+  out in the dark: a loose stalactite can drop on you (and one falls whenever the rock above it is dug out).
+- **Cave beetles** glow softly in the deep. Tap one to collect a **glow shell**; 3 glow shells and a glass make a
+  **beetle lamp**. Pale **olms** swim in underground pools, and **glow-worms** twinkle on cave ceilings.
+
+#### Finding things and taking pictures
+
+- **Find in chests nearby**: type in the box under your backpack, and it lists every chest, barrel, urn, stall
+  and net within 32 blocks that holds something matching, with how far and which way. **Show** marks it with a
+  gold outline and a beam; **Take** (when it's in reach) moves what matched into your backpack.
+- **Photo mode** (☰ → 📷 Photo mode, or F2): the HUD goes, the world holds still around you and the camera floats
+  free (up to 48 blocks from you) so you can frame a shot. 📷 (or Enter) saves it as a PNG.
+
 ### Worlds, creative mode, the map and achievements
 
 ☰ → **Worlds…** holds three worlds. Play any of them, start a new **survival** or **creative** world in a slot,
@@ -1181,7 +1263,7 @@ The **world map** (M, ☰ → World map, or tap the corner map) shows all the la
 around, pinch or scroll to zoom, and tap to put down a waypoint (or tap one to take it away). Waypoints show
 on the hand-held map too.
 
-☰ → **Guide & achievements** lists 24 achievements for each world (with a pop-up as you earn them) and a short
+☰ → **Guide & achievements** lists 27 achievements for each world (with a pop-up as you earn them) and a short
 guide to how everything works.
 
 ## Code layout

@@ -69,7 +69,7 @@ import { Logic } from './logic.js';
 
 // v2 = the 16k x 16k streaming world (player state here, edited chunks in IndexedDB).
 // v1 = the old 128 x 128 world, migrated into the middle of the big world on first launch.
-const GAME_VERSION = '26'; // shown in the menu; bump with each release
+const GAME_VERSION = '27'; // shown in the menu; bump with each release
 const SAVE_KEY = 'minicraft-save-v2';
 const LEGACY_SAVE_KEY = 'minicraft-save-v1';
 const SETTINGS_KEY = 'minicraft-settings-v1';
@@ -463,7 +463,7 @@ async function startWorld(save, opts = {}) {
     const drops = dropsFor(LEAVES, 0); // (fruit trees' leaves too: not their fruit, which you'd pick)
     if (drops.length) giveDrops(drops);
   };
-  mobs.reset(world); bees.clear(); crows.clear(); critters.clear(); fires.clear(); hearths.clear(); smoke.clear(); fireworks.clear(); openGates.clear(); lockJobs.length = 0; clearRocks(); strikeIn = 20; catGiftDay = -1; bellDay = -1; villageGrowth = new Map(); shownSeason = -1;
+  mobs.reset(world); bees.clear(); crows.clear(); critters.clear(); fires.clear(); hearths.clear(); smoke.clear(); fireworks.clear(); exitPhotoMode(); clearChestMark(); openGates.clear(); lockJobs.length = 0; clearRocks(); strikeIn = 20; catGiftDay = -1; bellDay = -1; villageGrowth = new Map(); shownSeason = -1;
   kinetics.clear();
   kinetics.load(save?.kinetics);
   beltStart = null;
@@ -1324,6 +1324,7 @@ function openInventory(station = null) {
   document.exitPointerLock?.();
   $('inventory').classList.remove('hidden');
   renderInventory();
+  renderChestResults();
 }
 function closeInventory() {
   closeSplit();
@@ -1334,6 +1335,7 @@ function closeInventory() {
   openedAt = null;
 }
 function toggleInventory() {
+  if (photoMode) return;
   if (openStationAt) { closeStation(); return; }
   if ($('inventory').classList.contains('hidden')) {
     if ($('menu').classList.contains('hidden')) openInventory();
@@ -3569,6 +3571,7 @@ $('sign-text').addEventListener('input', (e) => {
 
 // Placing a machine taken up with the spanner puts back what was inside it.
 function place() {
+  if (photoMode) return;
   const before = inventory.held();
   const pk = before?.pack > 0 && isBlock(before.id) ? before.pack : 0;
   const at = target && { x: target.x + target.nx, y: target.y + target.ny, z: target.z + target.nz };
@@ -4640,9 +4643,9 @@ controls = null;
     selectSlot,
     scrollSlot: (d) => selectSlot((inventory.selected + d + 9) % 9),
     toggleInventory,
-    toggleMap: () => (worldMap.open ? closeMap() : !paused && !dead && openMap()),
+    toggleMap: () => (worldMap.open ? closeMap() : !paused && !dead && !photoMode && openMap()),
     toggleFly,
-    throwItem: (all) => throwHeld(all),
+    throwItem: (all) => !photoMode && throwHeld(all),
     quickHold: () => inventory.heldId() === BOW,
     isPaused: () => paused,
   });
@@ -4681,7 +4684,7 @@ function applyCreative() {
   }
 }
 function toggleFly() {
-  if (!creative || riding || ridingMob) return;
+  if (!creative || riding || ridingMob || photoMode) return;
   player.flying = !player.flying;
   player.vel.y = 0;
   fallTop = null;
@@ -5702,6 +5705,186 @@ function tickStalactites(dt) {
   }
 }
 
+// ---------- v27 G: find things in chests nearby; photo mode ----------
+// Type in the box under the backpack to see which chests (barrels, urns, stalls and nets too) within
+// SEARCH_REACH hold something whose name matches. "Show" marks the chest with a glowing outline and a beam
+// for a while; "Take" (when it's in reach) moves what matched into your backpack.
+const SEARCH_REACH = 32, TAKE_REACH = 6, MARK_TIME = 25;
+function searchChests(q) {
+  q = String(q ?? '').trim().toLowerCase();
+  if (!q || !world) return [];
+  const px = player.pos.x, py = player.pos.y, pz = player.pos.z, out = [];
+  for (const [k, st] of stations.map) {
+    if (!STATION_KINDS[st.kind]?.storage) continue;
+    const [x, y, z] = k.split(',').map(Number);
+    const dist = Math.hypot(x + 0.5 - px, y + 0.5 - py, z + 0.5 - pz);
+    if (dist > SEARCH_REACH || stationKind(world.get(x, y, z)) !== st.kind) continue; // (a chest that's since been broken)
+    const found = new Map();
+    for (const s of st.inputs) if (s?.count > 0 && itemName(s.id).toLowerCase().includes(q)) found.set(s.id, (found.get(s.id) ?? 0) + s.count);
+    if (found.size) out.push({ x, y, z, kind: st.kind, name: STATION_KINDS[st.kind].name, dist, items: [...found].map(([id, count]) => ({ id, count })) });
+  }
+  return out.sort((a, b) => a.dist - b.dist);
+}
+function whereIs(x, y, z) {
+  const dx = x + 0.5 - player.pos.x, dz = z + 0.5 - player.pos.z, dy = y - Math.floor(player.pos.y);
+  const flat = Math.round(Math.hypot(dx, dz));
+  return (flat ? `${flat} block${flat > 1 ? 's' : ''} ${pointOf(dx, dz)}` : 'right here') + (dy > 1 ? `, ${dy} up` : dy < -1 ? `, ${-dy} down` : '');
+}
+// Move the matching things out of the chest at (x, y, z) into your backpack. Returns how many moved.
+function takeFromChest(x, y, z, q) {
+  const kind = stationKind(world.get(x, y, z));
+  if (!kind || !STATION_KINDS[kind].storage) return 0;
+  if (Math.hypot(x + 0.5 - player.pos.x, y + 0.5 - player.pos.y, z + 0.5 - player.pos.z) > TAKE_REACH + 0.5) { toast('That one\'s too far away to reach'); return 0; }
+  q = String(q).trim().toLowerCase();
+  const st = stations.get(x, y, z, kind);
+  let moved = 0;
+  st.inputs.forEach((s, i) => {
+    if (!s?.count || !itemName(s.id).toLowerCase().includes(q)) return;
+    const had = s.count, left = inventory.addItem(s);
+    moved += had - left;
+    st.inputs[i] = left ? { ...s, count: left } : null;
+  });
+  inventory.onChange();
+  if (moved) sound.pop(); else toast('Inventory full');
+  return moved;
+}
+let chestMark = null; // { group, until }
+function markChest(x, y, z) {
+  clearChestMark();
+  const mat = new THREE.LineBasicMaterial({ color: 0xffe066, depthTest: false, transparent: true, fog: false });
+  const box = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(1.06, 1.06, 1.06)), mat);
+  const beamGeo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0.55, 0), new THREE.Vector3(0, 14, 0)]);
+  const beam = new THREE.Line(beamGeo, mat);
+  const group = new THREE.Group();
+  group.add(box, beam);
+  group.position.set(x + 0.5, y + 0.5, z + 0.5);
+  group.renderOrder = 999; box.renderOrder = 999; beam.renderOrder = 999;
+  scene.add(group);
+  chestMark = { group, mat, until: performance.now() + MARK_TIME * 1000 };
+}
+function clearChestMark() {
+  if (!chestMark) return;
+  scene.remove(chestMark.group);
+  chestMark.group.traverse((o) => o.geometry?.dispose());
+  chestMark.mat.dispose();
+  chestMark = null;
+}
+function tickChestMark(now) {
+  if (!chestMark) return;
+  const left = (chestMark.until - now) / 1000;
+  if (left <= 0) { clearChestMark(); return; }
+  chestMark.mat.opacity = Math.min(1, left / 3) * (0.65 + 0.35 * Math.sin(now * 0.008));
+  chestMark.group.visible = !photoMode; // (kept out of photos)
+  // gone once you're standing next to it
+  const p = chestMark.group.position;
+  if (Math.hypot(p.x - player.pos.x, p.y - player.pos.y - 0.5, p.z - player.pos.z) < 1.8) chestMark.until = Math.min(chestMark.until, now + 1500);
+}
+function renderChestResults() {
+  const q = $('chest-search').value, box = $('chest-results');
+  if (!q.trim()) { box.innerHTML = ''; return; }
+  const found = searchChests(q);
+  if (!found.length) { box.innerHTML = `<div class="cs-none">No chest within ${SEARCH_REACH} blocks holds “${escapeHtml(q.trim())}”.</div>`; return; }
+  box.innerHTML = '';
+  for (const r of found.slice(0, 12)) {
+    const el = document.createElement('div');
+    el.className = 'cs-box';
+    el.innerHTML = `<div class="cs-head"><b>${r.name}</b><span>${whereIs(r.x, r.y, r.z)}</span></div>` +
+      `<div class="cs-items">${r.items.map((it) => `<span class="cs-item"><img src="${icons[it.id]}" alt="" width="20" height="20">${it.count} ${escapeHtml(itemName(it.id))}</span>`).join('')}</div>`;
+    const show = document.createElement('button');
+    show.className = 'btn small'; show.textContent = 'Show';
+    show.addEventListener('click', () => { closeInventory(); markChest(r.x, r.y, r.z); toast(`${r.name}: ${whereIs(r.x, r.y, r.z)} (look for the gold outline)`, 3500); });
+    el.firstChild.appendChild(show);
+    if (r.dist <= TAKE_REACH + 0.5) {
+      const take = document.createElement('button');
+      take.className = 'btn small'; take.textContent = 'Take';
+      take.addEventListener('click', () => { picked = -1; takeFromChest(r.x, r.y, r.z, q); renderInventory(); renderChestResults(); });
+      el.firstChild.appendChild(take);
+    }
+    box.appendChild(el);
+  }
+}
+function escapeHtml(s) { return String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
+$('chest-search').addEventListener('input', renderChestResults);
+
+// Photo mode: the HUD goes, the player stands still, and the camera floats free (within PHOTO_LEASH blocks)
+// so you can frame a shot. 📷 saves the picture as a PNG. F2 or the menu button go in; F2, Esc or ✕ come out.
+const PHOTO_LEASH = 48, PHOTO_SPEED = 7;
+let photoMode = false;
+const photoCam = new THREE.Vector3();
+const photoLift = { up: false, down: false };
+let lastPhoto = null; // (the last picture's data URL, for tests)
+function enterPhotoMode() {
+  if (!world || !worldReady || dead || photoMode) return false;
+  if (openStationAt) closeStation();
+  for (const id of ['menu', 'inventory']) $(id).classList.add('hidden');
+  photoMode = true;
+  paused = false;
+  controls.reset();
+  photoCam.copy(player.eye);
+  document.body.classList.add('photo');
+  $('photo-bar').classList.remove('hidden');
+  return true;
+}
+function exitPhotoMode() {
+  if (!photoMode) return;
+  photoMode = false;
+  photoLift.up = photoLift.down = false;
+  controls.reset();
+  document.body.classList.remove('photo');
+  $('photo-bar').classList.add('hidden');
+}
+function movePhotoCam(dt) {
+  const fwd = new THREE.Vector3(-Math.sin(player.yaw) * Math.cos(player.pitch), Math.sin(player.pitch), -Math.cos(player.yaw) * Math.cos(player.pitch));
+  const right = new THREE.Vector3(Math.cos(player.yaw), 0, -Math.sin(player.yaw));
+  const lift = (controls.jump || photoLift.up ? 1 : 0) - (controls.down || photoLift.down ? 1 : 0);
+  const step = new THREE.Vector3().addScaledVector(fwd, controls.moveZ).addScaledVector(right, controls.moveX);
+  step.y += lift;
+  if (step.lengthSq() > 1) step.normalize();
+  step.multiplyScalar(PHOTO_SPEED * dt);
+  // slide along the axes one at a time, so the camera can't go through walls
+  for (const ax of ['x', 'y', 'z']) {
+    if (!step[ax]) continue;
+    const was = photoCam[ax];
+    photoCam[ax] += step[ax];
+    if (world.isSolid(Math.floor(photoCam.x), Math.floor(photoCam.y), Math.floor(photoCam.z))) photoCam[ax] = was;
+  }
+  const eye = player.eye, off = photoCam.clone().sub(eye);
+  if (off.length() > PHOTO_LEASH) photoCam.copy(eye).add(off.setLength(PHOTO_LEASH));
+  photoCam.y = Math.max(-10, Math.min(H + 30, photoCam.y));
+}
+function snapPhoto() {
+  if (!photoMode) return null;
+  document.body.classList.add('snapping');
+  renderer.render(scene, camera);
+  let url = null;
+  try { url = renderer.domElement.toDataURL('image/png'); } catch (err) { reportError(err); }
+  document.body.classList.remove('snapping');
+  if (!url) return null;
+  lastPhoto = url;
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `minicraft-day${day}-${String(Math.floor(((sky.time * 24 + 6) % 24) * 100)).padStart(4, '0')}.png`;
+  if (!navigator.webdriver) a.click();
+  sound.pop();
+  const fx = $('photo-bar');
+  fx.style.opacity = '0.2'; setTimeout(() => { fx.style.opacity = ''; }, 250);
+  return url;
+}
+$('btn-photo').addEventListener('click', enterPhotoMode);
+$('photo-exit').addEventListener('click', exitPhotoMode);
+$('photo-snap').addEventListener('click', snapPhoto);
+for (const [id, k] of [['photo-up', 'up'], ['photo-down', 'down']]) {
+  const b = $(id);
+  b.addEventListener('pointerdown', (e) => { e.preventDefault(); photoLift[k] = true; });
+  for (const ev of ['pointerup', 'pointerleave', 'pointercancel']) b.addEventListener(ev, () => { photoLift[k] = false; });
+}
+window.addEventListener('keydown', (e) => {
+  if (e.target?.tagName === 'INPUT' || e.target?.tagName === 'TEXTAREA') return;
+  if (e.code === 'F2') { e.preventDefault(); if (photoMode) exitPhotoMode(); else if (!paused) enterPhotoMode(); }
+  else if (photoMode && e.code === 'Escape') exitPhotoMode();
+  else if (photoMode && (e.code === 'Enter' || e.code === 'KeyP')) snapPhoto();
+});
+
 // ---------- v26 E: temple and sky-island puzzles, diving ----------
 // A sunken temple's vault opens when each of its three levers matches the lamp above it (lit: on, dark: off).
 // A sky island's opens when you step on its plates in the order of the wool over the vault's gate.
@@ -5990,7 +6173,11 @@ function updatePerf(now) {
 function stepGame(now, dt) {
   // the player waits (frozen) until the chunk they're standing in has loaded
   const here = world.chunkAt(Math.floor(player.pos.x), Math.floor(player.pos.z));
-  if (!paused && here) {
+  if (photoMode) {
+    controls.update();
+    movePhotoCam(dt);
+    fireworks.update(dt);
+  } else if (!paused && here) {
     controls.update();
     const wasGround = player.onGround, wasWater = player.inWater, fallSpeed = -player.vel.y, prevY = player.pos.y;
     fireworks.update(dt);
@@ -6091,7 +6278,7 @@ function stepGame(now, dt) {
   }
 
   const eye = player.eye;
-  camera.position.copy(eye);
+  camera.position.copy(photoMode ? photoCam : eye);
   camera.rotation.set(player.pitch, player.yaw, 0);
 
   const biome = world.generator.biomeAt(Math.floor(player.pos.x), Math.floor(player.pos.z));
@@ -6127,13 +6314,15 @@ function stepGame(now, dt) {
   // whichever is closer wins: an animal in front of a block, or a block in front of an animal
   if (targetMob && target && target.t < targetMob.t) targetMob = null;
   if (targetMob) target = null;
+  if (photoMode) target = targetMob = targetCart = targetVehicle = null;
   if (target) {
     highlight.visible = true;
     highlight.position.set(target.x + 0.5, target.y + 0.5, target.z + 0.5);
   } else highlight.visible = false;
 
   updateLookTip();
-  if (!paused) updateBreaking(dt);
+  tickChestMark(now);
+  if (!paused && !photoMode) updateBreaking(dt);
   else crack.visible = false;
 }
 requestAnimationFrame(frame);
@@ -6154,5 +6343,5 @@ window.minicraft = {
   arrows, fishing, kinetics, electric, lightUniforms, bees, catchAt, seasonOf, applySeason, set day(v) { day = v; applySeason(); }, frames, signalAt, setSwitch, logic, machines, carts, minimap, signs, armour, damage, placeRail, getInCart, getOutOfCart,
   get riding() { return riding; }, explode, lightFuse, fuses, clockTime, compassText, place, editSign, closeSign, openInventory, closeInventory, chestMove, lamps, tickLamps, sleepUntilMorning, stations, openStation, closeStation,
   get caneToday() { return caneToday; }, get creative() { return creative; }, set creative(v) { creative = v; applyCreative(); }, toggleFly, wand, useWand, get achieved() { return achieved; }, achieve, worldMap, openMap, closeMap, openGuide, switchSlot, store, saveGame, renderWorlds, openWorlds, exportSlot, get target() { return target; }, set target(v) { target = v; }, applyKeys, renderKeys, camera, get controls() { return controls; }, loose, throwHeld, get waypoints() { return waypoints; }, toggleWaypoint, sortSlots, quickStack, dropMeteor, get meteors() { return meteors; }, weather, openTrade, closeTrade, mountMob, dismount, get ridingMob() { return ridingMob; }, effects, armourWear, useAnvil, rollLoot, settings,
-  get bedSpawn() { return bedSpawn; }, fertilise, openJournal, closeJournal, get packs() { return packs; }, radiationAt, vehicles, boardVehicle, leaveVehicle, get boarded() { return boarded; }, get seated() { return seated; }, crows, onInvSlot, onStationSlot, quickMoveInv, quickMoveStation, usedIn, itemTipHTML, critters, tickPets, get catGiftDay() { return catGiftDay; }, get villageGrowth() { return villageGrowth; }, notePlanting, tickPuzzles, airPumpNear, useStable, stableNear, horseLabel, tickStalactites, loosenStalactite, fallingRocks, shaking, workLock, findLock, tickLocks, openGates, lockJobs, hangRopeLadder, layBridge, rollUpRope, fireworks, ringBell, requestFor, festivalToday, repOf, addRep, tradeCost, tickFestival, villageEntry, hearths, tickHearths, feedHearth, chimneyTop, smoke, renderPins, togglePin, lightning, igniteAt, fires, tickFires, tickStorm, growVillage, buildVillageHouse, stallPrice, tickStalls, tickVillages, set catGiftDay(v) { catGiftDay = v; }, get places() { return places; }, get treasures() { return treasures; }, readTreasureMap, tickTreasure, beams, tickBeams, beaconSpots: () => beaconSpots, mistNow, tickSnow, tickExplore, sitOn, standUp, useDisplay, zips, linkZip, startZip, get zipping() { return zipping; }, burnCoal, get health() { return health; }, set health(v) { health = v; }, paintings, placeSwitchRail, signalAt, ailments, armourEnch, openAltar, lairNear, useBed, eat, drinkTea,
+  get bedSpawn() { return bedSpawn; }, fertilise, openJournal, closeJournal, get packs() { return packs; }, radiationAt, vehicles, boardVehicle, leaveVehicle, get boarded() { return boarded; }, get seated() { return seated; }, crows, onInvSlot, onStationSlot, quickMoveInv, quickMoveStation, usedIn, itemTipHTML, critters, tickPets, get catGiftDay() { return catGiftDay; }, get villageGrowth() { return villageGrowth; }, notePlanting, tickPuzzles, airPumpNear, useStable, stableNear, horseLabel, searchChests, takeFromChest, markChest, get chestMark() { return chestMark; }, enterPhotoMode, exitPhotoMode, snapPhoto, get photoMode() { return photoMode; }, photoCam, get lastPhoto() { return lastPhoto; }, tickStalactites, loosenStalactite, fallingRocks, shaking, workLock, findLock, tickLocks, openGates, lockJobs, hangRopeLadder, layBridge, rollUpRope, fireworks, ringBell, requestFor, festivalToday, repOf, addRep, tradeCost, tickFestival, villageEntry, hearths, tickHearths, feedHearth, chimneyTop, smoke, renderPins, togglePin, lightning, igniteAt, fires, tickFires, tickStorm, growVillage, buildVillageHouse, stallPrice, tickStalls, tickVillages, set catGiftDay(v) { catGiftDay = v; }, get places() { return places; }, get treasures() { return treasures; }, readTreasureMap, tickTreasure, beams, tickBeams, beaconSpots: () => beaconSpots, mistNow, tickSnow, tickExplore, sitOn, standUp, useDisplay, zips, linkZip, startZip, get zipping() { return zipping; }, burnCoal, get health() { return health; }, set health(v) { health = v; }, paintings, placeSwitchRail, signalAt, ailments, armourEnch, openAltar, lairNear, useBed, eat, drinkTea,
 };
