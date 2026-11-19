@@ -26,7 +26,7 @@ import {
   E_SMELTER, QUARRY, ITEM_COUNTER, TELEPAD, PROG_CRAFTER, PAD_PLAYER, ELECTRIC_DRILL, HOVER_BOOTS, NV_GOGGLES, MAGNET_RING, isElectricLamp, SPAWNER,
   WIRE, INVERTER, DELAY, LATCH, DETECTOR_RAIL, DRIVE_BELT, TREE_FELLER, PLANTER, BREAKER, PLACER, ANIMAL_STATION, EJECTOR, COLLECTOR, BELT_SPLITTER, BELT_SORTER,
   ELECTRIC_RAIL, LIFT, LIFT_REACH, WIRELESS_REACH, CHAINSAW, SAWDUST, SPANNER, GRAPPLE, isBackpack, kineticId, MELTDOWN, REACTOR_POWER, ROD_LIFE, BOOK,
-  BOOKSHELF, JOURNAL, FERTILISER, SHELF_DISCOUNT,
+  BOOKSHELF, JOURNAL, FERTILISER, SHELF_DISCOUNT, LEAD_CHEST, FREEZER, ARC_FURNACE, SPENT_ROD, RADIATION_REACH, hazmatId, TESLA_REACH, TESLA_DAMAGE, ELECTRIC_FENCE,
 } from './blocks.js';
 import { createAtlas, createIcons, createCrackCanvases, createWaterCanvas, createHudIcons, paintSeason } from './textures.js';
 import { World, CHUNK, WORLD_SIZE, chunkKey } from './world.js';
@@ -227,7 +227,7 @@ let air = MAX_AIR; // seconds of breath left underwater
 let poisoned = 0; // seconds of food poisoning left
 let dead = false;
 let fallTop = null; // highest point of the current fall, for fall damage
-const timers = { regen: 0, starve: 0, poison: 0, drown: 0, lava: 0 };
+const timers = { regen: 0, starve: 0, poison: 0, drown: 0, lava: 0, fence: 0 };
 let bowCharge = 0; // seconds the bow has been drawn (holding)
 let bedSpawn = null; // { x, y, z } of the bed you last used: where you respawn
 // Lit lamps: "x,y,z" -> seconds left in the fuel unit now burning (each unit lasts one in-game day).
@@ -246,6 +246,7 @@ const electricHooks = {
     if (d.quarry) return machines.quarryWants(n.x, n.y, n.z);
     if (d.rail) return carts.carts.some((c) => c.x === n.x && c.y === n.y && c.z === n.z); // an electric rail, while a cart's on it
     if (d.lift) return lift?.from === `${n.x},${n.y},${n.z}`; // a lift, while it's carrying you
+    if (d.tesla) return !!teslaTarget(n); // a tesla coil, while there's a creature to zap
     return undefined;
   },
   wireless: (n, amount) => wirelessCharge(n, amount),
@@ -839,7 +840,7 @@ function updateHealth(dt, wasGround, prevY) {
   } else timers.cactus = 0;
   // lava burns: 3 points every half second
   if (player.inLava && !(effects.fire > 0) && !guarded('fire')) {
-    if ((timers.lava -= dt) <= 0) { timers.lava = 0.5; damage(3, 'You tried to swim in lava.'); }
+    if ((timers.lava -= dt) <= 0) { timers.lava = hazmatSuit() ? 1 : 0.5; damage(3, 'You tried to swim in lava.'); } // (a hazmat suit holds it off for longer)
   } else timers.lava = 0;
   // starving
   if (hunger <= 0) {
@@ -1255,8 +1256,8 @@ function openStation(x, y, z, cart = null) {
       `<span class="name">${r.out[1] > 1 ? r.out[1] + ' × ' : ''}${itemName(r.out[0])}</span></div>`;
   }).join('') + (kind === 'charger' ? '<p class="hint">Put in a battery, or anything that runs on one (a portable lamp, jackhammer, jetpack, drill, chainsaw, hover boots, goggles or magnet ring): ' +
     'it charges while it has electricity. Join it to a generator with electrum wire, or set it right beside one.</p>'
-    : kind === 'reactor' ? `<p class="hint">Put fuel rods in: each burns for ${ROD_LIFE / 60} minutes, making ${REACTOR_POWER} power, and heats the reactor. ` +
-    'Water touching it (each face counts) cools it. If it gets too hot it melts down, so keep plenty of water round it, take rods out, or give it a ' +
+    : kind === 'reactor' ? `<p class="hint">Put fuel rods in: each burns for ${ROD_LIFE / 60} minutes (an enriched rod twice as long), making ${REACTOR_POWER} power, and heats the reactor. ` +
+    'A burnt-out rod is left spent: nuclear waste, so keep it in a lead-lined chest. Water, ice or packed ice touching it (each face counts) cools it. If it gets too hot it melts down, so keep plenty of water round it, take rods out, or give it a ' +
     'signal (a lever, or a power meter set to signal a shortfall) to push its control rods in and stop it.</p>'
     : K.holder ? `<p class="hint">${kind === 'planter' ? 'Put saplings in (or feed them in with a hopper): it plants one on the grass or dirt in front of it whenever there\'s room.'
     : 'Put empty buckets in for milking yaks, and wheat to feed the animals (their coats grow back faster). Wheat, seeds or berries also feed pairs of animals so they have young. What it gets comes out of its back, into a chest, hopper or belt.'}</p>`
@@ -1267,6 +1268,9 @@ function openStation(x, y, z, cart = null) {
     'it makes one, a second at a time, into the output slot: fill it with hoppers or belts and empty it with a hopper underneath.</p>'
     : K.electric ? '<p class="hint">Times are at 1x speed: it runs at 2x with all the electricity it wants. Join it to a generator ' +
     'with electrum wire or cable (or set it right beside one). ' + (kind === 'esmelter' ? 'It needs no fuel.</p>'
+    : kind === 'arc' ? 'It needs no fuel, smelts twice as fast as the electric smelter, and makes invar, which no fire is hot enough for.</p>'
+    : kind === 'freezer' ? 'Water buckets come back empty. Packed ice cools a reactor better than water, and doesn\'t melt.</p>'
+    : kind === 'centrifuge' ? 'Enriched uranium makes fuel rods that burn twice as long. Spent rods slowly give back a little uranium (and stop being waste).</p>'
     : 'It gets half as much again out of everything as the rock crusher, and sometimes one more.</p>')
     : K.powered ? '<p class="hint">Times are at 1x speed. Drive it with a water wheel or windmill by turning a shaft or gear ' +
     'against any face; gear it up for more speed.' + (kind === 'crusher' ? ' Ore dust smelts into ingots, so crushing ore doubles what you get.' : '') + '</p>'
@@ -2049,6 +2053,8 @@ function tickMending(dt) {
 
 function tickBatteryGear(dt) {
   tickMending(dt);
+  tickRadiation(dt);
+  tickZaps(dt);
   // the jetpack (worn in place of a chestplate) thrusts while you hold jump in the air
   const jet = armour[1] === JETPACK ? { id: JETPACK, ...(armourWear[1] ? { wear: armourWear[1] } : {}) } : null;
   if (jet && player.thrusting && !drawCharge(jet, CHARGE_USE.jetpack * dt)) toast('Your jetpack has run flat', 1500);
@@ -2133,6 +2139,104 @@ const effectsText = () => [...Object.entries(effects).filter(([, t]) => t > 0)
 // heatstroke if your head is bare: you go hungry twice as fast, and it hurts. A healing tea cures both.
 const ailments = { chill: 0, heat: 0 }; // 0..1 as they build up; 1 or more and you're suffering
 const guarded = (what) => armour.some((id) => ITEMS[id]?.guards === what);
+// A full hazmat suit: all four pieces.
+const hazmatSuit = () => [0, 1, 2, 3].every((k) => armour[k] === hazmatId(k));
+
+// ---------- radiation ----------
+// Spent fuel rods give off radiation: carried, lying about, or kept in anything but a lead-lined chest. Each
+// one within RADIATION_REACH (more the closer it is) adds to the dose you take; enough of it hurts.
+let radDose = 0, radClock = 0, radLevel = 0, radWarned = false;
+function radiationAt(p) {
+  let level = 0;
+  const near = (x, y, z, n) => { const d = Math.hypot(x - p.x, y - p.y - 1, z - p.z); if (d < RADIATION_REACH) level += n * (1 - d / RADIATION_REACH); };
+  const count = (list) => (list ?? []).reduce((t, s) => t + (s?.id === SPENT_ROD ? s.count : s?.pack > 0 ? count(packs.get(s.pack)?.slots ?? packs.get(s.pack)?.inputs) : 0), 0);
+  level += count(inventory.slots);
+  for (const it of loose.items) if (it.stack.id === SPENT_ROD) near(it.pos.x, it.pos.y, it.pos.z, it.stack.count);
+  for (const [k, st] of stations.map) {
+    if (STATION_KINDS[st.kind]?.shielded) continue;
+    const n = count(st.inputs) + count([st.out]);
+    if (!n) continue;
+    const [x, y, z] = k.split(',').map(Number);
+    near(x + 0.5, y + 0.5, z + 0.5, n);
+  }
+  return level;
+}
+function tickRadiation(dt) {
+  if (dead || creative) return;
+  if ((radClock += dt) >= 0.5) { radClock = 0; radLevel = radiationAt(player.pos); }
+  if (radLevel < 0.05) { radDose = Math.max(0, radDose - dt); return; }
+  if (Math.random() < Math.min(0.9, radLevel * dt * 6)) sound.geiger();
+  if (hazmatSuit()) return;
+  if (!radWarned) { radWarned = true; toast('Your skin prickles: radiation from spent fuel rods! Shut them away in a lead-lined chest, or wear a hazmat suit.', 4000); }
+  radDose += radLevel * dt;
+  if (radDose >= 6) { radDose = 0; damage(1, 'You were poisoned by radiation.'); }
+}
+
+// ---------- tesla coils and electric fences ----------
+const giveDropsAt = (drops, pos) => mobs.onWorldKill({ pos }, drops); // (what a creature drops, where it fell)
+const isHostile = (m) => m.spec.hostile && !m.dying;
+const teslaClock = new Map(); // "x,y,z" -> seconds until it can zap again
+const bolts = []; // { line, t }
+function teslaTarget(n) {
+  let best = null, bd = TESLA_REACH;
+  for (const m of mobs.mobs) {
+    if (!isHostile(m)) continue;
+    const d = Math.hypot(m.pos.x - n.x - 0.5, m.pos.y + 0.8 - n.y - 1, m.pos.z - n.z - 0.5);
+    if (d < bd) { bd = d; best = m; }
+  }
+  return best;
+}
+function drawBolt(a, b) {
+  const pts = [];
+  for (let i = 0; i <= 8; i++) {
+    const k = i / 8, j = i && i < 8 ? 0.35 : 0;
+    pts.push(new THREE.Vector3(a.x + (b.x - a.x) * k + (Math.random() - 0.5) * j, a.y + (b.y - a.y) * k + (Math.random() - 0.5) * j, a.z + (b.z - a.z) * k + (Math.random() - 0.5) * j));
+  }
+  const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), new THREE.LineBasicMaterial({ color: 0xc8e8ff }));
+  scene.add(line);
+  bolts.push({ line, t: 0.18 });
+}
+function tickZaps(dt) {
+  for (const b of [...bolts]) if ((b.t -= dt) <= 0) { scene.remove(b.line); b.line.geometry.dispose(); b.line.material.dispose(); bolts.splice(bolts.indexOf(b), 1); }
+  for (const n of electric.nodes.values()) {
+    if (!BLOCKS[n.id]?.tesla) continue;
+    const k = `${n.x},${n.y},${n.z}`, t = (teslaClock.get(k) ?? 0) - dt;
+    if (t > 0) { teslaClock.set(k, t); continue; }
+    teslaClock.delete(k);
+    const share = electric.speedAt(n.x, n.y, n.z);
+    if (!(share > 0)) continue;
+    const m = teslaTarget(n);
+    if (!m) continue;
+    teslaClock.set(k, 1 / Math.min(1, share)); // a zap a second with all the power it wants
+    drawBolt({ x: n.x + 0.5, y: n.y + 1, z: n.z + 0.5 }, { x: m.pos.x, y: m.pos.y + 0.8, z: m.pos.z });
+    if (player.pos.distanceTo(m.pos) < 40) sound.zap();
+    giveDropsAt(mobs.hurt(m, TESLA_DAMAGE, { x: n.x + 0.5, z: n.z + 0.5 }), m.pos);
+  }
+  // electric fences: a shock for anything that touches a live one
+  const live = (x, y, z) => world.get(x, y, z) === ELECTRIC_FENCE && electric.speedAt(x, y, z) > 0;
+  const touching = (p, half, h) => {
+    for (let y = Math.floor(p.y); y <= Math.floor(p.y + h); y++) for (let z = Math.floor(p.z - half - 0.2); z <= Math.floor(p.z + half + 0.2); z++) for (let x = Math.floor(p.x - half - 0.2); x <= Math.floor(p.x + half + 0.2); x++) if (live(x, y, z)) return [x + 0.5, z + 0.5];
+    return null;
+  };
+  for (const m of mobs.mobs) {
+    if (m.dying || m.tame || (m.shock = (m.shock ?? 0) - dt) > 0 || m.pos.distanceTo(player.pos) > 48) continue;
+    const at = touching(m.pos, m.spec.w / 2, m.spec.h);
+    if (!at) continue;
+    m.shock = 1;
+    if (isHostile(m)) giveDropsAt(mobs.hurt(m, 3, { x: at[0], z: at[1] }), m.pos); else if (!m.spec.trader && !m.spec.villager) mobs.bump(m, { x: at[0], z: at[1] });
+    if (player.pos.distanceTo(m.pos) < 24) sound.zap(0.4);
+  }
+  if ((timers.fence = (timers.fence ?? 0) - dt) <= 0 && !creative) {
+    const at = touching(player.pos, 0.3, 1.8);
+    if (at) {
+      timers.fence = 1;
+      const dx = player.pos.x - at[0], dz = player.pos.z - at[1], len = Math.hypot(dx, dz) || 1;
+      player.kx = dx / len * 7; player.kz = dz / len * 7;
+      sound.zap(0.6);
+      damage(1, 'You touched an electric fence.');
+    }
+  }
+}
 function tickAilments(dt) {
   if (dead) return;
   const x = Math.floor(player.pos.x), z = Math.floor(player.pos.z), head = Math.min(H - 1, Math.floor(player.eye.y));
@@ -3100,7 +3204,7 @@ function placeInner() {
     if (there !== AIR || !world.isSolid(x, y - 1, z)) { toast(`${BLOCKS[id].name}s need something solid underneath`); return; }
   } else {
     // chairs face you; curtains hang across your line of sight
-    if ([CHAIR, OVEN, SMELTER, BLAST_SMELTER, CRUSHER, PULVERIZER, E_SMELTER, CHEST, IRON_CHEST, SAW, TRIP_HAMMER].includes(id)) id += facingTowardPlayer(x, z); // the front faces you
+    if ([CHAIR, OVEN, SMELTER, BLAST_SMELTER, CRUSHER, PULVERIZER, E_SMELTER, CHEST, IRON_CHEST, SAW, TRIP_HAMMER, LEAD_CHEST, FREEZER, ARC_FURNACE].includes(id)) id += facingTowardPlayer(x, z); // the front faces you
     else if (id === DRILL) id += player.pitch < -0.75 ? 4 : (facingTowardPlayer(x, z) + 2) % 4; // drills the way you're looking
     else if (id === ITEM_COUNTER) id += ((facingTowardPlayer(x, z) + 2) % 4) * 2; // passes things on the way you're looking
     else if ([OBSERVER, GAUGE, HARVESTER, EJECTOR, TREE_FELLER, PLANTER, BREAKER, PLACER, QUARRY].includes(id)) id += (facingTowardPlayer(x, z) + 2) % 4; // looks (or reaps) the way you're looking
@@ -4256,5 +4360,5 @@ window.minicraft = {
   arrows, fishing, kinetics, electric, lightUniforms, bees, catchAt, seasonOf, applySeason, set day(v) { day = v; applySeason(); }, frames, signalAt, setSwitch, logic, machines, carts, minimap, signs, armour, damage, placeRail, getInCart, getOutOfCart,
   get riding() { return riding; }, explode, lightFuse, fuses, clockTime, compassText, place, editSign, closeSign, openInventory, closeInventory, chestMove, lamps, tickLamps, sleepUntilMorning, stations, openStation, closeStation,
   get caneToday() { return caneToday; }, get creative() { return creative; }, set creative(v) { creative = v; applyCreative(); }, toggleFly, wand, useWand, get achieved() { return achieved; }, achieve, worldMap, openMap, closeMap, openGuide, switchSlot, store, saveGame, renderWorlds, openWorlds, exportSlot, get target() { return target; }, set target(v) { target = v; }, applyKeys, renderKeys, camera, get controls() { return controls; }, loose, throwHeld, get waypoints() { return waypoints; }, toggleWaypoint, sortSlots, weather, openTrade, closeTrade, mountMob, dismount, get ridingMob() { return ridingMob; }, effects, armourWear, useAnvil, rollLoot, settings,
-  get bedSpawn() { return bedSpawn; }, fertilise, openJournal, closeJournal, get packs() { return packs; }, paintings, placeSwitchRail, signalAt, ailments, armourEnch, openAltar, lairNear, useBed, eat, drinkTea,
+  get bedSpawn() { return bedSpawn; }, fertilise, openJournal, closeJournal, get packs() { return packs; }, radiationAt, get health() { return health; }, set health(v) { health = v; }, paintings, placeSwitchRail, signalAt, ailments, armourEnch, openAltar, lairNear, useBed, eat, drinkTea,
 };

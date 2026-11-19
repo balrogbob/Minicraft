@@ -136,6 +136,15 @@ export class Sound {
 
   click() { if (this.ready) this.tone(800, 0.04, 0.08, 'square'); }
 
+  // a geiger counter's click
+  geiger() { if (this.ready) this.tone(1800 + Math.random() * 600, 0.008, 0.12, 'square'); }
+
+  // an electric zap: a tesla coil's bolt, or an electric fence
+  zap(gain = 1) {
+    if (!this.ready) return;
+    this.voice({ type: 'sawtooth', from: 900, to: 180, dur: 0.16, vol: 0.14 * gain, filter: 'highpass', freq: 400, q: 1, vibrato: 60 });
+  }
+
   // Bow release: a twang that's higher and louder the further the bow was drawn.
   bow(power = 1) {
     if (!this.ready) return;

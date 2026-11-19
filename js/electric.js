@@ -22,7 +22,7 @@
 import {
   BLOCKS, GEN_POWER, ELECTRIC_LAMP, CHARGE_RATE, chargeCap, stationKind, MAX_LIGHT, SOLAR_POWER, STORE_CAP, STORE_RATE,
   PAD_CAP, PAD_PLAYER, TELEPAD, LAVA, GEO_POWER, REACTOR, REACTOR_POWER, REACTOR_HEAT, REACTOR_COOL, WATER_COOL, REACTOR_HOT,
-  MELTDOWN, FUEL_ROD, ROD_LIFE,
+  MELTDOWN, FUEL_ROD, ROD_LIFE, SPENT_ROD, isFuelRod, maxWear, ICE, PACKED_ICE, ICE_COOL, PACKED_ICE_COOL, WATER,
 } from './blocks.js';
 import { STATION_KINDS } from './stations.js';
 import { CHUNK, SEA_LEVEL } from './terrain.js';
@@ -79,7 +79,7 @@ export class Electric {
   rodsIn(n, stations) {
     if (this.hooks.signalAt?.(n.x, n.y, n.z)) return 0;
     const st = stations.map.get(key(n.x, n.y, n.z));
-    return st ? st.inputs.filter((s) => s?.id === FUEL_ROD && (s.wear ?? 0) < ROD_LIFE).length : 0;
+    return st ? st.inputs.filter((s) => isFuelRod(s?.id) && (s.wear ?? 0) < maxWear(s.id)).length : 0;
   }
 
   made(n, world, kinetics, stations) {
@@ -286,15 +286,21 @@ export class Electric {
       const st = stations.map.get(k);
       for (let i = 0; st && i < st.inputs.length; i++) {
         const s = st.inputs[i];
-        if (s?.id !== FUEL_ROD) continue;
+        if (!isFuelRod(s?.id)) continue;
         rods++;
         s.wear = (s.wear ?? 0) + dt;
-        if (s.wear >= ROD_LIFE) { st.inputs[i] = null; this.timer = 0; } // burnt out
+        if (s.wear >= maxWear(s.id)) { st.inputs[i] = { id: SPENT_ROD, count: 1 }; this.timer = 0; } // burnt out: nuclear waste
       }
     }
-    let water = 0;
-    for (const [dx, dy, dz] of SIDES) if (world.isWater(n.x + dx, n.y + dy, n.z + dz)) water++;
-    const heat = Math.max(0, (this.heat.get(k) ?? 0) + (rods * REACTOR_HEAT - REACTOR_COOL - water * WATER_COOL) * dt);
+    // water, ice and packed ice touching it carry heat away; ice melts while the reactor's running
+    let cool = REACTOR_COOL;
+    for (const [dx, dy, dz] of SIDES) {
+      const x = n.x + dx, y = n.y + dy, z = n.z + dz, id = world.get(x, y, z);
+      if (id === PACKED_ICE) cool += PACKED_ICE_COOL;
+      else if (id === ICE) { cool += ICE_COOL; if (rods && Math.random() < dt / 120) hooks.setBlock(x, y, z, WATER); }
+      else if (world.isWater(x, y, z)) cool += WATER_COOL;
+    }
+    const heat = Math.max(0, (this.heat.get(k) ?? 0) + (rods * REACTOR_HEAT - cool) * dt);
     if (heat >= MELTDOWN) {
       this.heat.delete(k);
       this.timer = 0;

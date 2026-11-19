@@ -17,7 +17,7 @@ import {
   SUN_SCARAB, FROST_HEART, EMBER_CORE, SUN_MASK, FROST_CIRCLET, EMBER_CROWN, HONEY_TEA, MUSHROOM_STEW, FISH_PIE, COPY_WAND,
   CRYSTAL_SHARD, HONEY_BOTTLE, HONEYCOMB, SALMON, BAKED_SALMON, ICEFISH, BAKED_ICEFISH, PUFFERFISH, OLD_BOOT,
   BATTERY, PORTABLE_LAMP, JACKHAMMER, JETPACK, ELECTRIC_DRILL, HOVER_BOOTS, NV_GOGGLES, MAGNET_RING, WIND_TURBINE, NICKEL_INGOT, CUPRONICKEL_INGOT,
-  ELECTRIC_RAIL, CHAINSAW, SAWDUST, BOOK, BACKPACK, BIG_BACKPACK, HUGE_BACKPACK, SPANNER, GRAPPLE, URANIUM_INGOT, FUEL_ROD, JOURNAL, FERTILISER,
+  ELECTRIC_RAIL, CHAINSAW, SAWDUST, BOOK, BACKPACK, BIG_BACKPACK, HUGE_BACKPACK, SPANNER, GRAPPLE, URANIUM_INGOT, FUEL_ROD, JOURNAL, FERTILISER, SPENT_ROD, ENRICHED_URANIUM, ENRICHED_ROD, hazmatId, INVAR_INGOT,
   SALTPETRE, GUNPOWDER, LEAD_SINKER, WEIGHTED_ROD, LEAD_BUCKET, LAVA_BUCKET, GOLD_CLOCK, COMPASS, SILVER_ARROW, MIRROR_LAMP,
 } from './blocks.js';
 
@@ -1056,6 +1056,52 @@ P[T.COMPOST_TOP] = (t) => {
   P[T.PLANKS](t);
   for (let y = 2; y < 14; y++) for (let x = 2; x < 14; x++) t.set(x, y, t.vary(t.r() < 0.2 ? [90, 120, 50] : [74, 54, 34], 0.2)); // the heap inside
 };
+// v24 B/C: lead-lined chest, centrifuge, tesla coil, electric fence, freezer, arc furnace, packed ice, invar
+const LEAD = [104, 110, 134];
+P[T.LEAD_CHEST_SIDE] = (t) => { chestFace(t, LEAD, 'side'); for (let x = 2; x < 14; x += 3) t.set(x, 2, [230, 200, 40]); };
+P[T.LEAD_CHEST_TOP] = (t) => chestFace(t, LEAD, 'top');
+P[T.LEAD_CHEST_FRONT] = (t) => {
+  chestFace(t, LEAD, 'front');
+  for (const [x, y] of [[7, 11], [8, 11], [6, 12], [9, 12], [7, 13], [8, 13]]) t.set(x, y, [230, 200, 40]); // a little warning trefoil
+};
+P[T.CENTRIFUGE_SIDE] = (t) => {
+  P[T.STAINLESS](t); frame(t, [120, 126, 136], 1);
+  for (let y = 4; y < 12; y++) for (let x = 4; x < 12; x++) t.set(x, y, [70, 80, 90]);
+  for (let y = 5; y < 11; y++) t.set(7 + (y % 2), y, [126, 214, 72]); // a glowing sample tube
+};
+P[T.CENTRIFUGE_TOP] = (t) => {
+  P[T.STAINLESS](t);
+  for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) { const d = Math.hypot(x - 7.5, y - 7.5); if (d < 6) t.set(x, y, (Math.atan2(y - 7.5, x - 7.5) * 4 / Math.PI + 8) % 2 < 1 ? [150, 156, 166] : [110, 116, 126]); }
+  for (let y = 7; y < 9; y++) for (let x = 7; x < 9; x++) t.set(x, y, [214, 186, 80]);
+};
+P[T.INVAR] = (t) => { t.fill([168, 176, 170], 0.06); frame(t, [130, 138, 132], 1); };
+P[T.TESLA] = (t) => {
+  for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) t.set(x, y, y % 2 ? t.vary([222, 128, 72], 0.08) : [170, 90, 50]); // copper windings
+};
+P[T.TESLA_TOP] = (t) => { t.fill([200, 204, 212], 0.06); for (let x = 0; x < TILE; x++) t.set(x, 7, [240, 242, 250]); };
+P[T.FENCE_POST] = (t) => {
+  t.fill([84, 88, 96], 0.08);
+  for (const y of [6, 9, 12]) for (let x = 0; x < TILE; x++) t.set(x, y, [230, 200, 40]); // insulators where the wires run
+};
+P[T.FENCE_WIRE] = (t) => t.fill([210, 214, 222], 0.05);
+P[T.FREEZER_SIDE] = (t) => { t.fill([232, 238, 244], 0.03); frame(t, [180, 190, 200], 1); for (let x = 2; x < 14; x++) t.set(x, 13, [140, 196, 240]); };
+P[T.FREEZER_FRONT] = (t) => {
+  P[T.FREEZER_SIDE](t);
+  for (let y = 3; y < 11; y++) for (let x = 3; x < 13; x++) t.set(x, y, t.vary([150, 200, 240], 0.08)); // a frosty window
+  for (let k = 0; k < 4; k++) t.set(5 + k * 2, 5 + (k % 2) * 3, [240, 250, 255]);
+  t.set(12, 6, [90, 96, 106]); t.set(12, 7, [90, 96, 106]); // the handle
+};
+P[T.ARC_SIDE] = (t) => { P[T.STAINLESS](t); for (let y = 0; y < TILE; y++) { t.set(2, y, [180, 70, 50]); t.set(13, y, [180, 70, 50]); } frame(t, [80, 84, 92], 1); };
+P[T.ARC_FRONT] = (t) => {
+  P[T.ARC_SIDE](t);
+  for (let y = 4; y < 13; y++) for (let x = 4; x < 12; x++) t.set(x, y, [40, 40, 50]);
+  let x = 5; for (let y = 5; y < 12; y++) { t.set(x, y, [200, 230, 255]); x += t.r() < 0.5 ? 1 : 0; if (x > 10) x = 10; } // the arc
+  for (let y = 10; y < 13; y++) for (let x2 = 5; x2 < 11; x2++) t.set(x2, y, [255, 150 - (y - 10) * 30, 40]); // molten metal
+};
+P[T.PACKED_ICE] = (t) => {
+  for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) t.set(x, y, t.vary([140, 180, 230], 0.08));
+  for (let i = 0; i < 4; i++) { let x = t.r() * 16, y = t.r() * 16; for (let k = 0; k < 5; k++) { t.set(x | 0, y | 0, [200, 226, 250]); x += 1; y += t.r() < 0.5 ? 1 : -1; } }
+};
 P[T.LOGIC_BASE] = (t) => {
   for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) t.set(x, y, t.vary([172, 172, 168], 0.04));
   frame(t, [128, 128, 126], 1);
@@ -1209,6 +1255,7 @@ const METAL_COLORS = {
   [TUNGSTEN_INGOT]: [124, 120, 152], [BRONZE_INGOT]: [198, 146, 72], [ELECTRUM_INGOT]: [236, 218, 140],
   [STAINLESS_INGOT]: [210, 218, 224], [STEEL_INGOT]: [146, 154, 166], [AL_BRONZE_INGOT]: [226, 186, 100],
   [NICKEL_INGOT]: [190, 200, 176], [CUPRONICKEL_INGOT]: [214, 170, 140], [URANIUM_INGOT]: [126, 214, 72],
+  [INVAR_INGOT]: [168, 176, 170],
 };
 const dim = (c, k) => c.map((v) => Math.round(v * k));
 for (const m of TOOL_MATERIALS) MAT[m.key] = [METAL_COLORS[m.ingot], dim(METAL_COLORS[m.ingot], 0.62)];
@@ -2031,6 +2078,13 @@ ITEM_PAINTERS[FERTILISER] = (ctx) => {
   rect(ctx, 4, 4, 8, 10, [200, 180, 130]); rect(ctx, 5, 2, 6, 2, [180, 160, 110]); rect(ctx, 6, 1, 4, 1, [150, 130, 90]); // a sack
   rect(ctx, 6, 7, 4, 4, [80, 150, 60]); px(ctx, 7, 6, [80, 150, 60]); px(ctx, 8, 6, [110, 180, 80]); // a sprout on it
 };
+const rodIcon = (core, cap) => (ctx) => { rect(ctx, 6, 1, 4, 14, [196, 200, 210]); rect(ctx, 7, 3, 2, 10, core); rect(ctx, 6, 1, 4, 1, cap); rect(ctx, 6, 14, 4, 1, cap); };
+ITEM_PAINTERS[SPENT_ROD] = (ctx) => { rodIcon([80, 90, 70], [60, 60, 60])(ctx); for (const [x, y] of [[3, 3], [12, 6], [4, 11], [12, 12]]) px(ctx, x, y, [126, 214, 72]); };
+ITEM_PAINTERS[ENRICHED_ROD] = rodIcon([190, 255, 120], [214, 186, 80]);
+ITEM_PAINTERS[ENRICHED_URANIUM] = (ctx) => {
+  for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) { const d = Math.hypot(x - 7.5, y - 8); if (d < 4.5) px(ctx, x, y, d < 2 ? [230, 255, 190] : [150, 240, 90]); }
+};
+[0, 1, 2, 3].forEach((pi) => { ITEM_PAINTERS[hazmatId(pi)] = armourPainter([230, 200, 40], pi); });
 ITEM_PAINTERS[MAGNET_RING] = (ctx) => {
   for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) { const d = Math.hypot(x - 7.5, y - 8.5); if (d > 3.5 && d < 6) px(ctx, x, y, y < 8 ? [200, 50, 40] : [190, 200, 176]); }
   rect(ctx, 6, 1, 4, 2, [84, 92, 118]); px(ctx, 7, 1, [230, 204, 100]);
