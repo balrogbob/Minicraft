@@ -7,7 +7,7 @@ import {
   COAL, CHARCOAL, LOG, PLANKS, STICK, COBBLE, STONE, SAND, GLASS, SLIME_FUEL, BUCKET, SEEDS,
   SALMON, BAKED_SALMON, ICEFISH, BAKED_ICEFISH, HONEY_TEA, HONEYCOMB, MUSHROOM_STEW, FISH_PIE, GLOW_MUSHROOM,
   FLOUR, SUGAR, BUTTER, MILK_BUCKET, BREAD, COOKIE, CAKE, RAW_FISH, BAKED_FISH, BLOCKS, maxStack, stationKind,
-  ORES, COAL_OR_CHARCOAL, FUEL_ROD, CUPRONICKEL_INGOT, NICKEL_INGOT, IRON_INGOT, COPPER_INGOT, TIN_INGOT, ZINC_INGOT, ALUMINIUM_INGOT, SILVER_INGOT, GOLD_INGOT,
+  ORES, COAL_OR_CHARCOAL, FUEL_ROD, FERTILISER, SAWDUST, LEAVES, CUPRONICKEL_INGOT, NICKEL_INGOT, IRON_INGOT, COPPER_INGOT, TIN_INGOT, ZINC_INGOT, ALUMINIUM_INGOT, SILVER_INGOT, GOLD_INGOT,
   BRONZE_INGOT, ELECTRUM_INGOT, STAINLESS_INGOT, STEEL_INGOT, AL_BRONZE_INGOT,
   GRAVEL, FLINT, FLINT_DUST, CLAY_BALL, CLAY_DUST, BRICK, FIRE_CLAY, FIRE_BRICK, oreDust, HIDE, LEATHER,
   LAVA_BUCKET, LEAD_BUCKET, SALTPETRE, SANDSTONE, WHEAT, SUGAR_CANE, COAL_DUST, PLATE_METALS, PLATES, TUNGSTEN_INGOT, FILAMENT,
@@ -150,6 +150,21 @@ STATION_KINDS.net = { name: 'Fishing Net', inputs: 4, storage: true, recipes: []
 // A reactor holds up to four fuel rods, burning them all at once (see electric.js).
 STATION_KINDS.reactor = { name: 'Reactor', inputs: 4, holder: true, accepts: [FUEL_ROD], recipes: [] };
 
+// The compost bin needs no fuel or power: plant scraps just rot down into fertiliser, given time.
+STATION_KINDS.compost = {
+  name: 'Compost Bin', verb: 'Rotting down', inputs: 4, powered: true, passive: true,
+  recipes: [
+    { out: [FERTILISER, 2], in: [[SAWDUST, 4]], time: 20 },
+    { out: [FERTILISER, 1], in: [[LEAVES, 4]], time: 20 },
+    { out: [FERTILISER, 1], in: [[SEEDS, 8]], time: 20 },
+    { out: [FERTILISER, 1], in: [[SAPLING, 2]], time: 20 },
+    { out: [FERTILISER, 1], in: [[WHEAT, 4]], time: 20 },
+    { out: [FERTILISER, 1], in: [[SUGAR_CANE, 4]], time: 20 },
+    { out: [FERTILISER, 1], in: [[BERRIES, 6]], time: 20 },
+    { out: [FERTILISER, 1], in: [[[POPPY, DANDELION, CORNFLOWER, LAVENDER, DAISY], 4]], time: 20 },
+  ],
+};
+
 const key = (x, y, z) => `${x},${y},${z}`;
 
 export class Stations {
@@ -246,7 +261,7 @@ export class Stations {
       const r = K.water && !(BLOCKS[id].water > 0) ? null : this.recipeFor(st); // a dry cauldron can't brew
       if (!r) st.progress = 0;
       if (K.powered) {
-        const speed = powerAt(x, y, z);
+        const speed = K.passive ? 1 : powerAt(x, y, z);
         st.speed = speed;
         if (r && speed > 0) {
           st.progress += dt * speed;

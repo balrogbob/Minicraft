@@ -26,6 +26,7 @@ import {
   E_SMELTER, QUARRY, ITEM_COUNTER, TELEPAD, PROG_CRAFTER, PAD_PLAYER, ELECTRIC_DRILL, HOVER_BOOTS, NV_GOGGLES, MAGNET_RING, isElectricLamp, SPAWNER,
   WIRE, INVERTER, DELAY, LATCH, DETECTOR_RAIL, DRIVE_BELT, TREE_FELLER, PLANTER, BREAKER, PLACER, ANIMAL_STATION, EJECTOR, COLLECTOR, BELT_SPLITTER, BELT_SORTER,
   ELECTRIC_RAIL, LIFT, LIFT_REACH, WIRELESS_REACH, CHAINSAW, SAWDUST, SPANNER, GRAPPLE, isBackpack, kineticId, MELTDOWN, REACTOR_POWER, ROD_LIFE, BOOK,
+  BOOKSHELF, JOURNAL, FERTILISER, SHELF_DISCOUNT,
 } from './blocks.js';
 import { createAtlas, createIcons, createCrackCanvases, createWaterCanvas, createHudIcons, paintSeason } from './textures.js';
 import { World, CHUNK, WORLD_SIZE, chunkKey } from './world.js';
@@ -260,6 +261,7 @@ let reactorWarned = 0;
 // the id as its `pack`, so the contents go wherever the stack goes (chests, belts, the ground) and are saved.
 //   a backpack: { slots: [stack | null, ...] }
 //   a machine:  { kind, inputs, fuel, out } (what was in it) and/or { charge } (a grid battery's or pad's)
+//   a journal:  { note } (what's written in it)
 const packs = new Map();
 let nextPack = 1;
 function newPack(v) { const id = nextPack++; packs.set(id, v); return id; }
@@ -279,6 +281,7 @@ function loadPacks(list, next) {
       c.fuel = cleanStack(v.fuel); c.out = cleanStack(v.out);
     }
     if (v.charge > 0) c.charge = +v.charge;
+    if (typeof v.note === 'string') c.note = v.note.slice(0, 4000);
     packs.set(Math.floor(e[0]), c);
   }
   nextPack = Math.max(1, Math.floor(+next || 0), ...[...packs.keys()].map((k) => k + 1));
@@ -818,7 +821,8 @@ function updateHealth(dt, wasGround, prevY) {
   if (player.onGround && !wasGround && fallTop !== null) {
     const fall = fallTop - player.pos.y;
     fallTop = null;
-    if (fall > 3.5) damage(Math.floor(fall - 3), 'You fell from a high place.');
+    const hurt = Math.floor((fall - 3) * (armourEnch[3]?.includes('feather') ? 0.5 : 1));
+    if (fall > 3.5 && hurt > 0) damage(hurt, 'You fell from a high place.');
   }
   // drowning
   if (player.eyeInWater) {
@@ -1256,6 +1260,7 @@ function openStation(x, y, z, cart = null) {
     'signal (a lever, or a power meter set to signal a shortfall) to push its control rods in and stop it.</p>'
     : K.holder ? `<p class="hint">${kind === 'planter' ? 'Put saplings in (or feed them in with a hopper): it plants one on the grass or dirt in front of it whenever there\'s room.'
     : 'Put empty buckets in for milking yaks, and wheat to feed the animals (their coats grow back faster). Wheat, seeds or berries also feed pairs of animals so they have young. What it gets comes out of its back, into a chest, hopper or belt.'}</p>`
+    : kind === 'compost' ? '<p class="hint">It needs no fuel or power: scraps just rot down, given time. Tap a crop or sapling with fertiliser to grow it a step.</p>'
     : kind === 'pcrafter' ? '<p class="hint">Hang item frames on it (up to four) showing what to make: it makes the first, and steps on ' +
     'to the next each time it gets a signal (a lever, button, item counter...). Fill it with hoppers or belts and empty it with a hopper underneath.</p>'
     : K.crafter ? '<p class="hint">Hang an item frame on it showing what to make. Whenever the ingredients are inside, ' +
@@ -1315,6 +1320,10 @@ function renderStation() {
   if (K.crafter) {
     const want = crafterRecipe(openStationAt.x, openStationAt.y, openStationAt.z);
     $('st-status').textContent = !want ? 'Hang an item frame on it showing what to make' : r ? `Making ${itemName(want.out[0]).toLowerCase()}…` : `Put in what ${itemName(want.out[0]).toLowerCase()} needs`;
+    return;
+  }
+  if (K.passive) {
+    $('st-status').textContent = r ? `Rotting down into ${itemName(r.out[0]).toLowerCase()}…` : 'Put plant scraps in: sawdust, leaves, seeds, saplings, wheat, cane, berries or flowers';
     return;
   }
   if (STATION_KINDS[st.kind].powered) {
@@ -1962,6 +1971,55 @@ function unpack(x, y, z, pid) {
 }
 
 // Open a backpack in hand: like a chest you carry about.
+// ---------- the journal ----------
+// A book to write in: what's written is kept with the journal itself (in packs, like a backpack's contents).
+let journalOpen = null;
+function openJournal(s) {
+  if (!(s.pack > 0) || !packs.has(s.pack)) { s.pack = newPack({ note: '' }); inventory.onChange(); }
+  journalOpen = s;
+  paused = true;
+  controls.reset();
+  document.exitPointerLock?.();
+  $('journal-text').value = packs.get(s.pack).note ?? '';
+  $('journal').classList.remove('hidden');
+  setTimeout(() => $('journal-text').focus(), 50);
+}
+function closeJournal() {
+  if (!journalOpen) return;
+  const p = packs.get(journalOpen.pack);
+  if (p) p.note = $('journal-text').value.slice(0, 4000);
+  journalOpen = null;
+  $('journal-text').blur();
+  $('journal').classList.add('hidden');
+  paused = false;
+  saveGame();
+}
+$('btn-journal-done').addEventListener('click', closeJournal);
+$('btn-journal-here').addEventListener('click', () => {
+  const t = $('journal-text'), p = player.pos;
+  const line = `Day ${day}: ${Math.floor(p.x)}, ${Math.floor(p.y)}, ${Math.floor(p.z)} - `;
+  t.value = (t.value && !t.value.endsWith('\n') ? t.value + '\n' : t.value) + line;
+  t.focus();
+  t.selectionStart = t.selectionEnd = t.value.length;
+});
+
+// ---------- fertiliser ----------
+// Tap a crop or a sapling with it to grow it a step (a sapling into a tree; sugar cane a block taller).
+function fertilise(x, y, z) {
+  const id = world.get(x, y, z), grows = BLOCKS[id]?.grows;
+  if (!grows || grows === 'fill' || grows === 'honey') { toast('Fertiliser helps crops and saplings grow', 1500); return false; }
+  if (grows === 'tree') world.growTree(x, y, z);
+  else if (grows === 'up') {
+    let top = y;
+    while (world.get(x, top + 1, z) === SUGAR_CANE) top++;
+    if (top - y >= 2 || world.get(x, top + 1, z) !== AIR) { toast('That sugar cane is as tall as it grows', 1500); return false; }
+    world.setBlock(x, top + 1, z, SUGAR_CANE);
+  } else world.setBlock(x, y, z, grows);
+  if (world.get(x, y, z) === id && grows === 'tree') { toast('There isn\'t room for that sapling to grow', 1500); return false; }
+  sound.place('grass');
+  return true;
+}
+
 function openBackpack(s) {
   const size = ITEMS[s.id].backpack;
   if (!(s.pack > 0) || !packs.get(s.pack)?.slots) s.pack = newPack({ slots: new Array(size).fill(null) });
@@ -1978,7 +2036,19 @@ function switchHandLamp(s) {
   toast(s.on ? 'Portable lamp on: it lights your way wherever you carry it' : 'Portable lamp off', 1500);
   inventory.onChange();
 }
+// Mending: worn things mend themselves a little at a time while you carry (or wear) them.
+let mendClock = 0;
+function tickMending(dt) {
+  if ((mendClock += dt) < 5) return;
+  mendClock = 0;
+  let changed = false;
+  for (const s of inventory.slots) if (s?.wear > 0 && hasEnch(s, 'mending')) { s.wear--; changed = true; }
+  for (let k = 0; k < armour.length; k++) if (armourWear[k] > 0 && armourEnch[k]?.includes('mending')) { armourWear[k]--; changed = true; }
+  if (changed) inventory.onChange();
+}
+
 function tickBatteryGear(dt) {
+  tickMending(dt);
   // the jetpack (worn in place of a chestplate) thrusts while you hold jump in the air
   const jet = armour[1] === JETPACK ? { id: JETPACK, ...(armourWear[1] ? { wear: armourWear[1] } : {}) } : null;
   if (jet && player.thrusting && !drawCharge(jet, CHARGE_USE.jetpack * dt)) toast('Your jetpack has run flat', 1500);
@@ -2204,9 +2274,20 @@ function tickHazards(dt) {
 // ---------- the enchanting altar ----------
 // Hold a tool, weapon or piece of armour and tap the altar: it offers the enchantments that suit what
 // you hold, each paid for in crystal shards and, for the strongest, a trophy from a lair's guardian.
-let altarOpen = false;
-function openAltar() {
+let altarOpen = false, altarShelves = 0;
+// Bookshelves within 2 blocks of the altar, on its level or the one above.
+function shelvesNear(x, y, z) {
+  let n = 0;
+  for (let dy = 0; dy <= 1; dy++) for (let dz = -2; dz <= 2; dz++) for (let dx = -2; dx <= 2; dx++) if (world.get(x + dx, y + dy, z + dz) === BOOKSHELF) n++;
+  return n;
+}
+// What an enchantment costs with this many bookshelves round the altar: a crystal shard off for every few.
+function enchCost(e, shelves) {
+  return e.cost.map(([id, n]) => [id, id === CRYSTAL_SHARD ? n - Math.min(Math.floor(n / 2), Math.floor(shelves / SHELF_DISCOUNT)) : n]);
+}
+function openAltar(x, y, z) {
   altarOpen = true;
+  altarShelves = x === undefined ? 0 : shelvesNear(x, y, z);
   tradingWith = null;
   paused = true;
   controls.reset();
@@ -2221,23 +2302,25 @@ function renderEnchants() {
   list.innerHTML = '';
   const held = inventory.held();
   const opts = held ? Object.entries(ENCHANTS).filter(([, e]) => e.on(held.id)) : [];
-  $('trade-hint').textContent = !held ? 'Hold a tool, weapon or piece of armour to enchant it.' :
-    !opts.length ? `${itemName(held.id)} can't be enchanted.` : `Enchant your ${itemName(held.id).toLowerCase()}:`;
+  const shelfNote = altarShelves ? ` (${altarShelves} bookshelves nearby)` : ' Bookshelves round the altar make it cheaper, and teach it more.';
+  $('trade-hint').textContent = (!held ? 'Hold a tool, weapon or piece of armour to enchant it.' :
+    !opts.length ? `${itemName(held.id)} can't be enchanted.` : `Enchant your ${itemName(held.id).toLowerCase()}:`) + shelfNote;
   for (const [key, e] of opts) {
     const row = document.createElement('div');
     row.className = 'recipe';
-    const have = e.cost.every(([id, n]) => inventory.count(id) >= n);
+    const cost = enchCost(e, altarShelves), locked = (e.shelves ?? 0) > altarShelves;
+    const have = cost.every(([id, n]) => inventory.count(id) >= n);
     const done = hasEnch(held, key);
-    row.innerHTML = e.cost.map(([id, n]) => `<span class="ing${inventory.count(id) >= n ? '' : ' missing'}" title="${itemName(id)}"><img src="${icons[id]}" alt="">${n}</span>`).join('') +
-      `<span class="arrow">→</span><span class="name"><b>${e.name}</b>: ${e.about}</span>`;
+    row.innerHTML = cost.map(([id, n]) => `<span class="ing${inventory.count(id) >= n ? '' : ' missing'}" title="${itemName(id)}"><img src="${icons[id]}" alt="">${n}</span>`).join('') +
+      `<span class="arrow">→</span><span class="name"><b>${e.name}</b>: ${e.about}${locked ? ` <i>(needs ${e.shelves} bookshelves round the altar)</i>` : ''}</span>`;
     const btn = document.createElement('button');
     btn.className = 'btn';
     btn.textContent = done ? 'Done' : 'Enchant';
-    btn.disabled = done || !have || held.count > 1;
+    btn.disabled = done || locked || !have || held.count > 1;
     btn.addEventListener('click', () => {
       const h = inventory.held();
-      if (!h || hasEnch(h, key) || !e.cost.every(([id, n]) => inventory.count(id) >= n)) return;
-      for (const [id, n] of e.cost) inventory.remove(id, n);
+      if (!h || hasEnch(h, key) || locked || !cost.every(([id, n]) => inventory.count(id) >= n)) return;
+      for (const [id, n] of cost) inventory.remove(id, n);
       h.ench = [...(h.ench ?? []), key];
       inventory.onChange();
       sound.levelUp?.() ?? sound.pop();
@@ -2695,6 +2778,8 @@ function placeInner() {
   if (held?.id === DRIVE_BELT) { useDriveBelt(); return; }
   if (held && isBackpack(held.id)) { openBackpack(held); return; }
   if (held?.id === BOOK) { openGuide(); return; }
+  if (held?.id === JOURNAL) { openJournal(held); return; }
+  if (held?.id === FERTILISER && target && fertilise(target.x, target.y, target.z)) { inventory.consumeHeld(); return; }
   if (held?.id === GRAPPLE) { if (grapple) releaseGrapple(); else throwGrapple(); return; }
   if (held?.id === SPANNER && target && spannerTurn(target.x, target.y, target.z)) return;
   // tap a belt or hopper with an item (not a block, or a tool) to put it in: one on a belt, the lot into a hopper
@@ -2726,7 +2811,7 @@ function placeInner() {
       } else toast(lv >= MAX_HONEY ? 'The hive is full of honey: tap it holding a glass bottle' : `The bees are making honey (${lv}/${MAX_HONEY})`, 2000);
       return;
     }
-    if (tid === ENCHANT_ALTAR) { openAltar(); return; }
+    if (tid === ENCHANT_ALTAR) { openAltar(tx, ty, tz); return; }
     if (BLOCKS[tid].bell) {
       const v = world.generator.nearestVillage(tx, tz, 1);
       sound.ding?.() ?? sound.pop();
@@ -3297,6 +3382,8 @@ function breakBlock(x, y, z) {
     drawCharge(inventory.held(), CHARGE_USE.jackhammer);
     if (drops.length && ORES.some((o) => o.id === id && o.ingot) && Math.random() < JACK_DUST) drops.push([oreDust(id), 1]);
   }
+  // a Lucky pickaxe now and then turns up a second ore
+  if (hasEnch(inventory.held(), 'lucky') && drops.length && ORES.some((o) => o.id === id) && Math.random() < 1 / 3) drops.push([drops[0][0], 1]);
   if (ITEMS[inventory.heldId()]?.tool?.type === def.tool && def.hardness > 0) wearOutHeld(1);
   if (isDoor(id)) {
     // either half takes the whole door with it
@@ -4169,5 +4256,5 @@ window.minicraft = {
   arrows, fishing, kinetics, electric, lightUniforms, bees, catchAt, seasonOf, applySeason, set day(v) { day = v; applySeason(); }, frames, signalAt, setSwitch, logic, machines, carts, minimap, signs, armour, damage, placeRail, getInCart, getOutOfCart,
   get riding() { return riding; }, explode, lightFuse, fuses, clockTime, compassText, place, editSign, closeSign, openInventory, closeInventory, chestMove, lamps, tickLamps, sleepUntilMorning, stations, openStation, closeStation,
   get caneToday() { return caneToday; }, get creative() { return creative; }, set creative(v) { creative = v; applyCreative(); }, toggleFly, wand, useWand, get achieved() { return achieved; }, achieve, worldMap, openMap, closeMap, openGuide, switchSlot, store, saveGame, renderWorlds, openWorlds, exportSlot, get target() { return target; }, set target(v) { target = v; }, applyKeys, renderKeys, camera, get controls() { return controls; }, loose, throwHeld, get waypoints() { return waypoints; }, toggleWaypoint, sortSlots, weather, openTrade, closeTrade, mountMob, dismount, get ridingMob() { return ridingMob; }, effects, armourWear, useAnvil, rollLoot, settings,
-  get bedSpawn() { return bedSpawn; }, paintings, placeSwitchRail, signalAt, ailments, armourEnch, openAltar, lairNear, useBed, eat, drinkTea,
+  get bedSpawn() { return bedSpawn; }, fertilise, openJournal, closeJournal, get packs() { return packs; }, paintings, placeSwitchRail, signalAt, ailments, armourEnch, openAltar, lairNear, useBed, eat, drinkTea,
 };

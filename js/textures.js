@@ -17,7 +17,7 @@ import {
   SUN_SCARAB, FROST_HEART, EMBER_CORE, SUN_MASK, FROST_CIRCLET, EMBER_CROWN, HONEY_TEA, MUSHROOM_STEW, FISH_PIE, COPY_WAND,
   CRYSTAL_SHARD, HONEY_BOTTLE, HONEYCOMB, SALMON, BAKED_SALMON, ICEFISH, BAKED_ICEFISH, PUFFERFISH, OLD_BOOT,
   BATTERY, PORTABLE_LAMP, JACKHAMMER, JETPACK, ELECTRIC_DRILL, HOVER_BOOTS, NV_GOGGLES, MAGNET_RING, WIND_TURBINE, NICKEL_INGOT, CUPRONICKEL_INGOT,
-  ELECTRIC_RAIL, CHAINSAW, SAWDUST, BOOK, BACKPACK, BIG_BACKPACK, HUGE_BACKPACK, SPANNER, GRAPPLE, URANIUM_INGOT, FUEL_ROD,
+  ELECTRIC_RAIL, CHAINSAW, SAWDUST, BOOK, BACKPACK, BIG_BACKPACK, HUGE_BACKPACK, SPANNER, GRAPPLE, URANIUM_INGOT, FUEL_ROD, JOURNAL, FERTILISER,
   SALTPETRE, GUNPOWDER, LEAD_SINKER, WEIGHTED_ROD, LEAD_BUCKET, LAVA_BUCKET, GOLD_CLOCK, COMPASS, SILVER_ARROW, MIRROR_LAMP,
 } from './blocks.js';
 
@@ -1034,6 +1034,28 @@ const reactor = (t, hot) => {
 P[T.REACTOR_SIDE] = (t) => reactor(t, false);
 P[T.REACTOR_SIDE_HOT] = (t) => reactor(t, true);
 P[T.REACTOR_TOP] = (t) => { fill(t, [70, 76, 84]); frame(t, [46, 50, 56], 1); for (const [x, y] of [[4, 4], [10, 4], [4, 10], [10, 10]]) for (let k = 0; k < 2; k++) for (let j = 0; j < 2; j++) t.set(x + k, y + j, [150, 156, 166]); };
+// v24: bookshelf, compost bin
+P[T.BOOKSHELF] = (t) => {
+  P[T.PLANKS](t);
+  const spines = [[150, 40, 40], [40, 80, 150], [50, 120, 60], [140, 110, 50], [100, 50, 120], [170, 150, 120]];
+  for (const y0 of [1, 9]) {
+    for (let x = 1; x < 15;) {
+      const w = 1 + ((t.r() * 2) | 0), c = spines[(t.r() * spines.length) | 0], h = 5 + ((t.r() * 2) | 0);
+      for (let k = 0; k < w && x < 15; k++, x++) for (let y = y0 + 6 - h; y < y0 + 6; y++) t.set(x, y, t.vary(c, 0.12));
+      if (t.r() < 0.3) x++;
+    }
+    for (let x = 0; x < TILE; x++) t.set(x, y0 + 6, [96, 70, 40]);
+  }
+};
+P[T.COMPOST_SIDE] = (t) => {
+  P[T.PLANKS](t);
+  for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) if (y % 4 === 3) t.set(x, y, t.vary([70, 52, 30], 0.1)); // slats with gaps
+  for (let y = 0; y < TILE; y++) { t.set(0, y, [96, 70, 40]); t.set(15, y, [96, 70, 40]); }
+};
+P[T.COMPOST_TOP] = (t) => {
+  P[T.PLANKS](t);
+  for (let y = 2; y < 14; y++) for (let x = 2; x < 14; x++) t.set(x, y, t.vary(t.r() < 0.2 ? [90, 120, 50] : [74, 54, 34], 0.2)); // the heap inside
+};
 P[T.LOGIC_BASE] = (t) => {
   for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) t.set(x, y, t.vary([172, 172, 168], 0.04));
   frame(t, [128, 128, 126], 1);
@@ -2000,6 +2022,15 @@ ITEM_PAINTERS[GRAPPLE] = (ctx) => {
   for (let y = 0; y < 3; y++) px(ctx, 8 - (y % 2), y, [226, 214, 170]); // its rope
 };
 ITEM_PAINTERS[FUEL_ROD] = (ctx) => { rect(ctx, 6, 1, 4, 14, [196, 200, 210]); rect(ctx, 7, 3, 2, 10, [126, 214, 72]); rect(ctx, 6, 1, 4, 1, [84, 92, 118]); rect(ctx, 6, 14, 4, 1, [84, 92, 118]); };
+ITEM_PAINTERS[JOURNAL] = (ctx) => {
+  rect(ctx, 3, 2, 10, 12, [60, 90, 70]); rect(ctx, 4, 3, 8, 10, [74, 110, 86]); rect(ctx, 12, 3, 2, 10, [246, 242, 228]);
+  rect(ctx, 3, 7, 10, 1, [180, 60, 50]); // a ribbon
+  for (let k = 0; k < 4; k++) px(ctx, 13 - k, 1 + k, [240, 240, 240]); px(ctx, 9, 5, [40, 40, 40]); // a quill
+};
+ITEM_PAINTERS[FERTILISER] = (ctx) => {
+  rect(ctx, 4, 4, 8, 10, [200, 180, 130]); rect(ctx, 5, 2, 6, 2, [180, 160, 110]); rect(ctx, 6, 1, 4, 1, [150, 130, 90]); // a sack
+  rect(ctx, 6, 7, 4, 4, [80, 150, 60]); px(ctx, 7, 6, [80, 150, 60]); px(ctx, 8, 6, [110, 180, 80]); // a sprout on it
+};
 ITEM_PAINTERS[MAGNET_RING] = (ctx) => {
   for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) { const d = Math.hypot(x - 7.5, y - 8.5); if (d > 3.5 && d < 6) px(ctx, x, y, y < 8 ? [200, 50, 40] : [190, 200, 176]); }
   rect(ctx, 6, 1, 4, 2, [84, 92, 118]); px(ctx, 7, 1, [230, 204, 100]);

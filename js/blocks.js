@@ -136,6 +136,7 @@ export const T = {
   QUARRY_SIDE: 252, TURBINE: 253,
   GEO_SIDE: 254, GEO_TOP: 255, WCHARGE_SIDE: 256, WCHARGE_TOP: 257, ELEVATOR_TOP: 258, ELEVATOR_SIDE: 259, URANIUM_ORE: 260,
   REACTOR_SIDE: 261, REACTOR_SIDE_HOT: 262, REACTOR_TOP: 263,
+  BOOKSHELF: 264, COMPOST_SIDE: 265, COMPOST_TOP: 266,
 };
 
 // Ores, deepest-reaching last. tier: the pickaxe tier needed to mine it (see TOOL_TIERS);
@@ -2021,4 +2022,26 @@ RECIPES.push(
   { out: [HUGE_BACKPACK, 1], in: [[LEATHER, 8], [STAINLESS_INGOT, 4], [HIDE, 2]], table: true, metal: STAINLESS_INGOT },
   { out: [SPANNER, 1], in: [[STEEL_INGOT, 3]], table: true, metal: STEEL_INGOT },
   { out: [GRAPPLE, 1], in: [[IRON_INGOT, 3], [STRING, 8]], table: true, metal: IRON_INGOT },
+);
+
+// ---------- v24 A: bookshelves, the journal, compost and fertiliser ----------
+// Bookshelves round an enchanting altar (within 2 blocks, on its level or the one above) make enchanting
+// cheaper and unlock the enchantments that need learning (see ENCHANTS: shelves). The journal is a book to
+// write in. The compost bin rots plant scraps down into fertiliser, which grows a crop or sapling a step.
+export const BOOKSHELF = 1260, COMPOST_BIN = 1261;
+export const JOURNAL = 1060, FERTILISER = 1061;
+block(BOOKSHELF, { name: 'Bookshelf', sound: 'wood', tool: 'axe', hardness: 1.5, side: T.BOOKSHELF, top: T.PLANKS, bottom: T.PLANKS });
+block(COMPOST_BIN, { name: 'Compost Bin', sound: 'wood', tool: 'axe', hardness: 1.5, side: T.COMPOST_SIDE, top: T.COMPOST_TOP, bottom: T.PLANKS, station: 'compost' });
+ITEMS[JOURNAL] = { name: 'Journal', stack: 1, journal: true };
+ITEMS[FERTILISER] = { name: 'Fertiliser', fertiliser: true };
+Object.assign(ENCHANTS, {
+  lucky: { name: 'Lucky', about: '1 in 3 chance of an extra ore', on: (id) => toolType(id) === 'pick', cost: [[CRYSTAL_SHARD, 4], [BOOK, 2]], shelves: 4 },
+  mending: { name: 'Mending', about: 'slowly mends itself while you carry it', on: (id) => maxWear(id) > 0 && !chargeCap(id), cost: [[CRYSTAL_SHARD, 6], [BOOK, 3], [GOLD_INGOT, 1]], shelves: 8 },
+  feather: { name: 'Feather Fall', about: 'halves fall damage', on: (id) => ITEMS[id]?.armour?.piece === 3, cost: [[CRYSTAL_SHARD, 4], [BOOK, 2], [FEATHER, 4]], shelves: 12 },
+});
+export const SHELF_DISCOUNT = 5; // one crystal shard off for every this many bookshelves (up to half the shards)
+RECIPES.push(
+  { out: [BOOKSHELF, 1], in: [[PLANKS, 6], [BOOK, 3]], table: true },
+  { out: [JOURNAL, 1], in: [[BOOK, 1], [FEATHER, 1], [COAL_DUST, 1]], table: true },
+  { out: [COMPOST_BIN, 1], in: [[PLANKS, 7]], table: true },
 );
