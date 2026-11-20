@@ -323,7 +323,7 @@ export class Stations {
       const i = st.inputs.findIndex((x) => !x);
       if (i >= 0) st.inputs[i] = { id: r.leaves, count: 1 };
     }
-    for (const [id, p, k = 1] of r.side ?? []) if (Math.random() < p) this.putSide(st, id, k);
+    for (const [id, p, k = 1] of r.side ?? []) if (Math.random() < p && this.putSide(st, id, k) && id === r.trace) this.onTrace?.(st, id);
     if (!r.out) return;
     const n = r.out[1] + (r.bonus && Math.random() < r.bonus && (st.out?.count ?? 0) + r.out[1] < maxStack(r.out[0]) ? 1 : 0);
     if (st.out) st.out.count += n;
@@ -462,7 +462,7 @@ STATION_KINDS.washer = {
   recipes: ORES.filter((o) => o.ingot).map((o) => {
     const trace = TRACE_METALS[o.id];
     return { out: [oreDust(o.id), 1], in: [[dirtyDust(o.id), 1]], time: o.tier >= 5 ? 6 : 4,
-      side: [[oreDust(o.id), 0.1], ...(trace ? [[oreDust(trace[0]), trace[1]]] : []), [SLUDGE, 0.3]] };
+      side: [[oreDust(o.id), 0.1], ...(trace ? [[oreDust(trace[0]), trace[1]]] : []), [SLUDGE, 0.3]], trace: trace ? oreDust(trace[0]) : 0 };
   }),
 };
 // The sieve needs no power: it's shaken by hand (it just takes a while). Dirt gives only what's in it.

@@ -3,7 +3,7 @@
 import * as THREE from 'three';
 import {
   BLOCKS, AIR, LEAVES, LOG, isLeaves, FRUIT_SAPLING, FRUITS, fruitLeaves, GLASS, DIRT, GRASS, WATER, MAX_LIGHT, SUGAR_CANE, MAX_CANE_HEIGHT,
-  PUMPKIN, isWheat, WATER_FLOW, WATER_FALL, WATER_WHEEL, isWaterId, isFlowing, waterLevel, LAVA, OBSIDIAN, PIPE, PUMP, SPOUT, T, FLOWERS, isFlower, FACING_DIRS,
+  PUMPKIN, isWheat, WATER_FLOW, WATER_FALL, WATER_WHEEL, isWaterId, isFlowing, waterLevel, LAVA, OBSIDIAN, COBBLE, PIPE, PUMP, SPOUT, T, FLOWERS, isFlower, FACING_DIRS,
 } from './blocks.js';
 
 // Water wheels let water run through their cell (and over them); see waterAt().
@@ -222,7 +222,10 @@ export class World {
     const c = this.chunkAt(x, z);
     if (!c) return;
     // lava and water that touch cool into obsidian
-    if (id === LAVA || isWaterId(id)) {
+    // (v28: running water that reaches lava turns to cobblestone and leaves the lava be: break it and more
+    // forms, so a block breaker there makes endless cobble)
+    if (isFlowing(id) && NEIGHBOURS.some(([dx, dy, dz]) => this.get(x + dx, y + dy, z + dz) === LAVA)) id = COBBLE;
+    else if (id === LAVA || isWaterId(id)) {
       for (const [dx, dy, dz] of NEIGHBOURS) {
         const n = this.get(x + dx, y + dy, z + dz);
         if (id === LAVA && isWaterId(n)) { id = OBSIDIAN; break; }

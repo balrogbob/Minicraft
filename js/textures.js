@@ -2826,3 +2826,12 @@ ITEM_PAINTERS[WORM] = (ctx) => {
   for (const [x, y] of [[3, 11], [4, 10], [5, 10], [6, 11], [7, 12], [8, 12], [9, 11], [10, 10], [11, 9], [12, 9], [13, 10]]) { px(ctx, x, y, c); px(ctx, x, y + 1, d); }
   px(ctx, 13, 9, [120, 60, 70]);
 };
+
+// v28 B: a heap of charcoal: black lumps with a dull sheen, and the grain of the wood still in some
+P[T.CHARCOAL_HEAP] = (t) => {
+  for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+    const lump = ((x >> 2) + (y >> 2) * 3) % 4, edge = x % 4 === 3 || y % 4 === 3;
+    t.set(x, y, t.vary(edge ? [18, 16, 16] : lump === 0 ? [58, 56, 60] : lump === 1 ? [44, 40, 40] : [34, 32, 34], 0.1));
+  }
+  for (let k = 0; k < 8; k++) t.set(Math.floor(t.r() * 16), Math.floor(t.r() * 16), [96, 96, 104]);
+};

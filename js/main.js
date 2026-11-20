@@ -32,6 +32,7 @@ import {
   SNOWMAN, FIREWORK, PUMPKIN, JACK_O_LANTERN, EGG, POPPY, DANDELION, DAISY, LAVENDER,
   ONION, BEANS, TOMATO, HERBS, CIDER, VINTAGE_CIDER, BERRY_WINE, FINE_BERRY_WINE,
   KILN, ROPE_LADDER, ROPE_BRIDGE, BRIDGE_RAIL, LOCK_GATE, SLUICE_WHEEL, STALACTITE, STALAGMITE,
+  CHARCOAL_HEAP, CLAY, STONE,
 } from './blocks.js';
 import { Smoke } from './smoke.js';
 import { Fireworks } from './fireworks.js';
@@ -463,7 +464,7 @@ async function startWorld(save, opts = {}) {
     const drops = dropsFor(LEAVES, 0); // (fruit trees' leaves too: not their fruit, which you'd pick)
     if (drops.length) giveDrops(drops);
   };
-  mobs.reset(world); bees.clear(); crows.clear(); critters.clear(); fires.clear(); hearths.clear(); smoke.clear(); fireworks.clear(); exitPhotoMode(); clearChestMark(); openGates.clear(); lockJobs.length = 0; clearRocks(); strikeIn = 20; catGiftDay = -1; bellDay = -1; villageGrowth = new Map(); shownSeason = -1;
+  mobs.reset(world); bees.clear(); crows.clear(); critters.clear(); fires.clear(); hearths.clear(); smoke.clear(); fireworks.clear(); exitPhotoMode(); clearChestMark(); openGates.clear(); lockJobs.length = 0; piles.length = 0; clearRocks(); strikeIn = 20; catGiftDay = -1; bellDay = -1; villageGrowth = new Map(); shownSeason = -1;
   kinetics.clear();
   kinetics.load(save?.kinetics);
   beltStart = null;
@@ -528,6 +529,10 @@ async function startWorld(save, opts = {}) {
   bellDay = Number.isInteger(save?.bellDay) ? save.bellDay : -1;
   world.soil = new Map((Array.isArray(save?.soil) ? save.soil : []).filter((e) => Array.isArray(e) && typeof e[0] === 'string' && e[1] && typeof e[1].kind === 'string'));
   for (const k of Array.isArray(save?.openGates) ? save.openGates.map((e) => (Array.isArray(e) ? e[0] : e)) : []) if (typeof k === 'string') openGates.set(k, LOCK_GATE);
+  for (const p of Array.isArray(save?.piles) ? save.piles : []) {
+    if (!Array.isArray(p?.cells) || !Array.isArray(p.hole) || !(p.left > 0)) continue;
+    piles.push({ cells: p.cells.filter((c) => Array.isArray(c) && c.length === 3).map((c) => c.map((v) => v | 0)), hole: p.hole.map((v) => v | 0), left: +p.left, total: +p.total || +p.left, puff: 0 });
+  }
   for (const e of Array.isArray(save?.hearths) ? save.hearths : []) if (Array.isArray(e) && typeof e[0] === 'string' && Number.isFinite(e[1])) hearths.set(e[0], e[1]);
   for (const e of Array.isArray(save?.fires) ? save.fires : []) if (Array.isArray(e) && typeof e[0] === 'string' && Number.isFinite(e[1])) fires.set(e[0], e[1]);
   villageGrowth = new Map((Array.isArray(save?.villageGrowth) ? save.villageGrowth : []).filter((e) => Array.isArray(e) && typeof e[0] === 'string' && e[1] && Number.isFinite(e[1].deals))
@@ -639,7 +644,7 @@ function saveGame() {
     weather: { raining: weather.raining, timer: Math.round(weather.timer) },
     pets: mobs.pets(),
     waypoints,
-    places, treasures, beacons: [...beaconSpots], catGiftDay, villageGrowth: [...villageGrowth], bellDay, fires: [...fires], hearths: [...hearths], openGates: [...openGates], soil: [...(world.soil ?? [])].slice(-4000),
+    places, treasures, beacons: [...beaconSpots], catGiftDay, villageGrowth: [...villageGrowth], bellDay, fires: [...fires], hearths: [...hearths], openGates: [...openGates], piles: piles.map((p) => ({ cells: p.cells, hole: p.hole, left: p.left, total: p.total })), soil: [...(world.soil ?? [])].slice(-4000),
     time: sky.time,
     creative,
     flying: player.flying,
@@ -3713,6 +3718,7 @@ function placeInner() {
     if (tid === ENCHANT_ALTAR) { openAltar(tx, ty, tz); return; }
     if (BLOCKS[tid].bell) { ringBell(tx, tz, held); return; }
     if (tid === SLUICE_WHEEL) { workLock(tx, ty, tz); return; }
+    if (tid === LOG && held?.id === TORCH && lightCharcoalPile(tx, ty, tz, [target.nx, target.ny, target.nz])) return;
     if (BLOCKS[tid].fruit?.ripe) {
       // pick the fruit off a fruit tree's leaves
       const f = BLOCKS[tid].fruit;
@@ -5904,6 +5910,77 @@ window.addEventListener('keydown', (e) => {
   else if (photoMode && (e.code === 'Enter' || e.code === 'KeyP')) snapPhoto();
 });
 
+// ---------- v28 B: charcoal piles ----------
+// Stack logs, cover them over with earth (dirt, grass, clay, gravel or sand) leaving one log showing through
+// a hole, and light that log with a torch. The pile smoulders, smoke curling from the hole, and when it's
+// done every log has become a charcoal heap (two charcoal each). If air gets in anywhere else while it's
+// burning, or a log is taken out, it flares up and burns away.
+const PILE_COVER = new Set([DIRT, GRASS, CLAY, GRAVEL, SAND, COBBLE, STONE, CHARCOAL_HEAP]);
+const MAX_PILE = 96, PILE_TIME = 40, PILE_PER_LOG = 4;
+stations.onTrace = () => achieve('trace');
+const piles = []; // { cells: [[x, y, z]...], hole: [x, y, z] (the air the pile was lit through), left, total, puff }
+// The logs joined to (x, y, z), and the faces of the pile that open onto something other than earth.
+function pileAt(x, y, z) {
+  const cells = [], seen = new Set([`${x},${y},${z}`]), open = [], q = [[x, y, z]];
+  while (q.length) {
+    const [cx, cy, cz] = q.pop();
+    cells.push([cx, cy, cz]);
+    if (cells.length > MAX_PILE) return { cells, open, tooBig: true };
+    for (const [dx, dy, dz] of SIDES6) {
+      const nx = cx + dx, ny = cy + dy, nz = cz + dz, k = `${nx},${ny},${nz}`, id = world.get(nx, ny, nz);
+      if (id === LOG) { if (!seen.has(k)) { seen.add(k); q.push([nx, ny, nz]); } continue; }
+      if (!PILE_COVER.has(id)) open.push([nx, ny, nz]);
+    }
+  }
+  return { cells, open };
+}
+function lightCharcoalPile(x, y, z, [nx, ny, nz]) {
+  if (piles.some((p) => p.cells.some(([cx, cy, cz]) => cx === x && cy === y && cz === z))) { toast('That pile is already smouldering', 1500); return true; }
+  const P = pileAt(x, y, z), hole = [x + nx, y + ny, z + nz];
+  if (P.tooBig) { toast(`That's too many logs for one pile (at most ${MAX_PILE})`); return true; }
+  const others = P.open.filter(([ox, oy, oz]) => ox !== hole[0] || oy !== hole[1] || oz !== hole[2]);
+  if (P.cells.length < 2 || others.length) {
+    // not a covered pile: just a torch on a log, unless it nearly is one
+    if (P.cells.length >= 4 && others.length <= 6) { toast(`Cover the pile over with earth first: ${others.length} more gap${others.length > 1 ? 's' : ''} to fill (leave only the hole you light it through)`, 3000); return true; }
+    return false;
+  }
+  inventory.consumeHeld();
+  const t = PILE_TIME + PILE_PER_LOG * P.cells.length;
+  piles.push({ cells: P.cells, hole, left: t, total: t, puff: 0 });
+  sound.crackle?.(0.8);
+  toast(`The pile catches and starts to smoulder (${P.cells.length} logs, about ${Math.round(t / 60 * 10) / 10} minutes). Keep the air out!`, 3500);
+  return true;
+}
+function tickPiles(dt) {
+  for (let i = piles.length - 1; i >= 0; i--) {
+    const p = piles[i];
+    const [hx, hy, hz] = p.hole;
+    if (!world.chunkAt(hx, hz)) continue;
+    p.left -= dt;
+    if ((p.puff -= dt) <= 0) { p.puff = 0.35; smoke.puff(hx + 0.5, hy + 0.3, hz + 0.5, { grey: 0.45, size: 0.6, life: 5, rise: 1.1 }); }
+    // check it's still sealed (now and then)
+    if ((p.check = (p.check ?? 0) - dt) > 0 && p.left > 0) continue;
+    p.check = 0.5;
+    const intact = p.cells.every(([x, y, z]) => world.get(x, y, z) === LOG);
+    const leaks = intact ? p.cells.flatMap(([x, y, z]) => SIDES6.map(([dx, dy, dz]) => [x + dx, y + dy, z + dz]))
+      .filter(([x, y, z]) => !(x === hx && y === hy && z === hz) && !PILE_COVER.has(world.get(x, y, z)) && world.get(x, y, z) !== LOG) : [];
+    if (!intact || leaks.length) {
+      // air got in: it flares up
+      piles.splice(i, 1);
+      for (const [x, y, z] of p.cells) if (world.get(x, y, z) === LOG && Math.random() < 0.6) igniteAt(x, y, z, true);
+      for (const [x, y, z] of leaks.slice(0, 6)) igniteAt(x, y, z);
+      if (Math.hypot(hx - player.pos.x, hz - player.pos.z) < 40) toast('Air got into the charcoal pile and it flared up!', 2500);
+      continue;
+    }
+    if (p.left <= 0) {
+      piles.splice(i, 1);
+      for (const [x, y, z] of p.cells) world.setBlock(x, y, z, CHARCOAL_HEAP);
+      if (Math.hypot(hx - player.pos.x, hz - player.pos.z) < 40) toast(`The charcoal pile has burnt down: ${p.cells.length} heaps of charcoal under the earth`, 3000);
+      achieve('charcoal');
+    }
+  }
+}
+
 // ---------- v26 E: temple and sky-island puzzles, diving ----------
 // A sunken temple's vault opens when each of its three levers matches the lamp above it (lit: on, dark: off).
 // A sky island's opens when you step on its plates in the order of the wool over the vault's gate.
@@ -6218,7 +6295,7 @@ function stepGame(now, dt) {
     world.tickPlants(dt);
     world.tickLeaves(dt);
     tickLamps(dt);
-    tickExplore(dt); tickTreasure(dt); tickLocks(dt); tickStalactites(dt); tickSnow(dt); tickVillages(dt); tickStorm(dt); tickFires(dt); tickPuzzles(dt); tickHearths(dt);
+    tickExplore(dt); tickTreasure(dt); tickLocks(dt); tickPiles(dt); tickStalactites(dt); tickSnow(dt); tickVillages(dt); tickStorm(dt); tickFires(dt); tickPuzzles(dt); tickHearths(dt);
     crows.update(dt, world, player.pos, {
       day: lightUniforms.uDay.value,
       eat: (x, y, z) => world.setBlock(x, y, z, WHEAT_3 - 2), // back to green shoots
@@ -6362,5 +6439,5 @@ window.minicraft = {
   arrows, fishing, kinetics, electric, lightUniforms, bees, catchAt, seasonOf, applySeason, set day(v) { day = v; applySeason(); }, frames, signalAt, setSwitch, logic, machines, carts, minimap, signs, armour, damage, placeRail, getInCart, getOutOfCart,
   get riding() { return riding; }, explode, lightFuse, fuses, clockTime, compassText, place, editSign, closeSign, openInventory, closeInventory, chestMove, lamps, tickLamps, sleepUntilMorning, stations, openStation, closeStation,
   get caneToday() { return caneToday; }, get creative() { return creative; }, set creative(v) { creative = v; applyCreative(); }, toggleFly, wand, useWand, get achieved() { return achieved; }, achieve, worldMap, openMap, closeMap, openGuide, switchSlot, store, saveGame, renderWorlds, openWorlds, exportSlot, get target() { return target; }, set target(v) { target = v; }, applyKeys, renderKeys, camera, get controls() { return controls; }, loose, throwHeld, get waypoints() { return waypoints; }, toggleWaypoint, sortSlots, quickStack, dropMeteor, get meteors() { return meteors; }, weather, openTrade, closeTrade, mountMob, dismount, get ridingMob() { return ridingMob; }, effects, armourWear, useAnvil, rollLoot, settings,
-  get bedSpawn() { return bedSpawn; }, fertilise, openJournal, closeJournal, get packs() { return packs; }, radiationAt, vehicles, boardVehicle, leaveVehicle, get boarded() { return boarded; }, get seated() { return seated; }, crows, onInvSlot, onStationSlot, quickMoveInv, quickMoveStation, usedIn, itemTipHTML, critters, tickPets, get catGiftDay() { return catGiftDay; }, get villageGrowth() { return villageGrowth; }, notePlanting, tickPuzzles, airPumpNear, useStable, stableNear, horseLabel, searchChests, takeFromChest, markChest, get chestMark() { return chestMark; }, enterPhotoMode, exitPhotoMode, snapPhoto, get photoMode() { return photoMode; }, photoCam, get lastPhoto() { return lastPhoto; }, tickStalactites, loosenStalactite, fallingRocks, shaking, workLock, findLock, tickLocks, openGates, lockJobs, hangRopeLadder, layBridge, rollUpRope, fireworks, ringBell, requestFor, festivalToday, repOf, addRep, tradeCost, tickFestival, villageEntry, hearths, tickHearths, feedHearth, chimneyTop, smoke, renderPins, togglePin, lightning, igniteAt, fires, tickFires, tickStorm, growVillage, buildVillageHouse, stallPrice, tickStalls, tickVillages, set catGiftDay(v) { catGiftDay = v; }, get places() { return places; }, get treasures() { return treasures; }, readTreasureMap, tickTreasure, beams, tickBeams, beaconSpots: () => beaconSpots, mistNow, tickSnow, tickExplore, sitOn, standUp, useDisplay, zips, linkZip, startZip, get zipping() { return zipping; }, burnCoal, get health() { return health; }, set health(v) { health = v; }, paintings, placeSwitchRail, signalAt, ailments, armourEnch, openAltar, lairNear, useBed, eat, drinkTea,
+  get bedSpawn() { return bedSpawn; }, fertilise, openJournal, closeJournal, get packs() { return packs; }, radiationAt, vehicles, boardVehicle, leaveVehicle, get boarded() { return boarded; }, get seated() { return seated; }, crows, onInvSlot, onStationSlot, quickMoveInv, quickMoveStation, usedIn, itemTipHTML, critters, tickPets, get catGiftDay() { return catGiftDay; }, get villageGrowth() { return villageGrowth; }, notePlanting, tickPuzzles, airPumpNear, useStable, stableNear, horseLabel, piles, lightCharcoalPile, tickPiles, searchChests, takeFromChest, markChest, get chestMark() { return chestMark; }, enterPhotoMode, exitPhotoMode, snapPhoto, get photoMode() { return photoMode; }, photoCam, get lastPhoto() { return lastPhoto; }, tickStalactites, loosenStalactite, fallingRocks, shaking, workLock, findLock, tickLocks, openGates, lockJobs, hangRopeLadder, layBridge, rollUpRope, fireworks, ringBell, requestFor, festivalToday, repOf, addRep, tradeCost, tickFestival, villageEntry, hearths, tickHearths, feedHearth, chimneyTop, smoke, renderPins, togglePin, lightning, igniteAt, fires, tickFires, tickStorm, growVillage, buildVillageHouse, stallPrice, tickStalls, tickVillages, set catGiftDay(v) { catGiftDay = v; }, get places() { return places; }, get treasures() { return treasures; }, readTreasureMap, tickTreasure, beams, tickBeams, beaconSpots: () => beaconSpots, mistNow, tickSnow, tickExplore, sitOn, standUp, useDisplay, zips, linkZip, startZip, get zipping() { return zipping; }, burnCoal, get health() { return health; }, set health(v) { health = v; }, paintings, placeSwitchRail, signalAt, ailments, armourEnch, openAltar, lairNear, useBed, eat, drinkTea,
 };
