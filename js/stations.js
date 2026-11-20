@@ -564,3 +564,15 @@ STATION_KINDS.oven.recipes.push(
 STATION_KINDS.cookpot.recipes.push(
   { out: [MELTED_CHOC, 2], in: [[COCOA_POWDER, 2], [SUGAR, 1], [BUTTER, 1], [GLASS_BOTTLE, 2]], time: 6 },
 );
+
+// v34 A: pork and chicken
+import { RAW_PORK, ROAST_PORK, RAW_CHICKEN, ROAST_CHICKEN, CHICKEN_SOUP, PORK_PIE, PORK_AND_BEANS } from './blocks.js';
+STATION_KINDS.oven.recipes.push(
+  { out: [ROAST_PORK, 1], in: [[RAW_PORK, 1]], time: 5 },
+  { out: [ROAST_CHICKEN, 1], in: [[RAW_CHICKEN, 1]], time: 5 },
+  { out: [PORK_PIE, 1], in: [[RAW_PORK, 2], [FLOUR, 2], [BUTTER, 1]], time: 10 },
+);
+STATION_KINDS.cookpot.recipes.push(
+  { out: [CHICKEN_SOUP, 1], in: [[RAW_CHICKEN, 1], [CARROT, 1], [ONION, 1], [WATER_BUCKET, 1]], leaves: BUCKET, time: 8 },
+  { out: [PORK_AND_BEANS, 1], in: [[RAW_PORK, 1], [BEANS, 3], [TOMATO, 1]], time: 8 },
+);

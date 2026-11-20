@@ -3181,3 +3181,15 @@ RECIPES.push(
   { out: [CHOC_CHERRIES, 2], in: [[CHERRIES, 4], [CHOC_BAR, 1]] },
   { out: [CHOC_CAKE, 1], in: [[CHOC_BAR, 2], [CHOC_MILK, 1], [FLOUR, 2], [EGG, 1], [SUGAR, 1]], also: [[GLASS_BOTTLE, 1]], table: true },
 );
+
+// ---------- v34 A: pork and chicken ----------
+// Pigs and chickens are farm animals: a grown one can be butchered with a sword or an axe (see mobs.butcher).
+// Every other animal is only ever bumped. Raw chicken can give you food poisoning; cook it first.
+export const RAW_PORK = 3193, ROAST_PORK = 3194, RAW_CHICKEN = 3195, ROAST_CHICKEN = 3196, CHICKEN_SOUP = 3197, PORK_PIE = 3198, PORK_AND_BEANS = 3199;
+ITEMS[RAW_PORK] = { name: 'Raw Pork', food: 3, meat: true };
+ITEMS[ROAST_PORK] = { name: 'Roast Pork', food: 8, meat: true };
+ITEMS[RAW_CHICKEN] = { name: 'Raw Chicken', food: 2, meat: true, risky: 0.5, about: 'cook it first, or risk food poisoning' };
+ITEMS[ROAST_CHICKEN] = { name: 'Roast Chicken', food: 7, meat: true };
+ITEMS[CHICKEN_SOUP] = { name: 'Chicken Soup', food: 10, meal: ['heal', 6], about: 'heals you and cures food poisoning' };
+ITEMS[PORK_PIE] = { name: 'Pork Pie', food: 14, meal: ['fed', 600], about: 'keeps you full for a long time' };
+ITEMS[PORK_AND_BEANS] = { name: 'Pork and Beans', food: 12, meal: ['warm', 300], about: 'warms you through' };

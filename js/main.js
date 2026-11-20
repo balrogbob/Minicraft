@@ -1904,6 +1904,18 @@ function hitMob() {
     wearOutHeld(1);
     return;
   }
+  // (v34) a sword or an axe butchers a pig or a chicken; nothing harms the other animals
+  const heldTool = ITEMS[inventory.heldId()]?.tool?.type;
+  if (targetMob.mob.spec.livestock && (heldTool === 'sword' || heldTool === 'axe')) {
+    const now = performance.now();
+    if (now - lastSwing < (heldTool === 'sword' ? 300 : 450)) return;
+    lastSwing = now;
+    const r = mobs.butcher(targetMob.mob, ITEMS[inventory.heldId()].tool.damage ?? 4, player.pos);
+    if (r.why) { toast(r.why[0].toUpperCase() + r.why.slice(1), 1500); return; }
+    if (r.drops.length) { giveDrops(r.drops); achieve('butcher'); }
+    wearOutHeld(1);
+    return;
+  }
   const wasTame = targetMob.mob.tame;
   const r = mobs.interact(targetMob.mob, player.pos, inventory.heldId());
   if (!wasTame && targetMob.mob.tame) achieve('tame');
@@ -1950,6 +1962,7 @@ function eat(id) {
   if (hunger > MAX_HUNGER - 1) { toast('You\'re not hungry'); return; } // (hunger drains constantly, so never exactly full)
   hunger = Math.min(MAX_HUNGER, hunger + foodValue(id));
   inventory.consumeHeld();
+  if (ITEMS[id]?.risky && Math.random() < ITEMS[id].risky) { poisoned = Math.max(poisoned, 15); toast('Ugh! That wasn\'t cooked: you have food poisoning.', 2500); renderHealth(); } // (v34: raw chicken)
   if (foodValue(id) >= 6) {
     const was = effects.fed > 0;
     effects.fed = Math.max(effects.fed, foodValue(id) * 20); // a hearty meal keeps you going: the better the meal, the longer

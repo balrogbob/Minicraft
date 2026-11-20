@@ -3274,3 +3274,37 @@ ITEM_PAINTERS[CHOC_CHERRIES] = (ctx) => {
   }
   for (let k = 0; k < 6; k++) { px(ctx, 5 + (k >> 1), 6 - k, [70, 90, 30]); px(ctx, 11 - (k >> 1), 6 - k, [70, 90, 30]); }
 };
+
+// ---------- v34 A: pork and chicken ----------
+import { RAW_PORK, ROAST_PORK, RAW_CHICKEN, ROAST_CHICKEN, CHICKEN_SOUP, PORK_PIE, PORK_AND_BEANS } from './blocks.js';
+const chop = (meat, fat, bone) => (ctx) => {
+  for (let y = 3; y < 14; y++) for (let x = 2; x < 13; x++) {
+    const d = Math.hypot((x - 7) / 5, (y - 8) / 4.6);
+    if (d >= 1) continue;
+    px(ctx, x, y, d > 0.8 ? fat : (x + y) % 5 === 0 ? shade(meat, 0.85) : meat);
+  }
+  rect(ctx, 12, 6, 3, 2, bone); px(ctx, 14, 5, bone); px(ctx, 14, 8, bone);
+};
+ITEM_PAINTERS[RAW_PORK] = chop([232, 140, 140], [250, 226, 220], [240, 236, 224]);
+ITEM_PAINTERS[ROAST_PORK] = chop([176, 104, 60], [224, 176, 110], [236, 226, 206]);
+const drumstick = (meat, hi) => (ctx) => {
+  for (let y = 2; y < 12; y++) for (let x = 2; x < 12; x++) {
+    if (Math.hypot(x - 6.5, y - 6.5) >= 4.8) continue;
+    px(ctx, x, y, x + y < 11 ? hi : meat);
+  }
+  for (let k = 0; k < 4; k++) px(ctx, 10 + k, 10 + k, [240, 236, 224]);
+  rect(ctx, 13, 12, 2, 2, [250, 248, 240]);
+};
+ITEM_PAINTERS[RAW_CHICKEN] = drumstick([236, 190, 170], [248, 214, 198]);
+ITEM_PAINTERS[ROAST_CHICKEN] = drumstick([196, 120, 50], [228, 160, 80]);
+const bowl = (soup, bits) => (ctx) => {
+  for (let x = 1; x < 15; x++) px(ctx, x, 7, shade(soup, 1.1));
+  for (let y = 7; y < 14; y++) for (let x = 1; x < 15; x++) if (Math.abs(x - 7.5) < 7 - (y - 7) * 0.7) px(ctx, x, y, y === 7 ? soup : [150, 106, 64]);
+  for (const [x, c] of bits) px(ctx, x, 7, c);
+};
+ITEM_PAINTERS[CHICKEN_SOUP] = bowl([232, 200, 110], [[4, [236, 130, 40]], [7, [240, 230, 200]], [10, [120, 160, 60]]]);
+ITEM_PAINTERS[PORK_AND_BEANS] = bowl([196, 70, 40], [[4, [176, 104, 60]], [6, [230, 120, 80]], [9, [176, 104, 60]], [11, [230, 120, 80]]]);
+ITEM_PAINTERS[PORK_PIE] = (ctx) => {
+  for (let y = 4; y < 14; y++) for (let x = 2; x < 14; x++) px(ctx, x, y, y < 6 ? [226, 170, 90] : y === 13 ? [150, 96, 44] : (x + y) % 4 === 0 ? [200, 140, 70] : [214, 156, 80]);
+  for (let x = 3; x < 13; x += 2) px(ctx, x, 4, [240, 200, 120]);
+};
