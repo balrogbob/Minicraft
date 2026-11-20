@@ -1369,6 +1369,35 @@ works the chests and machines it touches, according to its job:
 - (Classic Logistics Pipes' satellite pipes and chassis modules are left out: a machine here takes all its
   ingredients on one block, and each module is its own pipe instead.)
 
+### Version 30
+
+#### Logistics signals, liquid pipes and courier drones
+
+- **Stock sensor pipe** (a logistics pipe and a daylight sensor): tap it to choose a thing (or water or lava),
+  an amount, and whether it signals while the network has **less than** that or **at least** that. Wire it to
+  lamps, doors, machines or anything else that takes a signal.
+- A **power junction** that gets a signal (from a lever, wire or anything but the network's own pipes)
+  **pauses** its part of the network.
+- **Liquid provider pipe** (a logistics pipe, a pipe and a bucket): offers the water or lava in the tanks it
+  touches. Dipped in a still pool of water or lava, it offers as much as you like.
+- **Liquid supplier pipe** (a logistics pipe, a pipe and 2 copper): on a tank, tap it to keep the tank filled
+  with water or lava up to a level. On an oven, smelter or steam engine, it keeps the fire fed with lava.
+- **Liquid sink pipe** (a logistics pipe, a pipe and an item frame): on a tank or a bottler, it takes in liquid that
+  has nowhere else to go.
+- Liquids go along the pipes as buckets, 4 at a time at most. Whatever doesn't fit where it was sent goes **back
+  where it came from**. If there's no room there either, it goes to a liquid sink, and if there's none (or they're
+  all full), it's lost.
+- **Bottler** (4 iron, a tank, a bucket and a hopper): pipe water or lava into it (with a liquid sink or supplier
+  pipe) and put empty buckets in: it fills them, water into buckets and lava into lead buckets. Put an extractor
+  pipe on it to send the full buckets off to an item sink and store them in chests.
+- **Drone pad** (a logistics pipe, 4 iron, a crystal shard and a battery block): networks with a pad on the same
+  channel (1 to 16; tap a pad to set it) work as one network. Anything one has can be ordered at the other's
+  request table, crafting pipes on either can be used, and suppliers and sinks reach across. **Courier drones**
+  fly things between the pads. Each part needs its own powered junction.
+- **Drone pads keep their networks loaded**: every part of a network with a drone pad on it (and the chunks
+  around its pipes) stays loaded however far away you go, so distant bases keep working and stay linked. Take
+  the pad away and that part unloads as usual. New achievement: **Air Mail**.
+
 ### Worlds, creative mode, the map and achievements
 
 ☰ → **Worlds…** holds three worlds. Play any of them, start a new **survival** or **creative** world in a slot,

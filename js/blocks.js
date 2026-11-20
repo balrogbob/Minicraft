@@ -141,7 +141,7 @@ export const T = {
   LEAD_CHEST_SIDE: 267, LEAD_CHEST_TOP: 268, LEAD_CHEST_FRONT: 269, CENTRIFUGE_SIDE: 270, CENTRIFUGE_TOP: 271, TESLA: 272, TESLA_TOP: 273,
   FENCE_POST: 274, FENCE_WIRE: 275, FREEZER_SIDE: 276, FREEZER_FRONT: 277, ARC_SIDE: 278, ARC_FRONT: 279, PACKED_ICE: 280, INVAR: 281, RAIL_STOP: 282, BASALT: 283, BASALT_TOP: 284, METEORITE: 285,
   IRON_BARS: 286, POT: 287, IVY: 288, BOX_FLOWERS: 289,
-  FRUIT_LEAVES: 290, FRUIT_RIPE: 293, FRUIT_SAPLING: 296, HAY: 299, SACK: 300, BEACON: 301, APIARY_SIDE: 302, APIARY_FRONT: 303, APIARY_FULL: 304, APIARY_TOP: 305, BELT_CROSS: 306, FARM_CTRL: 307, FARM_CTRL_ON: 308, TUBE: 309, TUBE_END: 310, AWNING: 311, FIRE: 312, CARROT_0: 313, POTATO_0: 317, STEM_0: 321, PUMPKIN_SIDE: 324, PUMPKIN_TOP: 325, JACK_FACE: 326, TRELLIS: 327, VINE_0: 328, BARREL_SIDE: 331, BARREL_TOP: 332, CHEESE: 333, SEA_BRICK: 334, SEA_LANTERN: 335, VAULT: 336, SKY_STONE: 337, AIR_PUMP: 338, RADIO: 339, RADIO_ON: 340, SORTBOX: 341, SORTBOX_TOP: 342, HEARTH: 343, HEARTH_LIT: 344, CHIMNEY_TOP: 345, STABLE_SIDE: 346, SNOWMAN_FRONT: 347, ONION_0: 348, BEAN_0: 352, TOMATO_0: 356, HERB_0: 360, KILN_SIDE: 364, KILN_TOP: 365, KILN_FRONT: 366, KILN_FRONT_LIT: 367, TERRACOTTA: 368, TERRA_COL: 369, GLAZED: 379, ROOF_TILES: 389, URN: 390, ROPE: 391, LOCK_GATE: 392, LOCK_GATE_TOP: 393, DRIPSTONE: 394, BEETLE_LAMP: 395, WASHER_SIDE: 396, WASHER_TOP: 397, WASHER_FRONT: 398, SIEVE: 399, SLAG_BRICKS: 400, CHARCOAL_HEAP: 401, LP_ARM: 402, LP_CORE: 403, LP_TABLE_TOP: 409, LP_TABLE_SIDE: 410, LP_JUNCTION: 411, // (fruit tiles: apple, cherry, orange)
+  FRUIT_LEAVES: 290, FRUIT_RIPE: 293, FRUIT_SAPLING: 296, HAY: 299, SACK: 300, BEACON: 301, APIARY_SIDE: 302, APIARY_FRONT: 303, APIARY_FULL: 304, APIARY_TOP: 305, BELT_CROSS: 306, FARM_CTRL: 307, FARM_CTRL_ON: 308, TUBE: 309, TUBE_END: 310, AWNING: 311, FIRE: 312, CARROT_0: 313, POTATO_0: 317, STEM_0: 321, PUMPKIN_SIDE: 324, PUMPKIN_TOP: 325, JACK_FACE: 326, TRELLIS: 327, VINE_0: 328, BARREL_SIDE: 331, BARREL_TOP: 332, CHEESE: 333, SEA_BRICK: 334, SEA_LANTERN: 335, VAULT: 336, SKY_STONE: 337, AIR_PUMP: 338, RADIO: 339, RADIO_ON: 340, SORTBOX: 341, SORTBOX_TOP: 342, HEARTH: 343, HEARTH_LIT: 344, CHIMNEY_TOP: 345, STABLE_SIDE: 346, SNOWMAN_FRONT: 347, ONION_0: 348, BEAN_0: 352, TOMATO_0: 356, HERB_0: 360, KILN_SIDE: 364, KILN_TOP: 365, KILN_FRONT: 366, KILN_FRONT_LIT: 367, TERRACOTTA: 368, TERRA_COL: 369, GLAZED: 379, ROOF_TILES: 389, URN: 390, ROPE: 391, LOCK_GATE: 392, LOCK_GATE_TOP: 393, DRIPSTONE: 394, BEETLE_LAMP: 395, WASHER_SIDE: 396, WASHER_TOP: 397, WASHER_FRONT: 398, SIEVE: 399, SLAG_BRICKS: 400, CHARCOAL_HEAP: 401, LP_ARM: 402, LP_CORE: 403, LP_TABLE_TOP: 409, LP_TABLE_SIDE: 410, LP_JUNCTION: 411, LP_SENSOR_CORE: 412, LP_SENSOR_ON: 413, LP_FPROVIDER: 414, LP_FSUPPLIER: 415, DRONE_PAD_TOP: 416, DRONE_PAD_SIDE: 417, LP_FSINK: 418, BOTTLER_SIDE: 419, BOTTLER_TOP: 420, // (fruit tiles: apple, cherry, orange)
 };
 
 // Ores, deepest-reaching last. tier: the pickaxe tier needed to mine it (see TOOL_TIERS);
@@ -2887,4 +2887,35 @@ RECIPES.push(
   { out: [LP_TABLE, 1], in: [[LP_PIPE, 1], [TABLE, 1], [GLASS_PANE, 2], [GOLD_INGOT, 1]], table: true, metal: GOLD_INGOT },
   { out: [LP_POWER, 1], in: [[LP_PIPE, 1], [GRID_BATTERY, 1], [WIRE, 4]], table: true },
   { out: [REMOTE_ORDERER, 1], in: [[LP_PIPE, 1], [CRYSTAL_SHARD, 1], [GOLD_INGOT, 2]], table: true, metal: GOLD_INGOT },
+);
+// ---------- v30: logistics signals, liquids and courier drones ----------
+// A stock sensor pipe signals while the network has less (or, set to, at least) some amount of a thing; a power
+// junction that gets a signal pauses its network. Liquid provider and supplier pipes move water and lava between
+// tanks, and lava to the fires of ovens, smelters and engines. Drone pads on the same channel join networks
+// that are too far apart to pipe: couriers fly things between them.
+export const LP_SENSOR = 1468, // 1469 = signalling
+  LP_FPROVIDER = 1470, LP_FSUPPLIER = 1471, DRONE_PAD = 1472, LP_FSINK = 1473, BOTTLER = 1474;
+for (const k of [0, 1]) {
+  block(LP_SENSOR + k, {
+    name: 'Stock Sensor Pipe', shape: 'lpipe', lpipe: 'sensor', transparent: true, sound: 'glass', hardness: 0.5,
+    tex: k ? T.LP_SENSOR_ON : T.LP_SENSOR_CORE, switch: 'stock', on: !!k, flip: LP_SENSOR + 1 - k,
+    light: k ? 3 : 0, variantOf: k ? LP_SENSOR : 0, drop: LP_SENSOR,
+  });
+}
+block(LP_FPROVIDER, { name: 'Liquid Provider Pipe', shape: 'lpipe', lpipe: 'fprovider', transparent: true, sound: 'glass', hardness: 0.5, tex: T.LP_FPROVIDER });
+block(LP_FSUPPLIER, { name: 'Liquid Supplier Pipe', shape: 'lpipe', lpipe: 'fsupplier', transparent: true, sound: 'glass', hardness: 0.5, tex: T.LP_FSUPPLIER });
+block(LP_FSINK, { name: 'Liquid Sink Pipe', shape: 'lpipe', lpipe: 'fsink', transparent: true, sound: 'glass', hardness: 0.5, tex: T.LP_FSINK });
+// the bottler fills buckets from the liquid piped into it: water into buckets, lava into lead buckets
+block(BOTTLER, { name: 'Bottler', station: 'bottler', sound: 'metal', side: T.BOTTLER_SIDE, top: T.BOTTLER_TOP, bottom: T.IRON, hardness: 2, tool: 'pick' });
+block(DRONE_PAD, {
+  name: 'Drone Pad', lpipe: 'pad', transparent: true, sound: 'metal', hardness: 2, tool: 'pick',
+  model: [[0, 0, 0, 16, 4, 16, { top: T.DRONE_PAD_TOP, side: T.DRONE_PAD_SIDE, bottom: T.DRONE_PAD_SIDE }]], boxes: [[0, 0, 0, 16, 4, 16]],
+});
+RECIPES.push(
+  { out: [LP_SENSOR, 1], in: [[LP_PIPE, 1], [DAYLIGHT_SENSOR, 1]], table: true },
+  { out: [LP_FPROVIDER, 1], in: [[LP_PIPE, 1], [PIPE, 1], [BUCKET, 1]], table: true },
+  { out: [LP_FSUPPLIER, 1], in: [[LP_PIPE, 1], [PIPE, 1], [COPPER_INGOT, 2]], table: true, metal: COPPER_INGOT },
+  { out: [DRONE_PAD, 1], in: [[LP_PIPE, 1], [IRON_INGOT, 4], [CRYSTAL_SHARD, 1], [GRID_BATTERY, 1]], table: true, metal: IRON_INGOT },
+  { out: [LP_FSINK, 1], in: [[LP_PIPE, 1], [PIPE, 1], [ITEM_FRAME, 1]], table: true },
+  { out: [BOTTLER, 1], in: [[IRON_INGOT, 4], [TANK, 1], [BUCKET, 1], [HOPPER, 1]], table: true, metal: IRON_INGOT },
 );

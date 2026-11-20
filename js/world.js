@@ -138,6 +138,7 @@ export class World {
     this.renderDistance = 6; // in chunks
     this.lastChunk = null;
     this.unloadTimer = 0;
+    this.keepLoaded = new Set(); // "cx,cz" of chunks kept loaded however far away they are (v30: drone pads)
     this.ringCache = null;
     this.failed = new Map(); // chunk key -> time it failed to load; retried after a pause
     this.onError = null; // called with an Error if a chunk fails to generate, load or mesh
@@ -912,7 +913,9 @@ export class World {
     const pcx = Math.floor(px / CHUNK), pcz = Math.floor(pz / CHUNK);
     const R = this.renderDistance;
     // 1. load: one ring wider than we draw, so every drawn chunk has its neighbours
-    for (const [dx, dz] of this.ring(R + 1)) {
+    // (and the chunks something keeps loaded, wherever they are: drone pads' networks)
+    const kept = [...this.keepLoaded].map((s) => s.split(',').map(Number)).map(([cx, cz]) => [cx - pcx, cz - pcz]);
+    for (const [dx, dz] of [...this.ring(R + 1), ...kept]) {
       if (performance.now() - t0 > budgetMs * 0.5) break;
       const cx = pcx + dx, cz = pcz + dz;
       if (!this.inWorld(cx, cz)) continue;
@@ -971,7 +974,7 @@ export class World {
       this.unloadTimer = 0.5;
       for (const c of this.chunks.values()) {
         const far = Math.max(Math.abs(c.cx - pcx), Math.abs(c.cz - pcz));
-        if (far > R + 3) this.unloadChunk(c, scene);
+        if (far > R + 3 && !this.keepLoaded.has(`${c.cx},${c.cz}`)) this.unloadChunk(c, scene);
         else if (far > R && (c.solid || c.water)) this.dropMeshes(c, scene); // out of view: free GPU memory
       }
     }
@@ -1134,7 +1137,7 @@ export class World {
       if (def.shape === 'lpipe') {
         // a logistics pipe: a coloured core (by its job) with clear arms out to each pipe, chest or machine it touches
         const model = [[4.5, 4.5, 4.5, 11.5, 11.5, 11.5, def.side]];
-        const joins = (id) => { const d = BLOCKS[id]; return !!(d?.lpipe || d?.station); };
+        const joins = (id) => { const d = BLOCKS[id]; return !!(d?.lpipe || d?.station || d?.tank || d?.engine || (d?.liquid && def.lpipe === 'fprovider')); };
         if (joins(this.get(x + 1, y, z))) model.push([11.5, 5.5, 5.5, 16, 10.5, 10.5, T.LP_ARM]);
         if (joins(this.get(x - 1, y, z))) model.push([0, 5.5, 5.5, 4.5, 10.5, 10.5, T.LP_ARM]);
         if (joins(this.get(x, y + 1, z))) model.push([5.5, 11.5, 5.5, 10.5, 16, 10.5, T.LP_ARM]);

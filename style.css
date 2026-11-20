@@ -491,3 +491,7 @@ body.photo.snapping #photo-bar { display: none; }
 .lp-msg { font-size: 13px; min-height: 1.2em; margin: 6px 0; }
 .lp-buffer { display: flex; align-items: center; gap: 6px; font-size: 13px; color: #555; }
 .lp-buffer span { flex: 1; }
+/* v30: stock sensor, liquid pipes, drone pads */
+.lp-sense { display: flex; gap: 10px; align-items: center; margin: 8px 0; font-size: 14px; line-height: 2; }
+.lp-sense .lp-ghost { width: 44px; height: 44px; flex-shrink: 0; }
+#lp-body .btn.small.on { background: #3d6b3a; color: #fff; }

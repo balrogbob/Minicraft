@@ -31,6 +31,7 @@ export const ACHIEVEMENTS = [
   { id: 'upgrade', icon: '⚙️', name: 'Souped Up', about: 'Fit an upgrade to a machine.' },
   { id: 'fine', icon: '🥕', name: 'Prize Grower', about: 'Harvest a fine crop.' },
   { id: 'logistics', icon: '📦', name: 'Supply Chain', about: 'Order something through a logistics network.' },
+  { id: 'courier', icon: '🛸', name: 'Air Mail', about: 'Have a courier drone fly something between two networks.' },
   { id: 'trace', icon: '✨', name: 'Hidden Riches', about: 'Wash a trace of another metal out of ore dust.' },
   { id: 'vault', icon: '🔱', name: 'Open Sesame', about: 'Solve the puzzle that opens a sunken temple\'s or a sky island\'s vault.' },
 ];
