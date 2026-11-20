@@ -75,7 +75,7 @@ import { Logic } from './logic.js';
 
 // v2 = the 16k x 16k streaming world (player state here, edited chunks in IndexedDB).
 // v1 = the old 128 x 128 world, migrated into the middle of the big world on first launch.
-const GAME_VERSION = '31'; // shown in the menu; bump with each release
+const GAME_VERSION = '32'; // shown in the menu; bump with each release
 const SAVE_KEY = 'minicraft-save-v2';
 const LEGACY_SAVE_KEY = 'minicraft-save-v1';
 const SETTINGS_KEY = 'minicraft-settings-v1';
@@ -3728,6 +3728,7 @@ function placeInner() {
   if (held?.id === JOURNAL) { openJournal(held); return; }
   if (held?.id === REMOTE_ORDERER) { useOrderer(target); return; }
   if (held?.id === TREASURE_MAP) { readTreasureMap(held); return; }
+  if (held?.id === DETONATOR) { useDetonator(held, target); return; }
   if (held?.id === FIREWORK) { const l = player.lookDir(); fireworks.launch(player.pos.x + l.x * 1.2, player.pos.y + 1, player.pos.z + l.z * 1.2); sound.fuse(); inventory.consumeHeld(); return; }
   if (held?.id === FERTILISER && target && fertilise(target.x, target.y, target.z)) { inventory.consumeHeld(); return; }
   if (held?.id === GRAPPLE) { if (grapple) releaseGrapple(); else throwGrapple(); return; }
@@ -3821,6 +3822,7 @@ function placeInner() {
     if (isLamp(tid)) { useLamp(tx, ty, tz, held); return; }
     if (isSign(tid)) { editSign(tx, ty, tz); return; }
     if (tid === BLAST_CHARGE) { lightFuse(tx, ty, tz); toast('The fuse is lit! Stand back…', 1500); return; }
+    if ((tid === DEMO_CHARGE || tid === DEMO_CHARGE + 1) && held?.id !== DETONATOR) { toast('A demolition charge has no fuse: link it to a detonator', 2000); return; }
     if (tid === ANVIL) { useAnvil(); return; }
     if (BLOCKS[tid].station === 'cauldron' && held?.id === WATER_BUCKET) {
       world.setBlock(tx, ty, tz, CAULDRON + 3);
@@ -4225,10 +4227,11 @@ function lightFuse(x, y, z, t = 3) {
 function tickFuses(dt) {
   for (const [k, f] of fuses) {
     const [x, y, z] = k.split(',').map(Number);
-    if (world.get(x, y, z) !== BLAST_CHARGE) { removeFuse(k, f); continue; }
+    const R = chargeRadius(world.get(x, y, z));
+    if (!R) { removeFuse(k, f); continue; }
     f.t -= dt;
     f.mesh.material.opacity = (Math.sin(f.t * (f.t < 1 ? 30 : 12)) * 0.5 + 0.5) * 0.55; // flashing faster as it burns down
-    if (f.t <= 0) { removeFuse(k, f); explode(x, y, z); }
+    if (f.t <= 0) { removeFuse(k, f); explode(x, y, z, R, R > BLAST_RADIUS ? 'You were caught in a demolition blast.' : undefined, true); }
   }
 }
 function removeFuse(k, f) {
@@ -4239,17 +4242,20 @@ function removeFuse(k, f) {
 }
 const blastable = (def) => def && !def.blastproof && !def.liquid && !def.station && !def.kinetic && def.hardness !== Infinity &&
   (def.shape === 'cube' || def.shape === 'cross' || def.shape === 'torch' || def.climb || def.sign || def.slab || def.stair || def.shape === 'fence' || def.shape === 'pane' || def.shape === 'wall');
-function explode(x, y, z, R = BLAST_RADIUS, cause = 'You stood too close to a blasting charge.') {
+// (v32: a demolition charge, linked to a detonator, blows a bigger hole)
+const chargeRadius = (id) => (id === BLAST_CHARGE ? BLAST_RADIUS : id === DEMO_CHARGE || id === DEMO_CHARGE + 1 ? DEMO_RADIUS : 0);
+// gather: a charge's blast throws you what it breaks (a meltdown or a meteorite just destroys)
+function explode(x, y, z, R = BLAST_RADIUS, cause = 'You stood too close to a blasting charge.', gather = false) {
   world.setBlock(x, y, z, AIR);
   const gathered = new Map(), span = Math.ceil(R);
-  const near = R <= BLAST_RADIUS && (x + 0.5 - player.pos.x) ** 2 + (y + 0.5 - player.pos.y) ** 2 + (z + 0.5 - player.pos.z) ** 2 < 24 * 24; // (a meltdown just destroys)
+  const near = gather && (x + 0.5 - player.pos.x) ** 2 + (y + 0.5 - player.pos.y) ** 2 + (z + 0.5 - player.pos.z) ** 2 < 24 * 24; // (a meltdown just destroys)
   const cleared = [];
   for (let dy = -span; dy <= span; dy++) for (let dz = -span; dz <= span; dz++) for (let dx = -span; dx <= span; dx++) {
     if (dx * dx + dy * dy + dz * dz > R * R) continue;
     const bx = x + dx, by = y + dy, bz = z + dz;
     const id = world.get(bx, by, bz);
     if (id === AIR) continue;
-    if (id === BLAST_CHARGE) { lightFuse(bx, by, bz, 0.25 + Math.random() * 0.2); continue; }
+    if (chargeRadius(id)) { lightFuse(bx, by, bz, 0.25 + Math.random() * 0.2); continue; }
     const def = BLOCKS[id];
     if (!blastable(def)) continue;
     if (isSign(id)) signs.remove(bx, by, bz);
@@ -6987,7 +6993,7 @@ apiculture.onYoung = (x, y, z, sp, mate, kids) => {
 };
 
 // ---------- v32: tree taps ----------
-import { TREE_TAP, LATEX, MAX_LATEX, POLYMER_BOAT } from './blocks.js';
+import { TREE_TAP, LATEX, MAX_LATEX, POLYMER_BOAT, DEMO_CHARGE, DETONATOR, DEMO_RADIUS, DETONATOR_LINKS, DETONATOR_RANGE } from './blocks.js';
 // Tapping a tree tap takes the latex in it.
 function useTap(x, y, z, tid) {
   const lv = BLOCKS[tid].tap;
@@ -7000,3 +7006,33 @@ function useTap(x, y, z, tid) {
   } else toast(world.tapOnTree(x, y, z) ? `Latex is dripping slowly into the tap (0/${MAX_LATEX})` : 'Put the tap against a tree trunk: latex drips into it', 2000);
 }
 window.minicraft.useTap = useTap;
+
+// A detonator remembers the demolition charges linked to it (in the item itself, so it keeps them when you
+// put it away). Tap a charge to link it (or unlink it); use the detonator anywhere else to set them all off,
+// one after another, as long as you're within DETONATOR_RANGE of each.
+function useDetonator(held, target) {
+  const links = (held.links ??= []);
+  const id = target && world.get(target.x, target.y, target.z);
+  if (target && (id === DEMO_CHARGE || id === DEMO_CHARGE + 1)) {
+    const i = links.findIndex(([x, y, z]) => x === target.x && y === target.y && z === target.z);
+    if (i >= 0) { links.splice(i, 1); world.setBlock(target.x, target.y, target.z, DEMO_CHARGE); toast(`Charge unlinked (${links.length} linked)`, 1500); }
+    else if (links.length >= DETONATOR_LINKS) toast(`A detonator can only hold ${DETONATOR_LINKS} charges`, 1800);
+    else { links.push([target.x, target.y, target.z]); world.setBlock(target.x, target.y, target.z, DEMO_CHARGE + 1); toast(`Charge linked (${links.length} linked). Stand well back, then use the detonator.`, 2200); }
+    sound.click(); inventory.onChange();
+    return;
+  }
+  if (!links.length) { toast('No charges linked: tap demolition charges with the detonator first', 2000); return; }
+  let fired = 0, far = 0;
+  for (const [x, y, z] of links) {
+    if (world.get(x, y, z) !== DEMO_CHARGE + 1) continue;
+    if (Math.hypot(x + 0.5 - player.pos.x, y + 0.5 - player.pos.y, z + 0.5 - player.pos.z) > DETONATOR_RANGE) { far++; continue; }
+    lightFuse(x, y, z, 1 + fired * 0.15);
+    fired++;
+  }
+  held.links = far ? links.filter(([x, y, z]) => world.get(x, y, z) === DEMO_CHARGE + 1 && !fuses.has(`${x},${y},${z}`)) : [];
+  inventory.onChange();
+  sound.click();
+  if (fired) { toast(`Detonating ${fired} charge${fired > 1 ? 's' : ''}!${far ? ` (${far} out of range)` : ''}`, 2000); achieve('demolition'); }
+  else toast(far ? 'The linked charges are out of range' : 'None of the linked charges are left', 2000);
+}
+window.minicraft.useDetonator = useDetonator;

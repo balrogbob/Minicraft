@@ -112,6 +112,15 @@ const CHAPTERS = [
     ['mutation', 'New Blood', ach('mutation'), 'Mate a princess with a drone of a different kind: some pairs breed a new kind of bee.', [B.WAXED_FRAME, 1]],
     ['mead', 'Mead Hall', has([B.MEAD, B.FINE_MEAD]), 'Press honey drops into must at the wine press and age it in a barrel.', [B.HONEY_DROP, 8]],
   ]],
+  ['polymer', 'Rubber and Polymers', 4, [
+    ['tap', 'Sticky Fingers', ach('latex'), 'Put a tree tap against a trunk and collect the latex that drips into it.', [B.LATEX, 4]],
+    ['rubber', 'Rubber', has(B.RUBBER), 'Cure latex in an oven for rubber.', [B.RUBBER, 2]],
+    ['press', 'Polymer Press', has(B.POLYMER_PRESS), 'Turn a polymer press with a shaft: sawdust and hide glue become pellets, then sheets.', [B.HIDE_GLUE, 2]],
+    ['inswire', 'Insulated Wire', has(B.INSULATED_WIRE), 'Sheathe electrum wire in rubber: it carries twice the power.', [B.INSULATED_WIRE, 4]],
+    ['bounce', 'Bounce Pad', has(B.BOUNCE_PAD), 'Rubber on planks: land on it to bounce back up.', [B.RUBBER, 2]],
+    ['boots', 'Soft Landing', has(B.PADDED_BOOTS), 'Padded boots take the harm out of falls.', [B.POLYMER_SHEET, 2]],
+    ['boom', 'Controlled Demolition', ach('demolition'), 'Link demolition charges to a detonator, stand well back, and set them off.', [B.DEMO_CHARGE, 2]],
+  ]],
   ['master', 'Mastery', 7, [
     ['enchant', 'Spellbound', ach('enchant'), 'Enchant a tool at an altar. Bookshelves round it help.', [B.BOOK, 3]],
     ['quarry', 'Quarry', has(B.QUARRY), 'Digs out a whole area by itself. Item frames on it pick what it keeps.', [B.YIELD_UPGRADE, 1]],

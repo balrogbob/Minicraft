@@ -506,6 +506,43 @@ Three quarters of what it breaks comes to you (as if dug with an iron pickaxe) i
 Charges in the blast go off too. Chests, machines, furniture, obsidian and bedrock are blast-proof. Stand
 well back: the blast hurts anyone within about 5 blocks.
 
+### Rubber and polymers
+
+- **Tree taps** (3 planks, an iron ingot): put one against a tree trunk and latex slowly drips into it (it
+  fills faster in good growing weather). Tap it to collect up to 4 latex.
+- **The oven** cures 2 latex into a piece of **rubber**, and renders a piece of leather into **hide glue**.
+- **The polymer press** (4 iron, 2 stone, a gear, 2 planks) is turned by a shaft, like the other machines. It
+  moulds 4 sawdust and a hide glue into 2 **polymer pellets**, and presses 2 pellets into a **polymer sheet**.
+
+| Make | From | Where |
+| --- | --- | --- |
+| 4 Insulated wire | 4 electrum wire + 1 rubber | crafting table |
+| 4 Polymer blocks (10 colours) | 2 polymer sheets + 1 dye | anywhere |
+| 2 Lumen panels | 2 polymer sheets + 1 glow shell | anywhere |
+| Bounce pad | 4 rubber + 1 plank | crafting table |
+| Padded boots | 3 rubber + 2 leather | crafting table |
+| Polymer pickaxe, axe, shovel, sword | 3 / 3 / 1 / 2 polymer sheets + sticks | crafting table |
+| Polymer boat | 5 polymer sheets + 2 sticks | crafting table |
+| Demolition charge | 2 blasting charges + 1 polymer sheet + 1 copper ingot | crafting table |
+| Detonator | 2 polymer sheets + 2 insulated wire + 1 copper ingot + 1 rubber | crafting table |
+
+- **Insulated wire** works just like electrum wire, but carries twice the power. Every network of wires
+  has a limit set by its weakest wire: electrum wire and cupronickel cable carry 48 units (a full four-rod
+  reactor), insulated wire 96. If the machines on a network want more than its wires carry, they all slow
+  down to share what gets through, and a power meter tells you so. One plain wire in an insulated run is
+  enough to hold the whole network back.
+- **Lumen panels** are clear and glow brightly. **Polymer blocks** are smooth, plain colour for building.
+- **Bounce pads** throw you back up when you land on them, about three quarters as high as you fell. Hold jump
+  to bounce higher, or sneak to stop. They never hurt.
+- **Padded boots** take all the harm out of falls.
+- **Polymer tools** dig as well as copper or bronze and are quicker than iron, but wear out sooner (350 uses).
+  Mend them with polymer sheets.
+- **The polymer boat** is half as fast again as a wooden one.
+- **Demolition charges** have no fuse. Tap them with a **detonator** to link them (up to 16; a red light
+  shows a charge is armed; tap again to unlink), go well away, and use the detonator anywhere else to set
+  them all off one after another. Each blows a hole about 7 blocks across, and what it breaks comes to you if
+  you're within 24 blocks. The detonator reaches 96 blocks.
+
 ### Lead, gold, silver, electrum and tungsten
 
 | Make | Recipe (crafting table) | Use |
@@ -1426,6 +1463,9 @@ guide to how everything works.
 
 ## Version history
 
+- **Version 32**: rubber and polymers (tree taps, latex, rubber, hide glue, the polymer press), insulated wire
+  and the wire power limit, coloured polymer blocks, lumen panels, bounce pads, padded boots, polymer tools
+  and the polymer boat, and demolition charges with a detonator.
 - **Version 31**: bee breeding (bee scoops, bee houses, sixteen kinds of bee and their mutations, frames), the
   comb centrifuge, and honey drops, propolis, pollen, royal jelly, mead, honey cake and honeyed apples.
 - **Version 30**: logistics signals (the stock sensor pipe and junctions that pause), liquid pipes, courier

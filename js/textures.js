@@ -3162,3 +3162,29 @@ ITEM_PAINTERS[PADDED_BOOTS] = (ctx) => {
   rect(ctx, 1, 10, 6, 3, [140, 100, 60]); rect(ctx, 9, 10, 6, 3, [140, 100, 60]);
   rect(ctx, 1, 13, 6, 2, [44, 42, 46]); rect(ctx, 9, 13, 6, 2, [44, 42, 46]);
 };
+
+// ---------- v32 C: demolition charges ----------
+import { DETONATOR } from './blocks.js';
+// a demolition charge: grey-wrapped blocks of explosive strapped in a polymer case, with a receiver on top
+P[T.DEMO_SIDE] = (t) => {
+  for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+    const strap = y === 3 || y === 12, seam = x === 5 || x === 10;
+    t.set(x, y, strap ? [60, 60, 66] : seam ? [150, 140, 110] : t.vary([196, 186, 150], 0.05));
+  }
+  for (let x = 6; x < 10; x++) for (let y = 6; y < 9; y++) t.set(x, y, [214, 60, 40]); // a warning label
+};
+const demoTop = (lit) => (t) => {
+  for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+    const box = x >= 4 && x <= 11 && y >= 4 && y <= 11, led = x >= 7 && x <= 8 && y >= 7 && y <= 8;
+    t.set(x, y, led ? (lit ? [255, 60, 40] : [90, 30, 26]) : box ? [52, 54, 60] : t.vary([196, 186, 150], 0.05));
+  }
+  for (let y = 1; y < 4; y++) t.set(12, y, [40, 40, 44]); // the aerial
+};
+P[T.DEMO_TOP] = demoTop(false);
+P[T.DEMO_ARMED] = demoTop(true);
+P[T.DETONATOR_TILE] = demoTop(true); // (unused on blocks; keeps the slot reserved)
+ITEM_PAINTERS[DETONATOR] = (ctx) => {
+  rect(ctx, 4, 5, 8, 10, [232, 236, 240]); rect(ctx, 4, 14, 8, 1, [170, 176, 184]);
+  rect(ctx, 6, 7, 4, 3, [214, 50, 40]); rect(ctx, 7, 11, 2, 2, [60, 60, 66]);
+  for (let y = 0; y < 5; y++) px(ctx, 10, y, [40, 40, 44]); px(ctx, 10, 0, [255, 80, 60]);
+};
