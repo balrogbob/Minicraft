@@ -32,7 +32,7 @@ import {
   SNOWMAN, FIREWORK, PUMPKIN, JACK_O_LANTERN, EGG, POPPY, DANDELION, DAISY, LAVENDER,
   ONION, BEANS, TOMATO, HERBS, CIDER, VINTAGE_CIDER, BERRY_WINE, FINE_BERRY_WINE,
   KILN, ROPE_LADDER, ROPE_BRIDGE, BRIDGE_RAIL, LOCK_GATE, SLUICE_WHEEL, STALACTITE, STALAGMITE,
-  CHARCOAL_HEAP, CLAY, STONE,
+  CHARCOAL_HEAP, CLAY, STONE, UPGRADES,
 } from './blocks.js';
 import { Smoke } from './smoke.js';
 import { Fireworks } from './fireworks.js';
@@ -51,7 +51,7 @@ import { ItemDrops } from './drops.js';
 import { ACHIEVEMENTS, ACHIEVEMENT_IDS } from './achievements.js';
 import { MobManager, DIFFICULTY, DIFFICULTY_ORDER, SPECIES } from './mobs.js';
 import { ArrowManager } from './arrows.js';
-import { Stations, STATION_KINDS, isFuel, inCellar, wetAt } from './stations.js';
+import { Stations, STATION_KINDS, isFuel, inCellar, wetAt, upgradeStacks, upgradeRefusal } from './stations.js';
 import { Fishing } from './fishing.js';
 import { Kinetics } from './kinetics.js';
 import { Electric } from './electric.js';
@@ -1464,6 +1464,8 @@ function closeStation() {
 function renderStation() {
   const st = currentStation();
   if (!st) return;
+  const ups = upgradeStacks(st);
+  $('st-upgrades').textContent = ups.length ? `Upgrades: ${ups.map((u) => `${itemName(u.id).replace(' Upgrade', '').toLowerCase()} × ${u.count}`).join(', ')}` : '';
   for (const el of $('station').querySelectorAll('.slot')) {
     const area = el.dataset.area, i = +el.dataset.i;
     el.innerHTML = slotHTML(stationSlot(area, i).get());
@@ -2382,9 +2384,9 @@ function spannerTake(x, y, z) {
   const id = world.get(x, y, z), k = `${x},${y},${z}`, kind = stationKind(id);
   let content = null;
   const st = kind && stations.map.get(k);
-  if (st && [...st.inputs, st.fuel, st.out, ...(st.side ?? [])].some(Boolean)) {
-    content = { kind, inputs: [...st.inputs, ...(st.side ?? [])].map((s) => (s ? { ...s } : null)), fuel: st.fuel && { ...st.fuel }, out: st.out && { ...st.out } };
-    st.inputs.fill(null); st.fuel = null; st.out = null; st.side?.fill(null);
+  if (st && ([...st.inputs, st.fuel, st.out, ...(st.side ?? [])].some(Boolean) || upgradeStacks(st).length)) {
+    content = { kind, inputs: [...st.inputs, ...(st.side ?? [])].map((s) => (s ? { ...s } : null)), fuel: st.fuel && { ...st.fuel }, out: st.out && { ...st.out }, ...(st.up ? { up: { ...st.up } } : {}) };
+    st.inputs.fill(null); st.fuel = null; st.out = null; st.side?.fill(null); delete st.up;
   }
   const charge = electric.store.get(k);
   if (charge > 0) { (content ??= {}).charge = charge; electric.store.delete(k); }
@@ -2405,7 +2407,8 @@ function unpack(x, y, z, pid) {
       c.inputs.forEach((s, i) => { if (!s) return; if (i < st.inputs.length && !st.inputs[i]) st.inputs[i] = s; else spill.push(s); });
       if (c.fuel) { if (!st.fuel) st.fuel = c.fuel; else spill.push(c.fuel); }
       if (c.out) { if (!st.out) st.out = c.out; else spill.push(c.out); }
-    } else spill.push(...c.inputs.filter(Boolean), c.fuel, c.out);
+      if (c.up) st.up = { ...c.up };
+    } else spill.push(...c.inputs.filter(Boolean), c.fuel, c.out, ...upgradeStacks(c));
   }
   if (c.charge > 0) electric.store.set(`${x},${y},${z}`, c.charge);
   loose.spill(spill.filter(Boolean), x, y, z);
@@ -3751,6 +3754,7 @@ function placeInner() {
       rollLoot(tx, ty, tz).forEach(([id, n], i) => { st.inputs[i * 2 % st.inputs.length] = { id, count: n }; });
       world.setBlock(tx, ty, tz, CHEST);
     }
+    if (stationKind(tid) && UPGRADES[held?.id]) { fitUpgrade(tx, ty, tz, held.id); return; }
     if (stationKind(tid)) { sound.click(); openStation(tx, ty, tz); return; }
     if (BLOCKS[tid].engine) {
       // feed a steam engine's firebox, or see how it's doing
@@ -5910,6 +5914,23 @@ window.addEventListener('keydown', (e) => {
   else if (photoMode && (e.code === 'Enter' || e.code === 'KeyP')) snapPhoto();
 });
 
+// ---------- v28 C: machine upgrades ----------
+function fitUpgrade(x, y, z, upId) {
+  const kind = stationKind(world.get(x, y, z));
+  const why = upgradeRefusal(kind, upId);
+  if (why) { toast(why, 2500); return false; }
+  const st = stations.get(x, y, z, kind), k = UPGRADES[upId];
+  st.up ??= { speed: 0, eff: 0, yield: 0 };
+  if ((st.up[k] ?? 0) >= 2) { toast(`This ${STATION_KINDS[kind].name.toLowerCase()} already has two ${itemName(upId).toLowerCase()}s`, 2500); return false; }
+  st.up[k] = (st.up[k] ?? 0) + 1;
+  inventory.consumeHeld();
+  sound.place('metal');
+  const say = { speed: `works ${Math.round(1.5 ** st.up.speed * 100) / 100}× as fast`, eff: `burns ${Math.round((1 - 0.67 ** st.up.eff) * 100)}% less fuel`, yield: `gives one more ${st.up.yield * 12}% of the time` }[k];
+  toast(`${itemName(upId)} fitted: the ${STATION_KINDS[kind].name.toLowerCase()} now ${say}`, 3000);
+  achieve('upgrade');
+  return true;
+}
+
 // ---------- v28 B: charcoal piles ----------
 // Stack logs, cover them over with earth (dirt, grass, clay, gravel or sand) leaving one log showing through
 // a hole, and light that log with a torch. The pile smoulders, smoke curling from the hole, and when it's
@@ -6439,5 +6460,5 @@ window.minicraft = {
   arrows, fishing, kinetics, electric, lightUniforms, bees, catchAt, seasonOf, applySeason, set day(v) { day = v; applySeason(); }, frames, signalAt, setSwitch, logic, machines, carts, minimap, signs, armour, damage, placeRail, getInCart, getOutOfCart,
   get riding() { return riding; }, explode, lightFuse, fuses, clockTime, compassText, place, editSign, closeSign, openInventory, closeInventory, chestMove, lamps, tickLamps, sleepUntilMorning, stations, openStation, closeStation,
   get caneToday() { return caneToday; }, get creative() { return creative; }, set creative(v) { creative = v; applyCreative(); }, toggleFly, wand, useWand, get achieved() { return achieved; }, achieve, worldMap, openMap, closeMap, openGuide, switchSlot, store, saveGame, renderWorlds, openWorlds, exportSlot, get target() { return target; }, set target(v) { target = v; }, applyKeys, renderKeys, camera, get controls() { return controls; }, loose, throwHeld, get waypoints() { return waypoints; }, toggleWaypoint, sortSlots, quickStack, dropMeteor, get meteors() { return meteors; }, weather, openTrade, closeTrade, mountMob, dismount, get ridingMob() { return ridingMob; }, effects, armourWear, useAnvil, rollLoot, settings,
-  get bedSpawn() { return bedSpawn; }, fertilise, openJournal, closeJournal, get packs() { return packs; }, radiationAt, vehicles, boardVehicle, leaveVehicle, get boarded() { return boarded; }, get seated() { return seated; }, crows, onInvSlot, onStationSlot, quickMoveInv, quickMoveStation, usedIn, itemTipHTML, critters, tickPets, get catGiftDay() { return catGiftDay; }, get villageGrowth() { return villageGrowth; }, notePlanting, tickPuzzles, airPumpNear, useStable, stableNear, horseLabel, piles, lightCharcoalPile, tickPiles, searchChests, takeFromChest, markChest, get chestMark() { return chestMark; }, enterPhotoMode, exitPhotoMode, snapPhoto, get photoMode() { return photoMode; }, photoCam, get lastPhoto() { return lastPhoto; }, tickStalactites, loosenStalactite, fallingRocks, shaking, workLock, findLock, tickLocks, openGates, lockJobs, hangRopeLadder, layBridge, rollUpRope, fireworks, ringBell, requestFor, festivalToday, repOf, addRep, tradeCost, tickFestival, villageEntry, hearths, tickHearths, feedHearth, chimneyTop, smoke, renderPins, togglePin, lightning, igniteAt, fires, tickFires, tickStorm, growVillage, buildVillageHouse, stallPrice, tickStalls, tickVillages, set catGiftDay(v) { catGiftDay = v; }, get places() { return places; }, get treasures() { return treasures; }, readTreasureMap, tickTreasure, beams, tickBeams, beaconSpots: () => beaconSpots, mistNow, tickSnow, tickExplore, sitOn, standUp, useDisplay, zips, linkZip, startZip, get zipping() { return zipping; }, burnCoal, get health() { return health; }, set health(v) { health = v; }, paintings, placeSwitchRail, signalAt, ailments, armourEnch, openAltar, lairNear, useBed, eat, drinkTea,
+  get bedSpawn() { return bedSpawn; }, fertilise, openJournal, closeJournal, get packs() { return packs; }, radiationAt, vehicles, boardVehicle, leaveVehicle, get boarded() { return boarded; }, get seated() { return seated; }, crows, onInvSlot, onStationSlot, quickMoveInv, quickMoveStation, usedIn, itemTipHTML, critters, tickPets, get catGiftDay() { return catGiftDay; }, get villageGrowth() { return villageGrowth; }, notePlanting, tickPuzzles, airPumpNear, useStable, stableNear, horseLabel, fitUpgrade, piles, lightCharcoalPile, tickPiles, searchChests, takeFromChest, markChest, get chestMark() { return chestMark; }, enterPhotoMode, exitPhotoMode, snapPhoto, get photoMode() { return photoMode; }, photoCam, get lastPhoto() { return lastPhoto; }, tickStalactites, loosenStalactite, fallingRocks, shaking, workLock, findLock, tickLocks, openGates, lockJobs, hangRopeLadder, layBridge, rollUpRope, fireworks, ringBell, requestFor, festivalToday, repOf, addRep, tradeCost, tickFestival, villageEntry, hearths, tickHearths, feedHearth, chimneyTop, smoke, renderPins, togglePin, lightning, igniteAt, fires, tickFires, tickStorm, growVillage, buildVillageHouse, stallPrice, tickStalls, tickVillages, set catGiftDay(v) { catGiftDay = v; }, get places() { return places; }, get treasures() { return treasures; }, readTreasureMap, tickTreasure, beams, tickBeams, beaconSpots: () => beaconSpots, mistNow, tickSnow, tickExplore, sitOn, standUp, useDisplay, zips, linkZip, startZip, get zipping() { return zipping; }, burnCoal, get health() { return health; }, set health(v) { health = v; }, paintings, placeSwitchRail, signalAt, ailments, armourEnch, openAltar, lairNear, useBed, eat, drinkTea,
 };

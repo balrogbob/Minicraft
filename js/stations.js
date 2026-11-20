@@ -10,7 +10,7 @@ import {
   ORES, COAL_OR_CHARCOAL, FUEL_ROD, FERTILISER, SAWDUST, CUPRONICKEL_INGOT, ENRICHED_ROD, SPENT_ROD, URANIUM_INGOT, URANIUM_DUST, ENRICHED_URANIUM, WATER_BUCKET, ICE, PACKED_ICE, INVAR_INGOT, METEORIC_IRON, STARSTEEL_INGOT, NICKEL_INGOT, IRON_INGOT, COPPER_INGOT, TIN_INGOT, ZINC_INGOT, ALUMINIUM_INGOT, SILVER_INGOT, GOLD_INGOT,
   BRONZE_INGOT, ELECTRUM_INGOT, STAINLESS_INGOT, STEEL_INGOT, AL_BRONZE_INGOT,
   GRAVEL, FLINT, FLINT_DUST, CLAY_BALL, CLAY_DUST, BRICK, FIRE_CLAY, FIRE_BRICK, oreDust, HIDE, LEATHER,
-  dirtyDust, SLUDGE, SLAG, WORM, TRACE_METALS, DIRT,
+  dirtyDust, SLUDGE, SLAG, WORM, TRACE_METALS, DIRT, UPGRADES,
   LAVA_BUCKET, LEAD_BUCKET, SALTPETRE, SANDSTONE, WHEAT, SUGAR_CANE, COAL_DUST, PLATE_METALS, PLATES, TUNGSTEN_INGOT, FILAMENT,
   SAPLING, ELECTRIC_ITEMS, chargeCap, GLASS_BOTTLE, NIGHT_TEA, HASTE_TEA, FIRE_TEA, HEAL_TEA, BERRIES, CORNFLOWER, DANDELION, POPPY, CACTUS, LAVENDER, DAISY, CAULDRON,
   EGG, FRIED_EGG, TRUFFLE, APPLE, CHERRIES, APPLE_PIE, CHERRY_PIE, FISH_SOUP, TRUFFLE_SOUP, BERRY_JAM,
@@ -273,7 +273,7 @@ export class Stations {
     const st = this.map.get(key(x, y, z));
     this.map.delete(key(x, y, z));
     if (!st) return [];
-    return [...st.inputs, st.fuel, st.out, ...(st.side ?? [])].filter(Boolean).map((s) => [s.id, s.count]);
+    return [...st.inputs, st.fuel, st.out, ...(st.side ?? []), ...upgradeStacks(st)].filter(Boolean).map((s) => [s.id, s.count]);
   }
 
   // Like remove, but the whole stacks (keeping wear and enchantments), for spilling them on the ground.
@@ -281,7 +281,7 @@ export class Stations {
     const st = this.map.get(key(x, y, z));
     this.map.delete(key(x, y, z));
     if (!st) return [];
-    return [...st.inputs, st.fuel, st.out, ...(st.side ?? [])].filter(Boolean).map((s) => ({ ...s }));
+    return [...st.inputs, st.fuel, st.out, ...(st.side ?? []), ...upgradeStacks(st)].filter(Boolean).map((s) => ({ ...s }));
   }
 
   count(st, id) {
@@ -325,7 +325,8 @@ export class Stations {
     }
     for (const [id, p, k = 1] of r.side ?? []) if (Math.random() < p && this.putSide(st, id, k) && id === r.trace) this.onTrace?.(st, id);
     if (!r.out) return;
-    const n = r.out[1] + (r.bonus && Math.random() < r.bonus && (st.out?.count ?? 0) + r.out[1] < maxStack(r.out[0]) ? 1 : 0);
+    const extra = (r.bonus && Math.random() < r.bonus ? 1 : 0) + (STATION_KINDS[st.kind].yieldUp && Math.random() < 0.12 * (st.up?.yield ?? 0) ? 1 : 0);
+    const n = Math.min(maxStack(r.out[0]) - (st.out?.count ?? 0), r.out[1] + extra);
     if (st.out) st.out.count += n;
     else st.out = { id: r.out[0], count: n, ...(chargeCap(r.out[0]) ? { wear: chargeCap(r.out[0]) } : {}) }; // (batteries come out flat)
   }
@@ -378,12 +379,12 @@ export class Stations {
         const speed = K.passive ? 1 : powerAt(x, y, z);
         st.speed = speed;
         if (r && speed > 0) {
-          st.progress += dt * speed;
+          st.progress += dt * speed * upSpeed(st);
           if (st.progress >= r.time - 1e-9) { this.make(st, r); st.progress = 0; }
         }
         continue;
       }
-      const sdt = dt * (K.speed ?? 1) * boostAt(x, y, z); // a blast smelter cooks twice as fast, on the same fuel per item
+      const sdt = dt * (K.speed ?? 1) * boostAt(x, y, z) * upSpeed(st); // a blast smelter cooks twice as fast, on the same fuel per item
       // light a new piece of fuel only when there's something to make and the last piece is used up
       if (r && st.burn <= 1e-9 && st.fuel && isFuel(st.fuel.id)) {
         st.burn = st.burnMax = FUEL_ITEMS[st.fuel.id];
@@ -394,7 +395,7 @@ export class Stations {
       const cooking = !!r && st.burn > 1e-9;
       if (cooking) {
         const step = Math.min(sdt, st.burn * r.time);
-        st.burn = Math.max(0, st.burn - step / r.time);
+        st.burn = Math.max(0, st.burn - step / r.time * 0.67 ** (st.up?.eff ?? 0));
         st.progress += step;
         if (st.progress >= r.time - 1e-9) {
           this.make(st, r); st.progress = 0;
@@ -435,6 +436,7 @@ export class Stations {
         fuel: clean(st.fuel), out: clean(st.out),
         ...(STATION_KINDS[st.kind].sides ? { side: Array.from({ length: STATION_KINDS[st.kind].sides }, (_, i) => clean(st.side?.[i])) } : {}),
         burn: Math.max(0, +st.burn || 0), burnMax: Math.max(0, +st.burnMax || 0), progress: Math.max(0, +st.progress || 0), brews: st.brews | 0,
+        ...(st.up && typeof st.up === 'object' ? { up: { speed: Math.min(2, st.up.speed | 0), eff: Math.min(2, st.up.eff | 0), yield: Math.min(2, st.up.yield | 0) } } : {}),
         ...(Array.isArray(st.age) && Array.isArray(st.ageOf) ? { age: Array.from({ length: n }, (_, i) => Math.max(0, +st.age[i] || 0)), ageOf: Array.from({ length: n }, (_, i) => st.ageOf[i] | 0) } : {}),
       });
     }
@@ -473,3 +475,17 @@ STATION_KINDS.sieve = {
     { out: null, in: [[DIRT, 1]], time: 3, side: [[WORM, 0.35], [SEEDS, 0.2], [FLINT, 0.06], [SAPLING, 0.03]] },
   ],
 };
+
+// ---------- v28 C: upgrades ----------
+const upSpeed = (st) => 1.5 ** (st.up?.speed ?? 0);
+const UPGRADE_ID = Object.fromEntries(Object.entries(UPGRADES).map(([id, k]) => [k, +id]));
+export function upgradeStacks(st) { return Object.entries(st.up ?? {}).filter(([, n]) => n > 0).map(([k, n]) => ({ id: UPGRADE_ID[k], count: n })); }
+for (const k of ['crusher', 'pulverizer', 'washer', 'sieve', 'mill', 'saw']) STATION_KINDS[k].yieldUp = true;
+// Can this upgrade go in this kind of station? Returns a reason it can't, or ''.
+export function upgradeRefusal(kind, upId) {
+  const K = STATION_KINDS[kind], what = UPGRADES[upId];
+  if (!K || K.storage || K.holder || K.crafter || K.ages || kind === 'charger' || kind === 'reactor') return 'That isn\'t a machine that makes anything';
+  if (what === 'eff' && K.powered) return 'An efficiency upgrade only helps something that burns fuel';
+  if (what === 'yield' && !K.yieldUp) return 'A yield upgrade fits crushers, pulverizers, washers, sieves, millstones and saws';
+  return '';
+}

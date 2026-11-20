@@ -2790,3 +2790,18 @@ RECIPES.push(
 // heap of charcoal that gives two pieces (no fuel needed). Let air in while it burns and it flares up.
 export const CHARCOAL_HEAP = 1457;
 block(CHARCOAL_HEAP, { name: 'Charcoal Heap', sound: 'gravel', tex: T.CHARCOAL_HEAP, hardness: 0.6, tool: 'shovel', drop: () => [[CHARCOAL, 2]] });
+
+// ---------- v28 C: machine upgrades ----------
+// Tap a machine with one to fit it (up to two of each kind in a machine; they come out again when it's broken).
+// Speed: works half as fast again. Efficiency: burns a third less fuel (fuelled machines). Yield: a chance of
+// one more of what it makes (crushers, pulverizers, washers, sieves, millstones and saws).
+export const SPEED_UPGRADE = 3053, EFFICIENCY_UPGRADE = 3054, YIELD_UPGRADE = 3055;
+export const UPGRADES = { [SPEED_UPGRADE]: 'speed', [EFFICIENCY_UPGRADE]: 'eff', [YIELD_UPGRADE]: 'yield' };
+ITEMS[SPEED_UPGRADE] = { name: 'Speed Upgrade', about: 'tap a machine with it: works half as fast again (up to two)' };
+ITEMS[EFFICIENCY_UPGRADE] = { name: 'Efficiency Upgrade', about: 'tap a furnace, oven or kiln with it: burns a third less fuel (up to two)' };
+ITEMS[YIELD_UPGRADE] = { name: 'Yield Upgrade', about: 'tap a crusher, pulverizer, washer, sieve, millstone or saw with it: sometimes one more (up to two)' };
+RECIPES.push(
+  { out: [SPEED_UPGRADE, 1], in: [[STEEL_INGOT, 2], [ELECTRUM_INGOT, 1], [kineticId('gear', 0), 1]], table: true, metal: STEEL_INGOT },
+  { out: [EFFICIENCY_UPGRADE, 1], in: [[CUPRONICKEL_INGOT, 2], [FIRE_BRICK, 2]], table: true, metal: CUPRONICKEL_INGOT },
+  { out: [YIELD_UPGRADE, 1], in: [[STAINLESS_INGOT, 2], [SILVER_INGOT, 1], [GOLD_INGOT, 1]], table: true, metal: STAINLESS_INGOT },
+);

@@ -19,7 +19,7 @@ import {
   BATTERY, PORTABLE_LAMP, JACKHAMMER, JETPACK, ELECTRIC_DRILL, HOVER_BOOTS, NV_GOGGLES, MAGNET_RING, WIND_TURBINE, NICKEL_INGOT, CUPRONICKEL_INGOT,
   ELECTRIC_RAIL, CHAINSAW, SAWDUST, BOOK, BACKPACK, BIG_BACKPACK, HUGE_BACKPACK, SPANNER, GRAPPLE, URANIUM_INGOT, FUEL_ROD, JOURNAL, FERTILISER, SPENT_ROD, ENRICHED_URANIUM, ENRICHED_ROD, hazmatId, INVAR_INGOT, RAIL_STATION, BOAT, BALLOON, ZIP_LINE, METEORIC_IRON, STARSTEEL_INGOT, starsteelTool, EGG, FRIED_EGG, SADDLE, TRUFFLE, FLOWER_POT, HANGING_PLANT, WINDOW_BOX, APPLE, CHERRIES, ORANGE_FRUIT, APPLE_PIE, CHERRY_PIE, FRUIT_SALAD, ORANGE_JUICE, FISH_SOUP, TRUFFLE_SOUP, BERRY_JAM, COOK_POT, SCARECROW, EXPLORER_MAP, TREASURE_MAP, BEESWAX, CABLE_CAR, COIN, CARROT, POTATO, BAKED_POTATO, PUMPKIN_SEEDS, PUMPKIN_PIE, GRAPES, GRAPE_JUICE, WINE, FINE_WINE, CURDS, CHEESE, AGED_CHEESE, DIVING_HELMET, FLIPPERS, PEARL, LOCOMOTIVE, FIREWORK, UNFIRED_URN, GLOW_SHELL,
   ONION, BEANS, TOMATO, HERBS, APPLE_JUICE, BERRY_JUICE, CIDER, VINTAGE_CIDER, BERRY_WINE, FINE_BERRY_WINE, VEG_STEW, TOMATO_SOUP, BAKED_BEANS,
-  dirtyDust, SLUDGE, SLAG, WORM,
+  dirtyDust, SLUDGE, SLAG, WORM, SPEED_UPGRADE, EFFICIENCY_UPGRADE, YIELD_UPGRADE,
   SALTPETRE, GUNPOWDER, LEAD_SINKER, WEIGHTED_ROD, LEAD_BUCKET, LAVA_BUCKET, GOLD_CLOCK, COMPASS, SILVER_ARROW, MIRROR_LAMP,
 } from './blocks.js';
 
@@ -2835,3 +2835,19 @@ P[T.CHARCOAL_HEAP] = (t) => {
   }
   for (let k = 0; k < 8; k++) t.set(Math.floor(t.r() * 16), Math.floor(t.r() * 16), [96, 96, 104]);
 };
+
+// v28 C: upgrade cards: a metal plate with a coloured emblem (a double arrow, a flame, a plus)
+function upgradePainter(plate, mark, draw) {
+  return (ctx) => {
+    rect(ctx, 2, 3, 12, 10, shade(plate, 0.7)); rect(ctx, 3, 4, 10, 8, plate);
+    for (const [x, y] of [[3, 4], [12, 4], [3, 11], [12, 11]]) px(ctx, x, y, shade(plate, 0.55));
+    draw(ctx, mark);
+  };
+}
+ITEM_PAINTERS[SPEED_UPGRADE] = upgradePainter([176, 180, 190], [60, 200, 255], (ctx, c) => {
+  for (const o of [0, 4]) for (let k = 0; k < 3; k++) { px(ctx, 5 + o + k, 6 + k, c); px(ctx, 5 + o + k, 10 - k, c); }
+});
+ITEM_PAINTERS[EFFICIENCY_UPGRADE] = upgradePainter([196, 160, 120], [255, 140, 40], (ctx, c) => {
+  rect(ctx, 7, 6, 2, 5, c); rect(ctx, 6, 8, 4, 3, c); px(ctx, 8, 5, c); px(ctx, 7, 9, [255, 230, 120]); px(ctx, 8, 10, [255, 230, 120]);
+});
+ITEM_PAINTERS[YIELD_UPGRADE] = upgradePainter([214, 214, 220], [90, 210, 90], (ctx, c) => { rect(ctx, 7, 5, 2, 6, c); rect(ctx, 5, 7, 6, 2, c); });

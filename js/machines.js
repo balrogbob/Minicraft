@@ -421,7 +421,9 @@ export class Machines {
     if (q.progress < QUARRY_TIME) return;
     q.progress = 0;
     const id = world.get(cx, cy, cz);
-    q.held.push(...dropsFor(id, TUNGSTEN_PICK).map(([i, n]) => [i, n]));
+    // (v28: with item frames on it, it keeps only what they show and throws the rest away)
+    const keep = this.frames?.around(world, x, y, z) ?? [];
+    q.held.push(...dropsFor(id, TUNGSTEN_PICK).filter(([i]) => !keep.length || keep.includes(i)).map(([i, n]) => [i, n]));
     world.setBlock(cx, cy, cz, AIR);
     this.onBlockChanged?.(cx, cy, cz);
     q.i++;
