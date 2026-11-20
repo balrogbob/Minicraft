@@ -425,3 +425,6 @@ body.photo.snapping #photo-bar { display: none; }
 #st-side .slot.picked { background: #b9d98b; border-color: #3a7d1a; }
 #station.storage #st-side { display: none; }
 .recipe .sides { display: inline-flex; gap: 4px; align-items: center; margin-left: 4px; opacity: 0.85; font-size: 0.85em; }
+/* v28: special trades for a village's friends and heroes */
+.recipe.special { background: rgba(255, 210, 80, 0.12); border-color: rgba(255, 210, 80, 0.45); }
+.recipe.special small { color: #ffd257; }

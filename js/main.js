@@ -32,7 +32,7 @@ import {
   SNOWMAN, FIREWORK, PUMPKIN, JACK_O_LANTERN, EGG, POPPY, DANDELION, DAISY, LAVENDER,
   ONION, BEANS, TOMATO, HERBS, CIDER, VINTAGE_CIDER, BERRY_WINE, FINE_BERRY_WINE,
   KILN, ROPE_LADDER, ROPE_BRIDGE, BRIDGE_RAIL, LOCK_GATE, SLUICE_WHEEL, STALACTITE, STALAGMITE,
-  CHARCOAL_HEAP, CLAY, STONE, UPGRADES, HAY_BALE, LAVENDER_HONEY, BLOSSOM_HONEY, GOLDEN_HONEY, FRUIT_LEAVES,
+  CHARCOAL_HEAP, CLAY, STONE, UPGRADES, FINE_CROPS, isFine, WORM, SADDLEBAGS, GOLDEN_TEA, SPEED_UPGRADE, YIELD_UPGRADE, HAY_BALE, LAVENDER_HONEY, BLOSSOM_HONEY, GOLDEN_HONEY, FRUIT_LEAVES,
 } from './blocks.js';
 import { Smoke } from './smoke.js';
 import { Fireworks } from './fireworks.js';
@@ -973,10 +973,16 @@ function shootArrow(power) {
 // ---------- fishing ----------
 // Tap with the rod to cast; tap again to reel in. Reel in while the bobber is bobbing under (a bite) to catch a fish.
 function useRod(id) {
-  if (!fishing.active) { fishing.cast(player.eye, player.lookDir(), id === WEIGHTED_ROD); return; }
-  const at = fishing.state?.pos?.clone();
+  if (!fishing.active) {
+    // a worm from your pack goes on the hook if you have one
+    const bait = inventory.count(WORM) > 0;
+    if (bait) inventory.remove(WORM, 1);
+    fishing.cast(player.eye, player.lookDir(), id === WEIGHTED_ROD, bait);
+    return;
+  }
+  const at = fishing.state?.pos?.clone(), baited = fishing.baited;
   if (!fishing.reel()) return;
-  const [what, n, msg] = catchAt(at ?? player.pos);
+  const [what, n, msg] = catchAt(at ?? player.pos, baited);
   if (inventory.add(what, n) > 0) { toast('Inventory full: it got away'); return; }
   toast(msg, 1800);
   achieve('fish');
@@ -986,11 +992,11 @@ function useRod(id) {
 // What's on the hook depends on where you fish: salmon in rivers, icefish in the cold, pufferfish in warm
 // water, and now and then some junk, or treasure.
 const TREASURE = [[GOLD_INGOT, 1], [SILVER_INGOT, 2], [CRYSTAL_SHARD, 3], [IRON_INGOT, 2], [NIGHT_TEA, 1], [SILVER_ARROW, 4]];
-function catchAt(pos) {
-  const x = Math.floor(pos.x), z = Math.floor(pos.z), r = Math.random();
+function catchAt(pos, baited = false) {
+  const x = Math.floor(pos.x), z = Math.floor(pos.z), r = Math.random() * (baited ? 0.95 : 1);
   const gen = world.generator, biome = gen.biomeAt(x, z);
   if (r < 0.05) { const [id, n] = TREASURE[Math.floor(Math.random() * TREASURE.length)]; return [id, n, `Treasure! You fished up ${n > 1 ? n + ' × ' : ''}${itemName(id).toLowerCase()}`]; }
-  if (r < 0.12) { const id = Math.random() < 0.6 ? OLD_BOOT : STICK; return [id, 1, `You fished up ${id === OLD_BOOT ? 'an old boot' : 'a soggy stick'}`]; }
+  if (r < 0.12 && !baited) { const id = Math.random() < 0.6 ? OLD_BOOT : STICK; return [id, 1, `You fished up ${id === OLD_BOOT ? 'an old boot' : 'a soggy stick'}`]; }
   let id = RAW_FISH;
   const f = Math.random();
   if (biome === 'tundra' && f < 0.6) id = ICEFISH;
@@ -1436,6 +1442,7 @@ function openStation(x, y, z, cart = null) {
     : 'Put empty buckets in for milking yaks, and wheat to feed the animals (their coats grow back faster). Wheat, seeds or berries also feed pairs of animals so they have young. What it gets comes out of its back, into a chest, hopper or belt.'}</p>`
     : kind === 'winepress' || kind === 'cheesepress' ? `<p class="hint">It needs no fuel or power. Lay what it makes down in an oak barrel to age: ${kind === 'winepress' ? 'grape juice becomes wine, apple juice cider and berry juice berry wine in a day, and finer still three days later' : 'curds become cheese in a day, and aged cheese three days later'}.</p>`
     : kind === 'compost' ? '<p class="hint">It needs no fuel or power: scraps just rot down, given time. Tap a crop or sapling with fertiliser to grow it a step.</p>'
+    : kind === 'fishtrap' ? '<p class="hint">Sink it in water and put worms in for bait: every so often something swims in. Collect the catch from the trays (or put a hopper under it).</p>'
     : kind === 'sieve' ? '<p class="hint">It needs no fuel or power: you shake it by hand. What it sifts out (shown as a chance) collects in the trays on the right: keep them emptied (a hopper underneath does it), or things that don\'t fit are lost, and once they\'re full it stops.</p>'
     : kind === 'washer' ? '<p class="hint">Times are at 1x speed. Drive it with a shaft like the rock crusher, and give it water: a source or flowing water touching any side. ' +
       'Clean dust smelts one for one (dirty dust only three for four). The washings sometimes give an extra dust, a trace of another metal, and sludge (4 make clay).</p>'
@@ -1516,6 +1523,11 @@ function renderStation() {
   const sideFull = !r && (st.side ?? []).length && st.side.every(Boolean) && K.recipes.some((q) => q.side && q.in.every(([id, n]) => stations.count(st, id) >= n));
   if (st.kind === 'sieve') {
     $('st-status').textContent = r ? `Sifting ${itemName(r.in[0][0]).toLowerCase()}…` : sideFull ? 'The trays are full: take what\'s been sifted out' : 'Put gravel or dirt in';
+    return;
+  }
+  if (st.kind === 'fishtrap') {
+    const wet = wetAt(world, openStationAt.x, openStationAt.y, openStationAt.z);
+    $('st-status').textContent = !wet ? 'It needs to be in water' : r ? 'Baited: waiting for a bite…' : sideFull ? 'The trays are full: take out the catch' : 'Put worms in for bait';
     return;
   }
   if (st.kind === 'washer' && !wetAt(world, openStationAt.x, openStationAt.y, openStationAt.z)) {
@@ -3083,13 +3095,14 @@ function closeTrade() { $('trade').classList.add('hidden'); tradingWith = null; 
 function renderTrades() {
   const list = $('trades');
   list.innerHTML = '';
-  for (const [[gid, gn0], [oid, on]] of tradingWith.trades) {
-    const gn = tradeCost(gn0, tradingWith.home);
+  for (const [[gid, gn0], [oid, on], special] of [...tradingWith.trades, ...specialTrades(tradingWith)]) {
+    const gn = special ? gn0 : tradeCost(gn0, tradingWith.home);
     const row = document.createElement('div');
-    row.className = 'recipe';
+    row.className = special ? 'recipe special' : 'recipe';
+    if (special) row.title = `Only for ${special === 'Hero' ? 'heroes' : 'friends'} of ${tradingWith.home.name}`;
     const have = inventory.count(gid) >= gn;
     row.innerHTML = `<span class="ing${have ? '' : ' missing'}" title="${itemName(gid)}"><img src="${icons[gid]}" alt="">${gn}</span>` +
-      `<span class="arrow">→</span><img class="outimg" src="${icons[oid]}" alt=""><span class="name">${on > 1 ? on + ' × ' : ''}${itemName(oid)}</span>`;
+      `<span class="arrow">→</span><img class="outimg" src="${icons[oid]}" alt=""><span class="name">${on > 1 ? on + ' × ' : ''}${itemName(oid)}${special ? ` <small>★ ${special}</small>` : ''}</span>`;
     const btn = document.createElement('button');
     btn.className = 'btn';
     btn.textContent = 'Trade';
@@ -4396,6 +4409,7 @@ function breakBlock(x, y, z) {
   const tool = toolHeld();
   let drops = dropsFor(id, tool);
   if (spannerPack >= 0) drops = [[typeof def.drop === 'number' && def.drop ? def.drop : def.variantOf || id, 1]]; // taken up with a spanner
+  else if (id === WHEAT_3 || def.crop?.ripe) drops = fineHarvest(drops, x, y, z);
   if (id === LOOT_CHEST) drops.push(...rollLoot(x, y, z));
   if (tool === ELECTRIC_DRILL && def.hardness > 0) drawCharge(inventory.held(), CHARGE_USE.drill);
   if (tool === JACKHAMMER && def.hardness > 0) {
@@ -5361,6 +5375,7 @@ function placeHouse({ x, y, z, door }) {
 // What villagers pay at a stall: [how many they take, coins]. Food by how filling it is, metal well, and
 // building stuff cheaply.
 function stallPrice(id) {
+  if (isFine(id)) return [1, 4]; // (v28: the pick of the harvest)
   if (id === FINE_WINE || id === AGED_CHEESE || id === PEARL || id === VINTAGE_CIDER || id === FINE_BERRY_WINE) return [1, 6]; // the best things villagers can buy
   if (id === WINE || id === CHEESE || id === CIDER || id === BERRY_WINE) return [1, 3];
   const food = foodValue(id);
@@ -5474,6 +5489,7 @@ function ringBell(x, z, held) {
   if (!v) { toast('Ding!', 1500); return; }
   const g = villageEntry(v), [id, n, coins] = requestFor(v), fest = festivalToday(), tier = repTier(g.rep)[1];
   const head = `${v.name}${fest ? ` (the ${fest.name})` : ''}: you are a ${tier.toLowerCase()} here.`;
+  if (fest && held && isFine(held.id)) { showProduce(v, g, held); return; }
   if (g.reqDay === day) { toast(`${head} You've done what they asked today: come back tomorrow`, 3000); return; }
   if (held?.id === id && inventory.count(id) >= n) {
     inventory.remove(id, n);
@@ -5485,7 +5501,7 @@ function ringBell(x, z, held) {
     addRep(v, 8);
     return;
   }
-  toast(`${head} Today they need ${n} × ${itemName(id)} (${coins * (fest ? 2 : 1)} coins): tap the bell holding them`, 4000);
+  toast(`${head} Today they need ${n} × ${itemName(id)} (${coins * (fest ? 2 : 1)} coins): tap the bell holding them${fest ? '. Bring fine produce for the show!' : ''}`, 4000);
 }
 // Decorations round the well: flowers in spring, lanterns in summer, jack-o'-lanterns in autumn and snowmen in winter.
 // They go up on the morning of the festival and come down the next day (unless you've moved them).
@@ -5923,6 +5939,48 @@ window.addEventListener('keydown', (e) => {
   else if (photoMode && e.code === 'Escape') exitPhotoMode();
   else if (photoMode && (e.code === 'Enter' || e.code === 'KeyP')) snapPhoto();
 });
+
+// ---------- v28 E: fine crops, festival shows, special trades ----------
+// A ripe crop sometimes comes up fine: one in sixteen as a rule, one in five from soil beans have fed, a bit
+// more under glass, and seldom from tired soil.
+function fineChance(x, y, z) {
+  let c = world.soilRich(x, y - 1, z) ? 0.2 : 0.06;
+  if (world.underGlass(x, y, z)) c += 0.04;
+  return c * [1, 0.5, 0.25, 0][world.soilTired(x, y - 1, z)];
+}
+function fineHarvest(drops, x, y, z) {
+  const i = drops.findIndex(([d]) => FINE_CROPS[d]);
+  if (i < 0 || Math.random() >= fineChance(x, y, z)) return drops;
+  const [d, n] = drops[i];
+  achieve('fine');
+  const out = drops.slice();
+  out.splice(i, 1, [FINE_CROPS[d], 1], ...(n > 1 ? [[d, n - 1]] : []));
+  return out;
+}
+// On a festival day the village holds a show: tap the bell with fine produce to enter it (once a day).
+function showProduce(v, g, held) {
+  if (g.showDay === day) { toast(`You've already entered ${v.name}'s show today`, 2500); return; }
+  g.showDay = day;
+  const id = held.id, n = Math.min(held.count, 3);
+  takeFromHeld(n);
+  const place = n >= 3 ? 'first' : n === 2 ? 'second' : 'third', pay = [0, 4, 8, 14][n];
+  giveDrops([[COIN, pay]]);
+  addRep(v, 4 * n);
+  sound.ding(); setTimeout(() => sound.ding(0.7), 220); setTimeout(() => sound.ding(0.9), 440);
+  toast(`Your ${itemName(id).toLowerCase()} win${n > 1 ? '' : 's'} ${place} prize at ${v.name}'s show! (${pay} coins)${n < 3 ? ' Show three for first prize' : ''}`, 3500);
+}
+// Friends of a village are offered something special by each of its trades, and its heroes something more.
+const SPECIAL_TRADES = {
+  farmer: [[[COIN, 4], [FERTILISER, 8]], [[COIN, 8], [SADDLEBAGS, 1]]],
+  smith: [[[COIN, 8], [SPEED_UPGRADE, 1]], [[COIN, 12], [YIELD_UPGRADE, 1]]],
+  fisher: [[[COIN, 2], [WORM, 10]], [[COIN, 8], [TREASURE_MAP, 1]]],
+  cleric: [[[COIN, 5], [GOLDEN_TEA, 1]], [[COIN, 8], [PEARL, 3]]],
+};
+function specialTrades(m) {
+  if (!m.spec.villager || !m.home) return [];
+  const t = repTier(repOf(m.home))[1], [friend, hero] = SPECIAL_TRADES[m.profession] ?? [];
+  return [...(friend && (t === 'Friend' || t === 'Hero') ? [[...friend, 'Friend']] : []), ...(hero && t === 'Hero' ? [[...hero, 'Hero']] : [])];
+}
 
 // ---------- v28 D: horse gear, stables with hay, honey varieties ----------
 // Saddlebags: while riding, 🎒 opens them (with your backpack below).
@@ -6515,5 +6573,5 @@ window.minicraft = {
   arrows, fishing, kinetics, electric, lightUniforms, bees, catchAt, seasonOf, applySeason, set day(v) { day = v; applySeason(); }, frames, signalAt, setSwitch, logic, machines, carts, minimap, signs, armour, damage, placeRail, getInCart, getOutOfCart,
   get riding() { return riding; }, explode, lightFuse, fuses, clockTime, compassText, place, editSign, closeSign, openInventory, closeInventory, chestMove, lamps, tickLamps, sleepUntilMorning, stations, openStation, closeStation,
   get caneToday() { return caneToday; }, get creative() { return creative; }, set creative(v) { creative = v; applyCreative(); }, toggleFly, wand, useWand, get achieved() { return achieved; }, achieve, worldMap, openMap, closeMap, openGuide, switchSlot, store, saveGame, renderWorlds, openWorlds, exportSlot, get target() { return target; }, set target(v) { target = v; }, applyKeys, renderKeys, camera, get controls() { return controls; }, loose, throwHeld, get waypoints() { return waypoints; }, toggleWaypoint, sortSlots, quickStack, dropMeteor, get meteors() { return meteors; }, weather, openTrade, closeTrade, mountMob, dismount, get ridingMob() { return ridingMob; }, effects, armourWear, useAnvil, rollLoot, settings,
-  get bedSpawn() { return bedSpawn; }, fertilise, openJournal, closeJournal, get packs() { return packs; }, radiationAt, vehicles, boardVehicle, leaveVehicle, get boarded() { return boarded; }, get seated() { return seated; }, crows, onInvSlot, onStationSlot, quickMoveInv, quickMoveStation, usedIn, itemTipHTML, critters, tickPets, get catGiftDay() { return catGiftDay; }, get villageGrowth() { return villageGrowth; }, notePlanting, tickPuzzles, airPumpNear, useStable, stableNear, horseLabel, stockStable, tickStables, mangers, openSaddlebags, honeyAt, fitUpgrade, piles, lightCharcoalPile, tickPiles, searchChests, takeFromChest, markChest, get chestMark() { return chestMark; }, enterPhotoMode, exitPhotoMode, snapPhoto, get photoMode() { return photoMode; }, photoCam, get lastPhoto() { return lastPhoto; }, tickStalactites, loosenStalactite, fallingRocks, shaking, workLock, findLock, tickLocks, openGates, lockJobs, hangRopeLadder, layBridge, rollUpRope, fireworks, ringBell, requestFor, festivalToday, repOf, addRep, tradeCost, tickFestival, villageEntry, hearths, tickHearths, feedHearth, chimneyTop, smoke, renderPins, togglePin, lightning, igniteAt, fires, tickFires, tickStorm, growVillage, buildVillageHouse, stallPrice, tickStalls, tickVillages, set catGiftDay(v) { catGiftDay = v; }, get places() { return places; }, get treasures() { return treasures; }, readTreasureMap, tickTreasure, beams, tickBeams, beaconSpots: () => beaconSpots, mistNow, tickSnow, tickExplore, sitOn, standUp, useDisplay, zips, linkZip, startZip, get zipping() { return zipping; }, burnCoal, get health() { return health; }, set health(v) { health = v; }, paintings, placeSwitchRail, signalAt, ailments, armourEnch, openAltar, lairNear, useBed, eat, drinkTea,
+  get bedSpawn() { return bedSpawn; }, fertilise, openJournal, closeJournal, get packs() { return packs; }, radiationAt, vehicles, boardVehicle, leaveVehicle, get boarded() { return boarded; }, get seated() { return seated; }, crows, onInvSlot, onStationSlot, quickMoveInv, quickMoveStation, usedIn, itemTipHTML, critters, tickPets, get catGiftDay() { return catGiftDay; }, get villageGrowth() { return villageGrowth; }, notePlanting, tickPuzzles, airPumpNear, useStable, stableNear, horseLabel, fineChance, fineHarvest, showProduce, specialTrades, catchAt, stockStable, tickStables, mangers, openSaddlebags, honeyAt, fitUpgrade, piles, lightCharcoalPile, tickPiles, searchChests, takeFromChest, markChest, get chestMark() { return chestMark; }, enterPhotoMode, exitPhotoMode, snapPhoto, get photoMode() { return photoMode; }, photoCam, get lastPhoto() { return lastPhoto; }, tickStalactites, loosenStalactite, fallingRocks, shaking, workLock, findLock, tickLocks, openGates, lockJobs, hangRopeLadder, layBridge, rollUpRope, fireworks, ringBell, requestFor, festivalToday, repOf, addRep, tradeCost, tickFestival, villageEntry, hearths, tickHearths, feedHearth, chimneyTop, smoke, renderPins, togglePin, lightning, igniteAt, fires, tickFires, tickStorm, growVillage, buildVillageHouse, stallPrice, tickStalls, tickVillages, set catGiftDay(v) { catGiftDay = v; }, get places() { return places; }, get treasures() { return treasures; }, readTreasureMap, tickTreasure, beams, tickBeams, beaconSpots: () => beaconSpots, mistNow, tickSnow, tickExplore, sitOn, standUp, useDisplay, zips, linkZip, startZip, get zipping() { return zipping; }, burnCoal, get health() { return health; }, set health(v) { health = v; }, paintings, placeSwitchRail, signalAt, ailments, armourEnch, openAltar, lairNear, useBed, eat, drinkTea,
 };

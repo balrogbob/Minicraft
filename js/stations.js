@@ -5,6 +5,7 @@
 // Like crops and lamps, a station only works while its part of the world is loaded.
 import {
   COAL, CHARCOAL, LOG, PLANKS, STICK, COBBLE, STONE, SAND, GLASS, SLIME_FUEL, BUCKET, SEEDS,
+  FISH_TRAP, OLD_BOOT, PUFFERFISH,
   SALMON, BAKED_SALMON, ICEFISH, BAKED_ICEFISH, HONEY_TEA, HONEYCOMB, MUSHROOM_STEW, FISH_PIE, GLOW_MUSHROOM,
   FLOUR, SUGAR, BUTTER, MILK_BUCKET, BREAD, COOKIE, CAKE, RAW_FISH, BAKED_FISH, BLOCKS, maxStack, stationKind,
   ORES, COAL_OR_CHARCOAL, FUEL_ROD, FERTILISER, SAWDUST, CUPRONICKEL_INGOT, ENRICHED_ROD, SPENT_ROD, URANIUM_INGOT, URANIUM_DUST, ENRICHED_URANIUM, WATER_BUCKET, ICE, PACKED_ICE, INVAR_INGOT, METEORIC_IRON, STARSTEEL_INGOT, NICKEL_INGOT, IRON_INGOT, COPPER_INGOT, TIN_INGOT, ZINC_INGOT, ALUMINIUM_INGOT, SILVER_INGOT, GOLD_INGOT,
@@ -478,6 +479,12 @@ STATION_KINDS.sieve = {
     { out: [SAND, 1], in: [[GRAVEL, 1]], time: 3, side: [[FLINT, 0.25], [dirtyDust(ORES[0].id), 0.08], [dirtyDust(ORES[1].id), 0.06], [dirtyDust(ORES.find((o) => o.name === 'Gold Ore').id), 0.02]] },
     { out: null, in: [[DIRT, 1]], time: 3, side: [[WORM, 0.35], [SEEDS, 0.2], [FLINT, 0.06], [SAPLING, 0.03]] },
   ],
+};
+
+// A fish trap needs water around it and worms for bait.
+STATION_KINDS.fishtrap = {
+  name: 'Fish Trap', verb: 'Waiting', inputs: 1, powered: true, passive: true, wet: true, sides: 2,
+  recipes: [{ out: [RAW_FISH, 1], in: [[WORM, 1]], time: 40, side: [[SALMON, 0.25], [OLD_BOOT, 0.04], [PUFFERFISH, 0.03]] }],
 };
 
 // ---------- v28 C: upgrades ----------

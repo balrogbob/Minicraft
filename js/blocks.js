@@ -2827,3 +2827,29 @@ ITEMS[HONEY_BOTTLE].honey = true;
 ITEMS[LAVENDER_TEA] = { name: 'Lavender Tea', stack: 8, tea: ['fed', 600], about: 'feel soothed: hunger falls slower and you heal quicker' };
 ITEMS[BLOSSOM_TEA] = { name: 'Blossom Tea', stack: 8, tea: ['swift', 240], about: 'feel light on your feet: run faster' };
 ITEMS[GOLDEN_TEA] = { name: 'Golden Tea', stack: 8, tea: ['heal', 25], about: 'glow with health: heal quickly for a while' };
+
+// ---------- v28 E: fine crops, fish traps ----------
+// Now and then a ripe crop comes up fine: more so in soil beans have fed, under glass or watched by a
+// scarecrow, and never from tired soil. Fine produce is better eating, fetches a good price at a stall,
+// wins prizes at festivals, and can stand in for the ordinary kind (craft it back).
+export const FINE_CROPS = {}; // plain id -> fine id
+export const FISH_TRAP = 1459;
+[[WHEAT, 'Fine Wheat'], [CARROT, 'Fine Carrot'], [POTATO, 'Fine Potato'], [ONION, 'Fine Onion'], [BEANS, 'Fine Beans'],
+  [TOMATO, 'Fine Tomato'], [HERBS, 'Fine Herbs'], [GRAPES, 'Fine Grapes']].forEach(([id, name], i) => {
+  const fine = 3065 + i;
+  FINE_CROPS[id] = fine;
+  ITEMS[fine] = { name, fine: id, food: (ITEMS[id].food ?? 0) + 2, about: 'the pick of the harvest: sells well, and wins prizes at festivals' };
+  RECIPES.push({ out: [id, 1], in: [[fine, 1]] });
+});
+export const isFine = (id) => !!ITEMS[id]?.fine;
+// A wicker trap sunk in water: bait it with worms and now and then something swims in.
+block(FISH_TRAP, {
+  name: 'Fish Trap', station: 'fishtrap', sound: 'wood', transparent: true, hardness: 0.8, tool: 'axe', stationBase: FISH_TRAP,
+  model: [
+    [2, 0, 2, 14, 1, 14, T.PLANKS], [2, 1, 2, 14, 10, 3, T.SIEVE], [2, 1, 13, 14, 10, 14, T.SIEVE], [2, 1, 3, 3, 10, 13, T.SIEVE], [13, 1, 3, 14, 10, 13, T.SIEVE],
+    [2, 10, 2, 14, 11, 14, T.SIEVE], [6, 4, 1, 10, 8, 2, T.PLANKS], // lid, and the funnel mouth
+  ],
+  boxes: [[2, 0, 2, 14, 11, 14]],
+});
+RECIPES.push({ out: [FISH_TRAP, 1], in: [[STICK, 8], [STRING, 4], [PLANKS, 1]], table: true });
+ITEMS[WORM].about = 'bait: carry some when you fish and fish bite twice as fast (and no junk), or put them in a fish trap. Sift dirt for more';
