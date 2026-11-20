@@ -373,8 +373,12 @@ Wild hives hold colonies you can catch and breed into new kinds of bee.
   4 drops, an egg), and royal jelly is a filling, healing food. 6 drops and a bottle in the wine press make
   **honey must**, which ages in a barrel into **mead** (warms you) and then **fine mead** (heals you).
 
-An example world with every kind of bee, comb and honey product is in `worlds/minicraft-world-v31-showcase.json`.
-Open the Worlds screen, tap **Import** on a slot and pick the file to play it.
+Example worlds to import from the Worlds screen (tap **Import** on a slot and pick the file):
+- `worlds/minicraft-world-v31-showcase.json`: every kind of bee, comb and honey product.
+- `worlds/minicraft-world-v31-farm.json`: crops at every growth stage, a farm controller, a scarecrow, an apple
+  tree, the cooking pot and oven, the wine and cheese presses, and a barrel ageing wine and cheese.
+- `worlds/minicraft-world-v31-logistics.json`: a stock chest with an extractor, a pipe line with a power junction
+  on a solar panel, a sink chest taking the stock, an auto-crafter with a crafting pipe, and a sensor.
 
 ### Fine crops, shows and special trades
 
