@@ -19,6 +19,8 @@ import {
   BATTERY, PORTABLE_LAMP, JACKHAMMER, JETPACK, ELECTRIC_DRILL, HOVER_BOOTS, NV_GOGGLES, MAGNET_RING, WIND_TURBINE, NICKEL_INGOT, CUPRONICKEL_INGOT,
   ELECTRIC_RAIL, CHAINSAW, SAWDUST, BOOK, BACKPACK, BIG_BACKPACK, HUGE_BACKPACK, SPANNER, GRAPPLE, URANIUM_INGOT, FUEL_ROD, JOURNAL, FERTILISER, SPENT_ROD, ENRICHED_URANIUM, ENRICHED_ROD, hazmatId, INVAR_INGOT, RAIL_STATION, BOAT, BALLOON, ZIP_LINE, METEORIC_IRON, STARSTEEL_INGOT, starsteelTool, EGG, FRIED_EGG, SADDLE, TRUFFLE, FLOWER_POT, HANGING_PLANT, WINDOW_BOX, APPLE, CHERRIES, ORANGE_FRUIT, APPLE_PIE, CHERRY_PIE, FRUIT_SALAD, ORANGE_JUICE, FISH_SOUP, TRUFFLE_SOUP, BERRY_JAM, COOK_POT, SCARECROW, EXPLORER_MAP, TREASURE_MAP, BEESWAX, CABLE_CAR, COIN, CARROT, POTATO, BAKED_POTATO, PUMPKIN_SEEDS, PUMPKIN_PIE, GRAPES, GRAPE_JUICE, WINE, FINE_WINE, CURDS, CHEESE, AGED_CHEESE, DIVING_HELMET, FLIPPERS, PEARL, LOCOMOTIVE, FIREWORK, UNFIRED_URN, GLOW_SHELL,
   ONION, BEANS, TOMATO, HERBS, APPLE_JUICE, BERRY_JUICE, CIDER, VINTAGE_CIDER, BERRY_WINE, FINE_BERRY_WINE, VEG_STEW, TOMATO_SOUP, BAKED_BEANS,
+  dirtyDust, SLUDGE, SLAG, WORM, SPEED_UPGRADE, EFFICIENCY_UPGRADE, YIELD_UPGRADE,
+  FINE_CROPS, CHEST_BOAT, SADDLEBAGS, HORSE_ARMOUR, LAVENDER_HONEY, BLOSSOM_HONEY, GOLDEN_HONEY, LAVENDER_TEA, BLOSSOM_TEA, GOLDEN_TEA,
   SALTPETRE, GUNPOWDER, LEAD_SINKER, WEIGHTED_ROD, LEAD_BUCKET, LAVA_BUCKET, GOLD_CLOCK, COMPASS, SILVER_ARROW, MIRROR_LAMP,
 } from './blocks.js';
 
@@ -2784,3 +2786,97 @@ P[T.BEETLE_LAMP] = (t) => {
   for (const [x, y] of [[4, 4], [10, 5], [6, 10], [11, 11]]) { t.set(x, y, [40, 60, 40]); t.set(x + 1, y, [40, 60, 40]); }
 };
 ITEM_PAINTERS[GLOW_SHELL] = (ctx) => { blob(ctx, 8, 8.5, 5, 6, [90, 220, 140], [50, 160, 100]); rect(ctx, 8, 3, 1, 11, [40, 110, 70]); px(ctx, 6, 5, [210, 255, 220]); };
+
+// v28 A: the ore washer (iron-bound planks with a sluice at the front and a wet trough on top), the sieve's
+// mesh, rough slag bricks, and the dusts and leftovers
+P[T.WASHER_SIDE] = (t) => {
+  for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) t.set(x, y, t.vary(y % 5 === 4 ? [104, 74, 44] : [138, 100, 60], 0.06));
+  for (let x = 0; x < TILE; x++) for (const y of [1, 14]) t.set(x, y, t.vary([110, 112, 120], 0.05));
+  for (const y of [1, 14]) for (const x of [2, 8, 13]) t.set(x, y, [70, 70, 76]);
+};
+P[T.WASHER_TOP] = (t) => {
+  for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+    const edge = x < 2 || x > 13 || y < 2 || y > 13;
+    t.set(x, y, edge ? t.vary([110, 112, 120], 0.05) : t.vary((x + y * 3) % 7 === 0 ? [150, 200, 230] : [60, 110, 170], 0.08));
+  }
+};
+P[T.WASHER_FRONT] = (t) => {
+  P[T.WASHER_SIDE](t);
+  for (let y = 4; y < 12; y++) for (let x = 4; x < 12; x++) t.set(x, y, y === 4 || x === 4 || x === 11 ? [80, 80, 86] : t.vary(y > 8 ? [150, 130, 100] : [70, 120, 180], 0.08));
+};
+P[T.SIEVE] = (t) => { for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) t.set(x, y, x % 3 === 0 || y % 3 === 0 ? t.vary([170, 150, 110], 0.06) : [40, 34, 28]); };
+P[T.SLAG_BRICKS] = (t) => {
+  bricks(t, [74, 72, 76], [40, 38, 40]);
+  for (let k = 0; k < 14; k++) t.set(Math.floor(t.r() * 16), Math.floor(t.r() * 16), t.r() < 0.5 ? [120, 92, 70] : [104, 110, 124]);
+};
+for (const o of ORES) if (o.ingot) {
+  const c = shade(METAL_COLORS[o.ingot] ?? [150, 150, 150], 0.85), mud = [104, 84, 62];
+  ITEM_PAINTERS[dirtyDust(o.id)] = (ctx) => {
+    dustPainter(c)(ctx);
+    for (const [x, y] of [[6, 9], [9, 11], [7, 13], [10, 8], [5, 12], [8, 10], [11, 13], [4, 14]]) px(ctx, x, y, mud);
+  };
+}
+ITEM_PAINTERS[SLUDGE] = (ctx) => { blob(ctx, 8, 10.5, 6, 4, [96, 90, 76], [70, 64, 54]); px(ctx, 6, 9, [140, 150, 160]); px(ctx, 10, 10, [140, 150, 160]); };
+ITEM_PAINTERS[SLAG] = (ctx) => {
+  blob(ctx, 8, 9, 5.5, 4.5, [70, 68, 74], [44, 42, 46]);
+  for (const [x, y] of [[6, 8], [9, 7], [10, 10], [7, 11]]) px(ctx, x, y, [130, 96, 70]);
+  px(ctx, 5, 7, [150, 160, 176]);
+};
+ITEM_PAINTERS[WORM] = (ctx) => {
+  const c = [214, 120, 130], d = [170, 84, 96];
+  for (const [x, y] of [[3, 11], [4, 10], [5, 10], [6, 11], [7, 12], [8, 12], [9, 11], [10, 10], [11, 9], [12, 9], [13, 10]]) { px(ctx, x, y, c); px(ctx, x, y + 1, d); }
+  px(ctx, 13, 9, [120, 60, 70]);
+};
+
+// v28 B: a heap of charcoal: black lumps with a dull sheen, and the grain of the wood still in some
+P[T.CHARCOAL_HEAP] = (t) => {
+  for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+    const lump = ((x >> 2) + (y >> 2) * 3) % 4, edge = x % 4 === 3 || y % 4 === 3;
+    t.set(x, y, t.vary(edge ? [18, 16, 16] : lump === 0 ? [58, 56, 60] : lump === 1 ? [44, 40, 40] : [34, 32, 34], 0.1));
+  }
+  for (let k = 0; k < 8; k++) t.set(Math.floor(t.r() * 16), Math.floor(t.r() * 16), [96, 96, 104]);
+};
+
+// v28 C: upgrade cards: a metal plate with a coloured emblem (a double arrow, a flame, a plus)
+function upgradePainter(plate, mark, draw) {
+  return (ctx) => {
+    rect(ctx, 2, 3, 12, 10, shade(plate, 0.7)); rect(ctx, 3, 4, 10, 8, plate);
+    for (const [x, y] of [[3, 4], [12, 4], [3, 11], [12, 11]]) px(ctx, x, y, shade(plate, 0.55));
+    draw(ctx, mark);
+  };
+}
+ITEM_PAINTERS[SPEED_UPGRADE] = upgradePainter([176, 180, 190], [60, 200, 255], (ctx, c) => {
+  for (const o of [0, 4]) for (let k = 0; k < 3; k++) { px(ctx, 5 + o + k, 6 + k, c); px(ctx, 5 + o + k, 10 - k, c); }
+});
+ITEM_PAINTERS[EFFICIENCY_UPGRADE] = upgradePainter([196, 160, 120], [255, 140, 40], (ctx, c) => {
+  rect(ctx, 7, 6, 2, 5, c); rect(ctx, 6, 8, 4, 3, c); px(ctx, 8, 5, c); px(ctx, 7, 9, [255, 230, 120]); px(ctx, 8, 10, [255, 230, 120]);
+});
+ITEM_PAINTERS[YIELD_UPGRADE] = upgradePainter([214, 214, 220], [90, 210, 90], (ctx, c) => { rect(ctx, 7, 5, 2, 6, c); rect(ctx, 5, 7, 6, 2, c); });
+// v28 D: horse gear and honey varieties
+ITEM_PAINTERS[SADDLEBAGS] = (ctx) => {
+  for (const x0 of [1, 9]) { rect(ctx, x0, 6, 6, 7, [138, 84, 44]); rect(ctx, x0, 6, 6, 2, [168, 108, 58]); px(ctx, x0 + 3, 9, [220, 190, 80]); }
+  rect(ctx, 6, 4, 4, 2, [110, 64, 32]); // the strap joining them
+};
+ITEM_PAINTERS[HORSE_ARMOUR] = (ctx) => {
+  rect(ctx, 2, 5, 12, 6, [196, 198, 206]); rect(ctx, 2, 5, 12, 1, [230, 232, 238]);
+  for (let x = 3; x < 14; x += 2) for (let y = 7; y < 11; y += 2) px(ctx, x, y, [150, 152, 162]); // mail
+  rect(ctx, 12, 2, 3, 4, [210, 212, 220]); rect(ctx, 2, 11, 12, 1, [122, 60, 28]); // head plate, leather trim
+};
+ITEM_PAINTERS[LAVENDER_HONEY] = bottlePainter([196, 150, 210]);
+ITEM_PAINTERS[BLOSSOM_HONEY] = bottlePainter([244, 170, 150]);
+ITEM_PAINTERS[GOLDEN_HONEY] = bottlePainter([255, 210, 40]);
+ITEM_PAINTERS[LAVENDER_TEA] = bottlePainter([150, 110, 200]);
+ITEM_PAINTERS[BLOSSOM_TEA] = bottlePainter([236, 130, 150]);
+ITEM_PAINTERS[GOLDEN_TEA] = bottlePainter([250, 190, 20]);
+// v28 E: fine crops are the plain ones with a golden sparkle
+for (const [id, fine] of Object.entries(FINE_CROPS)) {
+  const base = ITEM_PAINTERS[id];
+  ITEM_PAINTERS[fine] = (ctx) => {
+    base?.(ctx);
+    for (const [x, y] of [[13, 1], [1, 12], [14, 13]]) { px(ctx, x, y, [255, 236, 120]); px(ctx, x - 1, y, [255, 200, 60]); px(ctx, x + 1, y, [255, 200, 60]); px(ctx, x, y - 1, [255, 200, 60]); px(ctx, x, y + 1, [255, 200, 60]); }
+  };
+}
+ITEM_PAINTERS[CHEST_BOAT] = (ctx) => {
+  ITEM_PAINTERS[BOAT](ctx);
+  rect(ctx, 9, 3, 5, 5, [154, 106, 52]); rect(ctx, 9, 3, 5, 1, [110, 70, 34]); px(ctx, 11, 5, [210, 210, 216]); // the chest
+};

@@ -11,6 +11,8 @@ const BOAT_SPEED = 7, BOAT_BACK = 2.5;
 const BALLOON_SPEED = 4, BALLOON_RISE = 3.5, BALLOON_SINK = 1.5;
 export const BURN = 45; // seconds of flight from a piece of coal
 const GRAVITY = 20;
+export const BOAT_SLOTS = 18;
+export const newBoatStore = () => ({ kind: 'chest', inputs: new Array(BOAT_SLOTS).fill(null), fuel: null, out: null });
 
 function box(group, material, [w, h, d], color, [x, y, z]) {
   const g = new THREE.BoxGeometry(w, h, d);
@@ -25,12 +27,13 @@ function box(group, material, [w, h, d], color, [x, y, z]) {
 
 // Models, pointing along +z, with the floor at y = 0.
 const MODELS = {
-  boat(g, m) {
+  boat(g, m, chest = false) {
     box(g, m, [1.1, 0.12, 1.9], 0x8a5a32, [0, 0.06, 0]); // the bottom
     box(g, m, [0.12, 0.42, 1.9], 0xa06a3c, [0.55, 0.27, 0]); box(g, m, [0.12, 0.42, 1.9], 0xa06a3c, [-0.55, 0.27, 0]); // the sides
     box(g, m, [1.1, 0.42, 0.12], 0xa06a3c, [0, 0.27, -0.95]); box(g, m, [0.7, 0.36, 0.12], 0xa06a3c, [0, 0.3, 1.0]); // stern and bow
     box(g, m, [1.0, 0.08, 0.3], 0x7a4e2a, [0, 0.3, -0.2]); // a seat
     box(g, m, [0.06, 0.06, 1.3], 0x6a4426, [0.75, 0.42, 0.1]); box(g, m, [0.06, 0.06, 1.3], 0x6a4426, [-0.75, 0.42, 0.1]); // oars
+    if (chest) { box(g, m, [0.7, 0.5, 0.5], 0x9a6a34, [0, 0.37, -0.6]); box(g, m, [0.72, 0.08, 0.52], 0x6e4622, [0, 0.6, -0.6]); box(g, m, [0.1, 0.12, 0.04], 0xc8c8d0, [0, 0.5, -0.33]); } // (v28: a chest in the stern)
   },
   balloon(g, m) {
     box(g, m, [1.1, 0.7, 1.1], 0x9a6a3a, [0, 0.35, 0]); // the basket
@@ -49,11 +52,12 @@ export class Vehicles {
     this.list = []; // { kind, pos, yaw, speed, vy, burn, group, material }
   }
 
-  add(kind, x, y, z, yaw = 0, burn = 0) {
+  // store: a chest boat's contents ({ kind: 'chest', inputs }), or null
+  add(kind, x, y, z, yaw = 0, burn = 0, store = null) {
     const material = new THREE.MeshBasicMaterial({ vertexColors: true });
     const group = new THREE.Group();
-    MODELS[kind](group, material);
-    const v = { kind, pos: new THREE.Vector3(x, y, z), yaw, speed: 0, vy: 0, burn, group, material };
+    MODELS[kind](group, material, !!store);
+    const v = { kind, pos: new THREE.Vector3(x, y, z), yaw, speed: 0, vy: 0, burn, group, material, store };
     group.position.copy(v.pos);
     group.rotation.y = yaw;
     this.scene.add(group);
@@ -179,13 +183,21 @@ export class Vehicles {
     return best;
   }
 
-  serialize() { return this.list.map((v) => [v.kind, +v.pos.x.toFixed(2), +v.pos.y.toFixed(2), +v.pos.z.toFixed(2), +v.yaw.toFixed(2), Math.round(v.burn)]); }
+  serialize() {
+    return this.list.map((v) => [v.kind, +v.pos.x.toFixed(2), +v.pos.y.toFixed(2), +v.pos.z.toFixed(2), +v.yaw.toFixed(2), Math.round(v.burn),
+      ...(v.store ? [v.store.inputs.map((it) => (it ? [it.id, it.count] : 0))] : [])]);
+  }
 
   load(list) {
     this.clear();
     for (const a of Array.isArray(list) ? list : []) {
       if (!Array.isArray(a) || !MODELS[a[0]] || !a.slice(1, 5).every(Number.isFinite)) continue;
-      this.add(a[0], a[1], a[2], a[3], a[4], Math.max(0, +a[5] || 0));
+      let store = null;
+      if (Array.isArray(a[6])) {
+        store = newBoatStore();
+        a[6].slice(0, BOAT_SLOTS).forEach((it, i) => { if (Array.isArray(it) && it[0] > 0 && it[1] > 0) store.inputs[i] = { id: it[0], count: it[1] }; });
+      }
+      this.add(a[0], a[1], a[2], a[3], a[4], Math.max(0, +a[5] || 0), store);
     }
   }
 }

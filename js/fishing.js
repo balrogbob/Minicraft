@@ -38,8 +38,9 @@ export class Fishing {
   get active() { return !!this.state; }
   get biting() { return this.state?.phase === 'bite'; }
 
-  cast(eye, dir, weighted = false) {
+  cast(eye, dir, weighted = false, baited = false) {
     this.weighted = weighted;
+    this.baited = baited; // (v28: a worm on the hook: bites come twice as fast)
     const pos = eye.clone().addScaledVector(dir, 0.6);
     const vel = dir.clone().multiplyScalar(CAST_SPEED);
     vel.y += 3;
@@ -82,7 +83,7 @@ export class Fishing {
           while (world.isWater(bx, top + 1, bz)) top++;
           s.pos.set(next.x, top + WATER_TOP, next.z);
           s.phase = 'waiting';
-          s.timer = biteDelay() * (this.weighted ? 0.5 : 1); // a lead sinker gets the bait down where the fish are
+          s.timer = biteDelay() * (this.weighted ? 0.5 : 1) * (this.baited ? 0.5 : 1); // a lead sinker gets the bait down where the fish are
           this.sound.splash(false);
         } else if (world.isSolid(bx, by, bz)) {
           s.phase = 'ground'; // came down on land: nothing will bite here
@@ -102,7 +103,7 @@ export class Fishing {
     } else if (s.phase === 'bite') {
       if ((s.timer -= dt) <= 0) {
         s.phase = 'waiting';
-        s.timer = biteDelay() * (this.weighted ? 0.5 : 1); // a lead sinker gets the bait down where the fish are
+        s.timer = biteDelay() * (this.weighted ? 0.5 : 1) * (this.baited ? 0.5 : 1); // a lead sinker gets the bait down where the fish are
         event = 'escaped';
       }
     }

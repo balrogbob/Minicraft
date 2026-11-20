@@ -7,7 +7,7 @@
 // They aren't saved: they're spawned fresh around wherever you are.
 import * as THREE from 'three';
 import { AIR, WATER, LEAVES, isLeaves, LOG, GRASS, SAND, DIRT, WOOL, BUCKET, MILK_BUCKET, SLIME_BUCKET, FEATHER, COAL, COBBLE, ARROW, HIDE, SNOW_GRASS, SNOW, KING_CROWN, GOLD_INGOT, MOSSY_BRICKS, RAW_FISH, BAKED_FISH, WHEAT, SALMON, BAKED_SALMON, ICEFISH, BAKED_ICEFISH,
-  SUN_SCARAB, FROST_HEART, EMBER_CORE, SUN_MASK, FROST_CIRCLET, EMBER_CROWN, SILVER_INGOT, OBSIDIAN, STRING, BLOCKS, LAVA, SEEDS, BERRIES, EGG, TRUFFLE, SADDLE, APPLE, CARROT, SUGAR, STONE, GRAVEL, GLOW_SHELL } from './blocks.js';
+  SUN_SCARAB, FROST_HEART, EMBER_CORE, SUN_MASK, FROST_CIRCLET, EMBER_CROWN, SILVER_INGOT, OBSIDIAN, STRING, BLOCKS, LAVA, SEEDS, BERRIES, EGG, TRUFFLE, SADDLE, APPLE, CARROT, SUGAR, STONE, GRAVEL, GLOW_SHELL, SADDLEBAGS, HORSE_ARMOUR } from './blocks.js';
 import { SEA_LEVEL, H } from './terrain.js';
 import { skyBrightness, lightBrightness } from './world.js';
 import { THORN_SPEED, THORN_GRAVITY } from './arrows.js';
@@ -196,6 +196,12 @@ const SPECIES = {
       const tail = parts.tail = b.pivot(root, [0, 1.38, -0.72]);
       b.box(tail, [0.14, 0.7, 0.14], mane, [0, -0.32, -0.08]);
       parts.tame = (on) => { parts.saddle.visible = on; flap.visible = on; bridle.visible = on; };
+      // v28: saddlebags hung either side behind the saddle, and armour: a steel chanfron and a mail blanket
+      const bags = [-1, 1].map((sx) => b.box(root, [0.16, 0.34, 0.42], 0x6a3a1c, [sx * 0.44, 1.22, -0.48]));
+      const plate = b.box(head, [0.38, 0.3, 0.5], 0xa8acb4, [0, 0.06, 0.28]);
+      const mail = b.box(root, [0.76, 0.42, 0.9], 0x8c9098, [0, 1.3, 0.28]);
+      parts.gear = (hasBags, armoured) => { for (const g of bags) g.visible = !!hasBags; plate.visible = mail.visible = !!armoured; };
+      parts.gear(false, false);
       return parts;
     },
   },
@@ -1223,7 +1229,9 @@ export class MobManager {
           const fx = -Math.sin(ctx.ride.yaw), fz = -Math.cos(ctx.ride.yaw), rx = Math.cos(ctx.ride.yaw), rz = -Math.sin(ctx.ride.yaw);
           const vx = fx * ctx.ride.moveZ + rx * ctx.ride.moveX, vz = fz * ctx.ride.moveZ + rz * ctx.ride.moveX;
           m.heading = Math.atan2(vx, vz);
-          m.rideSpeed = Math.min(1, Math.hypot(vx, vz)) * (m.gait ?? 7);
+          const rested = m.rested > 0 ? 1.15 : 1; // (v28: a horse fed at its stable has a spring in its step)
+          if (m.rested > 0 && Math.hypot(vx, vz) > 0.2) m.rested = Math.max(0, m.rested - dt);
+          m.rideSpeed = Math.min(1, Math.hypot(vx, vz)) * (m.gait ?? 7) * rested;
           m.wantJump = !!ctx.ride.jump;
         }
       } else if (m.tame) {
@@ -1480,7 +1488,7 @@ export class MobManager {
       const bz = this.moveAxis(m, 'z', m.vel.z * h);
       m.onGround = false;
       if (this.moveAxis(m, 'y', m.vel.y * h)) m.vel.y = 0;
-      if (m.ridden && m.wantJump && wasGround && m.leap) { m.vel.y = Math.sqrt(2 * GRAVITY * (m.leap + 0.15)); m.wantJump = false; } // a horse leaps
+      if (m.ridden && m.wantJump && wasGround && m.leap) { m.vel.y = Math.sqrt(2 * GRAVITY * (m.leap * (m.rested > 0 ? 1.15 : 1) + 0.15)); m.wantJump = false; } // a horse leaps
       if ((bx || bz) && speed) {
         if ((wasGround || m.inWater) && this.canStepUp(m, dx, dz)) m.vel.y = Math.max(m.vel.y, m.inWater ? 6 : 7.5);
         else if (wasGround && !hunting) m.heading += rand(Math.PI * 0.5, Math.PI * 1.5); // a wall: turn away
@@ -1628,6 +1636,20 @@ export class MobManager {
         return { give, take, said: 'The horse crunches it up and edges closer…' };
       }
       if (held === SADDLE && !m.tame && !m.trusted) return { give, take, said: 'The horse shies away from the saddle: win it over with apples, carrots or sugar first' };
+      if (held === SADDLEBAGS || held === HORSE_ARMOUR) {
+        if (!m.tame) return { give, take, said: 'Saddle the horse first' };
+        if (held === SADDLEBAGS) {
+          if (m.bags) return { give, take, said: 'This horse already has saddlebags' };
+          m.bags = new Array(9).fill(null);
+        } else {
+          if (m.armoured) return { give, take, said: 'This horse already wears armour' };
+          m.armoured = true;
+        }
+        take.push([held, 1]);
+        m.parts.gear?.(m.bags, m.armoured);
+        this.sound?.mob(m.kind, 0.8);
+        return { give, take, said: held === SADDLEBAGS ? 'You buckle on the saddlebags: open them with 🎒 while you ride' : 'You fit the horse armour: while you ride, creatures do you half the harm' };
+      }
       if (m.tame && HORSE_TREATS.includes(held)) {
         const said = this.feed(m);
         if (said) return { give, take, said };
@@ -1756,7 +1778,8 @@ export class MobManager {
   // Pets to save: [kind, x, y, z, sitting, coat].
   pets() {
     return this.mobs.filter((m) => (m.tame || (m.trusted && m.spec.horse)) && !m.dying).map((m) => [m.kind, +m.pos.x.toFixed(2), +m.pos.y.toFixed(2), +m.pos.z.toFixed(2), !!m.sitting, m.coat ?? null,
-      m.spec.horse ? { gait: +m.gait.toFixed(2), leap: +m.leap.toFixed(2), tame: !!m.tame, stable: m.stable ?? null, baby: Math.max(0, Math.round(m.baby ?? 0)) } : null]);
+      m.spec.horse ? { gait: +m.gait.toFixed(2), leap: +m.leap.toFixed(2), tame: !!m.tame, stable: m.stable ?? null, baby: Math.max(0, Math.round(m.baby ?? 0)),
+        ...(m.bags ? { bags: m.bags.map((s) => (s ? { ...s } : null)) } : {}), ...(m.armoured ? { armoured: true } : {}), ...(m.rested > 0 ? { rested: Math.round(m.rested) } : {}) } : null]);
   }
 
   // The player hits a night creature for `amount`. It gets knocked back, flashes, and hunts the

@@ -128,7 +128,7 @@ It is designed for Android tablets (touch controls) but also plays with keyboard
   **cave beetles**, **olms** and **glow-worms**; **search across nearby chests**; and a **photo mode**
 - **Three world slots** with export to a file and import, a **creative mode** (flying, every block, instant
   breaking and a **copy wand**), rebindable keys, a field-of-view slider, a full-screen **world map** with
-  waypoints, and **27 achievements** with an in-game guide
+  waypoints, and **31 achievements** with an in-game guide
 - Torches that light up the area around them with a warm, flickering glow. They stand on floors or hang on walls
 - Synthesised sound effects for digging, breaking, placing, footsteps and splashing, with no audio files
 - Break and place blocks, with break times that depend on the tool you hold
@@ -1249,6 +1249,83 @@ breed when there are 12 or more about.
 - **Photo mode** (☰ → 📷 Photo mode, or F2): the HUD goes, the world holds still around you and the camera floats
   free (up to 48 blocks from you) so you can frame a shot. 📷 (or Enter) saves it as a PNG.
 
+### Version 28
+
+#### Ore washing, trace metals and slag
+
+- Crushers, pulverizers and the jackhammer now give **dirty dust**. Smelt it as it is (4 dirty dust make 3
+  ingots, with some slag), or clean it first in an **ore washer** (3 iron, 4 planks, a bucket and a gear, at a
+  table). The washer needs turning power and water touching it on some side. Each dirty dust washes into a
+  clean dust, sometimes with one more beside it, and some **sludge** (4 sludge make a clay block).
+- **Trace metals**: ores carry a little of another metal. Washing iron sometimes gives nickel dust, copper gives
+  gold, tin gives zinc, lead gives silver, bauxite gives iron, and so on. The recipe list shows each chance. New
+  achievement: **Hidden Riches**.
+- What a washer, sieve or smelter makes on the side goes into **by-product slots** to the right of the output.
+  Tap one to collect it, or put a hopper underneath.
+- Smelting ore sometimes leaves **slag**. 2 slag crush into fertiliser, and 4 slag with a clay ball make 4
+  **slag bricks**.
+- A **sieve** (4 planks, 4 sticks, 4 string) needs no power. It sifts gravel into sand with flint and now and
+  then some dirty ore dust. It sifts dirt for **worms**, seeds, flint and saplings.
+
+#### Charcoal piles and cobble generators
+
+- Stack logs, cover them all over with dirt, sand, gravel or stone, and light one log through a gap with a
+  torch. A sealed pile smoulders into **charcoal heaps** (2 charcoal each). If air gets in while it burns, it
+  flares up. New achievement: **Charcoal Burner**.
+- Flowing water that touches lava now makes **cobblestone**, so a cobble generator works.
+
+#### Machine upgrades and quarry filters
+
+- **Speed** (steel, electrum and a gear), **efficiency** (cupronickel and fire bricks) and **yield** (stainless
+  steel, silver and gold) upgrades: tap a machine with one to fit it, up to two of each.
+  - Speed makes it work half as fast again.
+  - Efficiency makes a furnace, oven or kiln burn a third less fuel.
+  - Yield sometimes gives one more from a crusher, pulverizer, washer, sieve, millstone or saw.
+  - The machine's panel lists what's fitted, and a spanner keeps the upgrades in it. New achievement: **Souped Up**.
+- Hang **item frames** on a quarry showing the things you want, and it keeps only those.
+
+#### Horse gear and stables
+
+- **Saddlebags** (4 leather, 2 string, a chest): tap your saddled horse with them. While you ride, 🎒 opens
+  their nine slots.
+- **Horse armour** (6 iron, 2 leather): while you ride, creatures do you half the harm.
+- Tap a stable with **wheat** or a **hay bale** (9 wheat) to fill its manger. Horses kept there eat it and come
+  out **rested**: 15% faster and jumping higher for five minutes of riding.
+
+#### Honey varieties
+
+- Hives and apiaries make honey after the flowers growing thickest around them:
+  - **Lavender honey** comes from lavender.
+  - **Blossom honey** comes from fruit trees.
+  - **Golden honey** comes from dandelions.
+  - With none of these, they make plain wildflower honey.
+- Brew each in the cauldron with its flower (an apple or cherries for blossom honey). Lavender tea keeps you fed
+  for longer, blossom tea makes you swift, and golden tea heals.
+
+#### Fine crops, shows and special trades
+
+- A ripe crop sometimes comes up **fine**: more often in soil that beans have fed or under glass, less often in
+  tired soil, and never in worn-out soil. Fine crops are better eating and sell well at a stall. Craft one back
+  into the ordinary kind whenever you like. New achievement: **Prize Grower**.
+- On a festival day, tap a village's bell holding fine produce to enter its **show**. Show three for first prize.
+- **Friends** of a village are offered a special trade by each villager, and its **Heroes** a second one:
+  - farmers: fertiliser and saddlebags
+  - smiths: speed and yield upgrades
+  - fishers: worms and treasure maps
+  - clerics: golden tea and pearls
+
+#### Bait and fish traps
+
+- Carry **worms** when you fish and one goes on the hook. Fish bite twice as fast, and you won't catch junk.
+- A **fish trap** (8 sticks, 4 string, a plank) sunk in water and baited with worms catches a fish now and
+  then, sometimes a salmon.
+
+#### Chest boats and tenders
+
+- A **chest boat** (a boat and a chest) carries 18 slots. Open them with 🎒 while you row, or sneak and tap it.
+- A storage cart coupled right behind a **locomotive** is its **tender**: the locomotive takes on coal or
+  charcoal from it as it runs out.
+
 ### Worlds, creative mode, the map and achievements
 
 ☰ → **Worlds…** holds three worlds. Play any of them, start a new **survival** or **creative** world in a slot,
@@ -1263,7 +1340,7 @@ The **world map** (M, ☰ → World map, or tap the corner map) shows all the la
 around, pinch or scroll to zoom, and tap to put down a waypoint (or tap one to take it away). Waypoints show
 on the hand-held map too.
 
-☰ → **Guide & achievements** lists 27 achievements for each world (with a pop-up as you earn them) and a short
+☰ → **Guide & achievements** lists 31 achievements for each world (with a pop-up as you earn them) and a short
 guide to how everything works.
 
 ## Code layout

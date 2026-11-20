@@ -4,7 +4,7 @@
 // You can ride in a cart: hold forward to push it along, back to brake. A cart stops at a rail station, and
 // waits there until the station gets a signal (or you push off).
 import * as THREE from 'three';
-import { BLOCKS, FACING_DIRS } from './blocks.js';
+import { BLOCKS, FACING_DIRS, COAL, CHARCOAL } from './blocks.js';
 import { skyBrightness, lightBrightness } from './world.js';
 
 const OPP = (d) => (d + 2) % 4;
@@ -242,6 +242,7 @@ export class Carts {
     if (c.waiting || c.holding) return;
     if (c.s >= 1 - 1e-6 && !railBeyond(this.world, c.x, c.y, c.z, c.to)) { c.speed = 0; return; } // the end of the line
     if (l.burn <= 0) {
+      if (l.coal <= 0) this.fromTender(c);
       if (l.coal <= 0) return; // out of coal: it coasts to a stop
       l.coal--; l.burn += LOCO_BURN;
     }
@@ -249,6 +250,22 @@ export class Carts {
     const top = Math.max(3.5, LOCO_SPEED - 0.25 * c.towed.length);
     if (c.speed < top) c.speed = Math.min(top, c.speed + LOCO_PULL * dt);
     if (c.speed > 0.5 && (c.chuff -= dt * c.speed) <= 0) { c.chuff = 2.4; this.onLoco?.(c, 'chuff'); }
+  }
+
+  // The tender: a storage cart coupled right behind the locomotive keeps it in coal (or charcoal), a few
+  // pieces at a time, as it runs out.
+  fromTender(c) {
+    const t = c.towed[0];
+    if (!t?.store) return false;
+    const inputs = t.store.inputs;
+    const i = inputs.findIndex((it) => it && (it.id === COAL || it.id === CHARCOAL));
+    if (i < 0) return false;
+    const n = Math.min(inputs[i].count, 4);
+    inputs[i].count -= n;
+    if (!inputs[i].count) inputs[i] = null;
+    c.loco.coal += n;
+    this.onLoco?.(c, 'tender');
+    return true;
   }
 
   // A locomotive that runs up against a cart that isn't coupled shoves it along ahead.

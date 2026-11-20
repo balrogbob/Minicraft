@@ -1,6 +1,7 @@
 // Block and item definitions.
 
 // Block ids: < 100, 190..255, 400..999 and 1100 up. Stored in each chunk's Uint16Array.
+// Item ids: 100..189, 300..399, 1000..1099 and (from v28) 3000 up, out of the way of the blocks.
 // Item ids: 100..189, 300..399 and 1000..1099 (never stored in the world).
 export const AIR = 0, GRASS = 1, DIRT = 2, STONE = 3, COBBLE = 4, LOG = 5, PLANKS = 6,
   LEAVES = 7, SAND = 8, GLASS = 9, TABLE = 10, BRICKS = 11, COAL_ORE = 12, BEDROCK = 13, WATER = 14,
@@ -140,7 +141,7 @@ export const T = {
   LEAD_CHEST_SIDE: 267, LEAD_CHEST_TOP: 268, LEAD_CHEST_FRONT: 269, CENTRIFUGE_SIDE: 270, CENTRIFUGE_TOP: 271, TESLA: 272, TESLA_TOP: 273,
   FENCE_POST: 274, FENCE_WIRE: 275, FREEZER_SIDE: 276, FREEZER_FRONT: 277, ARC_SIDE: 278, ARC_FRONT: 279, PACKED_ICE: 280, INVAR: 281, RAIL_STOP: 282, BASALT: 283, BASALT_TOP: 284, METEORITE: 285,
   IRON_BARS: 286, POT: 287, IVY: 288, BOX_FLOWERS: 289,
-  FRUIT_LEAVES: 290, FRUIT_RIPE: 293, FRUIT_SAPLING: 296, HAY: 299, SACK: 300, BEACON: 301, APIARY_SIDE: 302, APIARY_FRONT: 303, APIARY_FULL: 304, APIARY_TOP: 305, BELT_CROSS: 306, FARM_CTRL: 307, FARM_CTRL_ON: 308, TUBE: 309, TUBE_END: 310, AWNING: 311, FIRE: 312, CARROT_0: 313, POTATO_0: 317, STEM_0: 321, PUMPKIN_SIDE: 324, PUMPKIN_TOP: 325, JACK_FACE: 326, TRELLIS: 327, VINE_0: 328, BARREL_SIDE: 331, BARREL_TOP: 332, CHEESE: 333, SEA_BRICK: 334, SEA_LANTERN: 335, VAULT: 336, SKY_STONE: 337, AIR_PUMP: 338, RADIO: 339, RADIO_ON: 340, SORTBOX: 341, SORTBOX_TOP: 342, HEARTH: 343, HEARTH_LIT: 344, CHIMNEY_TOP: 345, STABLE_SIDE: 346, SNOWMAN_FRONT: 347, ONION_0: 348, BEAN_0: 352, TOMATO_0: 356, HERB_0: 360, KILN_SIDE: 364, KILN_TOP: 365, KILN_FRONT: 366, KILN_FRONT_LIT: 367, TERRACOTTA: 368, TERRA_COL: 369, GLAZED: 379, ROOF_TILES: 389, URN: 390, ROPE: 391, LOCK_GATE: 392, LOCK_GATE_TOP: 393, DRIPSTONE: 394, BEETLE_LAMP: 395, // (fruit tiles: apple, cherry, orange)
+  FRUIT_LEAVES: 290, FRUIT_RIPE: 293, FRUIT_SAPLING: 296, HAY: 299, SACK: 300, BEACON: 301, APIARY_SIDE: 302, APIARY_FRONT: 303, APIARY_FULL: 304, APIARY_TOP: 305, BELT_CROSS: 306, FARM_CTRL: 307, FARM_CTRL_ON: 308, TUBE: 309, TUBE_END: 310, AWNING: 311, FIRE: 312, CARROT_0: 313, POTATO_0: 317, STEM_0: 321, PUMPKIN_SIDE: 324, PUMPKIN_TOP: 325, JACK_FACE: 326, TRELLIS: 327, VINE_0: 328, BARREL_SIDE: 331, BARREL_TOP: 332, CHEESE: 333, SEA_BRICK: 334, SEA_LANTERN: 335, VAULT: 336, SKY_STONE: 337, AIR_PUMP: 338, RADIO: 339, RADIO_ON: 340, SORTBOX: 341, SORTBOX_TOP: 342, HEARTH: 343, HEARTH_LIT: 344, CHIMNEY_TOP: 345, STABLE_SIDE: 346, SNOWMAN_FRONT: 347, ONION_0: 348, BEAN_0: 352, TOMATO_0: 356, HERB_0: 360, KILN_SIDE: 364, KILN_TOP: 365, KILN_FRONT: 366, KILN_FRONT_LIT: 367, TERRACOTTA: 368, TERRA_COL: 369, GLAZED: 379, ROOF_TILES: 389, URN: 390, ROPE: 391, LOCK_GATE: 392, LOCK_GATE_TOP: 393, DRIPSTONE: 394, BEETLE_LAMP: 395, WASHER_SIDE: 396, WASHER_TOP: 397, WASHER_FRONT: 398, SIEVE: 399, SLAG_BRICKS: 400, CHARCOAL_HEAP: 401, // (fruit tiles: apple, cherry, orange)
 };
 
 // Ores, deepest-reaching last. tier: the pickaxe tier needed to mine it (see TOOL_TIERS);
@@ -2731,3 +2732,130 @@ block(STALAGMITE, {
 block(BEETLE_LAMP, { name: 'Beetle Lamp', sound: 'glass', tex: T.BEETLE_LAMP, hardness: 0.5, light: 12 });
 ITEMS[GLOW_SHELL] = { name: 'Glow Shell', about: 'from a cave beetle: it still glows' };
 RECIPES.push({ out: [BEETLE_LAMP, 1], in: [[GLOW_SHELL, 3], [GLASS, 1]] });
+
+// ---------- v28 A: ore washer, sieve and slag ----------
+// Crushed ore comes out dirty. Dirty dust smelts as it is, though it loses a quarter; washed in an ore washer
+// (driven by a shaft, with water touching it) it comes clean, and the washings now and then give up a trace
+// of another metal (nickel from iron, gold from copper, silver from lead...) as well as sludge. A sieve sifts
+// gravel and dirt for flint, scraps of ore, seeds and worms. Smelting leaves slag, which crushes into
+// fertiliser or makes rough bricks.
+export const DIRTY_DUST = 3000; // 3000..3049: one for each ore, in ORES order
+export const SLUDGE = 3050, SLAG = 3051, WORM = 3052;
+export const WASHER = 1451, SIEVE = 1455, SLAG_BRICKS = 1456; // washer 1451..1454: + facing
+export const dirtyDust = (oreId) => DIRTY_DUST + ORES.findIndex((o) => o.id === oreId);
+// what washing each ore's dust can turn up: [ore whose clean dust it gives, chance]
+const traceOf = (name) => ORES.find((o) => o.name === name)?.id;
+export const TRACE_METALS = {
+  [traceOf('Iron Ore')]: [traceOf('Nickel Ore'), 0.1],
+  [traceOf('Copper Ore')]: [traceOf('Gold Ore'), 0.06],
+  [traceOf('Tin Ore')]: [traceOf('Zinc Ore'), 0.1],
+  [traceOf('Lead Ore')]: [traceOf('Silver Ore'), 0.1],
+  [traceOf('Zinc Ore')]: [traceOf('Lead Ore'), 0.08],
+  [traceOf('Bauxite')]: [traceOf('Iron Ore'), 0.12],
+  [traceOf('Silver Ore')]: [traceOf('Gold Ore'), 0.06],
+  [traceOf('Gold Ore')]: [traceOf('Silver Ore'), 0.1],
+  [traceOf('Tungsten Ore')]: [traceOf('Tin Ore'), 0.1],
+  [traceOf('Nickel Ore')]: [traceOf('Copper Ore'), 0.1],
+  [traceOf('Uranium Ore')]: [traceOf('Lead Ore'), 0.12],
+};
+for (const o of ORES) if (o.ingot) ITEMS[dirtyDust(o.id)] = { name: `Dirty ${o.name.replace(' Ore', '')} Dust`, about: 'wash it for clean dust (and maybe a trace of another metal), or smelt it as it is' };
+ITEMS[SLUDGE] = { name: 'Sludge', about: 'the muck washed out of ore: 4 make a clay block' };
+ITEMS[SLAG] = { name: 'Slag', about: 'left over from smelting: crush it for fertiliser, or make bricks' };
+ITEMS[WORM] = { name: 'Worm', about: 'fishing bait (sift dirt for more)' };
+for (let k = 0; k < 4; k++) {
+  block(WASHER + k, {
+    name: 'Ore Washer', station: 'washer', side: T.WASHER_SIDE, top: T.WASHER_TOP, bottom: T.WASHER_SIDE, front: T.WASHER_FRONT,
+    facing: k, hardness: 2.5, tool: 'pick', variantOf: k ? WASHER : 0, drop: WASHER, stationBase: WASHER, machine: { load: 3 },
+  });
+}
+block(SIEVE, {
+  name: 'Sieve', station: 'sieve', sound: 'wood', transparent: true, hardness: 1.2, tool: 'axe', stationBase: SIEVE,
+  model: [
+    [0, 0, 0, 2, 10, 2, T.PLANKS], [14, 0, 0, 16, 10, 2, T.PLANKS], [0, 0, 14, 2, 10, 16, T.PLANKS], [14, 0, 14, 16, 10, 16, T.PLANKS], // legs
+    [0, 10, 0, 16, 13, 1.5, T.PLANKS], [0, 10, 14.5, 16, 13, 16, T.PLANKS], [0, 10, 1.5, 1.5, 13, 14.5, T.PLANKS], [14.5, 10, 1.5, 16, 13, 14.5, T.PLANKS], // frame
+    [1.5, 10.5, 1.5, 14.5, 11, 14.5, T.SIEVE], // the mesh
+  ],
+  boxes: [[0, 0, 0, 16, 13, 16]],
+});
+block(SLAG_BRICKS, { name: 'Slag Bricks', sound: 'stone', tex: T.SLAG_BRICKS, hardness: 2, tool: 'pick' });
+RECIPES.push(
+  { out: [WASHER, 1], in: [[IRON_INGOT, 3], [PLANKS, 4], [BUCKET, 1], [kineticId('gear', 0), 1]], table: true, metal: IRON_INGOT },
+  { out: [SIEVE, 1], in: [[PLANKS, 4], [STICK, 4], [STRING, 4]], table: true },
+  { out: [CLAY, 1], in: [[SLUDGE, 4]] },
+  { out: [SLAG_BRICKS, 4], in: [[SLAG, 4], [CLAY_BALL, 1]] },
+);
+
+// ---------- v28 B: charcoal piles ----------
+// A stack of logs covered over with earth, lit through one hole, smoulders into charcoal: each log becomes a
+// heap of charcoal that gives two pieces (no fuel needed). Let air in while it burns and it flares up.
+export const CHARCOAL_HEAP = 1457;
+block(CHARCOAL_HEAP, { name: 'Charcoal Heap', sound: 'gravel', tex: T.CHARCOAL_HEAP, hardness: 0.6, tool: 'shovel', drop: () => [[CHARCOAL, 2]] });
+
+// ---------- v28 C: machine upgrades ----------
+// Tap a machine with one to fit it (up to two of each kind in a machine; they come out again when it's broken).
+// Speed: works half as fast again. Efficiency: burns a third less fuel (fuelled machines). Yield: a chance of
+// one more of what it makes (crushers, pulverizers, washers, sieves, millstones and saws).
+export const SPEED_UPGRADE = 3053, EFFICIENCY_UPGRADE = 3054, YIELD_UPGRADE = 3055;
+export const UPGRADES = { [SPEED_UPGRADE]: 'speed', [EFFICIENCY_UPGRADE]: 'eff', [YIELD_UPGRADE]: 'yield' };
+ITEMS[SPEED_UPGRADE] = { name: 'Speed Upgrade', about: 'tap a machine with it: works half as fast again (up to two)' };
+ITEMS[EFFICIENCY_UPGRADE] = { name: 'Efficiency Upgrade', about: 'tap a furnace, oven or kiln with it: burns a third less fuel (up to two)' };
+ITEMS[YIELD_UPGRADE] = { name: 'Yield Upgrade', about: 'tap a crusher, pulverizer, washer, sieve, millstone or saw with it: sometimes one more (up to two)' };
+RECIPES.push(
+  { out: [SPEED_UPGRADE, 1], in: [[STEEL_INGOT, 2], [ELECTRUM_INGOT, 1], [kineticId('gear', 0), 1]], table: true, metal: STEEL_INGOT },
+  { out: [EFFICIENCY_UPGRADE, 1], in: [[CUPRONICKEL_INGOT, 2], [FIRE_BRICK, 2]], table: true, metal: CUPRONICKEL_INGOT },
+  { out: [YIELD_UPGRADE, 1], in: [[STAINLESS_INGOT, 2], [SILVER_INGOT, 1], [GOLD_INGOT, 1]], table: true, metal: STAINLESS_INGOT },
+);
+
+// ---------- v28 D: horse gear, hay, honey varieties ----------
+export const SADDLEBAGS = 3056, HORSE_ARMOUR = 3057, HAY_BALE = 1458;
+ITEMS[SADDLEBAGS] = { name: 'Saddlebags', about: 'tap your saddled horse with them: nine slots you open with 🎒 while riding' };
+ITEMS[HORSE_ARMOUR] = { name: 'Horse Armour', about: 'tap your horse with it: while you ride, creatures do you half the harm' };
+block(HAY_BALE, { name: 'Hay Bale', sound: 'grass', side: T.HAY, top: T.HAY, bottom: T.HAY, hardness: 0.5, tool: 'axe' });
+RECIPES.push(
+  { out: [SADDLEBAGS, 1], in: [[LEATHER, 4], [STRING, 2], [CHEST, 1]], table: true },
+  { out: [HORSE_ARMOUR, 1], in: [[IRON_INGOT, 6], [LEATHER, 2]], table: true, metal: IRON_INGOT },
+  { out: [HAY_BALE, 1], in: [[WHEAT, 9]] },
+  { out: [WHEAT, 9], in: [[HAY_BALE, 1]] },
+);
+// Honey takes after the flowers round the hive: lavender, fruit blossom or dandelions (or else it's plain
+// wildflower honey). Each brews a tea in the cauldron with its flower.
+export const LAVENDER_HONEY = 3059, BLOSSOM_HONEY = 3060, GOLDEN_HONEY = 3061, LAVENDER_TEA = 3062, BLOSSOM_TEA = 3063, GOLDEN_TEA = 3064;
+ITEMS[LAVENDER_HONEY] = { name: 'Lavender Honey', stack: 8, food: 6, honey: true, about: 'from bees among lavender: brew it with lavender' };
+ITEMS[BLOSSOM_HONEY] = { name: 'Blossom Honey', stack: 8, food: 6, honey: true, about: 'from bees among fruit trees: brew it with an apple or cherries' };
+ITEMS[GOLDEN_HONEY] = { name: 'Golden Honey', stack: 8, food: 6, honey: true, about: 'from bees among dandelions: brew it with a dandelion' };
+ITEMS[HONEY_BOTTLE].honey = true;
+ITEMS[LAVENDER_TEA] = { name: 'Lavender Tea', stack: 8, tea: ['fed', 600], about: 'feel soothed: hunger falls slower and you heal quicker' };
+ITEMS[BLOSSOM_TEA] = { name: 'Blossom Tea', stack: 8, tea: ['swift', 240], about: 'feel light on your feet: run faster' };
+ITEMS[GOLDEN_TEA] = { name: 'Golden Tea', stack: 8, tea: ['heal', 25], about: 'glow with health: heal quickly for a while' };
+
+// ---------- v28 E: fine crops, fish traps ----------
+// Now and then a ripe crop comes up fine: more so in soil beans have fed, under glass or watched by a
+// scarecrow, and never from tired soil. Fine produce is better eating, fetches a good price at a stall,
+// wins prizes at festivals, and can stand in for the ordinary kind (craft it back).
+export const FINE_CROPS = {}; // plain id -> fine id
+export const FISH_TRAP = 1459;
+[[WHEAT, 'Fine Wheat'], [CARROT, 'Fine Carrot'], [POTATO, 'Fine Potato'], [ONION, 'Fine Onion'], [BEANS, 'Fine Beans'],
+  [TOMATO, 'Fine Tomato'], [HERBS, 'Fine Herbs'], [GRAPES, 'Fine Grapes']].forEach(([id, name], i) => {
+  const fine = 3065 + i;
+  FINE_CROPS[id] = fine;
+  ITEMS[fine] = { name, fine: id, food: (ITEMS[id].food ?? 0) + 2, about: 'the pick of the harvest: sells well, and wins prizes at festivals' };
+  RECIPES.push({ out: [id, 1], in: [[fine, 1]] });
+});
+export const isFine = (id) => !!ITEMS[id]?.fine;
+// A wicker trap sunk in water: bait it with worms and now and then something swims in.
+block(FISH_TRAP, {
+  name: 'Fish Trap', station: 'fishtrap', sound: 'wood', transparent: true, hardness: 0.8, tool: 'axe', stationBase: FISH_TRAP,
+  model: [
+    [2, 0, 2, 14, 1, 14, T.PLANKS], [2, 1, 2, 14, 10, 3, T.SIEVE], [2, 1, 13, 14, 10, 14, T.SIEVE], [2, 1, 3, 3, 10, 13, T.SIEVE], [13, 1, 3, 14, 10, 13, T.SIEVE],
+    [2, 10, 2, 14, 11, 14, T.SIEVE], [6, 4, 1, 10, 8, 2, T.PLANKS], // lid, and the funnel mouth
+  ],
+  boxes: [[2, 0, 2, 14, 11, 14]],
+});
+RECIPES.push({ out: [FISH_TRAP, 1], in: [[STICK, 8], [STRING, 4], [PLANKS, 1]], table: true });
+ITEMS[WORM].about = 'bait: carry some when you fish and fish bite twice as fast (and no junk), or put them in a fish trap. Sift dirt for more';
+
+// ---------- v28 F: chest boats ----------
+export const CHEST_BOAT = 3073;
+ITEMS[CHEST_BOAT] = { name: 'Chest Boat', stack: 1, vehicle: 'boat', chest: true, about: 'a boat with a chest in the stern: open it with 🎒 while you row, or sneak and tap it' };
+RECIPES.push({ out: [CHEST_BOAT, 1], in: [[BOAT, 1], [CHEST, 1]] });
+ITEMS[LOCOMOTIVE].about = 'put it on a rail and tap it with coal: it pulls the carts behind it. A storage cart coupled right behind it is its tender: it keeps it in coal';
