@@ -3070,3 +3070,121 @@ ITEM_PAINTERS[HONEYED_APPLE] = (ctx) => {
   for (let y = 4; y < 14; y++) for (let x = 3; x < 13; x++) if (Math.hypot(x - 8, y - 9) < 4.8) px(ctx, x, y, y > 10 ? [200, 130, 30] : x < 7 ? [226, 70, 50] : [190, 40, 34]);
   rect(ctx, 8, 2, 1, 3, [100, 70, 40]); px(ctx, 6, 7, [255, 220, 140]);
 };
+
+// ---------- v32: rubber and polymers ----------
+import { LATEX, RUBBER, HIDE_GLUE, POLYMER_PELLETS, POLYMER_SHEET } from './blocks.js';
+// a tree tap's little bucket: staves with an iron hoop; and the latex in it
+P[T.TAP_SIDE] = (t) => {
+  for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+    const hoop = y === 4 || y === 11, stave = x % 4 === 0;
+    t.set(x, y, hoop ? [120, 124, 132] : stave ? [118, 82, 44] : t.vary([170, 122, 70], 0.06));
+  }
+};
+P[T.TAP_LATEX] = (t) => { for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) t.set(x, y, t.vary([240, 236, 220], 0.03)); };
+// the polymer press: a heavy steel frame with a ram, and a hopper on top
+P[T.PRESS_SIDE] = (t) => {
+  for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+    const frame = x < 2 || x > 13 || y < 2 || y > 13, ram = x >= 5 && x <= 10 && y >= 3 && y <= 8, platen = y === 9 || y === 10;
+    t.set(x, y, frame ? [92, 96, 104] : ram ? [176, 180, 188] : platen ? [70, 150, 200] : t.vary([128, 132, 140], 0.05));
+  }
+};
+P[T.PRESS_TOP] = (t) => {
+  for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+    const d = Math.max(Math.abs(x - 7.5), Math.abs(y - 7.5));
+    t.set(x, y, d < 2 ? [40, 40, 46] : d < 5 ? [150, 154, 162] : d > 6.5 ? [92, 96, 104] : t.vary([128, 132, 140], 0.05));
+  }
+};
+// insulated wire: black rubber sheathing, with a gleam of the electrum where it's carrying a signal
+P[T.INSWIRE_OFF] = (t) => { for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) t.set(x, y, t.vary((x + y) % 5 ? [40, 40, 44] : [70, 70, 76], 0.06)); };
+P[T.INSWIRE_ON] = (t) => { for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) t.set(x, y, t.vary((x + y) % 5 ? [40, 40, 44] : [255, 226, 90], 0.05)); };
+ITEM_PAINTERS[LATEX] = (ctx) => {
+  for (let y = 3; y < 14; y++) for (let x = 3; x < 13; x++) {
+    const r = Math.hypot((x - 7.5) / 4.5, (y - 9.5) / 4.2), tip = y < 8 && Math.abs(x - 7.5) < (y - 2) * 0.7;
+    if (r < 1 || tip) px(ctx, x, y, x > 9 ? [214, 210, 196] : x < 6 && y < 10 ? [255, 255, 250] : [240, 236, 220]);
+  }
+};
+ITEM_PAINTERS[RUBBER] = (ctx) => {
+  for (let y = 4; y < 13; y++) for (let x = 3; x < 13; x++) {
+    if (Math.hypot((x - 7.5) / 5, (y - 8.5) / 4.3) >= 1) continue;
+    px(ctx, x, y, y < 7 ? [80, 72, 66] : x > 10 ? [30, 26, 24] : [52, 46, 42]);
+  }
+};
+ITEM_PAINTERS[HIDE_GLUE] = (ctx) => {
+  for (let y = 5; y < 14; y++) for (let x = 4; x < 12; x++) px(ctx, x, y, x === 4 || x === 11 || y === 13 ? [150, 110, 60] : y < 8 ? [230, 190, 110] : [206, 160, 80]);
+  for (let x = 5; x < 11; x++) px(ctx, x, 4, [120, 84, 44]);
+};
+ITEM_PAINTERS[POLYMER_PELLETS] = (ctx) => {
+  for (const [cx, cy] of [[5, 6], [10, 5], [7, 10], [11, 11], [4, 12], [9, 8]]) {
+    for (let y = cy - 1; y <= cy + 1; y++) for (let x = cx - 1; x <= cx + 1; x++) if (Math.abs(x - cx) + Math.abs(y - cy) < 2) px(ctx, x, y, x < cx || y < cy ? [226, 238, 246] : [176, 200, 220]);
+  }
+};
+ITEM_PAINTERS[POLYMER_SHEET] = (ctx) => {
+  for (let y = 4; y < 13; y++) for (let x = 2; x < 14; x++) {
+    const sx = x - (12 - y) * 0.3;
+    if (sx < 2 || sx > 13) continue;
+    px(ctx, x, y, y === 4 || x === 13 ? [150, 176, 200] : (x + y) % 7 === 0 ? [250, 252, 255] : [210, 226, 240]);
+  }
+};
+
+// ---------- v32 B: polymer blocks and gear ----------
+import { POLYMER_BOAT, PADDED_BOOTS, polymerTool } from './blocks.js';
+// a bounce pad: a taut black rubber skin with a pale target, over a plank frame
+P[T.BOUNCE_TOP] = (t) => {
+  for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+    const d = Math.hypot(x - 7.5, y - 7.5), rim = x < 1 || x > 14 || y < 1 || y > 14;
+    t.set(x, y, rim ? [150, 110, 64] : d > 2.5 && d < 3.8 ? [230, 200, 70] : d < 1.5 ? [230, 200, 70] : t.vary([46, 44, 48], 0.05));
+  }
+};
+P[T.BOUNCE_SIDE] = (t) => {
+  for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) t.set(x, y, y < 3 ? t.vary([46, 44, 48], 0.05) : y === 8 && x % 5 === 2 ? [190, 190, 196] : t.vary([170, 122, 70], 0.06));
+};
+// polymer: flat, smooth colour with a soft sheen along one edge
+COLORS.forEach((c, i) => {
+  const hi = c.rgb.map((v) => Math.min(255, v + 40));
+  P[T.POLY_COL + i] = (t) => { for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) t.set(x, y, x + y < 5 ? hi : x === 15 || y === 15 ? shade(c.rgb, 0.82) : t.vary(c.rgb, 0.015)); };
+});
+// a lumen panel: clear, with a glowing grid
+P[T.LUMEN] = (t) => {
+  for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+    const edge = x === 0 || y === 0 || x === 15 || y === 15, grid = x % 5 === 0 || y % 5 === 0;
+    if (edge) t.set(x, y, [236, 246, 255]); else if (grid) t.set(x, y, [200, 236, 255], 200); else t.set(x, y, [210, 240, 255], 70);
+  }
+};
+MAT.polymer = [[236, 240, 244], [150, 170, 190]];
+for (const kind of ['pick', 'axe', 'shovel']) ITEM_PAINTERS[polymerTool(kind)] = toolPainter(kind, 'polymer');
+ITEM_PAINTERS[polymerTool('sword')] = swordPainter('polymer');
+ITEM_PAINTERS[POLYMER_BOAT] = (ctx) => {
+  rect(ctx, 1, 8, 14, 3, [232, 236, 240]); rect(ctx, 3, 11, 10, 2, [200, 206, 214]); rect(ctx, 0, 6, 2, 3, [232, 236, 240]); rect(ctx, 14, 6, 2, 3, [232, 236, 240]);
+  rect(ctx, 1, 9, 14, 1, [60, 120, 210]); for (let k = 0; k < 6; k++) px(ctx, 4 + k, 7 - (k >> 1), [106, 68, 38]);
+};
+ITEM_PAINTERS[PADDED_BOOTS] = (ctx) => {
+  rect(ctx, 2, 3, 4, 8, [120, 84, 50]); rect(ctx, 10, 3, 4, 8, [120, 84, 50]);
+  rect(ctx, 1, 10, 6, 3, [140, 100, 60]); rect(ctx, 9, 10, 6, 3, [140, 100, 60]);
+  rect(ctx, 1, 13, 6, 2, [44, 42, 46]); rect(ctx, 9, 13, 6, 2, [44, 42, 46]);
+};
+
+// ---------- v32 C: demolition charges ----------
+import { DETONATOR } from './blocks.js';
+// a demolition charge: grey-wrapped blocks of explosive strapped in a polymer case, with a receiver on top
+P[T.DEMO_SIDE] = (t) => {
+  for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+    const strap = y === 3 || y === 12, seam = x === 5 || x === 10;
+    t.set(x, y, strap ? [60, 60, 66] : seam ? [150, 140, 110] : t.vary([196, 186, 150], 0.05));
+  }
+  for (let x = 6; x < 10; x++) for (let y = 6; y < 9; y++) t.set(x, y, [214, 60, 40]); // a warning label
+};
+const demoTop = (lit) => (t) => {
+  for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+    const box = x >= 4 && x <= 11 && y >= 4 && y <= 11, led = x >= 7 && x <= 8 && y >= 7 && y <= 8;
+    t.set(x, y, led ? (lit ? [255, 60, 40] : [90, 30, 26]) : box ? [52, 54, 60] : t.vary([196, 186, 150], 0.05));
+  }
+  for (let y = 1; y < 4; y++) t.set(12, y, [40, 40, 44]); // the aerial
+};
+P[T.DEMO_TOP] = demoTop(false);
+P[T.DEMO_ARMED] = demoTop(true);
+P[T.DETONATOR_TILE] = demoTop(true); // (unused on blocks; keeps the slot reserved)
+ITEM_PAINTERS[DETONATOR] = (ctx) => {
+  rect(ctx, 4, 5, 8, 10, [232, 236, 240]); rect(ctx, 4, 14, 8, 1, [170, 176, 184]);
+  rect(ctx, 6, 7, 4, 3, [214, 50, 40]); rect(ctx, 7, 11, 2, 2, [60, 60, 66]);
+  for (let y = 0; y < 5; y++) px(ctx, 10, y, [40, 40, 44]); px(ctx, 10, 0, [255, 80, 60]);
+};

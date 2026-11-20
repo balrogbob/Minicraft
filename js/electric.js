@@ -23,6 +23,7 @@ import {
   BLOCKS, GEN_POWER, ELECTRIC_LAMP, CHARGE_RATE, chargeCap, stationKind, MAX_LIGHT, SOLAR_POWER, STORE_CAP, STORE_RATE,
   PAD_CAP, PAD_PLAYER, TELEPAD, LAVA, GEO_POWER, REACTOR, REACTOR_POWER, REACTOR_HEAT, REACTOR_COOL, WATER_COOL, REACTOR_HOT,
   MELTDOWN, FUEL_ROD, ROD_LIFE, SPENT_ROD, isFuelRod, maxWear, ICE, PACKED_ICE, ICE_COOL, PACKED_ICE_COOL, WATER,
+  WIRE_CARRY, INSULATED_CARRY,
 } from './blocks.js';
 import { STATION_KINDS } from './stations.js';
 import { CHUNK, SEA_LEVEL } from './terrain.js';
@@ -142,6 +143,9 @@ export class Electric {
           queue.push(m);
         }
       }
+      // (v32) the wires and cables carry only so much: the weakest of them decides what reaches the machines
+      net.carry = Infinity;
+      for (const n of net.parts) if (n.role === 'wire' || n.role === 'cable') net.carry = Math.min(net.carry, n.carry ?? WIRE_CARRY);
       const stores = [];
       for (const n of net.parts) {
         if (n.role === 'gen') { n.made = this.made(n, world, kinetics, stations); net.supply += n.made; net.gens++; }
@@ -159,7 +163,7 @@ export class Electric {
         net.take = Math.min(net.supply - net.demand, STORE_RATE * room.length);
         for (const n of room) n.flow = net.take / room.length;
       }
-      const have = net.supply + net.give;
+      const have = Math.min(net.supply + net.give, net.carry);
       net.share = net.demand > 0 ? Math.min(1, have / net.demand) : have > 0 ? 1 : 0;
       nets.push(net);
     }
@@ -177,7 +181,7 @@ export class Electric {
   }
 
   // Is the network at (x, y, z) short of power (its machines want more than it has)?
-  shortAt(x, y, z) { const net = this.netAt(x, y, z); return !!net && net.demand > net.supply + net.give + 1e-6; }
+  shortAt(x, y, z) { const net = this.netAt(x, y, z); return !!net && net.demand > Math.min(net.supply + net.give, net.carry ?? Infinity) + 1e-6; }
   // Has it power to spare (making more than its machines use)?
   spareAt(x, y, z) { const net = this.netAt(x, y, z); return !!net && net.supply > net.demand + 1e-6; }
 
@@ -216,6 +220,9 @@ export class Electric {
     const stored = net.stores ? ` (batteries ${Math.round(net.stored / (STORE_CAP * net.stores) * 100)}% full)` : '';
     if (!net.gens && !net.stored) return `${pre}No power: join it to a generator with electrum wire or cable`;
     if (!net.supply && !net.give) return `${pre}No power: the generators aren't making any${stored}`;
+    if (net.demand > net.carry + 1e-6 && net.supply + net.give > net.carry + 1e-6) {
+      return `${pre}Wire limit: the machines want ${fmt(net.demand)}, but the wires carry only ${fmt(net.carry)}, so everything runs at ${Math.round(net.share * 100)}%${net.carry < INSULATED_CARRY ? ' (insulated wire carries twice as much)' : ''}${stored}`;
+    }
     if (net.demand > net.supply + net.give + 1e-6) return `${pre}Short of power: needs ${fmt(net.demand)}, has ${fmt(net.supply + net.give)}, so everything runs at ${Math.round(net.share * 100)}%${stored}`;
     if (net.give > 1e-6) return `${pre}Using ${fmt(net.demand)} power: ${fmt(net.supply)} made, ${fmt(net.give)} from the batteries${stored}`;
     return `${pre}Using ${fmt(net.demand)} of ${fmt(net.supply)} power${stored}`;

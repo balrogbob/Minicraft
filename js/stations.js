@@ -541,3 +541,16 @@ STATION_KINDS.centrifuge.recipes.push(...COMB_RECIPES);
 // honey must for mead, and honey cake
 STATION_KINDS.winepress.recipes.push({ out: [HONEY_MUST, 1], in: [[HONEY_DROP, 6], [GLASS_BOTTLE, 1]], time: 8 });
 STATION_KINDS.oven.recipes.push({ out: [HONEY_CAKE, 1], in: [[FLOUR, 3], [HONEY_DROP, 4], [EGG, 1]], time: 10 });
+
+// ---------- v32: rubber and polymers ----------
+import { LATEX, RUBBER, HIDE_GLUE, POLYMER_PELLETS, POLYMER_SHEET } from './blocks.js';
+// the polymer press is turned by a shaft, like a millstone
+STATION_KINDS.polypress = { name: 'Polymer Press', verb: 'Pressing', inputs: 2, powered: true, recipes: [
+  { out: [POLYMER_PELLETS, 2], in: [[SAWDUST, 4], [HIDE_GLUE, 1]], time: 6 },
+  { out: [POLYMER_SHEET, 1], in: [[POLYMER_PELLETS, 2]], time: 5 },
+] };
+// the oven cures latex into rubber, and renders leather into glue (hide cures into leather first)
+STATION_KINDS.oven.recipes.push(
+  { out: [RUBBER, 1], in: [[LATEX, 2]], time: 6 },
+  { out: [HIDE_GLUE, 1], in: [[LEATHER, 1]], time: 8 },
+);

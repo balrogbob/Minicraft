@@ -75,7 +75,7 @@ import { Logic } from './logic.js';
 
 // v2 = the 16k x 16k streaming world (player state here, edited chunks in IndexedDB).
 // v1 = the old 128 x 128 world, migrated into the middle of the big world on first launch.
-const GAME_VERSION = '31'; // shown in the menu; bump with each release
+const GAME_VERSION = '32'; // shown in the menu; bump with each release
 const SAVE_KEY = 'minicraft-save-v2';
 const LEGACY_SAVE_KEY = 'minicraft-save-v1';
 const SETTINGS_KEY = 'minicraft-settings-v1';
@@ -937,7 +937,13 @@ function updateHealth(dt, wasGround, prevY) {
     const fall = fallTop - player.pos.y;
     fallTop = null;
     const hurt = Math.floor((fall - 3) * (armourEnch[3]?.includes('feather') ? 0.5 : 1));
-    if (fall > 3.5 && hurt > 0) damage(hurt, 'You fell from a high place.');
+    // v32: a bounce pad throws you back up (hold jump to bounce higher, sneak to stop), and never hurts
+    const pad = BLOCKS[world.get(Math.floor(player.pos.x), Math.floor(player.pos.y - 0.05), Math.floor(player.pos.z))]?.bounce;
+    if (pad) {
+      const back = Math.min(24, Math.sqrt(2 * 28 * Math.max(0, fall)) * 0.85);
+      const v = controls.down ? 0 : Math.max(back, controls.jump ? pad : 0);
+      if (v > 2) { player.vel.y = v; player.onGround = false; sound.place('wool'); }
+    } else if (fall > 3.5 && hurt > 0 && !guarded('fall')) damage(hurt, 'You fell from a high place.'); // (padded boots: no fall damage)
   }
   // drowning
   player.swimMul = guarded('swim') ? 1.9 : 1; // flippers
@@ -1103,7 +1109,7 @@ function lookName() {
     if (l) return `Locomotive${l.burn > 0 || l.coal > 0 ? ` (coal: ${l.coal}${l.burn > 0 ? ` + ${Math.ceil(l.burn)}s` : ''})` : ' (no coal)'}${c.towed?.length ? `, pulling ${c.towed.length}` : ''}`;
     return (c.store ? 'Storage Cart' : 'Minecart') + (c.tow ? ' (coupled)' : '');
   }
-  if (targetVehicle) return targetVehicle.v.kind === 'boat' ? (targetVehicle.v.store ? 'Chest Boat (sneak and tap to open)' : 'Boat') : 'Hot-Air Balloon';
+  if (targetVehicle) return targetVehicle.v.kind === 'boat' ? (targetVehicle.v.store ? 'Chest Boat (sneak and tap to open)' : targetVehicle.v.fast ? 'Polymer Boat' : 'Boat') : 'Hot-Air Balloon';
   if (targetMob) {
     const m = targetMob.mob;
     const name = m.spec.name ?? (m.kind === 'villager' ? `Villager (${m.profession ?? 'farmer'})` : capital(m.kind));
@@ -1465,6 +1471,7 @@ function openStation(x, y, z, cart = null) {
     : 'Put empty buckets in for milking yaks, and wheat to feed the animals (their coats grow back faster). Wheat, seeds or berries also feed pairs of animals so they have young. What it gets comes out of its back, into a chest, hopper or belt.'}</p>`
     : kind === 'winepress' || kind === 'cheesepress' ? `<p class="hint">It needs no fuel or power. Lay what it makes down in an oak barrel to age: ${kind === 'winepress' ? 'grape juice becomes wine, apple juice cider and berry juice berry wine in a day, and finer still three days later' : 'curds become cheese in a day, and aged cheese three days later'}.</p>`
     : kind === 'bottler' ? `<p class="hint">Pipe water or lava into it with a liquid sink or supplier pipe: it fills the buckets put in it (lava goes in lead buckets). It holds ${logistics.bottlerText(x, y, z)}.</p>`
+    : kind === 'polypress' ? '<p class="hint">Turn it with a shaft. Sawdust and hide glue (leather rendered in an oven) make polymer pellets; two pellets press into a sheet.</p>'
     : kind === 'beehouse' ? '<p class="hint">Put in a princess and a drone (catch them from a wild hive with a bee scoop), and up to two frames for more combs. ' +
       'The princess becomes a queen and works through her life filling the trays with combs, then leaves a new princess and some drones. ' +
       'Each of them takes after one parent or the other, but two different species can now and then breed a new one. ' +
@@ -3478,13 +3485,13 @@ function openBoatChest(v) {
   sound.click();
   openStation(0, 0, 0, { store: v.store, title: 'Chest Boat' });
 }
-function putVehicle(kind, chest = false) {
+function putVehicle(kind, chest = false, fast = false) {
   if (kind === 'boat') {
     const w = waterInSight();
     if (!w) { toast('Put a boat on water', 1500); return false; }
     let y = w[1];
     while (world.isWater(w[0], y + 1, w[2])) y++;
-    vehicles.add('boat', w[0] + 0.5, y + 0.55, w[2] + 0.5, player.yaw + Math.PI, 0, chest ? newBoatStore() : null);
+    vehicles.add('boat', w[0] + 0.5, y + 0.55, w[2] + 0.5, player.yaw + Math.PI, 0, chest ? newBoatStore() : null, fast);
   } else {
     if (!target) return false;
     const { x, y, z } = target;
@@ -3698,7 +3705,7 @@ function placeInner() {
     return;
   }
   if (targetVehicle) { if (targetVehicle.v.store && controls.down) openBoatChest(targetVehicle.v); else boardVehicle(targetVehicle.v); return; }
-  if (held && ITEMS[held.id]?.vehicle && putVehicle(ITEMS[held.id].vehicle, ITEMS[held.id].chest)) { inventory.consumeHeld(); return; }
+  if (held && ITEMS[held.id]?.vehicle && putVehicle(ITEMS[held.id].vehicle, ITEMS[held.id].chest, ITEMS[held.id].fast)) { inventory.consumeHeld(); return; }
   if (held?.id === ZIP_LINE && target?.id === ZIP_POST) { linkZip(target.x, target.y, target.z); return; }
   if (held?.id === GRAPPLE && target?.id === ZIP_POST) { startZip(target.x, target.y, target.z); return; }
   if (held?.id === CABLE_CAR && target?.id === ZIP_POST) { startZip(target.x, target.y, target.z, true); return; }
@@ -3721,6 +3728,7 @@ function placeInner() {
   if (held?.id === JOURNAL) { openJournal(held); return; }
   if (held?.id === REMOTE_ORDERER) { useOrderer(target); return; }
   if (held?.id === TREASURE_MAP) { readTreasureMap(held); return; }
+  if (held?.id === DETONATOR) { useDetonator(held, target); return; }
   if (held?.id === FIREWORK) { const l = player.lookDir(); fireworks.launch(player.pos.x + l.x * 1.2, player.pos.y + 1, player.pos.z + l.z * 1.2); sound.fuse(); inventory.consumeHeld(); return; }
   if (held?.id === FERTILISER && target && fertilise(target.x, target.y, target.z)) { inventory.consumeHeld(); return; }
   if (held?.id === GRAPPLE) { if (grapple) releaseGrapple(); else throwGrapple(); return; }
@@ -3767,6 +3775,7 @@ function placeInner() {
     if (isChair(tid) && !(held && isBlock(held.id))) { sitOn(tx, ty, tz); return; }
     if (potOf(tid) >= 0 && usePot(tx, ty, tz, tid, held)) return;
     if (held?.id === BEE_SCOOP && BLOCKS[tid].hive >= 0) { scoopHive(tx, ty, tz, tid); return; }
+    if (BLOCKS[tid].tap >= 0 && !(held && isBlock(held.id))) { useTap(tx, ty, tz, tid); return; }
     if (BLOCKS[tid].apiary && (held?.id === GLASS_BOTTLE || !held || !isBlock(held.id))) {
       // an apiary: take the comb and wax by hand (and a bottle of honey too, if you hold a bottle)
       const lv = BLOCKS[tid].hive;
@@ -3813,6 +3822,7 @@ function placeInner() {
     if (isLamp(tid)) { useLamp(tx, ty, tz, held); return; }
     if (isSign(tid)) { editSign(tx, ty, tz); return; }
     if (tid === BLAST_CHARGE) { lightFuse(tx, ty, tz); toast('The fuse is lit! Stand back…', 1500); return; }
+    if ((tid === DEMO_CHARGE || tid === DEMO_CHARGE + 1) && held?.id !== DETONATOR) { toast('A demolition charge has no fuse: link it to a detonator', 2000); return; }
     if (tid === ANVIL) { useAnvil(); return; }
     if (BLOCKS[tid].station === 'cauldron' && held?.id === WATER_BUCKET) {
       world.setBlock(tx, ty, tz, CAULDRON + 3);
@@ -4217,10 +4227,11 @@ function lightFuse(x, y, z, t = 3) {
 function tickFuses(dt) {
   for (const [k, f] of fuses) {
     const [x, y, z] = k.split(',').map(Number);
-    if (world.get(x, y, z) !== BLAST_CHARGE) { removeFuse(k, f); continue; }
+    const R = chargeRadius(world.get(x, y, z));
+    if (!R) { removeFuse(k, f); continue; }
     f.t -= dt;
     f.mesh.material.opacity = (Math.sin(f.t * (f.t < 1 ? 30 : 12)) * 0.5 + 0.5) * 0.55; // flashing faster as it burns down
-    if (f.t <= 0) { removeFuse(k, f); explode(x, y, z); }
+    if (f.t <= 0) { removeFuse(k, f); explode(x, y, z, R, R > BLAST_RADIUS ? 'You were caught in a demolition blast.' : undefined, true); }
   }
 }
 function removeFuse(k, f) {
@@ -4231,17 +4242,20 @@ function removeFuse(k, f) {
 }
 const blastable = (def) => def && !def.blastproof && !def.liquid && !def.station && !def.kinetic && def.hardness !== Infinity &&
   (def.shape === 'cube' || def.shape === 'cross' || def.shape === 'torch' || def.climb || def.sign || def.slab || def.stair || def.shape === 'fence' || def.shape === 'pane' || def.shape === 'wall');
-function explode(x, y, z, R = BLAST_RADIUS, cause = 'You stood too close to a blasting charge.') {
+// (v32: a demolition charge, linked to a detonator, blows a bigger hole)
+const chargeRadius = (id) => (id === BLAST_CHARGE ? BLAST_RADIUS : id === DEMO_CHARGE || id === DEMO_CHARGE + 1 ? DEMO_RADIUS : 0);
+// gather: a charge's blast throws you what it breaks (a meltdown or a meteorite just destroys)
+function explode(x, y, z, R = BLAST_RADIUS, cause = 'You stood too close to a blasting charge.', gather = false) {
   world.setBlock(x, y, z, AIR);
   const gathered = new Map(), span = Math.ceil(R);
-  const near = R <= BLAST_RADIUS && (x + 0.5 - player.pos.x) ** 2 + (y + 0.5 - player.pos.y) ** 2 + (z + 0.5 - player.pos.z) ** 2 < 24 * 24; // (a meltdown just destroys)
+  const near = gather && (x + 0.5 - player.pos.x) ** 2 + (y + 0.5 - player.pos.y) ** 2 + (z + 0.5 - player.pos.z) ** 2 < 24 * 24; // (a meltdown just destroys)
   const cleared = [];
   for (let dy = -span; dy <= span; dy++) for (let dz = -span; dz <= span; dz++) for (let dx = -span; dx <= span; dx++) {
     if (dx * dx + dy * dy + dz * dz > R * R) continue;
     const bx = x + dx, by = y + dy, bz = z + dz;
     const id = world.get(bx, by, bz);
     if (id === AIR) continue;
-    if (id === BLAST_CHARGE) { lightFuse(bx, by, bz, 0.25 + Math.random() * 0.2); continue; }
+    if (chargeRadius(id)) { lightFuse(bx, by, bz, 0.25 + Math.random() * 0.2); continue; }
     const def = BLOCKS[id];
     if (!blastable(def)) continue;
     if (isSign(id)) signs.remove(bx, by, bz);
@@ -4387,7 +4401,7 @@ function updateBreaking(dt) {
       targetVehicle = null;
       breakState.cart = 0;
       if (v.store && openStationAt?.cart?.store === v.store) closeStation();
-      giveDrops([[v.kind === 'boat' ? (v.store ? CHEST_BOAT : BOAT) : BALLOON, 1], ...(v.store?.inputs ?? []).filter(Boolean).map((it) => [it.id, it.count])]);
+      giveDrops([[v.kind === 'boat' ? (v.store ? CHEST_BOAT : v.fast ? POLYMER_BOAT : BOAT) : BALLOON, 1], ...(v.store?.inputs ?? []).filter(Boolean).map((it) => [it.id, it.count])]);
     }
     crack.visible = false;
     return;
@@ -6977,3 +6991,48 @@ apiculture.onYoung = (x, y, z, sp, mate, kids) => {
   achieve('mutation');
   if (Math.hypot(x + 0.5 - player.pos.x, z + 0.5 - player.pos.z) < 32) toast(`A new kind of bee in the bee house: ${[...new Set(fresh)].map((k) => BEE_SPECIES[k].name.toLowerCase()).join(' and ')}!`, 3000);
 };
+
+// ---------- v32: tree taps ----------
+import { TREE_TAP, LATEX, MAX_LATEX, POLYMER_BOAT, DEMO_CHARGE, DETONATOR, DEMO_RADIUS, DETONATOR_LINKS, DETONATOR_RANGE } from './blocks.js';
+// Tapping a tree tap takes the latex in it.
+function useTap(x, y, z, tid) {
+  const lv = BLOCKS[tid].tap;
+  if (lv > 0) {
+    world.setBlock(x, y, z, TREE_TAP);
+    giveDrops([[LATEX, lv]]);
+    sound.pop();
+    toast(`You take ${lv} latex from the tap`, 1500);
+    achieve('latex');
+  } else toast(world.tapOnTree(x, y, z) ? `Latex is dripping slowly into the tap (0/${MAX_LATEX})` : 'Put the tap against a tree trunk: latex drips into it', 2000);
+}
+window.minicraft.useTap = useTap;
+
+// A detonator remembers the demolition charges linked to it (in the item itself, so it keeps them when you
+// put it away). Tap a charge to link it (or unlink it); use the detonator anywhere else to set them all off,
+// one after another, as long as you're within DETONATOR_RANGE of each.
+function useDetonator(held, target) {
+  const links = (held.links ??= []);
+  const id = target && world.get(target.x, target.y, target.z);
+  if (target && (id === DEMO_CHARGE || id === DEMO_CHARGE + 1)) {
+    const i = links.findIndex(([x, y, z]) => x === target.x && y === target.y && z === target.z);
+    if (i >= 0) { links.splice(i, 1); world.setBlock(target.x, target.y, target.z, DEMO_CHARGE); toast(`Charge unlinked (${links.length} linked)`, 1500); }
+    else if (links.length >= DETONATOR_LINKS) toast(`A detonator can only hold ${DETONATOR_LINKS} charges`, 1800);
+    else { links.push([target.x, target.y, target.z]); world.setBlock(target.x, target.y, target.z, DEMO_CHARGE + 1); toast(`Charge linked (${links.length} linked). Stand well back, then use the detonator.`, 2200); }
+    sound.click(); inventory.onChange();
+    return;
+  }
+  if (!links.length) { toast('No charges linked: tap demolition charges with the detonator first', 2000); return; }
+  let fired = 0, far = 0;
+  for (const [x, y, z] of links) {
+    if (world.get(x, y, z) !== DEMO_CHARGE + 1) continue;
+    if (Math.hypot(x + 0.5 - player.pos.x, y + 0.5 - player.pos.y, z + 0.5 - player.pos.z) > DETONATOR_RANGE) { far++; continue; }
+    lightFuse(x, y, z, 1 + fired * 0.15);
+    fired++;
+  }
+  held.links = far ? links.filter(([x, y, z]) => world.get(x, y, z) === DEMO_CHARGE + 1 && !fuses.has(`${x},${y},${z}`)) : [];
+  inventory.onChange();
+  sound.click();
+  if (fired) { toast(`Detonating ${fired} charge${fired > 1 ? 's' : ''}!${far ? ` (${far} out of range)` : ''}`, 2000); achieve('demolition'); }
+  else toast(far ? 'The linked charges are out of range' : 'None of the linked charges are left', 2000);
+}
+window.minicraft.useDetonator = useDetonator;
