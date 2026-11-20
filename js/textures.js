@@ -2883,12 +2883,16 @@ ITEM_PAINTERS[CHEST_BOAT] = (ctx) => {
 // v29 C: logistics pipes
 const LP_COLOURS = [[170, 170, 160], [70, 130, 220], [80, 180, 90], [160, 90, 200], [220, 110, 60], [235, 200, 60]]; // basic, provider, crafting, supplier, sink, extractor
 P[T.LP_ARM] = (t) => {
+  // A clear glass tube in a gold frame. An arm's faces take the part of this tile at their place in the block:
+  // across the tube that's pixels 5.5 to 10.5, so pixels 5-6 and 9-10 there are its four long edges.
+  const edge = (c) => c === 5 || c === 6 || c === 9 || c === 10, inside = (c) => c >= 5 && c <= 10;
   for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
-    const rim = y < 1 || y > 14, ring = x % 8 === 0;
-    // a solid tube of smoky glass: gold rims and rings, a dark body, a pale highlight along it (so it reads as a pipe)
-    const shine = y >= 4 && y <= 5, shade = y >= 11;
-    if (rim) t.set(x, y, [214, 176, 70]); else if (ring) t.set(x, y, [176, 138, 52]);
-    else t.set(x, y, t.vary(shine ? [170, 214, 226] : shade ? [40, 72, 86] : [66, 112, 130], 0.04));
+    const along = !inside(x) ? x : !inside(y) ? y : -1; // the pixel's place along the tube (-1 on an end face)
+    const frame = along < 0 ? edge(x) || edge(y) : along === x ? edge(y) : edge(x);
+    const collar = along === 0 || along === 15 || along === 4 || along === 11;
+    if (frame) t.set(x, y, t.vary([214, 176, 70], 0.05));
+    else if (collar) t.set(x, y, [190, 150, 60]);
+    else t.set(x, y, [200, 230, 240], 0.25);
   }
 };
 LP_COLOURS.forEach((c, i) => {
