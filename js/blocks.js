@@ -2805,3 +2805,25 @@ RECIPES.push(
   { out: [EFFICIENCY_UPGRADE, 1], in: [[CUPRONICKEL_INGOT, 2], [FIRE_BRICK, 2]], table: true, metal: CUPRONICKEL_INGOT },
   { out: [YIELD_UPGRADE, 1], in: [[STAINLESS_INGOT, 2], [SILVER_INGOT, 1], [GOLD_INGOT, 1]], table: true, metal: STAINLESS_INGOT },
 );
+
+// ---------- v28 D: horse gear, hay, honey varieties ----------
+export const SADDLEBAGS = 3056, HORSE_ARMOUR = 3057, HAY_BALE = 1458;
+ITEMS[SADDLEBAGS] = { name: 'Saddlebags', about: 'tap your saddled horse with them: nine slots you open with 🎒 while riding' };
+ITEMS[HORSE_ARMOUR] = { name: 'Horse Armour', about: 'tap your horse with it: while you ride, creatures do you half the harm' };
+block(HAY_BALE, { name: 'Hay Bale', sound: 'grass', side: T.HAY, top: T.HAY, bottom: T.HAY, hardness: 0.5, tool: 'axe' });
+RECIPES.push(
+  { out: [SADDLEBAGS, 1], in: [[LEATHER, 4], [STRING, 2], [CHEST, 1]], table: true },
+  { out: [HORSE_ARMOUR, 1], in: [[IRON_INGOT, 6], [LEATHER, 2]], table: true, metal: IRON_INGOT },
+  { out: [HAY_BALE, 1], in: [[WHEAT, 9]] },
+  { out: [WHEAT, 9], in: [[HAY_BALE, 1]] },
+);
+// Honey takes after the flowers round the hive: lavender, fruit blossom or dandelions (or else it's plain
+// wildflower honey). Each brews a tea in the cauldron with its flower.
+export const LAVENDER_HONEY = 3059, BLOSSOM_HONEY = 3060, GOLDEN_HONEY = 3061, LAVENDER_TEA = 3062, BLOSSOM_TEA = 3063, GOLDEN_TEA = 3064;
+ITEMS[LAVENDER_HONEY] = { name: 'Lavender Honey', stack: 8, food: 6, honey: true, about: 'from bees among lavender: brew it with lavender' };
+ITEMS[BLOSSOM_HONEY] = { name: 'Blossom Honey', stack: 8, food: 6, honey: true, about: 'from bees among fruit trees: brew it with an apple or cherries' };
+ITEMS[GOLDEN_HONEY] = { name: 'Golden Honey', stack: 8, food: 6, honey: true, about: 'from bees among dandelions: brew it with a dandelion' };
+ITEMS[HONEY_BOTTLE].honey = true;
+ITEMS[LAVENDER_TEA] = { name: 'Lavender Tea', stack: 8, tea: ['fed', 600], about: 'feel soothed: hunger falls slower and you heal quicker' };
+ITEMS[BLOSSOM_TEA] = { name: 'Blossom Tea', stack: 8, tea: ['swift', 240], about: 'feel light on your feet: run faster' };
+ITEMS[GOLDEN_TEA] = { name: 'Golden Tea', stack: 8, tea: ['heal', 25], about: 'glow with health: heal quickly for a while' };

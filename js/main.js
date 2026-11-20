@@ -32,7 +32,7 @@ import {
   SNOWMAN, FIREWORK, PUMPKIN, JACK_O_LANTERN, EGG, POPPY, DANDELION, DAISY, LAVENDER,
   ONION, BEANS, TOMATO, HERBS, CIDER, VINTAGE_CIDER, BERRY_WINE, FINE_BERRY_WINE,
   KILN, ROPE_LADDER, ROPE_BRIDGE, BRIDGE_RAIL, LOCK_GATE, SLUICE_WHEEL, STALACTITE, STALAGMITE,
-  CHARCOAL_HEAP, CLAY, STONE, UPGRADES,
+  CHARCOAL_HEAP, CLAY, STONE, UPGRADES, HAY_BALE, LAVENDER_HONEY, BLOSSOM_HONEY, GOLDEN_HONEY, FRUIT_LEAVES,
 } from './blocks.js';
 import { Smoke } from './smoke.js';
 import { Fireworks } from './fireworks.js';
@@ -386,7 +386,7 @@ const armourEnch = [null, null, null, null, null]; // enchantments on what you'r
 const armourPoints = () => armour.reduce((t, id) => t + (id ? ITEMS[id].armour.points : 0), 0);
 // Each point of armour takes 4% off what creatures do to you, up to 80%.
 const armourShare = () => Math.min(0.8, armourPoints() * 0.04);
-const armoured = (amount) => { if (amount > 0) wearArmour(); return amount * (1 - armourShare()); };
+const armoured = (amount) => { if (amount > 0) wearArmour(); return amount * (1 - armourShare()) * (ridingMob?.armoured ? 0.5 : 1); }; // (an armoured horse takes half)
 let caneToday = 0; // raw sugar cane eaten since sunrise: the 5th gives you food poisoning
 const store = new ChunkStore();
 let worldReady = false; // false while a world is loading: nothing gets saved until the player is placed
@@ -464,7 +464,7 @@ async function startWorld(save, opts = {}) {
     const drops = dropsFor(LEAVES, 0); // (fruit trees' leaves too: not their fruit, which you'd pick)
     if (drops.length) giveDrops(drops);
   };
-  mobs.reset(world); bees.clear(); crows.clear(); critters.clear(); fires.clear(); hearths.clear(); smoke.clear(); fireworks.clear(); exitPhotoMode(); clearChestMark(); openGates.clear(); lockJobs.length = 0; piles.length = 0; clearRocks(); strikeIn = 20; catGiftDay = -1; bellDay = -1; villageGrowth = new Map(); shownSeason = -1;
+  mobs.reset(world); bees.clear(); crows.clear(); critters.clear(); fires.clear(); hearths.clear(); smoke.clear(); fireworks.clear(); exitPhotoMode(); clearChestMark(); openGates.clear(); lockJobs.length = 0; piles.length = 0; mangers.clear(); clearRocks(); strikeIn = 20; catGiftDay = -1; bellDay = -1; villageGrowth = new Map(); shownSeason = -1;
   kinetics.clear();
   kinetics.load(save?.kinetics);
   beltStart = null;
@@ -529,6 +529,7 @@ async function startWorld(save, opts = {}) {
   bellDay = Number.isInteger(save?.bellDay) ? save.bellDay : -1;
   world.soil = new Map((Array.isArray(save?.soil) ? save.soil : []).filter((e) => Array.isArray(e) && typeof e[0] === 'string' && e[1] && typeof e[1].kind === 'string'));
   for (const k of Array.isArray(save?.openGates) ? save.openGates.map((e) => (Array.isArray(e) ? e[0] : e)) : []) if (typeof k === 'string') openGates.set(k, LOCK_GATE);
+  for (const [k, n] of Array.isArray(save?.mangers) ? save.mangers : []) if (typeof k === 'string' && n > 0) mangers.set(k, Math.min(MANGER_MAX, n | 0));
   for (const p of Array.isArray(save?.piles) ? save.piles : []) {
     if (!Array.isArray(p?.cells) || !Array.isArray(p.hole) || !(p.left > 0)) continue;
     piles.push({ cells: p.cells.filter((c) => Array.isArray(c) && c.length === 3).map((c) => c.map((v) => v | 0)), hole: p.hole.map((v) => v | 0), left: +p.left, total: +p.total || +p.left, puff: 0 });
@@ -578,6 +579,10 @@ async function startWorld(save, opts = {}) {
       m.trusted = true;
       if (stabled) m.stable = h.stable;
       if (h?.baby > 0) { m.baby = h.baby; m.root.scale.setScalar(m.baseScale * 0.5); }
+      if (Array.isArray(h?.bags)) m.bags = Array.from({ length: 9 }, (_, i) => cleanStack(h.bags[i]));
+      m.armoured = !!h?.armoured;
+      m.rested = Math.max(0, +h?.rested || 0);
+      m.parts.gear?.(m.bags, m.armoured);
     }
     m.sitting = !!sitting && !far;
   }
@@ -644,7 +649,7 @@ function saveGame() {
     weather: { raining: weather.raining, timer: Math.round(weather.timer) },
     pets: mobs.pets(),
     waypoints,
-    places, treasures, beacons: [...beaconSpots], catGiftDay, villageGrowth: [...villageGrowth], bellDay, fires: [...fires], hearths: [...hearths], openGates: [...openGates], piles: piles.map((p) => ({ cells: p.cells, hole: p.hole, left: p.left, total: p.total })), soil: [...(world.soil ?? [])].slice(-4000),
+    places, treasures, beacons: [...beaconSpots], catGiftDay, villageGrowth: [...villageGrowth], bellDay, fires: [...fires], hearths: [...hearths], openGates: [...openGates], mangers: [...mangers], piles: piles.map((p) => ({ cells: p.cells, hole: p.hole, left: p.left, total: p.total })), soil: [...(world.soil ?? [])].slice(-4000),
     time: sky.time,
     creative,
     flying: player.flying,
@@ -1342,6 +1347,7 @@ function closeInventory() {
 function toggleInventory() {
   if (photoMode) return;
   if (openStationAt) { closeStation(); return; }
+  if (ridingMob?.bags && $('inventory').classList.contains('hidden') && $('menu').classList.contains('hidden')) { openSaddlebags(ridingMob); return; }
   if ($('inventory').classList.contains('hidden')) {
     if ($('menu').classList.contains('hidden')) openInventory();
   } else closeInventory();
@@ -1907,7 +1913,7 @@ function eat(id) {
     toast(`${itemName(id)}: you ${ITEMS[id].about}`, 1800);
   }
   if (ITEMS[id]?.bottle && inventory.add(GLASS_BOTTLE, 1)) toast('Inventory full');
-  if (id === HONEY_BOTTLE) { inventory.add(GLASS_BOTTLE, 1); health = Math.min(MAX_HEALTH, health + 2); renderHealth(); }
+  if (ITEMS[id]?.honey) { inventory.add(GLASS_BOTTLE, 1); health = Math.min(MAX_HEALTH, health + 2); renderHealth(); }
   if (id === PUFFERFISH) { poisoned = Math.max(poisoned, 15); toast('Ugh! The pufferfish was poisonous.', 2500); renderHealth(); }
   sound.eat();
   toast(`${ITEMS[id]?.bottle ? "Drank" : "Ate"} ${itemName(id).toLowerCase()}`, 1000);
@@ -3001,7 +3007,9 @@ function useStable(x, y, z) {
   const here = mine.filter((m) => m.stable === key);
   sound.mob('horse', 0.8);
   if (!here.length) { toast('No horses here. Saddle a horse you\'ve won over, ride it here and get off nearby.', 3000); return; }
-  toast(`${called ? `${called} horse${called > 1 ? 's' : ''} came home. ` : ''}At this stable: ${here.map((m) => `${HORSE_COATS[m.coat] ?? 'mottled'} (${horseStats(m).toLowerCase()})`).join('; ')}`, 4000);
+  const feed = mangers.get(key) ?? 0;
+  toast(`${called ? `${called} horse${called > 1 ? 's' : ''} came home. ` : ''}At this stable: ${here.map((m) => `${HORSE_COATS[m.coat] ?? 'mottled'} (${horseStats(m).toLowerCase()}${m.rested > 0 ? ', rested' : ''})`).join('; ')}. ` +
+    (feed ? `The manger holds ${feed} wheat.` : 'The manger is empty: tap the stable with wheat or a hay bale.'), 4500);
 }
 function followMount() {
   if (!mobs.mobs.includes(ridingMob)) { ridingMob = null; return; }
@@ -3674,6 +3682,7 @@ function placeInner() {
     if (isCurtain(tid)) { toggleCurtain(tx, ty, tz); return; }
     if (isGate(tid) || isTrapdoor(tid)) { toggleHatch(tx, ty, tz); return; }
     if (BLOCKS[tid].switch === 'lever') { setSwitch(tx, ty, tz, !BLOCKS[tid].on); return; }
+    if (BLOCKS[tid].stable && (held?.id === HAY_BALE || held?.id === WHEAT)) { stockStable(tx, ty, tz, held.id); return; }
     if (BLOCKS[tid].stable && !(held && isBlock(held.id))) { useStable(tx, ty, tz); return; }
     if (BLOCKS[tid].hearth) {
       if (held && HEARTH_FUEL[held.id]) { feedHearth(tx, ty, tz, held); return; }
@@ -3700,7 +3709,7 @@ function placeInner() {
       const lv = BLOCKS[tid].hive;
       if (lv >= MAX_APIARY) {
         world.setBlock(tx, ty, tz, APIARY);
-        if (held?.id === GLASS_BOTTLE) { inventory.consumeHeld(); giveDrops([[HONEY_BOTTLE, 1], [HONEYCOMB, 2], [BEESWAX, 2]]); }
+        if (held?.id === GLASS_BOTTLE) { inventory.consumeHeld(); giveDrops([[honeyAt(tx, ty, tz), 1], [HONEYCOMB, 2], [BEESWAX, 2]]); }
         else giveDrops([[HONEYCOMB, 3], [BEESWAX, 2]]);
         sound.pop();
         toast('You take the frames of comb from the apiary', 1500);
@@ -3712,9 +3721,10 @@ function placeInner() {
       if (held?.id === GLASS_BOTTLE && lv >= MAX_HONEY) {
         world.setBlock(tx, ty, tz, BEE_HIVE);
         inventory.consumeHeld();
-        giveDrops([[HONEY_BOTTLE, 1]]);
+        const hid = honeyAt(tx, ty, tz);
+        giveDrops([[hid, 1]]);
         sound.splash(false);
-        toast('You fill a bottle with honey', 1500);
+        toast(hid === HONEY_BOTTLE ? 'You fill a bottle with wildflower honey' : `You fill a bottle with ${itemName(hid).toLowerCase()}`, 1800);
       } else toast(lv >= MAX_HONEY ? 'The hive is full of honey: tap it holding a glass bottle' : `The bees are making honey (${lv}/${MAX_HONEY})`, 2000);
       return;
     }
@@ -5914,6 +5924,51 @@ window.addEventListener('keydown', (e) => {
   else if (photoMode && (e.code === 'Enter' || e.code === 'KeyP')) snapPhoto();
 });
 
+// ---------- v28 D: horse gear, stables with hay, honey varieties ----------
+// Saddlebags: while riding, 🎒 opens them (with your backpack below).
+function openSaddlebags(m) {
+  openStation(0, 0, 0, { store: { kind: 'chest', inputs: m.bags }, title: 'Saddlebags' });
+}
+// A stable's manger holds wheat (a hay bale is nine). Each horse kept there eats one when it needs it and is
+// then rested: 15% faster and higher-jumping, for five minutes of riding.
+const mangers = new Map(); // "x,y,z" of a stable -> wheat in its manger
+const MANGER_MAX = 90, RESTED_TIME = 300;
+function stockStable(x, y, z, id) {
+  const k = `${x},${y},${z}`, have = mangers.get(k) ?? 0, add = id === HAY_BALE ? 9 : 1;
+  if (have + add > MANGER_MAX) { toast(`The manger is full (${have} wheat)`, 1500); return; }
+  mangers.set(k, have + add);
+  inventory.consumeHeld();
+  sound.place('grass');
+  toast(`The manger holds ${have + add} wheat: horses kept here eat it and come out rested (15% faster, and jump higher)`, 2500);
+}
+let stableTimer = 0;
+function tickStables(dt) {
+  if ((stableTimer -= dt) > 0) return;
+  stableTimer = 2;
+  for (const m of mobs.mobs) {
+    if (!m.spec.horse || !m.tame || !m.stable || m.ridden || m.dying || (m.rested ?? 0) > RESTED_TIME * 0.5) continue;
+    const feed = mangers.get(m.stable) ?? 0;
+    if (!feed) continue;
+    const [x, , z] = m.stable.split(',').map(Number);
+    if (Math.hypot(m.pos.x - x - 0.5, m.pos.z - z - 0.5) > 4) continue;
+    mangers.set(m.stable, feed - 1);
+    if (feed - 1 <= 0) mangers.delete(m.stable);
+    m.rested = RESTED_TIME;
+  }
+}
+// What honey a hive or apiary at (x, y, z) makes: after whichever flowers grow thickest around it.
+const HONEY_FLOWERS = [[LAVENDER_HONEY, (id) => id === LAVENDER], [BLOSSOM_HONEY, (id) => BLOCKS[id]?.fruit != null || (id >= FRUIT_LEAVES && id < FRUIT_LEAVES + 6)], [GOLDEN_HONEY, (id) => id === DANDELION]];
+function honeyAt(x, y, z, r = 6) {
+  const n = HONEY_FLOWERS.map(() => 0);
+  for (let dy = -3; dy <= 4; dy++) for (let dz = -r; dz <= r; dz++) for (let dx = -r; dx <= r; dx++) {
+    const id = world.get(x + dx, y + dy, z + dz);
+    if (!id) continue;
+    HONEY_FLOWERS.forEach(([, is], i) => { if (is(id)) n[i]++; });
+  }
+  const best = n.indexOf(Math.max(...n));
+  return n[best] >= 3 ? HONEY_FLOWERS[best][0] : HONEY_BOTTLE;
+}
+
 // ---------- v28 C: machine upgrades ----------
 function fitUpgrade(x, y, z, upId) {
   const kind = stationKind(world.get(x, y, z));
@@ -6316,7 +6371,7 @@ function stepGame(now, dt) {
     world.tickPlants(dt);
     world.tickLeaves(dt);
     tickLamps(dt);
-    tickExplore(dt); tickTreasure(dt); tickLocks(dt); tickPiles(dt); tickStalactites(dt); tickSnow(dt); tickVillages(dt); tickStorm(dt); tickFires(dt); tickPuzzles(dt); tickHearths(dt);
+    tickExplore(dt); tickTreasure(dt); tickLocks(dt); tickPiles(dt); tickStables(dt); tickStalactites(dt); tickSnow(dt); tickVillages(dt); tickStorm(dt); tickFires(dt); tickPuzzles(dt); tickHearths(dt);
     crows.update(dt, world, player.pos, {
       day: lightUniforms.uDay.value,
       eat: (x, y, z) => world.setBlock(x, y, z, WHEAT_3 - 2), // back to green shoots
@@ -6460,5 +6515,5 @@ window.minicraft = {
   arrows, fishing, kinetics, electric, lightUniforms, bees, catchAt, seasonOf, applySeason, set day(v) { day = v; applySeason(); }, frames, signalAt, setSwitch, logic, machines, carts, minimap, signs, armour, damage, placeRail, getInCart, getOutOfCart,
   get riding() { return riding; }, explode, lightFuse, fuses, clockTime, compassText, place, editSign, closeSign, openInventory, closeInventory, chestMove, lamps, tickLamps, sleepUntilMorning, stations, openStation, closeStation,
   get caneToday() { return caneToday; }, get creative() { return creative; }, set creative(v) { creative = v; applyCreative(); }, toggleFly, wand, useWand, get achieved() { return achieved; }, achieve, worldMap, openMap, closeMap, openGuide, switchSlot, store, saveGame, renderWorlds, openWorlds, exportSlot, get target() { return target; }, set target(v) { target = v; }, applyKeys, renderKeys, camera, get controls() { return controls; }, loose, throwHeld, get waypoints() { return waypoints; }, toggleWaypoint, sortSlots, quickStack, dropMeteor, get meteors() { return meteors; }, weather, openTrade, closeTrade, mountMob, dismount, get ridingMob() { return ridingMob; }, effects, armourWear, useAnvil, rollLoot, settings,
-  get bedSpawn() { return bedSpawn; }, fertilise, openJournal, closeJournal, get packs() { return packs; }, radiationAt, vehicles, boardVehicle, leaveVehicle, get boarded() { return boarded; }, get seated() { return seated; }, crows, onInvSlot, onStationSlot, quickMoveInv, quickMoveStation, usedIn, itemTipHTML, critters, tickPets, get catGiftDay() { return catGiftDay; }, get villageGrowth() { return villageGrowth; }, notePlanting, tickPuzzles, airPumpNear, useStable, stableNear, horseLabel, fitUpgrade, piles, lightCharcoalPile, tickPiles, searchChests, takeFromChest, markChest, get chestMark() { return chestMark; }, enterPhotoMode, exitPhotoMode, snapPhoto, get photoMode() { return photoMode; }, photoCam, get lastPhoto() { return lastPhoto; }, tickStalactites, loosenStalactite, fallingRocks, shaking, workLock, findLock, tickLocks, openGates, lockJobs, hangRopeLadder, layBridge, rollUpRope, fireworks, ringBell, requestFor, festivalToday, repOf, addRep, tradeCost, tickFestival, villageEntry, hearths, tickHearths, feedHearth, chimneyTop, smoke, renderPins, togglePin, lightning, igniteAt, fires, tickFires, tickStorm, growVillage, buildVillageHouse, stallPrice, tickStalls, tickVillages, set catGiftDay(v) { catGiftDay = v; }, get places() { return places; }, get treasures() { return treasures; }, readTreasureMap, tickTreasure, beams, tickBeams, beaconSpots: () => beaconSpots, mistNow, tickSnow, tickExplore, sitOn, standUp, useDisplay, zips, linkZip, startZip, get zipping() { return zipping; }, burnCoal, get health() { return health; }, set health(v) { health = v; }, paintings, placeSwitchRail, signalAt, ailments, armourEnch, openAltar, lairNear, useBed, eat, drinkTea,
+  get bedSpawn() { return bedSpawn; }, fertilise, openJournal, closeJournal, get packs() { return packs; }, radiationAt, vehicles, boardVehicle, leaveVehicle, get boarded() { return boarded; }, get seated() { return seated; }, crows, onInvSlot, onStationSlot, quickMoveInv, quickMoveStation, usedIn, itemTipHTML, critters, tickPets, get catGiftDay() { return catGiftDay; }, get villageGrowth() { return villageGrowth; }, notePlanting, tickPuzzles, airPumpNear, useStable, stableNear, horseLabel, stockStable, tickStables, mangers, openSaddlebags, honeyAt, fitUpgrade, piles, lightCharcoalPile, tickPiles, searchChests, takeFromChest, markChest, get chestMark() { return chestMark; }, enterPhotoMode, exitPhotoMode, snapPhoto, get photoMode() { return photoMode; }, photoCam, get lastPhoto() { return lastPhoto; }, tickStalactites, loosenStalactite, fallingRocks, shaking, workLock, findLock, tickLocks, openGates, lockJobs, hangRopeLadder, layBridge, rollUpRope, fireworks, ringBell, requestFor, festivalToday, repOf, addRep, tradeCost, tickFestival, villageEntry, hearths, tickHearths, feedHearth, chimneyTop, smoke, renderPins, togglePin, lightning, igniteAt, fires, tickFires, tickStorm, growVillage, buildVillageHouse, stallPrice, tickStalls, tickVillages, set catGiftDay(v) { catGiftDay = v; }, get places() { return places; }, get treasures() { return treasures; }, readTreasureMap, tickTreasure, beams, tickBeams, beaconSpots: () => beaconSpots, mistNow, tickSnow, tickExplore, sitOn, standUp, useDisplay, zips, linkZip, startZip, get zipping() { return zipping; }, burnCoal, get health() { return health; }, set health(v) { health = v; }, paintings, placeSwitchRail, signalAt, ailments, armourEnch, openAltar, lairNear, useBed, eat, drinkTea,
 };
