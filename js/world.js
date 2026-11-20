@@ -8,6 +8,7 @@ import {
 
 // Water wheels let water run through their cell (and over them); see waterAt().
 const isWheel = (id) => id === WATER_WHEEL || id === WATER_WHEEL + 1;
+const TAP_SECONDS = 90; // (v32) seconds, on average, for a tree tap to fill another level of latex
 import { TILE, ATLAS_COLS } from './textures.js';
 import { Generator, CHUNK, H, SEA_LEVEL, WORLD_SIZE, WORLD_CHUNKS, CHUNK_VOLUME, localIndex } from './terrain.js';
 
@@ -306,7 +307,7 @@ export class World {
   // Copper wire: a dot in the middle, with a strip out to each wire or switch it touches, to wires a
   // block lower, and up the side of a block to wires on top of it.
   wireModel(x, y, z, def) {
-    const t = def.electric ? (def.on ? T.ELWIRE_ON : T.ELWIRE_OFF) : def.on ? T.WIRE_ON : T.WIRE_OFF, m = [[6.5, 0, 6.5, 9.5, 1, 9.5, t]];
+    const t = def.wireTex ? def.wireTex[def.on ? 1 : 0] : def.electric ? (def.on ? T.ELWIRE_ON : T.ELWIRE_OFF) : def.on ? T.WIRE_ON : T.WIRE_OFF, m = [[6.5, 0, 6.5, 9.5, 1, 9.5, t]];
     for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
       const n = BLOCKS[this.get(x + dx, y, z + dz)];
       // (electrum wire also runs up to the electric machines beside it)
@@ -413,6 +414,7 @@ export class World {
           continue;
         }
         if (def.grows === 'honey') { this.tickHive(x, y, z, id, elapsed); continue; }
+        if (def.grows === 'latex') { this.tickTap(x, y, z, id, elapsed); continue; }
         if (def.grows === 'fruit') { this.tickFruit(x, y, z, def, elapsed); continue; }
         const tired = def.crop || isWheat(id) ? this.soilFactor(x, y - 1, z) : 1;
         // plants grow faster in the rain, near bees, watered, and with the seasons
@@ -498,6 +500,14 @@ export class World {
 
   // A hive slowly fills with honey: faster with flowers around it (and slower in winter). As the bees
   // work, now and then a new flower springs up on the grass nearby.
+  // A tree tap fills with latex while it's against a tree trunk: a level about every minute and a half (slower
+  // in the cold of the year; in winter hardly at all).
+  tapOnTree(x, y, z) { return [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dz]) => this.get(x + dx, y, z + dz) === LOG); }
+  tickTap(x, y, z, id, elapsed) {
+    if (!this.tapOnTree(x, y, z)) return;
+    if (Math.random() < elapsed * Math.max(0.1, this.growthRate ?? 1) / TAP_SECONDS) this.setBlock(x, y, z, id + 1);
+  }
+
   tickHive(x, y, z, id, elapsed) {
     const key = `${x},${y},${z}`;
     this.hiveFlowers ??= new Map();

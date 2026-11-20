@@ -1465,6 +1465,7 @@ function openStation(x, y, z, cart = null) {
     : 'Put empty buckets in for milking yaks, and wheat to feed the animals (their coats grow back faster). Wheat, seeds or berries also feed pairs of animals so they have young. What it gets comes out of its back, into a chest, hopper or belt.'}</p>`
     : kind === 'winepress' || kind === 'cheesepress' ? `<p class="hint">It needs no fuel or power. Lay what it makes down in an oak barrel to age: ${kind === 'winepress' ? 'grape juice becomes wine, apple juice cider and berry juice berry wine in a day, and finer still three days later' : 'curds become cheese in a day, and aged cheese three days later'}.</p>`
     : kind === 'bottler' ? `<p class="hint">Pipe water or lava into it with a liquid sink or supplier pipe: it fills the buckets put in it (lava goes in lead buckets). It holds ${logistics.bottlerText(x, y, z)}.</p>`
+    : kind === 'polypress' ? '<p class="hint">Turn it with a shaft. Sawdust and hide glue (leather rendered in an oven) make polymer pellets; two pellets press into a sheet.</p>'
     : kind === 'beehouse' ? '<p class="hint">Put in a princess and a drone (catch them from a wild hive with a bee scoop), and up to two frames for more combs. ' +
       'The princess becomes a queen and works through her life filling the trays with combs, then leaves a new princess and some drones. ' +
       'Each of them takes after one parent or the other, but two different species can now and then breed a new one. ' +
@@ -3767,6 +3768,7 @@ function placeInner() {
     if (isChair(tid) && !(held && isBlock(held.id))) { sitOn(tx, ty, tz); return; }
     if (potOf(tid) >= 0 && usePot(tx, ty, tz, tid, held)) return;
     if (held?.id === BEE_SCOOP && BLOCKS[tid].hive >= 0) { scoopHive(tx, ty, tz, tid); return; }
+    if (BLOCKS[tid].tap >= 0 && !(held && isBlock(held.id))) { useTap(tx, ty, tz, tid); return; }
     if (BLOCKS[tid].apiary && (held?.id === GLASS_BOTTLE || !held || !isBlock(held.id))) {
       // an apiary: take the comb and wax by hand (and a bottle of honey too, if you hold a bottle)
       const lv = BLOCKS[tid].hive;
@@ -6977,3 +6979,18 @@ apiculture.onYoung = (x, y, z, sp, mate, kids) => {
   achieve('mutation');
   if (Math.hypot(x + 0.5 - player.pos.x, z + 0.5 - player.pos.z) < 32) toast(`A new kind of bee in the bee house: ${[...new Set(fresh)].map((k) => BEE_SPECIES[k].name.toLowerCase()).join(' and ')}!`, 3000);
 };
+
+// ---------- v32: tree taps ----------
+import { TREE_TAP, LATEX, MAX_LATEX } from './blocks.js';
+// Tapping a tree tap takes the latex in it.
+function useTap(x, y, z, tid) {
+  const lv = BLOCKS[tid].tap;
+  if (lv > 0) {
+    world.setBlock(x, y, z, TREE_TAP);
+    giveDrops([[LATEX, lv]]);
+    sound.pop();
+    toast(`You take ${lv} latex from the tap`, 1500);
+    achieve('latex');
+  } else toast(world.tapOnTree(x, y, z) ? `Latex is dripping slowly into the tap (0/${MAX_LATEX})` : 'Put the tap against a tree trunk: latex drips into it', 2000);
+}
+window.minicraft.useTap = useTap;

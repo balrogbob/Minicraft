@@ -141,7 +141,7 @@ export const T = {
   LEAD_CHEST_SIDE: 267, LEAD_CHEST_TOP: 268, LEAD_CHEST_FRONT: 269, CENTRIFUGE_SIDE: 270, CENTRIFUGE_TOP: 271, TESLA: 272, TESLA_TOP: 273,
   FENCE_POST: 274, FENCE_WIRE: 275, FREEZER_SIDE: 276, FREEZER_FRONT: 277, ARC_SIDE: 278, ARC_FRONT: 279, PACKED_ICE: 280, INVAR: 281, RAIL_STOP: 282, BASALT: 283, BASALT_TOP: 284, METEORITE: 285,
   IRON_BARS: 286, POT: 287, IVY: 288, BOX_FLOWERS: 289,
-  FRUIT_LEAVES: 290, FRUIT_RIPE: 293, FRUIT_SAPLING: 296, HAY: 299, SACK: 300, BEACON: 301, APIARY_SIDE: 302, APIARY_FRONT: 303, APIARY_FULL: 304, APIARY_TOP: 305, BELT_CROSS: 306, FARM_CTRL: 307, FARM_CTRL_ON: 308, TUBE: 309, TUBE_END: 310, AWNING: 311, FIRE: 312, CARROT_0: 313, POTATO_0: 317, STEM_0: 321, PUMPKIN_SIDE: 324, PUMPKIN_TOP: 325, JACK_FACE: 326, TRELLIS: 327, VINE_0: 328, BARREL_SIDE: 331, BARREL_TOP: 332, CHEESE: 333, SEA_BRICK: 334, SEA_LANTERN: 335, VAULT: 336, SKY_STONE: 337, AIR_PUMP: 338, RADIO: 339, RADIO_ON: 340, SORTBOX: 341, SORTBOX_TOP: 342, HEARTH: 343, HEARTH_LIT: 344, CHIMNEY_TOP: 345, STABLE_SIDE: 346, SNOWMAN_FRONT: 347, ONION_0: 348, BEAN_0: 352, TOMATO_0: 356, HERB_0: 360, KILN_SIDE: 364, KILN_TOP: 365, KILN_FRONT: 366, KILN_FRONT_LIT: 367, TERRACOTTA: 368, TERRA_COL: 369, GLAZED: 379, ROOF_TILES: 389, URN: 390, ROPE: 391, LOCK_GATE: 392, LOCK_GATE_TOP: 393, DRIPSTONE: 394, BEETLE_LAMP: 395, WASHER_SIDE: 396, WASHER_TOP: 397, WASHER_FRONT: 398, SIEVE: 399, SLAG_BRICKS: 400, CHARCOAL_HEAP: 401, LP_ARM: 402, LP_CORE: 403, LP_TABLE_TOP: 409, LP_TABLE_SIDE: 410, LP_JUNCTION: 411, LP_SENSOR_CORE: 412, LP_SENSOR_ON: 413, LP_FPROVIDER: 414, LP_FSUPPLIER: 415, DRONE_PAD_TOP: 416, DRONE_PAD_SIDE: 417, LP_FSINK: 418, BOTTLER_SIDE: 419, BOTTLER_TOP: 420, BEEHOUSE_SIDE: 421, BEEHOUSE_TOP: 422, BEEHOUSE_FRONT: 423, COMB_SPIN_SIDE: 424, COMB_SPIN_TOP: 425, // (fruit tiles: apple, cherry, orange)
+  FRUIT_LEAVES: 290, FRUIT_RIPE: 293, FRUIT_SAPLING: 296, HAY: 299, SACK: 300, BEACON: 301, APIARY_SIDE: 302, APIARY_FRONT: 303, APIARY_FULL: 304, APIARY_TOP: 305, BELT_CROSS: 306, FARM_CTRL: 307, FARM_CTRL_ON: 308, TUBE: 309, TUBE_END: 310, AWNING: 311, FIRE: 312, CARROT_0: 313, POTATO_0: 317, STEM_0: 321, PUMPKIN_SIDE: 324, PUMPKIN_TOP: 325, JACK_FACE: 326, TRELLIS: 327, VINE_0: 328, BARREL_SIDE: 331, BARREL_TOP: 332, CHEESE: 333, SEA_BRICK: 334, SEA_LANTERN: 335, VAULT: 336, SKY_STONE: 337, AIR_PUMP: 338, RADIO: 339, RADIO_ON: 340, SORTBOX: 341, SORTBOX_TOP: 342, HEARTH: 343, HEARTH_LIT: 344, CHIMNEY_TOP: 345, STABLE_SIDE: 346, SNOWMAN_FRONT: 347, ONION_0: 348, BEAN_0: 352, TOMATO_0: 356, HERB_0: 360, KILN_SIDE: 364, KILN_TOP: 365, KILN_FRONT: 366, KILN_FRONT_LIT: 367, TERRACOTTA: 368, TERRA_COL: 369, GLAZED: 379, ROOF_TILES: 389, URN: 390, ROPE: 391, LOCK_GATE: 392, LOCK_GATE_TOP: 393, DRIPSTONE: 394, BEETLE_LAMP: 395, WASHER_SIDE: 396, WASHER_TOP: 397, WASHER_FRONT: 398, SIEVE: 399, SLAG_BRICKS: 400, CHARCOAL_HEAP: 401, LP_ARM: 402, LP_CORE: 403, LP_TABLE_TOP: 409, LP_TABLE_SIDE: 410, LP_JUNCTION: 411, LP_SENSOR_CORE: 412, LP_SENSOR_ON: 413, LP_FPROVIDER: 414, LP_FSUPPLIER: 415, DRONE_PAD_TOP: 416, DRONE_PAD_SIDE: 417, LP_FSINK: 418, BOTTLER_SIDE: 419, BOTTLER_TOP: 420, BEEHOUSE_SIDE: 421, BEEHOUSE_TOP: 422, BEEHOUSE_FRONT: 423, COMB_SPIN_SIDE: 424, COMB_SPIN_TOP: 425, TAP_SIDE: 426, TAP_LATEX: 427, PRESS_SIDE: 428, PRESS_TOP: 429, INSWIRE_OFF: 430, INSWIRE_ON: 431, // (fruit tiles: apple, cherry, orange)
 };
 
 // Ores, deepest-reaching last. tier: the pickaxe tier needed to mine it (see TOOL_TIERS);
@@ -255,6 +255,9 @@ function block(id, o) {
     crop: o.crop ?? null, // v26: { kind, stage, ripe, seed } for the newer crops (carrots, potatoes, pumpkin vines, grapes)
     farm: o.farm ?? null, // 'feller' | 'planter' | 'breaker' | 'placer' | 'ranch' | 'net' (see machines.js)
     lpipe: o.lpipe ?? null, // v29: a part of a logistics network (see logistics.js): its role
+    tap: o.tap ?? -1, // v32: a tree tap's latex level
+    wireTex: o.wireTex ?? null, // v32: [off, on] tiles for a wire that isn't electrum
+    bounce: o.bounce ?? 0, // v32: how high a bounce pad throws you (blocks/s), 0 for none
   };
 }
 
@@ -3019,4 +3022,47 @@ RECIPES.push(
   { out: [HONEY_BOTTLE, 1], in: [[HONEY_DROP, 4], [GLASS_BOTTLE, 1]] },
   { out: [FERTILISER, 1], in: [[POLLEN, 2]] },
   { out: [HONEYED_APPLE, 1], in: [[APPLE, 1], [HONEY_DROP, 2]] },
+);
+
+// ---------- v32: rubber and polymers ----------
+// A tree tap against a log slowly fills with latex, which an oven cures into rubber. Hide glue (rendered from
+// leather in the oven) binds sawdust in the polymer press, a shaft-driven machine that moulds
+// it into polymer pellets and presses those into sheets. Rubber sheathes electrum wire into insulated wire,
+// which carries twice the power (see WIRE_CARRY in electric.js).
+export const TREE_TAP = 1477, MAX_LATEX = 4, POLYMER_PRESS = 1482, INSULATED_WIRE = 1483; // taps 1477..1481 (+ latex level); wire 1484 = carrying a signal
+export const LATEX = 3171, RUBBER = 3172, HIDE_GLUE = 3173, POLYMER_PELLETS = 3174, POLYMER_SHEET = 3175;
+export const WIRE_CARRY = 48, INSULATED_CARRY = 96; // most power a network's wires carry (the weakest wire in it decides)
+const TAP_MODEL = (k) => [
+  [4, 0, 4, 12, 7, 12, T.TAP_SIDE], // the bucket
+  [7, 7, 11, 9, 9, 16, T.IRON], // the spout, into the trunk behind
+  ...(k ? [[5, 1 + k * 1.2, 5, 11, 1.5 + k * 1.2, 11, T.TAP_LATEX]] : []),
+];
+for (let k = 0; k <= MAX_LATEX; k++) {
+  block(TREE_TAP + k, {
+    name: 'Tree Tap', sound: 'wood', transparent: true, solid: false, hardness: 0.8, tool: 'axe', model: TAP_MODEL(k), boxes: [[4, 0, 4, 12, 9, 16]],
+    variantOf: k ? TREE_TAP : 0, drop: () => [[TREE_TAP, 1], ...(k ? [[LATEX, k]] : [])], grows: k < MAX_LATEX ? 'latex' : null, tap: k,
+  });
+}
+block(POLYMER_PRESS, { ...machine, name: 'Polymer Press', station: 'polypress', side: T.PRESS_SIDE, top: T.PRESS_TOP, bottom: T.IRON, stationBase: POLYMER_PRESS, machine: { load: 3 } });
+for (let k = 0; k < 2; k++) {
+  const on = !!k, t = on ? T.INSWIRE_ON : T.INSWIRE_OFF;
+  block(INSULATED_WIRE + k, {
+    name: 'Insulated Wire', shape: 'wire', sound: 'stone', hardness: 0.2, transparent: true, solid: false, switch: 'wire', on, floor: true,
+    logic: 'wire', flip: INSULATED_WIRE + 1 - k, light: on ? 3 : 0, variantOf: k ? INSULATED_WIRE : 0, drop: INSULATED_WIRE,
+    electric: { role: 'wire', carry: INSULATED_CARRY }, wireTex: [T.INSWIRE_OFF, T.INSWIRE_ON],
+    model: [[6.5, 0, 0, 9.5, 1, 16, t], [0, 0, 6.5, 16, 1, 9.5, t]],
+  });
+}
+ITEMS[TREE_TAP] = { name: 'Tree Tap', about: 'put it against a tree trunk: latex drips into it; tap it to collect' };
+ITEMS[POLYMER_PRESS] = { name: 'Polymer Press', about: 'turn it with a shaft: it moulds sawdust and hide glue into polymer' };
+ITEMS[INSULATED_WIRE] = { name: 'Insulated Wire', about: `like electrum wire, but carries twice the power (${INSULATED_CARRY} rather than ${WIRE_CARRY})` };
+ITEMS[LATEX] = { name: 'Latex', about: 'cure it in an oven for rubber' };
+ITEMS[RUBBER] = { name: 'Rubber' };
+ITEMS[HIDE_GLUE] = { name: 'Hide Glue', about: 'render leather in an oven for it; binds sawdust in the polymer press' };
+ITEMS[POLYMER_PELLETS] = { name: 'Polymer Pellets' };
+ITEMS[POLYMER_SHEET] = { name: 'Polymer Sheet' };
+RECIPES.push(
+  { out: [TREE_TAP, 1], in: [[PLANKS, 3], [IRON_INGOT, 1]], table: true, metal: IRON_INGOT },
+  { out: [POLYMER_PRESS, 1], in: [[IRON_INGOT, 4], [STONE, 2], [kineticId('gear', 0), 1], [PLANKS, 2]], table: true, metal: IRON_INGOT },
+  { out: [INSULATED_WIRE, 4], in: [[ELECTRUM_WIRE, 4], [RUBBER, 1]], table: true },
 );
