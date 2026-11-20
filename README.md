@@ -1326,6 +1326,49 @@ breed when there are 12 or more about.
 - A storage cart coupled right behind a **locomotive** is its **tender**: the locomotive takes on coal or
   charcoal from it as it runs out.
 
+### Version 29
+
+#### The guidebook
+
+- Press **G** or tap 📖 for the **guidebook**: 11 chapters of goals, from your first log to a reactor and a
+  logistics network. Goals tick themselves off as you reach them. Each one shows how its item is made and has a
+  small reward to claim. A gold dot on 📖 means a reward is waiting. A chapter opens once half of the one before
+  it is done.
+
+#### Music
+
+- Quiet music now plays, made as you listen, in a mood to suit where you are: day, night, caves, under water,
+  villages, festivals and winter. Set its volume with the **Music** slider in the menu (0 turns it off).
+
+#### Logistics pipes
+
+A routed item network, after the classic Logistics Pipes mod. Logistics pipes join up into a network. Each pipe
+works the chests and machines it touches, according to its job:
+
+- **Logistics pipe** (8 tubes, a gold ingot and a wire make 8): just a link.
+- **Provider pipe** (a pipe and a hopper): offers what's in a chest, or what a machine has finished making, to
+  the network. Tap it to offer everything except some things, or only some.
+- **Crafting pipe** (a pipe and a crafting table): put it on an auto-crafter or a machine and choose one of its
+  recipes. The network can then order that thing made: it sends the ingredients in and picks up what comes out.
+  Crafting pipes chain together, so ordering a pickaxe with only planks in store first has sticks made.
+- **Supplier pipe** (a pipe, 2 copper and a hopper): keeps a chest or machine stocked with what you set, up to
+  the amount you set, ordering more (or having it made) as it's used. Fuel goes into a machine's fuel slot.
+- **Item sink pipe** (a pipe and an item frame): takes in the things you set. As the **default route** it takes
+  anything that has nowhere else to go.
+- **Extractor pipe** (a pipe and an ejector): pulls things out of a chest, or a machine's output, and sends them
+  to a sink.
+- **Request table** (a pipe, a crafting table, 2 glass panes and gold): tap it to see everything the network
+  has or can make (✦). Order any amount. If it can't be done, it tells you what's missing. Deliveries wait in the
+  table: take them all from the order screen, or open it like a chest.
+- **Power junction** (a pipe, a battery block and 4 wires): nothing moves without one on the network, wired to a
+  powered grid. It draws 2 units.
+- **Remote orderer** (a pipe, a crystal shard and 2 gold): tap a request table with it to link it, then use it
+  anywhere the table's part of the world is loaded to order from there.
+- Things fly along the pipes as little sprites. If their chest is full when they get there, they go to a sink,
+  or drop out onto the floor. New achievement: **Supply Chain**.
+- (Classic Logistics Pipes' satellite pipes and chassis modules are left out: a machine here takes all its
+  ingredients on one block, and each module is its own pipe instead.)
+
 ### Worlds, creative mode, the map and achievements
 
 ☰ → **Worlds…** holds three worlds. Play any of them, start a new **survival** or **creative** world in a slot,
@@ -1371,6 +1414,9 @@ guide to how everything works.
 | `js/drops.js` | Loose items on the ground: throwing, bouncing, pick-up, and riding belts or dropping into hoppers |
 | `js/worldmap.js` | The full-screen world map: explored chunks, panning, zoom and waypoints |
 | `js/achievements.js` | The list of achievements |
+| `js/logistics.js` | Logistics pipes: building networks, providers, crafting chains, suppliers, sinks, extractors, and items in transit |
+| `js/guidebook.js` | The guidebook's chapters and goals |
+| `js/music.js` | The generated music and its moods |
 | `js/bees.js` | Bees buzzing around their hives |
 | `js/birds.js` | Crows that come down to eat ripe wheat, and the scarecrows that keep them off |
 | `js/critters.js` | Owls, bats and fireflies |

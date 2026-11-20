@@ -65,6 +65,7 @@
     <div id="hotbar-wrap">
       <div id="hotbar"></div>
       <button class="btn" id="btn-inventory" title="Inventory & crafting">🎒</button>
+      <button class="btn" id="btn-guidebook" title="Guidebook (G)">📖</button>
     </div>
 
     <button class="btn round" id="btn-jump" title="Jump">⤒</button>
@@ -193,6 +194,7 @@
           <label class="slider"><span id="fov-label">Field of view</span> <input type="range" id="fov" min="50" max="110" step="2" value="72" /></label>
           <label class="slider">Look speed <input type="range" id="sens" min="2" max="14" step="1" value="6" /></label>
           <label class="slider">Sound <input type="range" id="volume" min="0" max="100" step="5" value="70" /></label>
+          <label class="slider">Music <input type="range" id="music" min="0" max="100" step="5" value="50" /></label>
           <button class="btn wide" id="btn-break">Touch breaking: double-tap &amp; hold</button>
           <button class="btn wide" id="btn-tips">Tooltips: on</button>
           <button class="btn wide" id="btn-perf">Performance info: off</button>
@@ -248,6 +250,30 @@
       </div>
     </div>
 
+    <div id="lp" class="overlay hidden">
+      <div class="panel lp-panel">
+        <div class="panel-head">
+          <h2 id="lp-title">Logistics</h2>
+          <button class="btn small" id="lp-close">✕</button>
+        </div>
+        <p id="lp-status"></p>
+        <div id="lp-search-row"><input id="lp-search" type="search" placeholder="Search…" autocomplete="off"></div>
+        <div id="lp-body"></div>
+      </div>
+    </div>
+    <div id="guidebook" class="overlay hidden">
+      <div class="panel gb-panel">
+        <div class="panel-head">
+          <h2>📖 Guidebook</h2>
+          <span id="gb-progress"></span>
+          <button class="btn small" id="btn-close-guidebook">✕</button>
+        </div>
+        <div class="gb-body">
+          <div id="gb-chapters"></div>
+          <div id="gb-goals"></div>
+        </div>
+      </div>
+    </div>
     <div id="guide" class="overlay hidden">
       <div class="panel guide-panel">
         <div class="panel-head">
@@ -297,6 +323,8 @@
           <p>Crushed ore comes out as dirty dust. Smelt it as it is, or wash it in an ore washer (it needs power and water touching it) for clean dust and a chance of a trace of another metal. A sieve sifts gravel and dirt by hand. Tap a machine with a speed, efficiency or yield upgrade to fit it. To make charcoal, cover a stack of logs with earth and light one log with a torch.</p>
           <h3>Horses, honey, fishing and boats</h3>
           <p>Saddlebags and horse armour go on your horse. Fill a stable's manger with wheat or hay and your horses come out rested. Bees make honey after the flowers near them. Carry worms when you fish, or bait a fish trap with them. Fine crops win prizes at festival shows. A chest boat carries a chest, and a storage cart behind a locomotive keeps it in coal.</p>
+          <h3>Guidebook, music and logistics pipes</h3>
+          <p>Press G or tap 📖 for the guidebook: goals to reach, with rewards to claim. Set the music's volume in the menu. Logistics pipes make a network: a provider pipe on a chest offers what's in it, a crafting pipe on an auto-crafter or machine lets the network make one thing, a supplier pipe keeps a chest stocked, a sink pipe takes things in, and an extractor pipe empties a chest into the sinks. Tap a pipe to set it up. Put a power junction on the network, wired to the grid, and a request table to order from: it works out any crafting needed. A remote orderer, linked to a table, lets you order from afar.</p>
           <h3>Backpack tips</h3>
           <p>Pin a recipe (📌) to keep what it needs on screen. When the stack in your hand runs out, the next one moves in from your backpack. Double-tap a slot to gather a stack together; shift-click (or press and hold) to move a stack across to a chest or between hotbar and backpack. Tips show what each thing is used in, and a compass points to your nearest waypoint. Type in <b>Find in chests nearby</b> to see which chests hold something, and where. <b>Photo mode</b> (☰ or F2) hides the HUD and lets the camera float free for a picture.</p>
           <h3>Creative mode</h3>

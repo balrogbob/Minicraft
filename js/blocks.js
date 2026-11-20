@@ -141,7 +141,7 @@ export const T = {
   LEAD_CHEST_SIDE: 267, LEAD_CHEST_TOP: 268, LEAD_CHEST_FRONT: 269, CENTRIFUGE_SIDE: 270, CENTRIFUGE_TOP: 271, TESLA: 272, TESLA_TOP: 273,
   FENCE_POST: 274, FENCE_WIRE: 275, FREEZER_SIDE: 276, FREEZER_FRONT: 277, ARC_SIDE: 278, ARC_FRONT: 279, PACKED_ICE: 280, INVAR: 281, RAIL_STOP: 282, BASALT: 283, BASALT_TOP: 284, METEORITE: 285,
   IRON_BARS: 286, POT: 287, IVY: 288, BOX_FLOWERS: 289,
-  FRUIT_LEAVES: 290, FRUIT_RIPE: 293, FRUIT_SAPLING: 296, HAY: 299, SACK: 300, BEACON: 301, APIARY_SIDE: 302, APIARY_FRONT: 303, APIARY_FULL: 304, APIARY_TOP: 305, BELT_CROSS: 306, FARM_CTRL: 307, FARM_CTRL_ON: 308, TUBE: 309, TUBE_END: 310, AWNING: 311, FIRE: 312, CARROT_0: 313, POTATO_0: 317, STEM_0: 321, PUMPKIN_SIDE: 324, PUMPKIN_TOP: 325, JACK_FACE: 326, TRELLIS: 327, VINE_0: 328, BARREL_SIDE: 331, BARREL_TOP: 332, CHEESE: 333, SEA_BRICK: 334, SEA_LANTERN: 335, VAULT: 336, SKY_STONE: 337, AIR_PUMP: 338, RADIO: 339, RADIO_ON: 340, SORTBOX: 341, SORTBOX_TOP: 342, HEARTH: 343, HEARTH_LIT: 344, CHIMNEY_TOP: 345, STABLE_SIDE: 346, SNOWMAN_FRONT: 347, ONION_0: 348, BEAN_0: 352, TOMATO_0: 356, HERB_0: 360, KILN_SIDE: 364, KILN_TOP: 365, KILN_FRONT: 366, KILN_FRONT_LIT: 367, TERRACOTTA: 368, TERRA_COL: 369, GLAZED: 379, ROOF_TILES: 389, URN: 390, ROPE: 391, LOCK_GATE: 392, LOCK_GATE_TOP: 393, DRIPSTONE: 394, BEETLE_LAMP: 395, WASHER_SIDE: 396, WASHER_TOP: 397, WASHER_FRONT: 398, SIEVE: 399, SLAG_BRICKS: 400, CHARCOAL_HEAP: 401, // (fruit tiles: apple, cherry, orange)
+  FRUIT_LEAVES: 290, FRUIT_RIPE: 293, FRUIT_SAPLING: 296, HAY: 299, SACK: 300, BEACON: 301, APIARY_SIDE: 302, APIARY_FRONT: 303, APIARY_FULL: 304, APIARY_TOP: 305, BELT_CROSS: 306, FARM_CTRL: 307, FARM_CTRL_ON: 308, TUBE: 309, TUBE_END: 310, AWNING: 311, FIRE: 312, CARROT_0: 313, POTATO_0: 317, STEM_0: 321, PUMPKIN_SIDE: 324, PUMPKIN_TOP: 325, JACK_FACE: 326, TRELLIS: 327, VINE_0: 328, BARREL_SIDE: 331, BARREL_TOP: 332, CHEESE: 333, SEA_BRICK: 334, SEA_LANTERN: 335, VAULT: 336, SKY_STONE: 337, AIR_PUMP: 338, RADIO: 339, RADIO_ON: 340, SORTBOX: 341, SORTBOX_TOP: 342, HEARTH: 343, HEARTH_LIT: 344, CHIMNEY_TOP: 345, STABLE_SIDE: 346, SNOWMAN_FRONT: 347, ONION_0: 348, BEAN_0: 352, TOMATO_0: 356, HERB_0: 360, KILN_SIDE: 364, KILN_TOP: 365, KILN_FRONT: 366, KILN_FRONT_LIT: 367, TERRACOTTA: 368, TERRA_COL: 369, GLAZED: 379, ROOF_TILES: 389, URN: 390, ROPE: 391, LOCK_GATE: 392, LOCK_GATE_TOP: 393, DRIPSTONE: 394, BEETLE_LAMP: 395, WASHER_SIDE: 396, WASHER_TOP: 397, WASHER_FRONT: 398, SIEVE: 399, SLAG_BRICKS: 400, CHARCOAL_HEAP: 401, LP_ARM: 402, LP_CORE: 403, LP_TABLE_TOP: 409, LP_TABLE_SIDE: 410, LP_JUNCTION: 411, // (fruit tiles: apple, cherry, orange)
 };
 
 // Ores, deepest-reaching last. tier: the pickaxe tier needed to mine it (see TOOL_TIERS);
@@ -254,6 +254,7 @@ function block(id, o) {
     sortbox: !!o.sortbox, hearth: !!o.hearth, chimney: !!o.chimney, stable: !!o.stable, snowman: !!o.snowman, ropeLadder: !!o.ropeLadder, stalactite: !!o.stalactite, bridge: o.bridge ?? null, // v26: a sorting machine (see machines.js)
     crop: o.crop ?? null, // v26: { kind, stage, ripe, seed } for the newer crops (carrots, potatoes, pumpkin vines, grapes)
     farm: o.farm ?? null, // 'feller' | 'planter' | 'breaker' | 'placer' | 'ranch' | 'net' (see machines.js)
+    lpipe: o.lpipe ?? null, // v29: a part of a logistics network (see logistics.js): its role
   };
 }
 
@@ -2859,3 +2860,31 @@ export const CHEST_BOAT = 3073;
 ITEMS[CHEST_BOAT] = { name: 'Chest Boat', stack: 1, vehicle: 'boat', chest: true, about: 'a boat with a chest in the stern: open it with 🎒 while you row, or sneak and tap it' };
 RECIPES.push({ out: [CHEST_BOAT, 1], in: [[BOAT, 1], [CHEST, 1]] });
 ITEMS[LOCOMOTIVE].about = 'put it on a rail and tap it with coal: it pulls the carts behind it. A storage cart coupled right behind it is its tender: it keeps it in coal';
+
+// ---------- v29 C: logistics pipes ----------
+// A routed item network (see logistics.js). Logistics pipes join up into a network and serve the chests and
+// machines they touch: providers offer what's in them, crafting pipes make things in the crafter or machine
+// they sit on, suppliers keep one stocked, sinks take things in, extractors empty one out. Order anything the
+// network has, or can make, at a request table. A powered junction runs it all.
+export const LP_PIPE = 1460, LP_PROVIDER = 1461, LP_CRAFTING = 1462, LP_SUPPLIER = 1463, LP_SINK = 1464, LP_EXTRACTOR = 1465,
+  LP_TABLE = 1466, LP_POWER = 1467, REMOTE_ORDERER = 3074;
+export const LP_ROLES = ['basic', 'provider', 'crafting', 'supplier', 'sink', 'extractor']; // (in the order of their core tiles)
+ELECTRIC_DRAW.junction = 2;
+[[LP_PIPE, 'Logistics Pipe'], [LP_PROVIDER, 'Provider Pipe'], [LP_CRAFTING, 'Crafting Pipe'], [LP_SUPPLIER, 'Supplier Pipe'],
+  [LP_SINK, 'Item Sink Pipe'], [LP_EXTRACTOR, 'Extractor Pipe']].forEach(([id, name], i) => {
+  block(id, { name, shape: 'lpipe', lpipe: LP_ROLES[i], transparent: true, sound: 'glass', hardness: 0.5, tex: T.LP_CORE + i });
+});
+block(LP_TABLE, { name: 'Request Table', station: 'reqtable', lpipe: 'table', sound: 'wood', top: T.LP_TABLE_TOP, side: T.LP_TABLE_SIDE, bottom: T.PLANKS, hardness: 1.5, tool: 'axe' });
+block(LP_POWER, { name: 'Logistics Power Junction', lpipe: 'power', sound: 'stone', tex: T.LP_JUNCTION, hardness: 2, tool: 'pick', electric: { role: 'use', draw: ELECTRIC_DRAW.junction } });
+ITEMS[REMOTE_ORDERER] = { name: 'Remote Orderer', stack: 1, about: 'tap a request table with it to link it, then order from anywhere nearby' };
+RECIPES.push(
+  { out: [LP_PIPE, 8], in: [[TUBE, 8], [GOLD_INGOT, 1], [WIRE, 1]], table: true, metal: GOLD_INGOT },
+  { out: [LP_PROVIDER, 1], in: [[LP_PIPE, 1], [HOPPER, 1]], table: true },
+  { out: [LP_CRAFTING, 1], in: [[LP_PIPE, 1], [TABLE, 1]], table: true },
+  { out: [LP_SUPPLIER, 1], in: [[LP_PIPE, 1], [COPPER_INGOT, 2], [HOPPER, 1]], table: true, metal: COPPER_INGOT },
+  { out: [LP_SINK, 1], in: [[LP_PIPE, 1], [ITEM_FRAME, 1]], table: true },
+  { out: [LP_EXTRACTOR, 1], in: [[LP_PIPE, 1], [EJECTOR, 1]], table: true },
+  { out: [LP_TABLE, 1], in: [[LP_PIPE, 1], [TABLE, 1], [GLASS_PANE, 2], [GOLD_INGOT, 1]], table: true, metal: GOLD_INGOT },
+  { out: [LP_POWER, 1], in: [[LP_PIPE, 1], [GRID_BATTERY, 1], [WIRE, 4]], table: true },
+  { out: [REMOTE_ORDERER, 1], in: [[LP_PIPE, 1], [CRYSTAL_SHARD, 1], [GOLD_INGOT, 2]], table: true, metal: GOLD_INGOT },
+);

@@ -428,3 +428,66 @@ body.photo.snapping #photo-bar { display: none; }
 /* v28: special trades for a village's friends and heroes */
 .recipe.special { background: rgba(255, 210, 80, 0.12); border-color: rgba(255, 210, 80, 0.45); }
 .recipe.special small { color: #ffd257; }
+
+/* v29: the guidebook */
+#btn-guidebook { height: var(--slot); font-size: 22px; position: relative; }
+#btn-guidebook.claim::after { content: ''; position: absolute; top: 4px; right: 4px; width: 10px; height: 10px; border-radius: 50%; background: #f2c230; box-shadow: 0 0 0 2px #7a5a00; }
+.gb-panel { width: min(760px, 100%); height: min(560px, 100%); }
+#gb-progress { flex: 1; font-size: 13px; color: #555; margin-left: 10px; }
+.gb-body { display: flex; flex: 1; min-height: 0; }
+#gb-chapters { width: 190px; flex-shrink: 0; overflow-y: auto; border-right: 2px solid rgba(0,0,0,0.1); padding: 6px; }
+#gb-goals { flex: 1; overflow-y: auto; padding: 6px 12px 12px; }
+.gb-ch { display: flex; align-items: center; gap: 6px; width: 100%; text-align: left; padding: 7px 8px; margin-bottom: 4px; border: none; border-radius: 4px; background: rgba(0,0,0,0.05); font: inherit; font-size: 14px; cursor: pointer; color: #222; }
+.gb-ch.on { background: #3d6b3a; color: #fff; }
+.gb-ch.locked { opacity: 0.45; cursor: default; }
+.gb-ch .n { margin-left: auto; font-size: 12px; opacity: 0.8; }
+.gb-ch .dot { width: 8px; height: 8px; border-radius: 50%; background: #f2c230; flex-shrink: 0; }
+.gb-goal { display: flex; gap: 10px; align-items: flex-start; padding: 8px 0; border-bottom: 1px solid rgba(0,0,0,0.08); }
+.gb-goal img.icon { width: 32px; height: 32px; image-rendering: pixelated; flex-shrink: 0; }
+.gb-goal .txt { flex: 1; min-width: 0; }
+.gb-goal b { display: block; }
+.gb-goal .hint { font-size: 13px; color: #444; line-height: 1.4; }
+.gb-goal .made { font-size: 12px; color: #666; margin-top: 3px; display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.gb-goal .made img { width: 18px; height: 18px; image-rendering: pixelated; vertical-align: middle; }
+.gb-goal .reward { font-size: 12px; color: #6a5200; display: flex; align-items: center; gap: 4px; margin-top: 3px; }
+.gb-goal .reward img { width: 18px; height: 18px; image-rendering: pixelated; }
+.gb-goal.done { opacity: 0.6; }
+.gb-goal.done.unclaimed { opacity: 1; }
+.gb-goal .btn { flex-shrink: 0; font-size: 13px; padding: 6px 10px; }
+.gb-goal .tick { color: #3d6b3a; font-weight: bold; }
+@media (max-width: 560px) {
+  .gb-body { flex-direction: column; }
+  #gb-chapters { width: auto; display: flex; gap: 4px; overflow-x: auto; overflow-y: hidden; border-right: none; border-bottom: 2px solid rgba(0,0,0,0.1); flex-shrink: 0; }
+  .gb-ch { width: auto; white-space: nowrap; margin: 0; }
+}
+
+/* v29: logistics pipes */
+.lp-panel { width: min(560px, 100%); max-height: min(620px, 100%); display: flex; flex-direction: column; }
+#lp-search-row.hidden { display: none; }
+#lp-status { font-size: 13px; color: #3d6b3a; margin: 2px 0 6px; }
+#lp-search-row input { width: 100%; box-sizing: border-box; padding: 7px 9px; font: inherit; font-size: 15px; border: 2px solid rgba(0,0,0,0.2); border-radius: 4px; margin-bottom: 6px; }
+#lp-body { flex: 1; min-height: 0; overflow-y: auto; }
+#lp-body .hint { font-size: 13px; color: #444; line-height: 1.4; margin: 6px 0; }
+#lp-body img { width: 24px; height: 24px; image-rendering: pixelated; vertical-align: middle; }
+.lp-warn { color: #9a3a1a; font-size: 14px; }
+.lp-recipe { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 14px; margin: 6px 0; }
+.lp-ghosts { display: grid; grid-template-columns: repeat(9, 1fr); gap: 4px; margin: 6px 0; }
+.lp-ghost { position: relative; aspect-ratio: 1; background: rgba(0,0,0,0.12); border-radius: 4px; display: flex; align-items: center; justify-content: center; cursor: pointer; min-height: 36px; }
+.lp-ghost img { opacity: 0.85; }
+.lp-ghost .n { position: absolute; right: 2px; top: 0; font-size: 11px; font-weight: bold; color: #fff; text-shadow: 1px 1px 0 #000; }
+.lp-ghost .pm { position: absolute; bottom: -2px; left: 0; right: 0; display: flex; justify-content: space-between; }
+.lp-ghost .pm button { width: 16px; height: 16px; padding: 0; font-size: 12px; line-height: 14px; border: none; border-radius: 3px; background: rgba(255,255,255,0.85); cursor: pointer; }
+.lp-palette { display: flex; flex-wrap: wrap; gap: 4px; }
+.lp-pal { width: 38px; height: 38px; padding: 0; border: none; border-radius: 4px; background: rgba(0,0,0,0.07); cursor: pointer; }
+.lp-row { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; padding: 5px 7px; margin-bottom: 3px; border: none; border-radius: 4px; background: rgba(0,0,0,0.05); font: inherit; cursor: pointer; color: #222; }
+.lp-row.on { background: #3d6b3a; color: #fff; }
+.lp-row span { display: flex; flex-direction: column; min-width: 0; }
+.lp-row small { font-size: 12px; opacity: 0.75; }
+.lp-list { max-height: 300px; overflow-y: auto; }
+.lp-order { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 8px; padding-top: 8px; border-top: 2px solid rgba(0,0,0,0.1); font-size: 14px; }
+.lp-order > span:first-child { flex: 1 1 100%; }
+.lp-order .qty { display: flex; gap: 4px; align-items: center; flex: 1; }
+.lp-order input { width: 56px; padding: 4px; font: inherit; text-align: center; }
+.lp-msg { font-size: 13px; min-height: 1.2em; margin: 6px 0; }
+.lp-buffer { display: flex; align-items: center; gap: 6px; font-size: 13px; color: #555; }
+.lp-buffer span { flex: 1; }

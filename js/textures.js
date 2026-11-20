@@ -20,7 +20,7 @@ import {
   ELECTRIC_RAIL, CHAINSAW, SAWDUST, BOOK, BACKPACK, BIG_BACKPACK, HUGE_BACKPACK, SPANNER, GRAPPLE, URANIUM_INGOT, FUEL_ROD, JOURNAL, FERTILISER, SPENT_ROD, ENRICHED_URANIUM, ENRICHED_ROD, hazmatId, INVAR_INGOT, RAIL_STATION, BOAT, BALLOON, ZIP_LINE, METEORIC_IRON, STARSTEEL_INGOT, starsteelTool, EGG, FRIED_EGG, SADDLE, TRUFFLE, FLOWER_POT, HANGING_PLANT, WINDOW_BOX, APPLE, CHERRIES, ORANGE_FRUIT, APPLE_PIE, CHERRY_PIE, FRUIT_SALAD, ORANGE_JUICE, FISH_SOUP, TRUFFLE_SOUP, BERRY_JAM, COOK_POT, SCARECROW, EXPLORER_MAP, TREASURE_MAP, BEESWAX, CABLE_CAR, COIN, CARROT, POTATO, BAKED_POTATO, PUMPKIN_SEEDS, PUMPKIN_PIE, GRAPES, GRAPE_JUICE, WINE, FINE_WINE, CURDS, CHEESE, AGED_CHEESE, DIVING_HELMET, FLIPPERS, PEARL, LOCOMOTIVE, FIREWORK, UNFIRED_URN, GLOW_SHELL,
   ONION, BEANS, TOMATO, HERBS, APPLE_JUICE, BERRY_JUICE, CIDER, VINTAGE_CIDER, BERRY_WINE, FINE_BERRY_WINE, VEG_STEW, TOMATO_SOUP, BAKED_BEANS,
   dirtyDust, SLUDGE, SLAG, WORM, SPEED_UPGRADE, EFFICIENCY_UPGRADE, YIELD_UPGRADE,
-  FINE_CROPS, CHEST_BOAT, SADDLEBAGS, HORSE_ARMOUR, LAVENDER_HONEY, BLOSSOM_HONEY, GOLDEN_HONEY, LAVENDER_TEA, BLOSSOM_TEA, GOLDEN_TEA,
+  FINE_CROPS, CHEST_BOAT, LP_ROLES, LP_PIPE, REMOTE_ORDERER, SADDLEBAGS, HORSE_ARMOUR, LAVENDER_HONEY, BLOSSOM_HONEY, GOLDEN_HONEY, LAVENDER_TEA, BLOSSOM_TEA, GOLDEN_TEA,
   SALTPETRE, GUNPOWDER, LEAD_SINKER, WEIGHTED_ROD, LEAD_BUCKET, LAVA_BUCKET, GOLD_CLOCK, COMPASS, SILVER_ARROW, MIRROR_LAMP,
 } from './blocks.js';
 
@@ -2602,7 +2602,7 @@ function drawIsoModel(ctx, atlas, model) {
 export function createIcons(atlas) {
   const icons = {};
   for (const def of BLOCKS) {
-    if (!def || !isBlock(def.id) || def.shape === 'torch' || def.shape === 'kinetic' || def.shape === 'pipe') continue; // (those have painted icons)
+    if (!def || !isBlock(def.id) || def.shape === 'torch' || def.shape === 'kinetic' || def.shape === 'pipe' || def.shape === 'lpipe') continue; // (those have painted icons)
     if (def.model && ITEM_PAINTERS[def.id]) continue;
     const c = document.createElement('canvas');
     c.width = c.height = 64;
@@ -2879,4 +2879,51 @@ for (const [id, fine] of Object.entries(FINE_CROPS)) {
 ITEM_PAINTERS[CHEST_BOAT] = (ctx) => {
   ITEM_PAINTERS[BOAT](ctx);
   rect(ctx, 9, 3, 5, 5, [154, 106, 52]); rect(ctx, 9, 3, 5, 1, [110, 70, 34]); px(ctx, 11, 5, [210, 210, 216]); // the chest
+};
+// v29 C: logistics pipes
+const LP_COLOURS = [[170, 170, 160], [70, 130, 220], [80, 180, 90], [160, 90, 200], [220, 110, 60], [235, 200, 60]]; // basic, provider, crafting, supplier, sink, extractor
+P[T.LP_ARM] = (t) => {
+  // A clear glass tube in a gold frame. An arm's faces take the part of this tile at their place in the block:
+  // across the tube that's pixels 5.5 to 10.5, so pixels 5-6 and 9-10 there are its four long edges.
+  const edge = (c) => c === 5 || c === 6 || c === 9 || c === 10, inside = (c) => c >= 5 && c <= 10;
+  for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+    const along = !inside(x) ? x : !inside(y) ? y : -1; // the pixel's place along the tube (-1 on an end face)
+    const frame = along < 0 ? edge(x) || edge(y) : along === x ? edge(y) : edge(x);
+    const collar = along === 0 || along === 15 || along === 4 || along === 11;
+    if (frame) t.set(x, y, t.vary([214, 176, 70], 0.05));
+    else if (collar) t.set(x, y, [190, 150, 60]);
+    else t.set(x, y, [200, 230, 240], 0.25);
+  }
+};
+LP_COLOURS.forEach((c, i) => {
+  P[T.LP_CORE + i] = (t) => {
+    for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+      const edge = x < 2 || x > 13 || y < 2 || y > 13, inner = x > 4 && x < 11 && y > 4 && y < 11;
+      t.set(x, y, edge ? t.vary([214, 176, 70], 0.06) : inner ? t.vary(c.map((v) => Math.min(255, v + 40)), 0.05) : t.vary(c, 0.05));
+    }
+  };
+});
+P[T.LP_TABLE_TOP] = (t) => {
+  for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+    const screen = x > 2 && x < 13 && y > 2 && y < 11, key = y > 11 && y < 14 && x > 2 && x < 13 && x % 2;
+    t.set(x, y, screen ? (y % 3 === 0 ? [90, 200, 230] : [30, 60, 90]) : key ? [220, 220, 210] : t.vary([150, 104, 60], 0.08));
+  }
+};
+P[T.LP_TABLE_SIDE] = (t) => {
+  for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) t.set(x, y, y < 2 ? [214, 176, 70] : y % 5 === 4 ? [110, 74, 40] : t.vary([150, 104, 60], 0.08));
+};
+P[T.LP_JUNCTION] = (t) => {
+  for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+    const edge = x < 1 || x > 14 || y < 1 || y > 14, bolt = Math.abs(x - 8 + (y < 8 ? (8 - y) * 0.5 : (8 - y) * 0.5)) < 1.2 && y > 2 && y < 13;
+    t.set(x, y, edge ? [214, 176, 70] : bolt ? [255, 230, 80] : t.vary([60, 64, 74], 0.08));
+  }
+};
+LP_ROLES.forEach((role, i) => {
+  ITEM_PAINTERS[LP_PIPE + i] = (ctx) => {
+    rect(ctx, 0, 5, 16, 6, [200, 230, 240]); rect(ctx, 0, 5, 16, 1, [214, 176, 70]); rect(ctx, 0, 10, 16, 1, [214, 176, 70]);
+    rect(ctx, 4, 3, 8, 10, [214, 176, 70]); rect(ctx, 5, 4, 6, 8, LP_COLOURS[i]);
+  };
+});
+ITEM_PAINTERS[REMOTE_ORDERER] = (ctx) => {
+  rect(ctx, 4, 2, 8, 12, [60, 64, 74]); rect(ctx, 5, 3, 6, 5, [90, 200, 230]); rect(ctx, 5, 9, 2, 1, [214, 176, 70]); rect(ctx, 9, 9, 2, 1, [214, 176, 70]); rect(ctx, 5, 11, 6, 1, [214, 176, 70]); rect(ctx, 7, 0, 1, 2, [180, 180, 190]);
 };
