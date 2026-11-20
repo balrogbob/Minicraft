@@ -1398,6 +1398,13 @@ works the chests and machines it touches, according to its job:
   around its pipes) stays loaded however far away you go, so distant bases keep working and stay linked. Take
   the pad away and that part unloads as usual. New achievement: **Air Mail**.
 
+#### Fixes
+
+- Leaves from a fruit tree drop that fruit tree's saplings, not oak saplings.
+- Plants grow more slowly: crops take about 10 minutes (most of a 12-minute game day) to ripen, saplings about 15 minutes to grow
+  into trees, and fruit about 10 minutes to come back. Rain, bees and sprinklers still speed them up, but less,
+  and nothing grows almost at once any more. A night's sleep grows plants the same as the time it skips.
+
 ### Worlds, creative mode, the map and achievements
 
 ☰ → **Worlds…** holds three worlds. Play any of them, start a new **survival** or **creative** world in a slot,

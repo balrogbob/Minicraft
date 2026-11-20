@@ -118,7 +118,10 @@ class Chunk {
 }
 
 // Average seconds between growth steps for each kind of plant (only while its chunk is loaded).
-const GROW_SECONDS = { wheat: 45, cane: 60, tree: 150 };
+// Average seconds for a plant to grow a step (a game day is 12 minutes): a crop ripens in about a day, a
+// sapling becomes a tree in a day or so, and fruit takes most of a day to ripen.
+const GROW_SECONDS = { wheat: 240, cane: 300, tree: 900, fruit: 600 };
+const GROW_MAX_CHANCE = 0.5; // (no plant grows more than one step at a time, however much time has passed)
 const SOIL_REST_DAYS = 6; // a season: soil left this long without the same crop has rested
 // Leaves with no log within this many steps (through other leaves) decay.
 const LEAF_REACH = 4;
@@ -412,14 +415,15 @@ export class World {
         if (def.grows === 'honey') { this.tickHive(x, y, z, id, elapsed); continue; }
         if (def.grows === 'fruit') { this.tickFruit(x, y, z, def, elapsed); continue; }
         const tired = def.crop || isWheat(id) ? this.soilFactor(x, y - 1, z) : 1;
-        // plants grow twice as fast in the rain, faster near bees, and with the seasons
+        // plants grow faster in the rain, near bees, watered, and with the seasons
         // under glass (a greenhouse) crops grow as well in winter as in spring
         const grow = season < 1 && this.underGlass(x, y, z) ? 1.25 : season;
-        let chance = elapsed * (this.raining ? 2 : 1) * grow / (def.grows === 'up' ? GROW_SECONDS.cane : GROW_SECONDS.wheat);
-        if (hives.length && nearHive(x, y, z)) chance *= 1.5;
+        const secs = def.grows === 'up' ? GROW_SECONDS.cane : def.grows === 'tree' ? GROW_SECONDS.tree : GROW_SECONDS.wheat;
+        let chance = elapsed * (this.raining ? 1.5 : 1) * grow / secs;
+        if (hives.length && nearHive(x, y, z)) chance *= 1.25;
         chance *= tired; // worn-out soil (the same crop over and over) grows slowly
-        if (this.sprinkled?.some(([sx, sy, sz]) => Math.abs(sx - x) <= 2 && Math.abs(sz - z) <= 2 && sy - y >= 0 && sy - y <= 2)) chance *= 2; // watered
-        if (Math.random() >= chance) continue;
+        if (this.sprinkled?.some(([sx, sy, sz]) => Math.abs(sx - x) <= 2 && Math.abs(sz - z) <= 2 && sy - y >= 0 && sy - y <= 2)) chance *= 1.5; // watered
+        if (Math.random() >= Math.min(GROW_MAX_CHANCE, chance)) continue;
         if (def.grows === 'up') this.setBlock(x, y + 1, z, SUGAR_CANE);
         else if (def.grows === 'pumpkin') this.growPumpkin(x, y, z);
         else if (def.grows === 'tree') {
@@ -482,7 +486,7 @@ export class World {
       return;
     }
     if ((s !== 1 && s !== 2) || ((x * 7 + y * 13 + z * 31) & 3) !== 0) return;
-    if (Math.random() < elapsed * (this.raining ? 1.5 : 1) / GROW_SECONDS.wheat) this.setBlock(x, y, z, fruitLeaves(def.fruit.kind, true));
+    if (Math.random() < Math.min(GROW_MAX_CHANCE, elapsed * (this.raining ? 1.5 : 1) / GROW_SECONDS.fruit)) this.setBlock(x, y, z, fruitLeaves(def.fruit.kind, true));
   }
 
   // Every loaded bee hive, as [x, y, z].
@@ -587,8 +591,9 @@ export class World {
       this.decay.delete(key);
       const [x, y, z] = key.split(',').map(Number);
       if (!isLeaves(this.get(x, y, z)) || this.leafSupported(x, y, z)) continue;
+      const was = this.get(x, y, z);
       this.setBlock(x, y, z, AIR); // queues its neighbours in turn
-      this.onLeafDecay?.(x, y, z);
+      this.onLeafDecay?.(x, y, z, was);
     }
   }
 

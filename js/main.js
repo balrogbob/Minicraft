@@ -467,10 +467,12 @@ async function startWorld(save, opts = {}) {
   world = new World(seed, store);
   world.onError = reportError;
   // leaves falling from a tree you just cut drop their saplings and sticks to you, if you're nearby
-  world.onLeafDecay = (x, y, z) => {
+  world.onLeafDecay = (x, y, z, was) => {
     const p = player.pos;
     if (dead || (x + 0.5 - p.x) ** 2 + (y + 0.5 - p.y) ** 2 + (z + 0.5 - p.z) ** 2 > 16 * 16) return;
-    const drops = dropsFor(LEAVES, 0); // (fruit trees' leaves too: not their fruit, which you'd pick)
+    // a fruit tree's leaves give its own saplings (but not their fruit, which you'd pick)
+    const fruit = BLOCKS[was]?.fruit;
+    const drops = dropsFor(fruit ? fruitLeaves(fruit.kind) : LEAVES, 0);
     if (drops.length) giveDrops(drops);
   };
   mobs.reset(world); bees.clear(); crows.clear(); critters.clear(); fires.clear(); hearths.clear(); smoke.clear(); fireworks.clear(); exitPhotoMode(); clearChestMark(); openGates.clear(); lockJobs.length = 0; piles.length = 0; mangers.clear(); clearRocks(); strikeIn = 20; catGiftDay = -1; bellDay = -1; villageGrowth = new Map(); shownSeason = -1;
@@ -2080,7 +2082,7 @@ async function napThroughStorm() {
   const secs = skip * DAY_LENGTH;
   stations.tick(secs, world, setStationLit, powerAt, boostAt, crafterRecipe);
   tickLamps(secs);
-  world.tickPlants(secs);
+  for (let i = 0, n = Math.max(1, Math.ceil(secs / 60)); i < n; i++) world.tickPlants(secs / n);
   hunger = Math.max(0, hunger - 1);
   renderHunger();
   await new Promise((r) => setTimeout(r, 300));
@@ -2100,7 +2102,8 @@ async function sleepUntilMorning() {
   caneToday = 0;
   stations.tick(skipped, world, setStationLit, powerAt, boostAt, crafterRecipe);
   tickLamps(skipped);
-  for (let i = 0; i < 6; i++) world.tickPlants(skipped / 6);
+  const steps = Math.max(1, Math.ceil(skipped / 60)); // (a minute at a time, so plants grow as they would have)
+  for (let i = 0; i < steps; i++) world.tickPlants(skipped / steps);
   hunger = Math.max(0, hunger - 3); // a night's sleep makes you a bit peckish
   achieve('sleep');
   renderHunger();
