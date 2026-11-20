@@ -30,6 +30,7 @@ export const ACHIEVEMENTS = [
   { id: 'charcoal', icon: '🔥', name: 'Charcoal Burner', about: 'Burn a covered pile of logs down into charcoal.' },
   { id: 'upgrade', icon: '⚙️', name: 'Souped Up', about: 'Fit an upgrade to a machine.' },
   { id: 'fine', icon: '🥕', name: 'Prize Grower', about: 'Harvest a fine crop.' },
+  { id: 'logistics', icon: '📦', name: 'Supply Chain', about: 'Order something through a logistics network.' },
   { id: 'trace', icon: '✨', name: 'Hidden Riches', about: 'Wash a trace of another metal out of ore dust.' },
   { id: 'vault', icon: '🔱', name: 'Open Sesame', about: 'Solve the puzzle that opens a sunken temple\'s or a sky island\'s vault.' },
 ];

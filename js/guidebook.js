@@ -82,6 +82,15 @@ const CHAPTERS = [
     ['solar', 'Sunshine', has([B.SOLAR_PANEL, B.WIND_TURBINE]), 'Solar panels and wind turbines make power for free.', [B.GRID_BATTERY, 1]],
     ['jackhammer', 'Jackhammer', has(B.JACKHAMMER), 'A battery tool that breaks stone in a moment. Charge it at a charger.', [B.SPEED_UPGRADE, 1]],
   ]],
+  ['logistics', 'Logistics', 7, [
+    ['pipes', 'Logistics Pipes', has(B.LP_PIPE), 'Tubes, gold and wire make logistics pipes: a network that sends things where they\'re wanted.', [B.TUBE, 8]],
+    ['provider', 'On Offer', has(B.LP_PROVIDER), 'A provider pipe on a chest offers what\'s in it to the network.', [B.CHEST, 2]],
+    ['power', 'Power Junction', has(B.LP_POWER), 'Nothing moves without one on the network, wired to the grid.', [B.WIRE, 16]],
+    ['table', 'Request Table', has(B.LP_TABLE), 'Order anything the network has, or can make, and it\'s brought to the table.', [B.GLASS_PANE, 4]],
+    ['crafting', 'Crafting Pipe', has(B.LP_CRAFTING), 'On an auto-crafter or a machine, it lets the network make things: ingredients first.', [B.AUTO_CRAFTER, 1]],
+    ['order', 'Supply Chain', ach('logistics'), 'Order something at a request table.', [B.GOLD_INGOT, 2]],
+    ['remote', 'From Afar', has(B.REMOTE_ORDERER), 'Link a remote orderer to a request table and order from anywhere nearby.', [B.CRYSTAL_SHARD, 1]],
+  ]],
   ['village', 'Village Life', 2, [
     ['trade', 'Fair Trade', ach('trade'), 'Find a village and trade with a villager, or a wandering trader.', [B.COIN, 4]],
     ['coin', 'Coins', count(B.COIN, 10), 'Sell at a market stall and fill the villages\' daily requests for coins.', [B.COIN, 5]],

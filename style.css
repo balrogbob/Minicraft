@@ -460,3 +460,34 @@ body.photo.snapping #photo-bar { display: none; }
   #gb-chapters { width: auto; display: flex; gap: 4px; overflow-x: auto; overflow-y: hidden; border-right: none; border-bottom: 2px solid rgba(0,0,0,0.1); flex-shrink: 0; }
   .gb-ch { width: auto; white-space: nowrap; margin: 0; }
 }
+
+/* v29: logistics pipes */
+.lp-panel { width: min(560px, 100%); max-height: min(620px, 100%); display: flex; flex-direction: column; }
+#lp-search-row.hidden { display: none; }
+#lp-status { font-size: 13px; color: #3d6b3a; margin: 2px 0 6px; }
+#lp-search-row input { width: 100%; box-sizing: border-box; padding: 7px 9px; font: inherit; font-size: 15px; border: 2px solid rgba(0,0,0,0.2); border-radius: 4px; margin-bottom: 6px; }
+#lp-body { flex: 1; min-height: 0; overflow-y: auto; }
+#lp-body .hint { font-size: 13px; color: #444; line-height: 1.4; margin: 6px 0; }
+#lp-body img { width: 24px; height: 24px; image-rendering: pixelated; vertical-align: middle; }
+.lp-warn { color: #9a3a1a; font-size: 14px; }
+.lp-recipe { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 14px; margin: 6px 0; }
+.lp-ghosts { display: grid; grid-template-columns: repeat(9, 1fr); gap: 4px; margin: 6px 0; }
+.lp-ghost { position: relative; aspect-ratio: 1; background: rgba(0,0,0,0.12); border-radius: 4px; display: flex; align-items: center; justify-content: center; cursor: pointer; min-height: 36px; }
+.lp-ghost img { opacity: 0.85; }
+.lp-ghost .n { position: absolute; right: 2px; top: 0; font-size: 11px; font-weight: bold; color: #fff; text-shadow: 1px 1px 0 #000; }
+.lp-ghost .pm { position: absolute; bottom: -2px; left: 0; right: 0; display: flex; justify-content: space-between; }
+.lp-ghost .pm button { width: 16px; height: 16px; padding: 0; font-size: 12px; line-height: 14px; border: none; border-radius: 3px; background: rgba(255,255,255,0.85); cursor: pointer; }
+.lp-palette { display: flex; flex-wrap: wrap; gap: 4px; }
+.lp-pal { width: 38px; height: 38px; padding: 0; border: none; border-radius: 4px; background: rgba(0,0,0,0.07); cursor: pointer; }
+.lp-row { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; padding: 5px 7px; margin-bottom: 3px; border: none; border-radius: 4px; background: rgba(0,0,0,0.05); font: inherit; cursor: pointer; color: #222; }
+.lp-row.on { background: #3d6b3a; color: #fff; }
+.lp-row span { display: flex; flex-direction: column; min-width: 0; }
+.lp-row small { font-size: 12px; opacity: 0.75; }
+.lp-list { max-height: 300px; overflow-y: auto; }
+.lp-order { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 8px; padding-top: 8px; border-top: 2px solid rgba(0,0,0,0.1); font-size: 14px; }
+.lp-order > span:first-child { flex: 1 1 100%; }
+.lp-order .qty { display: flex; gap: 4px; align-items: center; flex: 1; }
+.lp-order input { width: 56px; padding: 4px; font: inherit; text-align: center; }
+.lp-msg { font-size: 13px; min-height: 1.2em; margin: 6px 0; }
+.lp-buffer { display: flex; align-items: center; gap: 6px; font-size: 13px; color: #555; }
+.lp-buffer span { flex: 1; }

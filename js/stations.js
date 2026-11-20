@@ -161,6 +161,7 @@ STATION_KINDS.arc = {
 };
 // Chests just hold things.
 STATION_KINDS.chest = { name: 'Chest', inputs: 18, storage: true, recipes: [] };
+STATION_KINDS.reqtable = { name: 'Request Table', inputs: 18, storage: true, recipes: [] }; // (v29: where orders arrive)
 STATION_KINDS.stall = { name: 'Market Stall', inputs: 9, storage: true, recipes: [] }; // (villagers buy from it: see main.js)
 STATION_KINDS.ironchest = { name: 'Iron-Banded Chest', inputs: 36, storage: true, recipes: [] };
 // The auto-crafter makes whatever the item frame on it shows (see recipeAt), once a second, from what's

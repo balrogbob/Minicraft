@@ -32,7 +32,7 @@ import {
   SNOWMAN, FIREWORK, PUMPKIN, JACK_O_LANTERN, EGG, POPPY, DANDELION, DAISY, LAVENDER,
   ONION, BEANS, TOMATO, HERBS, CIDER, VINTAGE_CIDER, BERRY_WINE, FINE_BERRY_WINE,
   KILN, ROPE_LADDER, ROPE_BRIDGE, BRIDGE_RAIL, LOCK_GATE, SLUICE_WHEEL, STALACTITE, STALAGMITE,
-  CHARCOAL_HEAP, CLAY, STONE, UPGRADES, CHEST_BOAT, FINE_CROPS, isFine, WORM, SADDLEBAGS, GOLDEN_TEA, SPEED_UPGRADE, YIELD_UPGRADE, HAY_BALE, LAVENDER_HONEY, BLOSSOM_HONEY, GOLDEN_HONEY, FRUIT_LEAVES,
+  CHARCOAL_HEAP, CLAY, STONE, UPGRADES, CHEST_BOAT, LP_TABLE, LP_POWER, REMOTE_ORDERER, FINE_CROPS, isFine, WORM, SADDLEBAGS, GOLDEN_TEA, SPEED_UPGRADE, YIELD_UPGRADE, HAY_BALE, LAVENDER_HONEY, BLOSSOM_HONEY, GOLDEN_HONEY, FRUIT_LEAVES,
 } from './blocks.js';
 import { Smoke } from './smoke.js';
 import { Fireworks } from './fireworks.js';
@@ -44,6 +44,7 @@ import { buildLegacyWorld, LEGACY_W } from './legacy.js';
 import { Sky, DAY_LENGTH } from './sky.js';
 import { Sound } from './sound.js';
 import { Music } from './music.js';
+import { Logistics } from './logistics.js';
 import { Player } from './player.js';
 import { Inventory, SLOTS } from './inventory.js';
 import { Controls, KEY_ACTIONS, DEFAULT_KEYS, keyLabel } from './controls.js';
@@ -72,7 +73,7 @@ import { Logic } from './logic.js';
 
 // v2 = the 16k x 16k streaming world (player state here, edited chunks in IndexedDB).
 // v1 = the old 128 x 128 world, migrated into the middle of the big world on first launch.
-const GAME_VERSION = '28'; // shown in the menu; bump with each release
+const GAME_VERSION = '29'; // shown in the menu; bump with each release
 const SAVE_KEY = 'minicraft-save-v2';
 const LEGACY_SAVE_KEY = 'minicraft-save-v1';
 const SETTINGS_KEY = 'minicraft-settings-v1';
@@ -306,6 +307,7 @@ function loadPacks(list, next) {
 }
 const signs = new Signs(scene); // what's written on each sign
 const machines = new Machines(scene, icons); // pumps, drills, hoppers and belts
+const logistics = new Logistics({ get world() { return world; }, stations, machines, electric }); // (v29: logistics pipes)
 const loose = new ItemDrops(scene, (id) => machines.makeSprite(id)); // items lying on the ground
 const carts = new Carts(scene); // minecarts on rails
 carts.onLoco = (c, what) => {
@@ -361,6 +363,8 @@ machines.frames = frames; machines.carts = carts; machines.loose = loose;
 machines.throwItem = (stack, pos, vel) => loose.spawn(stack, pos, vel, 0.5);
 // An auto-crafter makes what the item frame on it shows: the first recipe for that thing.
 const crafterRecipe = (x, y, z) => {
+  const piped = logistics.crafterRecipe(x, y, z); // (a crafting pipe on it says what to make)
+  if (piped) return piped;
   if (world.get(x, y, z) === PROG_CRAFTER) return progRecipe(x, y, z);
   const want = frames.around(world, x, y, z)[0];
   return want ? RECIPES.find((r) => r.out[0] === want) ?? null : null;
@@ -480,6 +484,7 @@ async function startWorld(save, opts = {}) {
   pressedButtons.clear(); pressedPlates.clear(); detected.clear();
   logic.load(save?.logic);
   machines.load(save?.machines);
+  logistics.load(save?.logistics); ordererLink = typeof save?.ordererLink === 'string' ? save.ordererLink : null;
   electric.load(save?.electric);
   loadPacks(save?.packs, save?.nextPack);
   lift = null; releaseGrapple();
@@ -640,6 +645,7 @@ function saveGame() {
     signs: signs.serialize(),
     frames: frames.serialize(),
     machines: machines.serialize(),
+    logistics: logistics.serialize(), ordererLink,
     logic: logic.serialize(),
     kinetics: kinetics.serialize(),
     electric: electric.serialize(),
@@ -3688,6 +3694,7 @@ function placeInner() {
   if (held && isBackpack(held.id)) { openBackpack(held); return; }
   if (held?.id === BOOK) { openGuide(); return; }
   if (held?.id === JOURNAL) { openJournal(held); return; }
+  if (held?.id === REMOTE_ORDERER) { useOrderer(target); return; }
   if (held?.id === TREASURE_MAP) { readTreasureMap(held); return; }
   if (held?.id === FIREWORK) { const l = player.lookDir(); fireworks.launch(player.pos.x + l.x * 1.2, player.pos.y + 1, player.pos.z + l.z * 1.2); sound.fuse(); inventory.consumeHeld(); return; }
   if (held?.id === FERTILISER && target && fertilise(target.x, target.y, target.z)) { inventory.consumeHeld(); return; }
@@ -3708,6 +3715,9 @@ function placeInner() {
     if (isCurtain(tid)) { toggleCurtain(tx, ty, tz); return; }
     if (isGate(tid) || isTrapdoor(tid)) { toggleHatch(tx, ty, tz); return; }
     if (BLOCKS[tid].switch === 'lever') { setSwitch(tx, ty, tz, !BLOCKS[tid].on); return; }
+    if (tid === LP_TABLE && !(held && isBlock(held.id))) { openLogistics(tx, ty, tz, 'order'); return; }
+    if (BLOCKS[tid].shape === 'lpipe' && !(held && isBlock(held.id))) { logistics.add(tx, ty, tz); openLogistics(tx, ty, tz, 'pipe'); return; }
+    if (tid === LP_POWER && !(held && isBlock(held.id))) { toast(`${logistics.status(tx, ty, tz)} ${electric.statusAt(tx, ty, tz)}`, 3000); return; }
     if (BLOCKS[tid].stable && (held?.id === HAY_BALE || held?.id === WHEAT)) { stockStable(tx, ty, tz, held.id); return; }
     if (BLOCKS[tid].stable && !(held && isBlock(held.id))) { useStable(tx, ty, tz); return; }
     if (BLOCKS[tid].hearth) {
@@ -4089,6 +4099,7 @@ function placeInner() {
   }
   world.setBlock(x, y, z, id);
   logic.near(world, x, y, z); // (a block put down beside a wire or logic block can change what it gets)
+  if (BLOCKS[id].lpipe) logistics.add(x, y, z);
   sound.place(BLOCKS[id].sound);
   inventory.consumeHeld();
   if (isWheat(id) || isCrop(id)) notePlanting(x, y, z, id);
@@ -4447,6 +4458,7 @@ function breakBlock(x, y, z) {
   if (id === ZIP_POST) drops.push(...unlinkZips(x, y, z));
   if (id === LIGHTHOUSE_LAMP) beaconSpots.delete(`${x},${y},${z}`);
   if (stationKind(id)) loose.spill(stations.removeStacks(x, y, z), x, y, z); // whatever was inside spills out
+  if (def.lpipe) logistics.remove(x, y, z);
   if (isElectricLamp(id)) electric.signalLamps.delete(`${x},${y},${z}`);
   if (def.machine || def.engine || def.sensor || def.ejector || def.hopper || def.tank || def.farm || def.quarry || def.pad || def.spawner) loose.spill(machines.removeAt(x, y, z).map(([i, n, st]) => ({ id: i, count: n, ...st })), x, y, z); // and whatever was on a belt or in a drill
   if (isBed(id)) {
@@ -4886,6 +4898,151 @@ const guideTab = (ach) => {
 $('tab-ach').addEventListener('click', () => guideTab(true));
 $('tab-guide').addEventListener('click', () => guideTab(false));
 $('btn-close-guide').addEventListener('click', () => { $('guide').classList.add('hidden'); paused = false; });
+
+
+// ---------- v29 C: logistics pipes ----------
+// The network itself is in logistics.js; here are its panels: setting up a pipe, and ordering at a request table.
+const LP_INFO = {
+  basic: ['Logistics Pipe', 'Joins the network up. It serves nothing itself.'],
+  provider: ['Provider Pipe', 'Offers what\'s in the chests it touches (or what a machine it touches has made) to the network. Set it to offer everything except some things, or only some.'],
+  crafting: ['Crafting Pipe', 'Put it on an auto-crafter or a machine and choose what it makes: the network can then order it, with its ingredients fetched (or made first) for it.'],
+  supplier: ['Supplier Pipe', 'Keeps the chest or machine it touches stocked with what you set here, ordering more as it\'s used (fuel goes in a machine\'s fuel slot).'],
+  sink: ['Item Sink Pipe', 'Takes in the things you set here, from extractors and anything that has nowhere else to go. As the default route it takes in anything.'],
+  extractor: ['Extractor Pipe', 'Pulls things out of the chest it touches (or what a machine has made) and sends them off to an item sink.'],
+};
+const LP_STEPS = [1, 2, 4, 8, 16, 32, 64];
+let lpOpen = null; // { x, y, z, mode: 'pipe' | 'order', pick, search, recipePick }
+let ordererLink = null; // the request table the remote orderer is linked to: "x,y,z"
+logistics.onArrive = (dest, id, n) => {
+  if (Math.hypot(dest.x - player.pos.x, dest.z - player.pos.z) < 48 || lpOpen?.mode === 'order') toast(`📦 ${n > 1 ? n + ' × ' : ''}${itemName(id)} arrived at the request table`, 1800);
+  if (lpOpen) renderLogistics();
+};
+function openLogistics(x, y, z, mode) {
+  paused = true; controls.reset(); document.exitPointerLock?.();
+  lpOpen = { x, y, z, mode, pick: null, search: '', qty: 1, msg: '', recipePick: false };
+  $('lp-search').value = '';
+  $('lp').classList.remove('hidden');
+  sound.click();
+  renderLogistics();
+}
+function closeLogistics() { $('lp').classList.add('hidden'); lpOpen = null; paused = false; }
+const lpIcon = (id, extra = '') => `<img src="${icons[id] ?? ''}" alt="" ${extra}>`;
+function renderLogistics() {
+  if (!lpOpen) return;
+  const { x, y, z, mode } = lpOpen;
+  const id = world.get(x, y, z);
+  if (!BLOCKS[id]?.lpipe) { closeLogistics(); return; }
+  const cfg = logistics.config(x, y, z);
+  const body = $('lp-body');
+  $('lp-status').textContent = logistics.status(x, y, z);
+  $('lp-search-row').classList.toggle('hidden', !(mode === 'order' || lpOpen.recipePick));
+  if (mode === 'order') return renderOrders(body);
+  const role = cfg?.role ?? BLOCKS[id].lpipe;
+  const [name, about] = LP_INFO[role] ?? [BLOCKS[id].name, ''];
+  $('lp-title').textContent = name;
+  let html = `<p class="hint">${about}</p>`;
+  if (role === 'crafting') {
+    const inv = logistics.craftInv(`${x},${y},${z}`);
+    if (!inv) html += '<p class="lp-warn">Put it against an auto-crafter or a machine.</p>';
+    else if (lpOpen.recipePick) return renderRecipePick(body, inv);
+    else {
+      const r = cfg.recipe;
+      html += `<p>On: <b>${escapeHtml(inv.K.name)}</b></p>`;
+      html += r ? `<div class="lp-recipe">${lpIcon(r.out[0])} <b>${r.out[1] > 1 ? r.out[1] + ' × ' : ''}${escapeHtml(itemName(r.out[0]))}</b> from ${r.in.map(([i, n]) => `${n > 1 ? n + ' × ' : ''}${escapeHtml(itemName(idsOf(i)[0]))}`).join(', ')}</div>` : '<p class="lp-warn">No recipe chosen yet.</p>';
+      html += `<button class="btn" id="lp-choose">${r ? 'Change recipe' : 'Choose recipe'}</button>`;
+      if (cfg.orders.length) html += `<p class="hint">Working on: ${cfg.orders.map((o) => `${o.left} × ${escapeHtml(itemName(o.id))}`).join(', ')}</p>`;
+    }
+  }
+  if (role === 'provider' || role === 'sink' || role === 'supplier') {
+    if (role === 'provider') html += `<button class="btn" id="lp-mode">${cfg.mode === 'include' ? 'Offers only these:' : 'Offers everything except these:'}</button>`;
+    if (role === 'sink') html += `<button class="btn" id="lp-fallback">Default route: ${cfg.fallback ? 'on (takes anything)' : 'off'}</button><p class="hint">Takes in:</p>`;
+    if (role === 'supplier') html += '<p class="hint">Keeps this much in stock:</p>';
+    html += '<div class="lp-ghosts">' + cfg.filter.map((s, i) => `<div class="lp-ghost" data-i="${i}">${s ? lpIcon(s.id) : ''}${s && role === 'supplier' ? `<span class="n">${s.count}</span>` : ''}${s && role === 'supplier' ? `<span class="pm"><button data-i="${i}" data-d="-1">−</button><button data-i="${i}" data-d="1">+</button></span>` : ''}</div>`).join('') + '</div>';
+    const have = [...new Set(inventory.slots.filter(Boolean).map((s) => s.id))];
+    html += `<p class="hint">Tap a thing from your backpack to add it; tap a slot to clear it.</p><div class="lp-palette">${have.map((i) => `<button class="lp-pal" data-id="${i}" title="${escapeHtml(itemName(i))}">${lpIcon(i)}</button>`).join('') || '<i>Your backpack is empty.</i>'}</div>`;
+  }
+  body.innerHTML = html;
+  body.querySelector('#lp-choose')?.addEventListener('click', () => { lpOpen.recipePick = true; lpOpen.search = ''; $('lp-search').value = ''; renderLogistics(); });
+  body.querySelector('#lp-mode')?.addEventListener('click', () => { cfg.mode = cfg.mode === 'include' ? 'exclude' : 'include'; renderLogistics(); });
+  body.querySelector('#lp-fallback')?.addEventListener('click', () => { cfg.fallback = !cfg.fallback; renderLogistics(); });
+  body.querySelectorAll('.lp-ghost').forEach((el) => el.addEventListener('click', (e) => {
+    if (e.target.closest('.pm')) return;
+    cfg.filter[+el.dataset.i] = null; sound.click(); renderLogistics();
+  }));
+  body.querySelectorAll('.pm button').forEach((b) => b.addEventListener('click', () => {
+    const s = cfg.filter[+b.dataset.i];
+    if (!s) return;
+    const at = LP_STEPS.findIndex((v) => v >= s.count), next = at + +b.dataset.d;
+    if (next < 0) cfg.filter[+b.dataset.i] = null; else s.count = LP_STEPS[Math.min(LP_STEPS.length - 1, next)];
+    sound.click(); renderLogistics();
+  }));
+  body.querySelectorAll('.lp-pal').forEach((b) => b.addEventListener('click', () => {
+    const i = cfg.filter.findIndex((s) => !s), pid = +b.dataset.id;
+    if (cfg.filter.some((s) => s?.id === pid)) return;
+    if (i < 0) { toast('All nine slots are set: clear one first', 1500); return; }
+    cfg.filter[i] = { id: pid, count: Math.min(16, maxStack(pid)) };
+    sound.click(); renderLogistics();
+  }));
+}
+// Choosing what a crafting pipe makes: the recipes of the thing it's on.
+function renderRecipePick(body, inv) {
+  const cfg = logistics.config(lpOpen.x, lpOpen.y, lpOpen.z), q = lpOpen.search.toLowerCase();
+  const list = logistics.recipesFor(`${lpOpen.x},${lpOpen.y},${lpOpen.z}`).filter((r) => r.out && (!q || itemName(r.out[0]).toLowerCase().includes(q))).slice(0, 80);
+  body.innerHTML = `<p class="hint">What should the ${escapeHtml(inv.K.name.toLowerCase())} make? <button class="btn small" id="lp-back">Back</button></p>` +
+    list.map((r, i) => `<button class="lp-row" data-i="${i}">${lpIcon(r.out[0])}<span><b>${r.out[1] > 1 ? r.out[1] + ' × ' : ''}${escapeHtml(itemName(r.out[0]))}</b><small>${r.in.map(([id, n]) => `${n > 1 ? n + ' × ' : ''}${escapeHtml(itemName(idsOf(id)[0]))}`).join(', ')}</small></span></button>`).join('');
+  body.querySelector('#lp-back').addEventListener('click', () => { lpOpen.recipePick = false; renderLogistics(); });
+  body.querySelectorAll('.lp-row').forEach((b) => b.addEventListener('click', () => { cfg.recipe = list[+b.dataset.i]; lpOpen.recipePick = false; sound.pop(); renderLogistics(); }));
+}
+// The request table: everything the network has or can make, to order.
+function renderOrders(body) {
+  const { x, y, z } = lpOpen, q = lpOpen.search.toLowerCase();
+  $('lp-title').textContent = 'Request Table';
+  const all = logistics.orderable(x, y, z).filter((e) => !q || itemName(e.id).toLowerCase().includes(q)).sort((a, b) => itemName(a.id).localeCompare(itemName(b.id)));
+  const st = stations.get(x, y, z, 'reqtable'), waiting = st.inputs.filter(Boolean).reduce((a, s) => a + s.count, 0);
+  let html = `<div class="lp-list">${all.map((e) => `<button class="lp-row${lpOpen.pick === e.id ? ' on' : ''}" data-id="${e.id}">${lpIcon(e.id)}<span><b>${escapeHtml(itemName(e.id))}</b><small>${e.count ? e.count + ' in store' : ''}${e.count && e.craft ? ' · ' : ''}${e.craft ? '✦ can be made' : ''}</small></span></button>`).join('') || '<p class="hint">Nothing on offer: put provider pipes on chests, or crafting pipes on crafters.</p>'}</div>`;
+  html += `<div class="lp-order"><span>${lpOpen.pick ? lpIcon(lpOpen.pick) + ' ' + escapeHtml(itemName(lpOpen.pick)) : 'Pick something above'}</span>
+    <span class="qty"><button class="btn small" data-q="-1">−</button><input id="lp-qty" type="number" min="1" max="999" value="${lpOpen.qty}"><button class="btn small" data-q="1">+</button>
+    ${[8, 16, 64].map((v) => `<button class="btn small" data-set="${v}">${v}</button>`).join('')}</span>
+    <button class="btn" id="lp-request" ${lpOpen.pick ? '' : 'disabled'}>Request</button></div>
+    <p class="lp-msg">${lpOpen.msg}</p>
+    <div class="lp-buffer"><span>${waiting ? `${waiting} thing${waiting > 1 ? 's' : ''} waiting at the table` : 'Nothing waiting at the table'}</span><button class="btn small" id="lp-take" ${waiting ? '' : 'disabled'}>Take all</button><button class="btn small" id="lp-open">Open table</button></div>`;
+  body.innerHTML = html;
+  body.querySelectorAll('.lp-row').forEach((b) => b.addEventListener('click', () => { lpOpen.pick = +b.dataset.id; lpOpen.msg = ''; renderLogistics(); }));
+  body.querySelectorAll('[data-q]').forEach((b) => b.addEventListener('click', () => { lpOpen.qty = Math.max(1, Math.min(999, lpOpen.qty + +b.dataset.q)); renderLogistics(); }));
+  body.querySelectorAll('[data-set]').forEach((b) => b.addEventListener('click', () => { lpOpen.qty = +b.dataset.set; renderLogistics(); }));
+  body.querySelector('#lp-qty').addEventListener('change', (e) => { lpOpen.qty = Math.max(1, Math.min(999, Math.floor(+e.target.value) || 1)); renderLogistics(); });
+  body.querySelector('#lp-request').addEventListener('click', () => placeOrder());
+  body.querySelector('#lp-take').addEventListener('click', () => {
+    for (let i = 0; i < st.inputs.length; i++) { const s = st.inputs[i]; if (!s) continue; const left = inventory.add(s.id, s.count, s); st.inputs[i] = left > 0 ? { ...s, count: left } : null; }
+    sound.pop(); renderLogistics();
+  });
+  body.querySelector('#lp-open').addEventListener('click', () => { const { x: tx, y: ty, z: tz } = lpOpen; closeLogistics(); openStation(tx, ty, tz); });
+}
+function placeOrder() {
+  const { x, y, z, pick, qty } = lpOpen;
+  const r = logistics.request(x, y, z, pick, qty);
+  if (r.ok) {
+    const crafts = r.steps.filter((s) => s.craft).length;
+    lpOpen.msg = `✔ Ordered ${qty} × ${escapeHtml(itemName(pick))}${crafts ? ` (${crafts} crafting job${crafts > 1 ? 's' : ''})` : ''}`;
+    sound.ding?.(0.7);
+    achieve('logistics');
+  } else lpOpen.msg = r.reason ? `✖ ${escapeHtml(r.reason)}` : `✖ Missing: ${r.missing.map(([id, n]) => `${n} × ${escapeHtml(itemName(id))}`).join(', ')}`;
+  renderLogistics();
+}
+function useOrderer(target) {
+  if (target?.id === LP_TABLE) {
+    ordererLink = `${target.x},${target.y},${target.z}`;
+    toast('The remote orderer is linked to this request table', 2000); sound.ding?.(0.6);
+    return;
+  }
+  if (!ordererLink) { toast('Tap a request table with it first to link it', 2000); return; }
+  const [x, y, z] = ordererLink.split(',').map(Number);
+  if (!world.chunkAt(x, z) || world.get(x, y, z) !== LP_TABLE) { toast('Its request table is too far away (or gone)', 2000); return; }
+  openLogistics(x, y, z, 'order');
+}
+$('lp-close').addEventListener('click', closeLogistics);
+$('lp').addEventListener('click', (e) => { if (e.target.id === 'lp') closeLogistics(); });
+$('lp-search').addEventListener('input', (e) => { if (lpOpen) { lpOpen.search = e.target.value; renderLogistics(); } });
 
 // ---------- v29 B: music ----------
 // What the music should sound like here and now (see music.js).
@@ -6503,6 +6660,7 @@ function frame(now) {
   try { stepGame(now, dt); } catch (err) { reportError(err); }
   try {
     if (!dead) stations.tick(dt, world, setStationLit, powerAt, boostAt, crafterRecipe);
+    if (!dead && worldReady) logistics.update(dt);
     if (openStationAt && (stationRefresh -= dt) <= 0) { stationRefresh = 0.15; renderStation(); }
   } catch (err) { reportError(err); }
   try { world.update(player.pos.x, player.pos.z, scene, materials, 6, dt); } catch (err) { reportError(err); }
@@ -6699,5 +6857,5 @@ window.minicraft = {
   arrows, fishing, kinetics, electric, lightUniforms, bees, catchAt, seasonOf, applySeason, set day(v) { day = v; applySeason(); }, frames, signalAt, setSwitch, logic, machines, carts, minimap, signs, armour, damage, placeRail, getInCart, getOutOfCart,
   get riding() { return riding; }, explode, lightFuse, fuses, clockTime, compassText, place, editSign, closeSign, openInventory, closeInventory, chestMove, lamps, tickLamps, sleepUntilMorning, stations, openStation, closeStation,
   get caneToday() { return caneToday; }, get creative() { return creative; }, set creative(v) { creative = v; applyCreative(); }, toggleFly, wand, useWand, get achieved() { return achieved; }, achieve, worldMap, openMap, closeMap, openGuide, switchSlot, store, saveGame, renderWorlds, openWorlds, exportSlot, get target() { return target; }, set target(v) { target = v; }, applyKeys, renderKeys, camera, get controls() { return controls; }, loose, throwHeld, get waypoints() { return waypoints; }, toggleWaypoint, sortSlots, quickStack, dropMeteor, get meteors() { return meteors; }, weather, openTrade, closeTrade, mountMob, dismount, get ridingMob() { return ridingMob; }, effects, armourWear, useAnvil, rollLoot, settings,
-  get bedSpawn() { return bedSpawn; }, fertilise, openJournal, closeJournal, get packs() { return packs; }, radiationAt, vehicles, boardVehicle, leaveVehicle, get boarded() { return boarded; }, get seated() { return seated; }, crows, onInvSlot, onStationSlot, quickMoveInv, quickMoveStation, usedIn, itemTipHTML, critters, tickPets, get catGiftDay() { return catGiftDay; }, get villageGrowth() { return villageGrowth; }, notePlanting, tickPuzzles, airPumpNear, useStable, stableNear, horseLabel, music, musicMood, get guideDone() { return guideDone; }, get guideClaimed() { return guideClaimed; }, tickGuidebook, openGuidebook, closeGuidebook, claimGoal, goalMet, fineChance, fineHarvest, showProduce, specialTrades, catchAt, stockStable, tickStables, mangers, openSaddlebags, honeyAt, fitUpgrade, piles, lightCharcoalPile, tickPiles, searchChests, takeFromChest, markChest, get chestMark() { return chestMark; }, enterPhotoMode, exitPhotoMode, snapPhoto, get photoMode() { return photoMode; }, photoCam, get lastPhoto() { return lastPhoto; }, tickStalactites, loosenStalactite, fallingRocks, shaking, workLock, findLock, tickLocks, openGates, lockJobs, hangRopeLadder, layBridge, rollUpRope, fireworks, ringBell, requestFor, festivalToday, repOf, addRep, tradeCost, tickFestival, villageEntry, hearths, tickHearths, feedHearth, chimneyTop, smoke, renderPins, togglePin, lightning, igniteAt, fires, tickFires, tickStorm, growVillage, buildVillageHouse, stallPrice, tickStalls, tickVillages, set catGiftDay(v) { catGiftDay = v; }, get places() { return places; }, get treasures() { return treasures; }, readTreasureMap, tickTreasure, beams, tickBeams, beaconSpots: () => beaconSpots, mistNow, tickSnow, tickExplore, sitOn, standUp, useDisplay, zips, linkZip, startZip, get zipping() { return zipping; }, burnCoal, get health() { return health; }, set health(v) { health = v; }, paintings, placeSwitchRail, signalAt, ailments, armourEnch, openAltar, lairNear, useBed, eat, drinkTea,
+  get bedSpawn() { return bedSpawn; }, fertilise, openJournal, closeJournal, get packs() { return packs; }, radiationAt, vehicles, boardVehicle, leaveVehicle, get boarded() { return boarded; }, get seated() { return seated; }, crows, onInvSlot, onStationSlot, quickMoveInv, quickMoveStation, usedIn, itemTipHTML, critters, tickPets, get catGiftDay() { return catGiftDay; }, get villageGrowth() { return villageGrowth; }, notePlanting, tickPuzzles, airPumpNear, useStable, stableNear, horseLabel, logistics, openLogistics, closeLogistics, placeOrder, get lpOpen() { return lpOpen; }, music, musicMood, get guideDone() { return guideDone; }, get guideClaimed() { return guideClaimed; }, tickGuidebook, openGuidebook, closeGuidebook, claimGoal, goalMet, fineChance, fineHarvest, showProduce, specialTrades, catchAt, stockStable, tickStables, mangers, openSaddlebags, honeyAt, fitUpgrade, piles, lightCharcoalPile, tickPiles, searchChests, takeFromChest, markChest, get chestMark() { return chestMark; }, enterPhotoMode, exitPhotoMode, snapPhoto, get photoMode() { return photoMode; }, photoCam, get lastPhoto() { return lastPhoto; }, tickStalactites, loosenStalactite, fallingRocks, shaking, workLock, findLock, tickLocks, openGates, lockJobs, hangRopeLadder, layBridge, rollUpRope, fireworks, ringBell, requestFor, festivalToday, repOf, addRep, tradeCost, tickFestival, villageEntry, hearths, tickHearths, feedHearth, chimneyTop, smoke, renderPins, togglePin, lightning, igniteAt, fires, tickFires, tickStorm, growVillage, buildVillageHouse, stallPrice, tickStalls, tickVillages, set catGiftDay(v) { catGiftDay = v; }, get places() { return places; }, get treasures() { return treasures; }, readTreasureMap, tickTreasure, beams, tickBeams, beaconSpots: () => beaconSpots, mistNow, tickSnow, tickExplore, sitOn, standUp, useDisplay, zips, linkZip, startZip, get zipping() { return zipping; }, burnCoal, get health() { return health; }, set health(v) { health = v; }, paintings, placeSwitchRail, signalAt, ailments, armourEnch, openAltar, lairNear, useBed, eat, drinkTea,
 };
