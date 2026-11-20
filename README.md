@@ -373,6 +373,9 @@ Wild hives hold colonies you can catch and breed into new kinds of bee.
   4 drops, an egg), and royal jelly is a filling, healing food. 6 drops and a bottle in the wine press make
   **honey must**, which ages in a barrel into **mead** (warms you) and then **fine mead** (heals you).
 
+An example world with every kind of bee, comb and honey product is in `worlds/minicraft-world-v31-showcase.json`.
+Open the Worlds screen, tap **Import** on a slot and pick the file to play it.
+
 ### Fine crops, shows and special trades
 
 - A ripe crop sometimes comes up **fine**: more often in soil that beans have fed or under glass, less often in
