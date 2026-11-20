@@ -196,7 +196,12 @@ export class Controls {
       if (e.button === 2) this.hooks.place();
     });
     window.addEventListener('mouseup', (e) => { if (e.button === 0) this.mouseBreak = false; });
-    L.addEventListener('contextmenu', (e) => e.preventDefault());
+    // No browser menu anywhere in the game (but text boxes keep theirs, for copy and paste). It has to be
+    // the whole page: on Windows the menu comes when the right button is let go, and by then a right-click
+    // on a machine or villager has opened its window, which is what's under the mouse.
+    document.addEventListener('contextmenu', (e) => {
+      if (!e.target.closest?.('input, textarea, [contenteditable="true"]')) e.preventDefault();
+    });
     document.addEventListener('mousemove', (e) => {
       if (document.pointerLockElement === L) this.rotate(e.movementX, e.movementY, MOUSE_SENS);
     });
