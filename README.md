@@ -327,6 +327,52 @@ Active teas show with their time left next to your coordinates. You keep the bot
 - Brew each in the cauldron with its flower (an apple or cherries for blossom honey). Lavender tea keeps you fed
   for longer, blossom tea makes you swift, and golden tea heals.
 
+### Bee breeding
+
+Wild hives hold colonies you can catch and breed into new kinds of bee.
+
+- **Catching bees.** A **bee scoop** (3 sticks, 3 wool) takes the colony from a wild hive that has some honey in
+  it: a **princess**, one or two **drones** and some honeycomb. The kind depends on the land: **woodland** or
+  **meadow** bees in the green lands, **frost** bees in the tundra, **dune** bees in the desert. The hive is left
+  empty, and new bees move in again in time.
+- **The bee house** (6 planks, 2 honeycomb, an iron ingot) takes a princess, a drone and up to two **frames**.
+  The princess and drone become a **queen**, who works for a number of spells (about 30 seconds each), filling
+  the trays with combs. When her life is over she leaves a new princess and some drones. Each takes after
+  one parent or the other, so a princess and drone of the same kind breed true.
+- **Mutations.** Some pairs of different kinds now and then breed a new kind instead. Tooltips on a bee show
+  what it needs, and the new kind's tooltip names its parents:
+
+  | Parents | New kind |
+  | --- | --- |
+  | Woodland + Meadow | Common (makes more honeycomb, works faster) |
+  | Common + Meadow | Garden (floral combs) |
+  | Common + Woodland | Orchard (blossom combs; needs fruit trees) |
+  | Frost + Dune | Hardy (needs no flowers, works in the rain) |
+  | Common + Garden | Diligent (fast and productive) |
+  | Hardy + Diligent | Rocky (mineral combs; works only underground) |
+  | Dune + Hardy | Ember (ember combs; needs lava nearby) |
+  | Diligent + Orchard | Royal (royal combs) |
+  | Garden + Rocky | Glow (glow combs; works at night or in the dark, near glowcaps) |
+  | Rocky + Frost | Crystal (crystal combs; underground) |
+  | Royal + Rocky | Gilded (gilded combs) |
+  | Crystal + Gilded | Starry (starry combs; only at night under the open sky) |
+
+- **What bees need.** A queen stops work if her place doesn't suit her: the wrong climate (frost bees want the
+  tundra or winter, dune and ember bees the desert or summer), the wrong time of day, rain falling on the house,
+  or none of her flowers within 5 blocks. Most kinds work half as fast in winter. The house's panel says why
+  she's idle. Full trays stop her too, so empty them, or put a hopper under the house.
+- **Frames** make each spell yield more combs, and wear out: a **wooden frame** (4 sticks, a string; makes 2) adds
+  half again, a **waxed frame** (a wooden frame and 2 beeswax) doubles it, and a **proven frame** (a waxed frame
+  and 2 propolis) doubles it and lasts much longer.
+- **The comb centrifuge** (4 iron, 3 planks, a small wooden gear and a bucket) is turned by a shaft and spins combs
+  into honey drops and beeswax, with by-products: ice, sand and **propolis**, **pollen**, dirty iron, copper and
+  tin dust, sulphur and coal dust, **royal jelly**, glow shells, crystal shards, dirty gold and silver dust,
+  and, now and then, meteoric iron. The electric centrifuge spins combs too.
+- **Honey products.** 4 honey drops and a bottle make a bottle of honey. 2 pollen make fertiliser. An apple and 2
+  drops make a **honeyed apple**, which makes you swift for a while. The oven bakes a **honey cake** (3 flour,
+  4 drops, an egg), and royal jelly is a filling, healing food. 6 drops and a bottle in the wine press make
+  **honey must**, which ages in a barrel into **mead** (warms you) and then **fine mead** (heals you).
+
 ### Fine crops, shows and special trades
 
 - A ripe crop sometimes comes up **fine**: more often in soil that beans have fed or under glass, less often in
@@ -1373,6 +1419,8 @@ guide to how everything works.
 
 ## Version history
 
+- **Version 31**: bee breeding (bee scoops, bee houses, sixteen kinds of bee and their mutations, frames), the
+  comb centrifuge, and honey drops, propolis, pollen, royal jelly, mead, honey cake and honeyed apples.
 - **Version 30**: logistics signals (the stock sensor pipe and junctions that pause), liquid pipes, courier
   drones, liquid returns and sinks, bottlers, and drone pads that keep their networks loaded.
 - **Version 29**: the guidebook, generated music, and logistics pipes.
@@ -1424,6 +1472,7 @@ guide to how everything works.
 | `js/guidebook.js` | The guidebook's chapters and goals |
 | `js/music.js` | The generated music and its moods |
 | `js/bees.js` | Bees buzzing around their hives |
+| `js/apiculture.js` | Bee breeding: queens at work in bee houses, combs, young bees and mutations |
 | `js/birds.js` | Crows that come down to eat ripe wheat, and the scarecrows that keep them off |
 | `js/critters.js` | Owls, bats and fireflies |
 | `js/paintings.js` | Paintings: the pictures and the panels that show them |
