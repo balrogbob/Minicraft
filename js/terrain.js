@@ -325,9 +325,9 @@ export class Generator {
       }
     }
 
-    // bee hives, hung beside the trunk just under the leaves of some temperate trees
+    // bee hives, hung beside the trunk just under the leaves of some trees
     for (const [x, z, h, trunk] of trees) {
-      if (hash3(this.seed ^ 0x4b1d3c2a, x, 5, z) >= HIVE_CHANCE || this.biomeAt(x, z) !== 'temperate') continue;
+      if (hash3(this.seed ^ 0x4b1d3c2a, x, 5, z) >= HIVE_CHANCE || this.biomeAt(x, z) === 'desert') continue; // (v31: tundra trees too, for frost bees)
       const [dx, dz] = [[1, 0], [-1, 0], [0, 1], [0, -1]][Math.floor(hash3(this.seed ^ 0x4b1d3c2a, x, 6, z) * 4)];
       const hx = x + dx, hz = z + dz, hy = h + trunk - 3;
       if (!inside(hx, hz)) continue;

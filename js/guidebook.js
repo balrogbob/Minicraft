@@ -104,6 +104,14 @@ const CHAPTERS = [
     ['fine', 'Prize Grower', ach('fine'), 'Grow crops in good soil until one comes up fine. Show three at a festival.', [B.FERTILISER, 8]],
     ['hero', 'Local Hero', ach('hero'), 'Earn a village\'s highest regard. Heroes get special trades.', [B.COIN, 15]],
   ]],
+  ['bees', 'Busy Bees', 2, [
+    ['scoop', 'Bee Scoop', has(B.BEE_SCOOP), 'Sticks and wool make a scoop for catching the bees in a wild hive with honey in it.', [B.WOOL, 3]],
+    ['catch', 'Caught a Colony', ach('bees'), 'Scoop a wild hive for a princess and drones. The land decides what kind they are.', [B.HONEYCOMB, 2]],
+    ['house', 'Bee House', has(B.BEE_HOUSE), 'Put a princess and a drone in a bee house among flowers, and they make combs.', [B.WOODEN_FRAME, 2]],
+    ['spinner', 'Comb Centrifuge', has(B.COMB_CENTRIFUGE), 'Turn it with a shaft to spin combs into honey drops, beeswax and more.', [B.HONEYCOMB, 4]],
+    ['mutation', 'New Blood', ach('mutation'), 'Mate a princess with a drone of a different kind: some pairs breed a new kind of bee.', [B.WAXED_FRAME, 1]],
+    ['mead', 'Mead Hall', has([B.MEAD, B.FINE_MEAD]), 'Press honey drops into must at the wine press and age it in a barrel.', [B.HONEY_DROP, 8]],
+  ]],
   ['master', 'Mastery', 7, [
     ['enchant', 'Spellbound', ach('enchant'), 'Enchant a tool at an altar. Bookshelves round it help.', [B.BOOK, 3]],
     ['quarry', 'Quarry', has(B.QUARRY), 'Digs out a whole area by itself. Item frames on it pick what it keeps.', [B.YIELD_UPGRADE, 1]],

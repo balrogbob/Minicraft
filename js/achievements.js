@@ -34,6 +34,8 @@ export const ACHIEVEMENTS = [
   { id: 'courier', icon: '🛸', name: 'Air Mail', about: 'Have a courier drone fly something between two networks.' },
   { id: 'trace', icon: '✨', name: 'Hidden Riches', about: 'Wash a trace of another metal out of ore dust.' },
   { id: 'vault', icon: '🔱', name: 'Open Sesame', about: 'Solve the puzzle that opens a sunken temple\'s or a sky island\'s vault.' },
+  { id: 'bees', icon: '🐝', name: 'Busy Bees', about: 'Catch a colony of wild bees with a scoop.' },
+  { id: 'mutation', icon: '👑', name: 'Queen of Bees', about: 'Breed a new species of bee in a bee house.' },
 ];
 
 export const ACHIEVEMENT_IDS = new Set(ACHIEVEMENTS.map((a) => a.id));

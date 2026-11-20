@@ -141,7 +141,7 @@ export const T = {
   LEAD_CHEST_SIDE: 267, LEAD_CHEST_TOP: 268, LEAD_CHEST_FRONT: 269, CENTRIFUGE_SIDE: 270, CENTRIFUGE_TOP: 271, TESLA: 272, TESLA_TOP: 273,
   FENCE_POST: 274, FENCE_WIRE: 275, FREEZER_SIDE: 276, FREEZER_FRONT: 277, ARC_SIDE: 278, ARC_FRONT: 279, PACKED_ICE: 280, INVAR: 281, RAIL_STOP: 282, BASALT: 283, BASALT_TOP: 284, METEORITE: 285,
   IRON_BARS: 286, POT: 287, IVY: 288, BOX_FLOWERS: 289,
-  FRUIT_LEAVES: 290, FRUIT_RIPE: 293, FRUIT_SAPLING: 296, HAY: 299, SACK: 300, BEACON: 301, APIARY_SIDE: 302, APIARY_FRONT: 303, APIARY_FULL: 304, APIARY_TOP: 305, BELT_CROSS: 306, FARM_CTRL: 307, FARM_CTRL_ON: 308, TUBE: 309, TUBE_END: 310, AWNING: 311, FIRE: 312, CARROT_0: 313, POTATO_0: 317, STEM_0: 321, PUMPKIN_SIDE: 324, PUMPKIN_TOP: 325, JACK_FACE: 326, TRELLIS: 327, VINE_0: 328, BARREL_SIDE: 331, BARREL_TOP: 332, CHEESE: 333, SEA_BRICK: 334, SEA_LANTERN: 335, VAULT: 336, SKY_STONE: 337, AIR_PUMP: 338, RADIO: 339, RADIO_ON: 340, SORTBOX: 341, SORTBOX_TOP: 342, HEARTH: 343, HEARTH_LIT: 344, CHIMNEY_TOP: 345, STABLE_SIDE: 346, SNOWMAN_FRONT: 347, ONION_0: 348, BEAN_0: 352, TOMATO_0: 356, HERB_0: 360, KILN_SIDE: 364, KILN_TOP: 365, KILN_FRONT: 366, KILN_FRONT_LIT: 367, TERRACOTTA: 368, TERRA_COL: 369, GLAZED: 379, ROOF_TILES: 389, URN: 390, ROPE: 391, LOCK_GATE: 392, LOCK_GATE_TOP: 393, DRIPSTONE: 394, BEETLE_LAMP: 395, WASHER_SIDE: 396, WASHER_TOP: 397, WASHER_FRONT: 398, SIEVE: 399, SLAG_BRICKS: 400, CHARCOAL_HEAP: 401, LP_ARM: 402, LP_CORE: 403, LP_TABLE_TOP: 409, LP_TABLE_SIDE: 410, LP_JUNCTION: 411, LP_SENSOR_CORE: 412, LP_SENSOR_ON: 413, LP_FPROVIDER: 414, LP_FSUPPLIER: 415, DRONE_PAD_TOP: 416, DRONE_PAD_SIDE: 417, LP_FSINK: 418, BOTTLER_SIDE: 419, BOTTLER_TOP: 420, // (fruit tiles: apple, cherry, orange)
+  FRUIT_LEAVES: 290, FRUIT_RIPE: 293, FRUIT_SAPLING: 296, HAY: 299, SACK: 300, BEACON: 301, APIARY_SIDE: 302, APIARY_FRONT: 303, APIARY_FULL: 304, APIARY_TOP: 305, BELT_CROSS: 306, FARM_CTRL: 307, FARM_CTRL_ON: 308, TUBE: 309, TUBE_END: 310, AWNING: 311, FIRE: 312, CARROT_0: 313, POTATO_0: 317, STEM_0: 321, PUMPKIN_SIDE: 324, PUMPKIN_TOP: 325, JACK_FACE: 326, TRELLIS: 327, VINE_0: 328, BARREL_SIDE: 331, BARREL_TOP: 332, CHEESE: 333, SEA_BRICK: 334, SEA_LANTERN: 335, VAULT: 336, SKY_STONE: 337, AIR_PUMP: 338, RADIO: 339, RADIO_ON: 340, SORTBOX: 341, SORTBOX_TOP: 342, HEARTH: 343, HEARTH_LIT: 344, CHIMNEY_TOP: 345, STABLE_SIDE: 346, SNOWMAN_FRONT: 347, ONION_0: 348, BEAN_0: 352, TOMATO_0: 356, HERB_0: 360, KILN_SIDE: 364, KILN_TOP: 365, KILN_FRONT: 366, KILN_FRONT_LIT: 367, TERRACOTTA: 368, TERRA_COL: 369, GLAZED: 379, ROOF_TILES: 389, URN: 390, ROPE: 391, LOCK_GATE: 392, LOCK_GATE_TOP: 393, DRIPSTONE: 394, BEETLE_LAMP: 395, WASHER_SIDE: 396, WASHER_TOP: 397, WASHER_FRONT: 398, SIEVE: 399, SLAG_BRICKS: 400, CHARCOAL_HEAP: 401, LP_ARM: 402, LP_CORE: 403, LP_TABLE_TOP: 409, LP_TABLE_SIDE: 410, LP_JUNCTION: 411, LP_SENSOR_CORE: 412, LP_SENSOR_ON: 413, LP_FPROVIDER: 414, LP_FSUPPLIER: 415, DRONE_PAD_TOP: 416, DRONE_PAD_SIDE: 417, LP_FSINK: 418, BOTTLER_SIDE: 419, BOTTLER_TOP: 420, BEEHOUSE_SIDE: 421, BEEHOUSE_TOP: 422, BEEHOUSE_FRONT: 423, COMB_SPIN_SIDE: 424, COMB_SPIN_TOP: 425, // (fruit tiles: apple, cherry, orange)
 };
 
 // Ores, deepest-reaching last. tier: the pickaxe tier needed to mine it (see TOOL_TIERS);
@@ -2918,4 +2918,105 @@ RECIPES.push(
   { out: [DRONE_PAD, 1], in: [[LP_PIPE, 1], [IRON_INGOT, 4], [CRYSTAL_SHARD, 1], [GRID_BATTERY, 1]], table: true, metal: IRON_INGOT },
   { out: [LP_FSINK, 1], in: [[LP_PIPE, 1], [PIPE, 1], [ITEM_FRAME, 1]], table: true },
   { out: [BOTTLER, 1], in: [[IRON_INGOT, 4], [TANK, 1], [BUCKET, 1], [HOPPER, 1]], table: true, metal: IRON_INGOT },
+);
+
+// ---------- v31: bee breeding, the comb centrifuge and honey products ----------
+// Bees come in species. Each species is two items, a princess and a drone, so they keep in chests and travel
+// along belts and pipes like anything else. A princess and a drone put in a bee house make a queen: she works
+// through her life making combs, then leaves a new princess and some drones. Each of those is one of her
+// parents' species, or (now and then, when the parents' pair is a known one) a new species: a mutation.
+// Combs spin in the comb centrifuge into honey drops, beeswax, propolis, pollen, royal jelly and more.
+export const BEE_HOUSE = 1475, COMB_CENTRIFUGE = 1476;
+export const BEE_ITEMS = 3100; // princess = BEE_ITEMS + 2 * species, drone = + 1 (3100..3131)
+export const BEE_SCOOP = 3140, WOODEN_FRAME = 3141, WAXED_FRAME = 3142, PROVEN_FRAME = 3143;
+export const HONEY_DROP = 3144, PROPOLIS = 3145, POLLEN = 3146, ROYAL_JELLY = 3147, HONEY_MUST = 3148, MEAD = 3149, FINE_MEAD = 3150,
+  HONEY_CAKE = 3151, HONEYED_APPLE = 3152;
+export const COMBS = 3160; // 3160..3170: the combs of the species (plain honeycomb is HONEYCOMB)
+export const FROSTY_COMB = 3160, DRY_COMB = 3161, FLORAL_COMB = 3162, BLOSSOM_COMB = 3163, MINERAL_COMB = 3164, EMBER_COMB = 3165,
+  ROYAL_COMB = 3166, GLOW_COMB = 3167, CRYSTAL_COMB = 3168, GILDED_COMB = 3169, STARRY_COMB = 3170;
+// flower: what must grow (or lie) within 5 blocks: 'flowers', 'cactus', 'fruit' (fruit tree leaves), 'snow' (snow
+//   or ice), 'lava', 'glowcap', or 'none'.
+// climate: 'cold' works only in the tundra or in winter, 'hot' only in the desert or in summer; else anywhere.
+// time: 'day' (in daylight), 'night' (at night, or somewhere dark), 'cave' (with no sky over it), 'stars' (at night,
+//   under the open sky).
+// rain: works in the rain under the open sky. life: how many 30-second spells of work a queen lives.
+// speed: how fast she works. fertility: how many drones she leaves. combs: [[comb, chance each spell], ...].
+export const BEE_SPECIES = [
+  { key: 'woodland', name: 'Woodland', col: [196, 140, 60], combs: [[HONEYCOMB, 0.5]], flower: 'flowers', time: 'day', life: 10, speed: 1, fertility: 2 },
+  { key: 'meadow', name: 'Meadow', col: [226, 180, 40], combs: [[HONEYCOMB, 0.5]], flower: 'flowers', time: 'day', life: 8, speed: 1, fertility: 3 },
+  { key: 'frost', name: 'Frost', col: [170, 214, 236], combs: [[FROSTY_COMB, 0.5]], flower: 'snow', climate: 'cold', time: 'day', life: 10, speed: 1, fertility: 2 },
+  { key: 'dune', name: 'Dune', col: [222, 196, 130], combs: [[DRY_COMB, 0.5]], flower: 'cactus', climate: 'hot', time: 'day', life: 10, speed: 1, fertility: 2 },
+  { key: 'common', name: 'Common', col: [214, 160, 56], combs: [[HONEYCOMB, 0.7]], flower: 'flowers', time: 'day', life: 10, speed: 1.2, fertility: 2 },
+  { key: 'garden', name: 'Garden', col: [206, 120, 190], combs: [[FLORAL_COMB, 0.5], [HONEYCOMB, 0.3]], flower: 'flowers', time: 'day', life: 10, speed: 1, fertility: 2 },
+  { key: 'orchard', name: 'Orchard', col: [236, 150, 160], combs: [[BLOSSOM_COMB, 0.5]], flower: 'fruit', time: 'day', life: 10, speed: 1, fertility: 2 },
+  { key: 'hardy', name: 'Hardy', col: [140, 120, 96], combs: [[HONEYCOMB, 0.5]], flower: 'none', time: 'day', rain: true, life: 12, speed: 1, fertility: 2 },
+  { key: 'diligent', name: 'Diligent', col: [240, 200, 60], combs: [[HONEYCOMB, 0.9]], flower: 'flowers', time: 'day', life: 12, speed: 1.5, fertility: 2 },
+  { key: 'rocky', name: 'Rocky', col: [130, 130, 136], combs: [[MINERAL_COMB, 0.4]], flower: 'none', time: 'cave', rain: true, life: 12, speed: 1, fertility: 1 },
+  { key: 'ember', name: 'Ember', col: [216, 80, 40], combs: [[EMBER_COMB, 0.4]], flower: 'lava', time: 'day', life: 10, speed: 1, fertility: 2 },
+  { key: 'royal', name: 'Royal', col: [150, 70, 180], combs: [[ROYAL_COMB, 0.3], [HONEYCOMB, 0.4]], flower: 'flowers', time: 'day', life: 14, speed: 1, fertility: 1 },
+  { key: 'glow', name: 'Glow', col: [120, 220, 150], combs: [[GLOW_COMB, 0.4]], flower: 'glowcap', time: 'night', life: 10, speed: 1, fertility: 2 },
+  { key: 'crystal', name: 'Crystal', col: [180, 140, 240], combs: [[CRYSTAL_COMB, 0.3]], flower: 'none', time: 'cave', rain: true, life: 12, speed: 1, fertility: 1 },
+  { key: 'gilded', name: 'Gilded', col: [250, 210, 70], combs: [[GILDED_COMB, 0.3]], flower: 'flowers', time: 'day', life: 14, speed: 1, fertility: 1 },
+  { key: 'starry', name: 'Starry', col: [70, 80, 160], combs: [[STARRY_COMB, 0.25]], flower: 'none', time: 'stars', life: 16, speed: 1, fertility: 1 },
+];
+const SP = Object.fromEntries(BEE_SPECIES.map((s, i) => [s.key, i]));
+// [parent, parent, child, chance]: a princess of one parent mated with a drone of the other (either way round)
+export const BEE_MUTATIONS = [
+  ['woodland', 'meadow', 'common', 0.15], ['common', 'meadow', 'garden', 0.12], ['common', 'woodland', 'orchard', 0.12],
+  ['frost', 'dune', 'hardy', 0.12], ['common', 'garden', 'diligent', 0.10], ['hardy', 'diligent', 'rocky', 0.08],
+  ['dune', 'hardy', 'ember', 0.10], ['diligent', 'orchard', 'royal', 0.08], ['garden', 'rocky', 'glow', 0.08],
+  ['rocky', 'frost', 'crystal', 0.06], ['royal', 'rocky', 'gilded', 0.06], ['crystal', 'gilded', 'starry', 0.04],
+].map(([a, b, c, p]) => [SP[a], SP[b], SP[c], p]);
+export const princessOf = (sp) => BEE_ITEMS + 2 * sp;
+export const droneOf = (sp) => BEE_ITEMS + 2 * sp + 1;
+// The species of a bee item and whether it's a princess, or null.
+export const beeOf = (id) => (id >= BEE_ITEMS && id < BEE_ITEMS + 2 * BEE_SPECIES.length ? { sp: (id - BEE_ITEMS) >> 1, princess: !((id - BEE_ITEMS) & 1) } : null);
+export const BEE_FRAMES = { [WOODEN_FRAME]: { bonus: 0.5, uses: 8 }, [WAXED_FRAME]: { bonus: 1, uses: 16 }, [PROVEN_FRAME]: { bonus: 1, uses: 40 } };
+const NEEDS = {
+  flower: { flowers: 'flowers', cactus: 'cactus', fruit: 'fruit trees', snow: 'snow or ice', lava: 'lava', glowcap: 'glowcaps', none: '' },
+  time: { day: 'works by day', night: 'works at night or in the dark', cave: 'works underground, with no sky over it', stars: 'works at night under the open sky' },
+  climate: { cold: 'only in the tundra or in winter', hot: 'only in the desert or in summer' },
+};
+// Words for what a species needs, e.g. "needs flowers nearby; works by day".
+export function beeNeeds(sp) {
+  const s = BEE_SPECIES[sp];
+  return [NEEDS.flower[s.flower] ? `needs ${NEEDS.flower[s.flower]} nearby` : '', NEEDS.time[s.time], NEEDS.climate[s.climate] ?? '', s.rain ? 'works in the rain' : ''].filter(Boolean).join('; ');
+}
+export const COMB_NAMES = ['Frosty', 'Dry', 'Floral', 'Blossom', 'Mineral', 'Ember', 'Royal', 'Glowing', 'Crystal', 'Gilded', 'Starry'];
+COMB_NAMES.forEach((n, i) => { ITEMS[COMBS + i] = { name: `${n} Comb`, about: 'spin it in a comb centrifuge' }; });
+ITEMS[HONEYCOMB].about = 'spin it in a comb centrifuge for honey and beeswax';
+BEE_SPECIES.forEach((s, i) => {
+  const bred = BEE_MUTATIONS.find((m) => m[2] === i);
+  const from = bred ? ` Bred from ${BEE_SPECIES[bred[0]].name} and ${BEE_SPECIES[bred[1]].name} bees.` : '';
+  const makes = s.combs.map(([c]) => itemName(c).toLowerCase()).join(' and ');
+  ITEMS[princessOf(i)] = { name: `${s.name} Princess`, stack: 16, bee: true, about: `put her in a bee house with a drone. Makes ${makes}; ${beeNeeds(i)}.${from}` };
+  ITEMS[droneOf(i)] = { name: `${s.name} Drone`, bee: true, about: `mate it with a princess in a bee house.${from}` };
+});
+ITEMS[BEE_SCOOP] = { name: 'Bee Scoop', stack: 1, about: 'tap a wild hive with bees in it to catch them: a princess and some drones' };
+ITEMS[WOODEN_FRAME] = { name: 'Wooden Frame', stack: 16, about: 'in a bee house: half as many combs again; lasts 8 spells of work' };
+ITEMS[WAXED_FRAME] = { name: 'Waxed Frame', stack: 16, about: 'in a bee house: twice the combs; lasts 16 spells of work' };
+ITEMS[PROVEN_FRAME] = { name: 'Proven Frame', stack: 16, about: 'in a bee house: twice the combs; lasts 40 spells of work' };
+ITEMS[HONEY_DROP] = { name: 'Honey Drop', about: '4 and a bottle make a honey bottle' };
+ITEMS[PROPOLIS] = { name: 'Propolis', about: 'bee glue: makes proven frames' };
+ITEMS[POLLEN] = { name: 'Pollen', about: '2 make fertiliser' };
+ITEMS[ROYAL_JELLY] = { name: 'Royal Jelly', stack: 16, food: 3, meal: ['heal', 12], about: 'heals you' };
+ITEMS[HONEY_MUST] = { name: 'Honey Must', stack: 8, food: 2, bottle: true, about: 'age it in an oak barrel for mead' };
+ITEMS[MEAD] = { name: 'Mead', stack: 8, food: 5, meal: ['warm', 300], about: 'feel warm inside', bottle: true };
+ITEMS[FINE_MEAD] = { name: 'Fine Mead', stack: 8, food: 7, meal: ['heal', 10], about: 'feel wonderful', bottle: true };
+ITEMS[HONEY_CAKE] = { name: 'Honey Cake', food: 12 };
+ITEMS[HONEYED_APPLE] = { name: 'Honeyed Apple', food: 6, meal: ['swift', 120], about: 'run faster' };
+Object.assign(AGING, { [HONEY_MUST]: [MEAD, 1], [MEAD]: [FINE_MEAD, 3] });
+
+block(BEE_HOUSE, { name: 'Bee House', station: 'beehouse', sound: 'wood', tool: 'axe', hardness: 1.5, side: T.BEEHOUSE_SIDE, top: T.BEEHOUSE_TOP, bottom: T.BEEHOUSE_TOP, front: T.BEEHOUSE_FRONT });
+block(COMB_CENTRIFUGE, { ...machine, name: 'Comb Centrifuge', station: 'combspin', side: T.COMB_SPIN_SIDE, top: T.COMB_SPIN_TOP, bottom: T.PLANKS, stationBase: COMB_CENTRIFUGE, machine: { load: 2 } });
+RECIPES.push(
+  { out: [BEE_SCOOP, 1], in: [[STICK, 3], [WOOL, 3]], table: true },
+  { out: [BEE_HOUSE, 1], in: [[PLANKS, 6], [HONEYCOMB, 2], [IRON_INGOT, 1]], table: true, metal: IRON_INGOT },
+  { out: [COMB_CENTRIFUGE, 1], in: [[IRON_INGOT, 4], [PLANKS, 3], [kineticId('gear', 0), 1], [BUCKET, 1]], table: true, metal: IRON_INGOT },
+  { out: [WOODEN_FRAME, 2], in: [[STICK, 4], [STRING, 1]], table: true },
+  { out: [WAXED_FRAME, 1], in: [[WOODEN_FRAME, 1], [BEESWAX, 2]] },
+  { out: [PROVEN_FRAME, 1], in: [[WAXED_FRAME, 1], [PROPOLIS, 2]] },
+  { out: [HONEY_BOTTLE, 1], in: [[HONEY_DROP, 4], [GLASS_BOTTLE, 1]] },
+  { out: [FERTILISER, 1], in: [[POLLEN, 2]] },
+  { out: [HONEYED_APPLE, 1], in: [[APPLE, 1], [HONEY_DROP, 2]] },
 );

@@ -1,143 +1,39 @@
 # Minicraft
 
-A small block-building game for the browser, built with [three.js](https://threejs.org/).
-It is designed for Android tablets (touch controls) but also plays with keyboard and mouse.
+A small block-building game for the browser, built with [three.js](https://threejs.org/). It is designed for
+Android tablets (touch controls) but also plays with keyboard and mouse.
 
-- A 16,384 × 16,384 block world (64 high) that streams in around you as you explore: hills, lakes and seas,
-  beaches, trees, winding caves, coal and ten metal and mineral ores. You start in the middle; the edges are walls
-- Trees: chop the bottom of a trunk with an axe and the whole tree comes down (by hand you only get one log).
-  Leaves with no trunk nearby wither away over a few seconds, sometimes dropping **saplings** and sticks.
-  Plant a sapling on grass or dirt and it grows into a new tree in a few minutes
-- Adjustable view distance (48–160 blocks) and an on-screen coordinates readout
-- Water you can swim in. It flows into holes you dig next to it, as long as they're at or below sea level
-- Day/night cycle (12 minutes) with sunrise and sunset skies, sun, moon and stars
-- Sunlight: open ground is fully lit, while overhangs, tunnels and caves fade into darkness even at noon.
-  Leaves and water dim the light a little, so it's shadier under trees and deeper in lakes
-- Animals: ducks paddle on lakes and waddle along shores, buffalo graze the plains in herds, alpacas and
-  yaks roam the hills, and little newts scurry around near water. Tap one to bump it and it runs off.
-  Tapping also gathers from them: **wool** from alpacas, **feathers** from ducks, **milk** from yaks and
-  **slime** from newts (the last two with an empty wooden bucket in hand)
-- Health (ten hearts): falls of more than 3 blocks hurt, you can drown (watch the bubbles underwater),
-  and an empty hunger bar wears you down. A well-fed player slowly heals. If you die you respawn at
-  the world spawn and keep what you were carrying. Drinking a slime bucket gives you food poisoning
-- Night creatures come out in the dark — on the surface at night and in caves any time, but never where
-  torches light the ground. **Gloomlings** are quick shadow imps, **mossbacks** are slow, hard-hitting
-  stone golems, and **thornspitters** keep their distance and spit thorns. Fight them by tapping (an axe
-  hits hardest) or with the bow; they drop coal, cobblestone or arrows. Caught in daylight, they dissolve.
-  Four difficulty levels in the ☰ menu: **Peaceful** (they roam but only fight back if you attack them),
-  **Worrying** (easy), **Scary** (hard) and **Terrifying** (nightmare)
-- Furniture for your home: beds (sleep through the night, and respawn there), tables, chairs,
-  shelves, alpaca-wool carpets and curtains (tap to open or close), doors (tap to open or close), and
-  lamps that burn slime fuel: each holds up to 3 units and each unit lasts a full in-game day.
-  Lamps shine brighter than torches, so a lit home keeps the night creatures out
-- A bow and arrows: hold to draw, let go to shoot (tap for a quick shot). Arrows stick in blocks and
-  you can walk over them to pick them back up; animals they hit get bumped away
-- A day counter and a hunger bar. Hunger drains as you play (faster when walking and digging);
-  tap with food in hand to eat. If it runs out you're too weak to do more than stagger along
-- Farming: wild wheat grows on the plains and sugar cane on shores. Ripe wheat gives seeds to replant on
-  grass or dirt; sugar cane can be replanted next to water. Both grow over time
-- Fishing: cast a fishing rod onto a lake or the sea and wait. When the bobber plunges and splashes,
-  tap quickly to reel in a fish. Raw fish is a small snack; bake it in the oven for a proper meal
-- Cooking: grind wheat into flour and sugar cane into sugar with a mortar and pestle, churn yak milk into
-  butter, then bake bread, cookies and cake
-- Mining and metalwork: iron, copper, tin, lead, zinc, sulphur, bauxite (aluminium), silver, gold and,
-  deep down, tungsten. Smelt ores into ingots and alloys (bronze, aluminium bronze, steel, stainless steel,
-  electrum), and make better tools as you go. Each tier of pickaxe opens up the next ores
-- Water power: pour water from a bucket so it runs downhill, and set a **water wheel** in the flow. Shafts
-  and gears carry its turning to a **rock crusher**, which crushes ore into dust that smelts into twice the
-  metal. Gear up for more speed, add wheels for more power, and use stone or stainless steel parts for big
-  networks
-- Gravel (with flint) and clay on lake and sea beds: fire clay bricks, a faster **blast smelter**, flint arrows
-- More machines for the water-power network: a **millstone**, **mechanical saw**, **trip hammer**, **bellows**,
-  a **pump** with lead pipes and spouts, a tunnelling **drill**, **filament lamps**, and **conveyor belts** and
-  **hoppers** to carry things between them. **Windmills** give power anywhere high up
-- Chests, ladders, scaffolding and signs; swords and four pieces of armour in five materials
-- Gunpowder from cave saltpetre, and **blasting charges** that blow out a room-sized hole
-- Uses for every metal: lead sinkers and lava buckets, a gold clock and compass on the HUD, silver arrows,
-  an electrum mirror lamp, tungsten drill bits and filaments
-- **Rails** and **minecarts** (with slopes, curves and powered rails), and a **map** of the land around you
-- **Deserts** (sand, sandstone, cactus) and snowy **tundra** (frozen water, snowy grass, yaks and alpacas),
-  snow-capped peaks, and lava pools at the bottom of the deepest caves (water turns lava into obsidian)
-- Building: **stairs** and **slabs** in six materials (you walk up them without jumping), **fences** and
-  **fence gates**, **glass panes**, **trapdoors**, and colour: **flowers** ground into ten **dyes** for dyed wool,
-  carpet, stained glass, painted planks and sign writing
-- Automation: **gearboxes** and **clutches**, **levers**, **buttons** and **pressure plates** that open doors,
-  gates and trapdoors, engage clutches and drive powered rails, **item frames** that turn hoppers into
-  **sorting hoppers**, and **storage carts** that fill and empty on **loader rails**
-- Survival: tools, weapons and armour **wear out** and are mended at an **anvil** (this can be turned off),
-  **shields**, **teas** brewed in a **cauldron** (night vision, faster digging, fire resistance, healing), and
-  rare **dungeons** deep underground with loot chests and a boss, the **Mossback King**
-- World: **weather** (rain, tundra snow, desert sandstorms), **berry bushes**, tame **wolves** that fight for
-  you, rideable **camels**, and a **wandering trader** with rare goods
-- Recipe search and favourites, a sort button for your backpack and chests, and marks on the map
-- World life: four **seasons** (crops grow fastest in summer, leaves turn and fall, winter frosts), **rivers**
-  with salmon, icefish and pufferfish, **villages** with houses, fields, a bell and villagers who trade,
-  wild **bee hives** for honey, and new caves: flooded caverns, glowing mushroom caverns and crystal **geodes**
-- Survival: an **enchanting altar** (Swift, Sturdy, Keen, Flame, Warmth), hearty meals that leave you
-  **well fed**, ailments (**poison**, **chill** and **heatstroke**), three more lairs with guardians (the Dune
-  Warden, the Frost Wraith and the Ember Lord) and their crowns, dart-trap tombs, and sleeping through storms
-- Automation: **observers**, **storage gauges**, a crop **harvester**, a **steam engine**, pumps that move
-  **lava** and fill cauldrons, and **switch rails** for branch lines
-- Building: **walls**, **pillars**, stairs that turn **corners**, **doors** and **glass panes** in every colour,
-  **lanterns**, **chandeliers**, coloured **glow lamps** that cast coloured light, and **paintings** of eight sizes
-- Advanced automation: **copper wire**, **inverters**, **delay blocks** and **latches** for signal logic (and
-  clocks), **detector rails**, **ejectors**, **collectors**, **splitting** and **sorting belts**, **bucket elevators**,
-  an **auto-crafter**, **drive belts**, **flywheels**, **tachometers**, **gear shifts**, **tanks**, **valves**, lava
-  piped in as fuel, **sprinklers**, **tree fellers**, **planters**, **block breakers** and **placers**,
-  **animal stations** and **fishing nets**
-- Electricity: **generators** turned by shafts, **solar panels**, **wind turbines**, **electrum wire** (which carries
-  signals too) and **cupronickel cable**, **grid batteries**, **electric motors**, **power meters**, **electric lamps**
-  you can switch with a signal, **daylight sensors**, an **electric pulverizer** that gets more out of ore, an
-  **electric smelter**, **batteries** and a **battery charger**, and battery-powered **portable lamps**,
-  **jackhammers**, **jetpacks**, **electric drills**, **hover boots**, **night-vision goggles** and **magnet rings**
-- More automation: a **programmable crafter**, **item counters**, **teleport pads** (for things and for you) and a
-  **quarry**; **monster spawners** in dungeons for mob farms; **nickel** and **cupronickel**; and a low hum from
-  the machines working around you
-- Power and gear: **geothermal generators** beside lava, a **wireless charger**, **electric rails**, a **lift**
-  between floors, **uranium** and a **nuclear reactor** that needs cooling (or melts down), a **chainsaw** that
-  gives **sawdust** for **paper** and **books**, **backpacks** in three sizes, a **spanner** that turns machines and
-  picks them up with what's in them, a **grappling hook**, and **animal breeding**
-- v24: **bookshelves** that make the enchanting altar cheaper and unlock **Lucky**, **Mending** and **Feather Fall**,
-  a **journal** to write in, a **compost bin** and **fertiliser**; **spent fuel rods** that give off **radiation**,
-  a **lead-lined chest**, a **hazmat suit** and a **centrifuge** for **enriched fuel rods**; a **tesla coil**, an
-  **electric fence**, an **arc furnace** (invar and starsteel) and a **freezer** (ice and packed ice, which cool a
-  reactor better than water); **ziplines**, **boats**, **hot-air balloons** and **rail stations**; **volcanoes**,
-  **ruins**, **shipwrecks** and **meteorites** that fall at night and give **starsteel** for the best tools;
-  **cats**, **chickens** (eggs), **pigs** (truffles), **buffalo** you can saddle and ride, and young animals that
-  take their parents' **coat colours**; **quick-stack** into nearby chests and **split stacks**
-- v25: **sit** on chairs, **shelves and tables** that show an item, **flower pots**, **hanging baskets**, **window
-  boxes** and **iron bars**; **fruit trees** (apple, cherry, orange) that blossom and fruit with the seasons, a
-  **cooking pot** for meals that give buffs, **greenhouses** where crops grow in winter, **scarecrows** to keep the
-  **crows** off your wheat; **lighthouses** with sweeping beams, an **explorer's map** that marks what you find,
-  **treasure maps** to buried chests, **morning mist** in the valleys and **snow that settles** and melts;
-  **deer**, **owls**, **bats**, **fireflies**, an **apiary** for **beeswax candles**, wolves that **fetch** and
-  cats that bring **presents**; **belt crossings**, a **farm controller**, **pneumatic tubes** and **cable cars**;
-  **double-tap to gather** a stack, **shift-click or hold** to move one across, **"used in"** in each item's tip,
-  and a compass that points to your nearest **waypoint**
-- v26: **village life** (villagers go home at night, a morning bell, villages that grow), **market stalls** and
-  silver **coins**; **thunderstorms** with lightning that starts fires, **hail** and **rainbows**; **carrots**,
-  **potatoes**, **pumpkins** and **grapes**, with **crop rotation**; a **wine press**, a **cheese press** and an
-  **oak barrel** where wine and cheese age; **sunken temples** and **sky islands** with puzzle vaults, **diving
-  gear** and an **air pump**; **signal radios**, a **sorting machine** and steam **locomotives** that pull trains of
-  carts; a **fireplace** with a **chimney**; **pinned recipes** on screen and an **auto-refilling hotbar**
-- v27: wild **horses** to win over, saddle and ride, and **stables** to keep them; village **requests**,
-  **reputation** (better prices) and **seasonal festivals** with decorations and **fireworks**; **snowmen**;
-  **onions**, **beans**, **tomatoes** and **herbs**; **cider** and **berry wine** from the press, aged faster in a
-  **cellar**; a **kiln** for **terracotta**, **glazed tiles**, **roof tiles** and **urns**; **rope ladders** and
-  **rope bridges**; **canal locks** that lift boats between water levels; **stalactites** that fall, glowing
-  **cave beetles**, **olms** and **glow-worms**; **search across nearby chests**; and a **photo mode**
-- **Three world slots** with export to a file and import, a **creative mode** (flying, every block, instant
-  breaking and a **copy wand**), rebindable keys, a field-of-view slider, a full-screen **world map** with
-  waypoints, and **31 achievements** with an in-game guide
-- Torches that light up the area around them with a warm, flickering glow. They stand on floors or hang on walls
-- Synthesised sound effects for digging, breaking, placing, footsteps and splashing, with no audio files
-- Break and place blocks, with break times that depend on the tool you hold
-- Recipe-based crafting: some recipes need a crafting table nearby
-- Pixel-art textures are all generated in code at startup, with no image files
-- Ambient-occlusion lighting on the voxel meshes
-- The world auto-saves in the browser, in one of three slots. Only chunks you've changed are stored (in
-  IndexedDB); everything else regenerates from the world's seed. Worlds from the earlier 128 × 128 version are moved,
-  builds and all, into the middle of the big world the first time you open the new version
+You start in the middle of a 16,384 × 16,384 block world that streams in as you explore. Chop trees, dig for
+ore, farm, cook and build, then automate it all: machines driven by water, electricity and signals, item and
+liquid logistics, and courier drones. Every texture and sound is made in the browser at startup, so there are no
+image or audio files.
+
+## Contents
+
+- [Running it](#running-it)
+- [Controls](#controls)
+- [Getting started](#getting-started)
+- [Basics](#basics)
+- [The world](#the-world)
+- [Food, cooking and fishing](#food-cooking-and-fishing)
+- [Farming](#farming)
+- [Mining and metals](#mining-and-metals)
+- [Tools, weapons and armour](#tools-weapons-and-armour)
+- [Furniture, building and home](#furniture-building-and-home)
+- [Water power and machines](#water-power-and-machines)
+- [Electricity and reactors](#electricity-and-reactors)
+- [Signals and automation](#signals-and-automation)
+- [Logistics and liquids](#logistics-and-liquids)
+- [Transport](#transport)
+- [Animals and creatures](#animals-and-creatures)
+- [Villages and trade](#villages-and-trade)
+- [Survival, dungeons and exploration](#survival-dungeons-and-exploration)
+- [Inventory and recipes](#inventory-and-recipes)
+- [Guidebook and music](#guidebook-and-music)
+- [Worlds, creative mode, the map and achievements](#worlds-creative-mode-the-map-and-achievements)
+- [Recent fixes](#recent-fixes)
+- [Version history](#version-history)
+- [Code layout](#code-layout)
 
 ## Running it
 
@@ -208,7 +104,7 @@ back to plain hold-to-break, change ☰ → **Touch breaking**.
 You aim with the crosshair in the middle of the screen. Volume, look speed, field of view and auto-jump are
 in the ☰ menu, and every keyboard key above can be changed under ☰ → **Keyboard keys**.
 
-## How to progress
+## Getting started
 
 1. Hold on a tree trunk to collect **logs**. Once you have an axe, cutting the bottom log fells the whole tree.
 2. Open 🎒 and craft **planks**, then **sticks** and a **crafting table**.
@@ -222,6 +118,103 @@ in the ☰ menu, and every keyboard key above can be changed under ☰ → **Key
    each, but eat five or more in a day and you'll get food poisoning.
 7. Craft **torches** from 1 coal or charcoal + 1 stick (no table needed). Tap the top of a block to stand one up,
    or the side of a block to hang it on the wall. If the block a torch sits on is broken, the torch goes back to your inventory.
+
+## Basics
+
+- **The land** is hills, lakes and seas, beaches, trees, winding caves, coal and ten metal and mineral ores. You
+  start in the middle; the edges are walls. The view distance is adjustable (48–160 blocks), with a coordinates
+  readout on screen.
+- **Day and night** last 12 minutes, with sunrise and sunset skies, sun, moon and stars. Open ground is fully lit,
+  while overhangs, tunnels and caves fade into darkness even at noon. Leaves and water dim the light a little, so
+  it's shadier under trees and deeper in lakes.
+- **Water** can be swum in. It flows into holes you dig next to it, as long as they're at or below sea level.
+- **Health** is ten hearts. Falls of more than 3 blocks hurt, and you can drown (watch the bubbles underwater). A
+  well-fed player slowly heals. If you die you respawn at the world spawn and keep what you were carrying.
+- **Hunger** drains as you play (faster when walking and digging). Tap with food in hand to eat. When it runs out
+  you're too weak to do more than stagger along.
+- **Animals** are around the land: ducks paddle on lakes, buffalo graze the plains in herds, alpacas and yaks roam
+  the hills, and newts scurry near water. Tap one to bump it and it runs off. Tapping also gathers **wool**,
+  **feathers**, **milk** and **slime** (the last two with an empty wooden bucket in hand). Drinking a slime bucket
+  gives you food poisoning.
+- **A bow and arrows**: hold to draw, let go to shoot (tap for a quick shot). Arrows stick in blocks and you can
+  walk over them to pick them back up.
+- **Torches** light up the area around them with a warm, flickering glow. They stand on floors or hang on walls.
+- **Sound and look**: the sound effects are synthesised, and the textures are generated in code. Voxel meshes have
+  ambient-occlusion lighting.
+- **Saving**: the world auto-saves in the browser, in one of three slots. Only chunks you've changed are stored (in
+  IndexedDB); everything else regenerates from the world's seed. Worlds from the earlier 128 × 128 version are
+  moved, builds and all, into the middle of the big world the first time you open the new version.
+
+## The world
+
+### Trees
+
+- With any axe in hand, breaking a log brings down every log joined to it above (up to 64), and they all go
+  into your inventory. It only works on trees, meaning logs that touch leaves, so log walls and pillars you
+  build are safe. By hand, or with any other tool, you only get the one log.
+- Leaves need a log within 4 blocks, counting through other leaves. When a tree is cut, its leaves wither
+  one by one over a few seconds. Each withered or broken leaf block has about an 8% chance to drop a
+  **sapling** and a 12% chance to drop a stick. A fruit tree's leaves drop saplings of that fruit instead of oak.
+You collect these if you're within 16 blocks.
+- Plant a sapling on top of grass or dirt. It grows into a tree after about 15 minutes on average, but only
+  while its chunk is loaded and only if there's room above it for the trunk. If the block under a sapling is
+  broken, the sapling goes back to your inventory.
+
+### Biomes, lava and obsidian
+
+Away from the temperate middle lands lie **deserts** and **tundra**. Deserts are deep sand over
+sandstone, with cactus (it hurts to touch) and no trees. Tundra is snowy grass with few trees and frozen
+lakes and seas: break ice and it melts back into water. Yaks and alpacas graze the snow. Peaks above
+height 46 are capped with snow everywhere.
+
+The deepest caves (below height 7) are flooded with **lava**, which glows and burns anyone who falls in.
+Water poured onto lava, or lava onto water, cools into **obsidian**: very hard, blast-proof, and only
+mined with a stainless steel pickaxe or better.
+
+Worlds saved before version 17 load as they were. Parts of the world you haven't changed are generated
+afresh, so new biomes, saltpetre and lava pools can appear there. Likewise, worlds from before version 18
+grow flowers, berry bushes and dungeons in the parts you haven't changed.
+
+### Weather
+
+Every so often it rains for a few minutes. In the tundra it snows, and in the desert a sandstorm blows
+in and closes the view right down. The sky clouds over and the day dims. Rain makes crops grow half again as fast and fills cauldrons left under the open sky.
+
+### Storms and rainbows
+
+- **Thunderstorms**: dark skies, thunder and **lightning**, which strikes the highest thing about and can set
+  wood, leaves and wool **on fire**. Fire spreads, more slowly in the rain, and burns out. Stay under a roof.
+- Up in the mountains rain falls as **hail**: it hurts unless you wear a helmet.
+- When the rain stops there's often a **rainbow**, across the sky from the sun.
+
+### Seasons, rivers, villages and bees
+
+The year turns through **spring, summer, autumn and winter**, six days each (the season shows beside the
+day). Crops grow fastest in summer and barely at all in winter; leaves turn in autumn and fall in winter,
+when the grass frosts over and the rain turns to snow.
+
+**Rivers** wind across the land. Fish in a river for **salmon**, in cold water for **icefish**, and in warm
+water for **pufferfish** (which poison you if you eat them); now and then you hook junk or treasure. Bake
+fish into a **fish pie** (with flour and butter) for a hearty meal.
+
+**Villages** have houses, a well, a wheat field and a **bell** (tap it to hear the village's name).
+Villagers are farmers, smiths, fishers and clerics, and each trades its own goods: tap one to trade.
+
+**Bee hives** hang in trees. Bees fill them with honey (faster with flowers around, slower in winter) and
+spread new flowers as they go. Tap a full hive holding a **glass bottle** for honey, or break it for
+honeycomb. Honeycomb and a bottle in the cauldron make **honey tea**, which keeps out the cold.
+
+Underground there are flooded caverns, caverns lit by **glowcap mushrooms** (cook three with butter in the
+oven for mushroom stew) and **geodes** lined with **crystal**: break it for crystal shards.
+
+### Caves
+
+- Big caverns now have **stalactites** hanging from the roof and **stalagmites** rising from the floor. Watch
+  out in the dark: a loose stalactite can drop on you (and one falls whenever the rock above it is dug out).
+- **Cave beetles** glow softly in the deep. Tap one to collect a **glow shell**; 3 glow shells and a glass make a
+  **beetle lamp**. Pale **olms** swim in underground pools, and **glow-worms** twinkle on cave ceilings.
+
+## Food, cooking and fishing
 
 ### Food
 
@@ -249,43 +242,162 @@ in the ☰ menu, and every keyboard key above can be changed under ☰ → **Key
 Tap a lamp holding slime fuel to pour in one unit (you keep the empty bucket). A lamp holds 3 units,
 each burning for one in-game day while that part of the world is loaded.
 
-### Furniture (all at a crafting table)
-
-| Make | From |
-| --- | --- |
-| Bed | 3 wool + 3 planks |
-| Wooden Table | 3 planks + 4 sticks |
-| Chair | 2 planks + 3 sticks |
-| Shelf | 5 planks |
-| Lamp | 1 glass + 2 cobblestone |
-| 3 Carpets | 2 wool |
-| Curtain | 2 wool + 1 stick |
-| Door | 4 planks |
-
-Chairs face you when you place them; doors take two blocks. Beds are two blocks long: the foot goes
-where you tap and the head (with the pillow) extends away from you. Tap a bed in the evening or at
-night to sleep until morning (not while a creature is lurking nearby); any tap sets it as your respawn point.
-
-Tap a crafting table or butter churn to open crafting there.
-
-### Trees
-
-- With any axe in hand, breaking a log brings down every log joined to it above (up to 64), and they all go
-  into your inventory. It only works on trees, meaning logs that touch leaves, so log walls and pillars you
-  build are safe. By hand, or with any other tool, you only get the one log.
-- Leaves need a log within 4 blocks, counting through other leaves. When a tree is cut, its leaves wither
-  one by one over a few seconds. Each withered or broken leaf block has about an 8% chance to drop a
-  **sapling** and a 12% chance to drop a stick. You collect these if you're within 16 blocks.
-- Plant a sapling on top of grass or dirt. It grows into a tree after about 2½ minutes on average, but only
-  while its chunk is loaded and only if there's room above it for the trunk. If the block under a sapling is
-  broken, the sapling goes back to your inventory.
-
 ### Fishing
 
 Hold a fishing rod and tap while looking at water to cast the bobber (it flies in an arc, so aim a little
 high to reach further). After a while a fish bites: the bobber dips under and splashes. Tap within about a
 second to reel it in; too slow and it gets away, and you wait for the next one. Tap at any other time to reel
 in empty. The line reels itself in if you put the rod away or walk too far off.
+
+### Bait and fish traps
+
+- Carry **worms** when you fish and one goes on the hook. Fish bite twice as fast, and you won't catch junk.
+- A **fish trap** (8 sticks, 4 string, a plank) sunk in water and baited with worms catches a fish now and
+  then, sometimes a salmon.
+
+### Cauldron and teas
+
+A **cauldron** (5 iron or copper ingots) is filled by tapping it with a water bucket, or by leaving it out
+in the rain. Tap it to open it like an oven: put in **glass bottles** (3 glass make 3) and herbs, and fuel
+underneath. Every two teas use a level of water.
+
+| Tea | Brewed from | Effect |
+| --- | --- | --- |
+| Night-Eye Tea | bottle + cornflower | see in the dark for 4 minutes |
+| Miner's Tea | bottle + dandelion | dig half as fast again for 3 minutes |
+| Fireproof Tea | bottle + poppy + cactus | lava doesn't burn you for 2 minutes |
+| Healing Tea | bottle + lavender + daisy, or bottle + 3 berries | heals you quickly |
+
+Active teas show with their time left next to your coordinates. You keep the bottle.
+
+## Farming
+
+### Fruit trees, the cooking pot, greenhouses and scarecrows
+
+- Some trees in the temperate lands are **apple**, **cherry** or **orange** trees. They blossom in spring and
+  fruit in summer and autumn: tap a leaf with fruit on it to pick it (apples and oranges are 4 food, cherries 3).
+  Fruit leaves sometimes drop a **fruit sapling** to plant your own orchard.
+- A **cooking pot** (5 iron, a log; burns fuel like an oven) makes meals that also give you a buff:
+  **apple pie** (3 apples, 2 flour, sugar, an egg; warms you through), **cherry pie** (heals you), **fish soup**
+  (2 fish, a water bucket; warms you), **truffle soup** (a truffle, 2 glowcaps, a water bucket; see in the dark),
+  **berry jam** (6 berries, 2 sugar, a bottle; heals) and **mushroom stew**. At the crafting grid, **fruit salad**
+  (one of each fruit) lets you dig faster and **orange juice** (3 oranges, a bottle) lets you run faster.
+- A **greenhouse**: crops with glass over them (anywhere above, with nothing but air between) grow as well in
+  winter as in spring.
+- **Crows** come down by day to eat ripe wheat under the open sky, knocking it back to green shoots. A
+  **scarecrow** (3 sticks, 6 wheat, a wool) keeps them off everything within 8 blocks, and they fly off if you come
+  near.
+
+### Crops and crop rotation
+
+- **Carrots** and **potatoes** grow from themselves (village farms have rows of them). Bake a potato in the oven.
+- **Pumpkin seeds** (4 from a pumpkin) grow a stem that puts a pumpkin beside it. A pumpkin and a torch make a
+  **jack o'lantern**; a pumpkin, sugar and an egg bake a **pumpkin pie**.
+- **Grapes** grow on a **trellis** (2 from 6 sticks): plant them at its foot.
+- **Crop rotation**: planting the same crop over and over in the same soil tires it, and it grows more slowly
+  (down to about a third). Change crops, or leave the soil for six days, and it recovers. Fertiliser freshens it.
+
+### Winery and cheese
+
+- A **wine press** (6 planks, 3 logs, an iron) presses 6 grapes and a bottle into **grape juice**; a **cheese
+  press** (the same and a string) presses a milk bucket into **curds**. Neither needs fuel.
+- An **oak barrel** (6 planks, an iron) ages what's in it: juice becomes **wine** after a day and **fine wine**
+  after three more; curds become **cheese**, and cheese becomes **aged cheese**. Tap a barrel to see how they're
+  coming on. Aged things sell for more.
+
+### New crops, cider and berry wine, cellars
+
+- **Onions**, **beans**, **tomatoes** and **herbs** grow from themselves (village farms grow them, and farmers sell
+  them). **Beans** never tire the soil: they leave it **rich**, so the next crop grows faster.
+- New meals: **vegetable stew** (an onion, carrot, potato and herbs) and **tomato soup** (3 tomatoes, an onion and
+  a water bucket) in the cooking pot, and **baked beans** (4 beans, a tomato) in the oven.
+- The **wine press** also makes **apple juice** (4 apples) and **berry juice** (8 berries). In an oak barrel
+  apple juice becomes **cider** and then **vintage cider**; berry juice becomes **berry wine** and then **fine
+  berry wine**.
+- A barrel in a **cellar** (no daylight reaching it from any side but below) ages things half as fast again.
+  Tap a barrel to see whether it's in one.
+
+### Honey varieties
+
+- Hives and apiaries make honey after the flowers growing thickest around them:
+  - **Lavender honey** comes from lavender.
+  - **Blossom honey** comes from fruit trees.
+  - **Golden honey** comes from dandelions.
+  - With none of these, they make plain wildflower honey.
+- Brew each in the cauldron with its flower (an apple or cherries for blossom honey). Lavender tea keeps you fed
+  for longer, blossom tea makes you swift, and golden tea heals.
+
+### Bee breeding
+
+Wild hives hold colonies you can catch and breed into new kinds of bee.
+
+- **Catching bees.** A **bee scoop** (3 sticks, 3 wool) takes the colony from a wild hive that has some honey in
+  it: a **princess**, one or two **drones** and some honeycomb. The kind depends on the land: **woodland** or
+  **meadow** bees in the green lands, **frost** bees in the tundra, **dune** bees in the desert. The hive is left
+  empty, and new bees move in again in time.
+- **The bee house** (6 planks, 2 honeycomb, an iron ingot) takes a princess, a drone and up to two **frames**.
+  The princess and drone become a **queen**, who works for a number of spells (about 30 seconds each), filling
+  the trays with combs. When her life is over she leaves a new princess and some drones. Each takes after
+  one parent or the other, so a princess and drone of the same kind breed true.
+- **Mutations.** Some pairs of different kinds now and then breed a new kind instead. Tooltips on a bee show
+  what it needs, and the new kind's tooltip names its parents:
+
+  | Parents | New kind |
+  | --- | --- |
+  | Woodland + Meadow | Common (makes more honeycomb, works faster) |
+  | Common + Meadow | Garden (floral combs) |
+  | Common + Woodland | Orchard (blossom combs; needs fruit trees) |
+  | Frost + Dune | Hardy (needs no flowers, works in the rain) |
+  | Common + Garden | Diligent (fast and productive) |
+  | Hardy + Diligent | Rocky (mineral combs; works only underground) |
+  | Dune + Hardy | Ember (ember combs; needs lava nearby) |
+  | Diligent + Orchard | Royal (royal combs) |
+  | Garden + Rocky | Glow (glow combs; works at night or in the dark, near glowcaps) |
+  | Rocky + Frost | Crystal (crystal combs; underground) |
+  | Royal + Rocky | Gilded (gilded combs) |
+  | Crystal + Gilded | Starry (starry combs; only at night under the open sky) |
+
+- **What bees need.** A queen stops work if her place doesn't suit her: the wrong climate (frost bees want the
+  tundra or winter, dune and ember bees the desert or summer), the wrong time of day, rain falling on the house,
+  or none of her flowers within 5 blocks. Most kinds work half as fast in winter. The house's panel says why
+  she's idle. Full trays stop her too, so empty them, or put a hopper under the house.
+- **Frames** make each spell yield more combs, and wear out: a **wooden frame** (4 sticks, a string; makes 2) adds
+  half again, a **waxed frame** (a wooden frame and 2 beeswax) doubles it, and a **proven frame** (a waxed frame
+  and 2 propolis) doubles it and lasts much longer.
+- **The comb centrifuge** (4 iron, 3 planks, a small wooden gear and a bucket) is turned by a shaft and spins combs
+  into honey drops and beeswax, with by-products: ice, sand and **propolis**, **pollen**, dirty iron, copper and
+  tin dust, sulphur and coal dust, **royal jelly**, glow shells, crystal shards, dirty gold and silver dust,
+  and, now and then, meteoric iron. The electric centrifuge spins combs too.
+- **Honey products.** 4 honey drops and a bottle make a bottle of honey. 2 pollen make fertiliser. An apple and 2
+  drops make a **honeyed apple**, which makes you swift for a while. The oven bakes a **honey cake** (3 flour,
+  4 drops, an egg), and royal jelly is a filling, healing food. 6 drops and a bottle in the wine press make
+  **honey must**, which ages in a barrel into **mead** (warms you) and then **fine mead** (heals you).
+
+### Fine crops, shows and special trades
+
+- A ripe crop sometimes comes up **fine**: more often in soil that beans have fed or under glass, less often in
+  tired soil, and never in worn-out soil. Fine crops are better eating and sell well at a stall. Craft one back
+  into the ordinary kind whenever you like. New achievement: **Prize Grower**.
+- On a festival day, tap a village's bell holding fine produce to enter its **show**. Show three for first prize.
+- **Friends** of a village are offered a special trade by each villager, and its **Heroes** a second one:
+  - farmers: fertiliser and saddlebags
+  - smiths: speed and yield upgrades
+  - fishers: worms and treasure maps
+  - clerics: golden tea and pearls
+
+### Farm machines
+
+- A **tree feller**, driven by a shaft, cuts down the tree in front of it and passes the logs (and a sapling or
+  two) to whatever is behind it.
+- A **planter** plants a sapling put into it on the grass or dirt in front of it, whenever there's room.
+- A **block breaker** breaks the block in front of it each time its signal comes on, passing what it gives
+  behind it. A **block placer** puts a block from the chest behind it into the space in front of it.
+- An **animal station** shears alpacas, plucks ducks and milks yaks (into empty buckets put into it) within 5
+  blocks, passing what it gets out of its back. Wheat put into it is fed to the animals, so coats and
+  feathers grow back twice as fast.
+- A **fishing net** set in water catches a fish every minute or so; a hopper underneath takes them out.
+
+## Mining and metals
 
 ### Ores and metals
 
@@ -372,6 +484,227 @@ Both need a shovel. Gravel sometimes drops **flint** instead (about 1 in 10), an
 
 Flint dust and clay dust come from the rock crusher (below).
 
+### Gunpowder and blasting
+
+**Saltpetre** crusts the stone where caves (and cliffs) open up: mine it with a stone pickaxe. The rock
+crusher also gets a little out of desert sandstone.
+
+| Make | From | Where |
+| --- | --- | --- |
+| 4 Gunpowder | 2 saltpetre + 1 sulphur + 1 coal or charcoal, with the mortar | anywhere |
+| 2 Blasting charges | 4 gunpowder + 1 clay ball + 1 wheat string | crafting table |
+
+Place a charge and tap it to light the fuse: 3 seconds later it blows a round hole about 5 blocks across.
+Three quarters of what it breaks comes to you (as if dug with an iron pickaxe) if you're within 24 blocks.
+Charges in the blast go off too. Chests, machines, furniture, obsidian and bedrock are blast-proof. Stand
+well back: the blast hurts anyone within about 5 blocks.
+
+### Lead, gold, silver, electrum and tungsten
+
+| Make | Recipe (crafting table) | Use |
+| --- | --- | --- |
+| 4 Lead sinkers | 1 lead ingot | add one to a fishing rod (anywhere) for a **weighted rod**: fish bite twice as often |
+| Lead bucket | 3 lead ingots | scoops up lava. A lava bucket burns for 100 in a smelter and gives the bucket back |
+| Gold clock | 4 gold ingots + 1 glass | carried anywhere, the time shows next to your coordinates |
+| Compass | 2 iron + 2 copper ingots + 1 glass | carried anywhere, shows which way you face and how far home is |
+| 4 Silver arrows | 4 arrows + 1 silver ingot | twice the damage to night creatures; the bow uses them first |
+| Mirror lamp | 1 lamp + 2 electrum ingots | burns slime fuel like a lamp, but lights a much wider area |
+| Tungsten drill bit | 2 tungsten ingots + 1 steel ingot | for the drill |
+
+### Ore washing, trace metals and slag
+
+- Crushers, pulverizers and the jackhammer now give **dirty dust**. Smelt it as it is (4 dirty dust make 3
+  ingots, with some slag), or clean it first in an **ore washer** (3 iron, 4 planks, a bucket and a gear, at a
+  table). The washer needs turning power and water touching it on some side. Each dirty dust washes into a
+  clean dust, sometimes with one more beside it, and some **sludge** (4 sludge make a clay block).
+- **Trace metals**: ores carry a little of another metal. Washing iron sometimes gives nickel dust, copper gives
+  gold, tin gives zinc, lead gives silver, bauxite gives iron, and so on. The recipe list shows each chance. New
+  achievement: **Hidden Riches**.
+- What a washer, sieve or smelter makes on the side goes into **by-product slots** to the right of the output.
+  Tap one to collect it, or put a hopper underneath.
+- Smelting ore sometimes leaves **slag**. 2 slag crush into fertiliser, and 4 slag with a clay ball make 4
+  **slag bricks**.
+- A **sieve** (4 planks, 4 sticks, 4 string) needs no power. It sifts gravel into sand with flint and now and
+  then some dirty ore dust. It sifts dirt for **worms**, seeds, flint and saplings.
+
+### Charcoal piles and cobble generators
+
+- Stack logs, cover them all over with dirt, sand, gravel or stone, and light one log through a gap with a
+  torch. A sealed pile smoulders into **charcoal heaps** (2 charcoal each). If air gets in while it burns, it
+  flares up. New achievement: **Charcoal Burner**.
+- Flowing water that touches lava now makes **cobblestone**, so a cobble generator works.
+
+## Tools, weapons and armour
+
+### Tools and gear
+
+- The **chainsaw** (3 stainless steel, a battery, 2 electrum wire, 2 iron) cuts like the best axe and fells whole
+  trees, using 3 charge a log, and gives you **sawdust** as well as the logs.
+- 4 sawdust and a water bucket make 4 **paper** (you keep the bucket); 6 paper and a buffalo hide make a **book**,
+  which opens the guide.
+- **Backpacks** hold things you carry: a backpack (6 leather, 2 string) has 9 slots, an iron-framed one (8 leather,
+  4 iron, 2 string) 18, and a stainless steel one (8 leather, 4 stainless steel, 2 hides) 27. Tap with one in hand to
+  open it. A backpack can't go in a backpack.
+- The **spanner** (3 steel): tap a machine with it to turn it to face the next way; hold it on a machine to pick it
+  up with everything in it (and its charge), ready to put down somewhere else just as it was.
+- The **grappling hook** (3 iron, 8 string): tap with it in hand to shoot it at a block up to 24 away, and it pulls
+  you there and holds you. Jump to climb up onto the block, sneak or tap again to let go.
+
+### Weapons and armour
+
+Swords are 2 of the material + 1 stick: wooden (5 damage), stone (7), and every metal (8 plus the metal's
+bonus, up to 13 for tungsten). They swing faster than other tools.
+
+Armour comes in four pieces. Each point of armour takes 4% off the damage creatures (and blasts) do,
+up to 80%. **Leather** is buffalo hide (tap a buffalo now and then) cured in the oven. **Plates** are
+2 ingots at a crafting table, or 1 ingot in the trip hammer.
+
+| Piece | Leather | Metal | Points: leather / bronze / iron / steel / stainless |
+| --- | --- | --- | --- |
+| Helmet | 5 leather | 3 plates + 1 wool | 1 / 2 / 2 / 3 / 3 |
+| Chestplate | 8 leather | 5 plates + 2 wool | 3 / 4 / 6 / 7 / 8 |
+| Leggings | 7 leather | 4 plates + 2 wool | 2 / 3 / 5 / 6 / 6 |
+| Boots | 4 leather | 2 plates + 1 wool | 1 / 1 / 2 / 3 / 3 |
+
+### Shields
+
+| Make | Recipe (crafting table) |
+| --- | --- |
+| Wooden shield | 6 planks + 1 iron ingot (or 2 leather) |
+| Iron shield | 4 iron plates + 1 leather |
+
+Wear a shield in the fifth armour slot. It stops any hit or thorn that comes from in front of you, and
+wears by how hard the hit was.
+
+### Wear and repair
+
+Tools, swords, armour and shields wear a little with each use (each block dug with the right tool, each
+hit, each blow taken), shown by a bar on their slot. A worn-out one breaks. Wooden things last about
+60 uses, stone 130, and metals more and more up to tungsten (1,500). Tap an **anvil** (5 iron ingots +
+2 iron plates) holding a worn thing to mend half its wear with one piece of what it's made of: planks,
+cobblestone, the metal's ingot, or leather. Wear can be turned off in the ☰ menu.
+
+## Furniture, building and home
+
+### Furniture (all at a crafting table)
+
+| Make | From |
+| --- | --- |
+| Bed | 3 wool + 3 planks |
+| Wooden Table | 3 planks + 4 sticks |
+| Chair | 2 planks + 3 sticks |
+| Shelf | 5 planks |
+| Lamp | 1 glass + 2 cobblestone |
+| 3 Carpets | 2 wool |
+| Curtain | 2 wool + 1 stick |
+| Door | 4 planks |
+
+Chairs face you when you place them; doors take two blocks. Beds are two blocks long: the foot goes
+where you tap and the head (with the pillow) extends away from you. Tap a bed in the evening or at
+night to sleep until morning (not while a creature is lurking nearby); any tap sets it as your respawn point.
+
+Tap a crafting table or butter churn to open crafting there.
+
+### Storage, ladders and signs
+
+| Make | Recipe (crafting table) |
+| --- | --- |
+| Chest (18 slots) | 8 planks |
+| Iron-banded chest (36 slots) | 2 chests + 2 iron plates |
+| 3 Ladders | 7 sticks |
+| 4 Scaffolding | 6 sticks + 1 wheat string |
+| 3 Signs | 6 planks + 1 stick |
+
+A chest's panel has buttons to put your whole backpack in (not the hotbar) or take everything out.
+Ladders hang on the side of a block. Tap a ladder with more ladders, or scaffolding with more scaffolding,
+to build the column higher. Breaking a scaffold brings down the whole tower above it. You don't take fall
+damage while climbing. Signs go on a wall or on top of a block; tap one to rewrite it.
+
+### Building
+
+| Make | Recipe (crafting table) |
+| --- | --- |
+| 6 Slabs | 3 planks, cobblestone, stone, stone bricks, bricks or sandstone |
+| 4 Stairs | 6 of the same |
+| 3 Fences | 4 planks + 2 sticks |
+| Fence gate | 2 planks + 4 sticks |
+| 16 Glass panes | 6 glass |
+| 2 Trapdoors | 6 planks |
+| 4 Mossy stone bricks | 4 stone bricks + 2 leaves |
+
+A slab goes in the top or bottom half of a space, depending on where you tap; put a second slab of the
+same kind on it to make the full block. Stairs climb away from you, and you walk up stairs and slabs
+without jumping. Fences and glass panes join up to each other and to blocks beside them. Fences stand
+too tall to jump over, and animals won't cross them, so they make good pens. Gates and trapdoors open
+and shut when you tap them. A trapdoor shut over a hole is a floor you can walk on.
+
+### Flowers and colour
+
+Meadows of **poppies**, **dandelions**, **cornflowers**, **lavender** and **daisies** grow in temperate land. Grind
+them with the mortar for red, yellow, blue, purple and white **dye**. Coal or charcoal makes black, and
+cactus (or 4 leaves) makes green. Mix red + yellow for orange, red + white for pink, and blue + green for cyan.
+
+| Make | From |
+| --- | --- |
+| 4 Dyed wool | 4 wool + 1 dye |
+| 3 Dyed carpets | 2 dyed wool (crafting table) |
+| 4 Stained glass | 4 glass + 1 dye |
+| 4 Painted planks | 4 planks + 1 dye |
+
+Or tap a placed block of wool, carpet, glass or planks holding a dye to colour it where it stands. Tap
+a sign with a dye to colour its writing.
+
+### Walls, pillars, doors, lights and paintings
+
+**Walls** (in six stones) join up with each other, with gates and with solid blocks beside them; **pillars** come in stone and sandstone; and
+**stairs** placed beside each other turn inside and outside corners. Dye a **door** or make **stained glass
+panes** in any of the ten colours. Light rooms with an iron **lantern** (it hangs when placed under a block),
+a gold **chandelier**, or **glow lamps** (crystal shards, stained glass and a torch) that cast light in their
+own colour. Hang a **painting** on a wall: it picks the biggest of eight pictures that fits the space.
+
+### Building and decorating
+
+- **Sit** on a chair: tap it with an empty hand (or anything that isn't a block). Move or jump to stand up.
+- A **shelf** or a **wooden table** shows an item on top: tap it holding the item to put it there, and tap with an
+  empty hand to take it back. Breaking it drops what was on it.
+- **Flower pots** (3 bricks): tap one with a flower, a sapling, a glowcap or a cactus to plant it; tap again with
+  an empty hand to take it out.
+- **Hanging baskets** (a flower pot, 2 string, an iron, 4 leaves) hang under a ceiling; **window boxes** (3 planks,
+  dirt, 3 flowers) go on the side of a wall.
+- **Iron bars** (16 from 6 iron) join up like glass panes.
+
+### Home comforts
+
+- A **fireplace** (5 bricks, 2 cobblestone, an iron): tap it with logs, planks, sticks or coal to light it. It
+  lights and warms the room (you thaw out fast beside it). Build **chimney** blocks (2 from 3 bricks) straight up
+  from it for the smoke, or the room fills with it.
+- **Pin a recipe** (📌 beside it) to keep it on screen with how many of each thing you have and still need; it
+  goes green when you've got everything. Up to three.
+- The **mortar and pestle** now wears with use: each thing ground in it counts, and it breaks after 96 (the most
+  worn one you carry is used first). Mend it at an anvil with cobblestone.
+- **Auto-refill**: when the stack in your hand runs out, or a tool breaks, the next one of the same thing moves
+  in from your backpack. Turn it off under ☰ if you'd rather not.
+
+### Bookshelves, the journal and compost
+
+- A **bookshelf** (6 planks, 3 books) near an enchanting altar (within 2 blocks, at the altar's level or one up)
+  makes enchanting cheaper: one crystal shard less for every 5 shelves, down to half. Shelves also unlock three
+  new enchantments: **Lucky** (4 shelves; a pickaxe gets an extra ore 1 time in 3), **Mending** (8; a tool or armour
+  slowly mends itself while you carry it) and **Feather Fall** (12; boots that halve fall damage).
+- A **journal** (a book, a feather, coal dust): tap with it in hand to write in it. "Note where I am" adds your
+  position. What you write is kept with that journal.
+- A **compost bin** (7 planks) rots sawdust, seeds, saplings, wheat, sugar cane and berries into **fertiliser**
+  with no fuel or power. Tap a sapling or a crop with fertiliser to make it grow a stage (or a sapling into a tree).
+
+### Kiln, terracotta and pottery
+
+- A **kiln** (5 clay bricks, an iron, at a table) is fired with fuel like a furnace. It bakes clay blocks into
+  **terracotta**, clay balls into bricks, an **unfired urn** (6 clay balls) into an **urn** (a 6-slot store), and
+  coloured terracotta (4 terracotta and a dye) into shiny **glazed tiles**.
+- **Roof tiles** (4 from 4 terracotta) for warm red roofs.
+
+## Water power and machines
+
 ### Water power and the rock crusher
 
 **Flowing water.** Fill a wooden bucket from still water (the sea refills behind it) and tap a block to
@@ -454,288 +787,15 @@ belts hand things on the same way.
 A **windmill** (4 wool + 6 planks + 4 sticks) is a power source like a water wheel. It needs the eight
 cells around its hub clear. It gives 1 power at sea level, a point more for every 5 blocks higher, up to 6.
 
-### Storage, ladders and signs
-
-| Make | Recipe (crafting table) |
-| --- | --- |
-| Chest (18 slots) | 8 planks |
-| Iron-banded chest (36 slots) | 2 chests + 2 iron plates |
-| 3 Ladders | 7 sticks |
-| 4 Scaffolding | 6 sticks + 1 wheat string |
-| 3 Signs | 6 planks + 1 stick |
-
-A chest's panel has buttons to put your whole backpack in (not the hotbar) or take everything out.
-Ladders hang on the side of a block. Tap a ladder with more ladders, or scaffolding with more scaffolding,
-to build the column higher. Breaking a scaffold brings down the whole tower above it. You don't take fall
-damage while climbing. Signs go on a wall or on top of a block; tap one to rewrite it.
-
-### Weapons and armour
-
-Swords are 2 of the material + 1 stick: wooden (5 damage), stone (7), and every metal (8 plus the metal's
-bonus, up to 13 for tungsten). They swing faster than other tools.
-
-Armour comes in four pieces. Each point of armour takes 4% off the damage creatures (and blasts) do,
-up to 80%. **Leather** is buffalo hide (tap a buffalo now and then) cured in the oven. **Plates** are
-2 ingots at a crafting table, or 1 ingot in the trip hammer.
-
-| Piece | Leather | Metal | Points: leather / bronze / iron / steel / stainless |
-| --- | --- | --- | --- |
-| Helmet | 5 leather | 3 plates + 1 wool | 1 / 2 / 2 / 3 / 3 |
-| Chestplate | 8 leather | 5 plates + 2 wool | 3 / 4 / 6 / 7 / 8 |
-| Leggings | 7 leather | 4 plates + 2 wool | 2 / 3 / 5 / 6 / 6 |
-| Boots | 4 leather | 2 plates + 1 wool | 1 / 1 / 2 / 3 / 3 |
-
-### Gunpowder and blasting
-
-**Saltpetre** crusts the stone where caves (and cliffs) open up: mine it with a stone pickaxe. The rock
-crusher also gets a little out of desert sandstone.
-
-| Make | From | Where |
-| --- | --- | --- |
-| 4 Gunpowder | 2 saltpetre + 1 sulphur + 1 coal or charcoal, with the mortar | anywhere |
-| 2 Blasting charges | 4 gunpowder + 1 clay ball + 1 wheat string | crafting table |
-
-Place a charge and tap it to light the fuse: 3 seconds later it blows a round hole about 5 blocks across.
-Three quarters of what it breaks comes to you (as if dug with an iron pickaxe) if you're within 24 blocks.
-Charges in the blast go off too. Chests, machines, furniture, obsidian and bedrock are blast-proof. Stand
-well back: the blast hurts anyone within about 5 blocks.
-
-### Lead, gold, silver, electrum and tungsten
-
-| Make | Recipe (crafting table) | Use |
-| --- | --- | --- |
-| 4 Lead sinkers | 1 lead ingot | add one to a fishing rod (anywhere) for a **weighted rod**: fish bite twice as often |
-| Lead bucket | 3 lead ingots | scoops up lava. A lava bucket burns for 100 in a smelter and gives the bucket back |
-| Gold clock | 4 gold ingots + 1 glass | carried anywhere, the time shows next to your coordinates |
-| Compass | 2 iron + 2 copper ingots + 1 glass | carried anywhere, shows which way you face and how far home is |
-| 4 Silver arrows | 4 arrows + 1 silver ingot | twice the damage to night creatures; the bow uses them first |
-| Mirror lamp | 1 lamp + 2 electrum ingots | burns slime fuel like a lamp, but lights a much wider area |
-| Tungsten drill bit | 2 tungsten ingots + 1 steel ingot | for the drill |
-
-### Rails, minecarts and maps
-
-| Make | Recipe (crafting table) |
-| --- | --- |
-| 16 Rails | 6 iron ingots + 1 stick |
-| 6 Powered rails | 4 gold + 2 iron ingots + 1 stick |
-| Minecart | 5 iron ingots |
-| 3 Paper | 3 sugar cane |
-| Map | 4 paper + 1 compass |
-
-Rails lie on top of blocks and bend to join the rails beside them, so lay them in the order you want them
-joined. A rail placed beside a rail one block higher (or lower) becomes a slope. Tap a rail holding a
-minecart to set one down, tap the cart to get in, and hold forward to push off. Carts roll on by
-themselves, slow gently, speed up downhill and roll back if they can't make it up a slope. A
-**powered rail** turned by a shaft (from below or from the side) pushes carts along at up to 10 blocks a
-second. One that isn't turning is a brake. Hold on a cart to pick it up.
-
-Hold a **map** to see the land 64 blocks around you from above, with you as an arrow (north is up) and
-home as a red dot.
-
-### Biomes, lava and obsidian
-
-Away from the temperate middle lands lie **deserts** and **tundra**. Deserts are deep sand over
-sandstone, with cactus (it hurts to touch) and no trees. Tundra is snowy grass with few trees and frozen
-lakes and seas: break ice and it melts back into water. Yaks and alpacas graze the snow. Peaks above
-height 46 are capped with snow everywhere.
-
-The deepest caves (below height 7) are flooded with **lava**, which glows and burns anyone who falls in.
-Water poured onto lava, or lava onto water, cools into **obsidian**: very hard, blast-proof, and only
-mined with a stainless steel pickaxe or better.
-
-Worlds saved before version 17 load as they were. Parts of the world you haven't changed are generated
-afresh, so new biomes, saltpetre and lava pools can appear there. Likewise, worlds from before version 18
-grow flowers, berry bushes and dungeons in the parts you haven't changed.
-
-### Building
-
-| Make | Recipe (crafting table) |
-| --- | --- |
-| 6 Slabs | 3 planks, cobblestone, stone, stone bricks, bricks or sandstone |
-| 4 Stairs | 6 of the same |
-| 3 Fences | 4 planks + 2 sticks |
-| Fence gate | 2 planks + 4 sticks |
-| 16 Glass panes | 6 glass |
-| 2 Trapdoors | 6 planks |
-| 4 Mossy stone bricks | 4 stone bricks + 2 leaves |
-
-A slab goes in the top or bottom half of a space, depending on where you tap; put a second slab of the
-same kind on it to make the full block. Stairs climb away from you, and you walk up stairs and slabs
-without jumping. Fences and glass panes join up to each other and to blocks beside them. Fences stand
-too tall to jump over, and animals won't cross them, so they make good pens. Gates and trapdoors open
-and shut when you tap them. A trapdoor shut over a hole is a floor you can walk on.
-
-### Flowers and colour
-
-Meadows of **poppies**, **dandelions**, **cornflowers**, **lavender** and **daisies** grow in temperate land. Grind
-them with the mortar for red, yellow, blue, purple and white **dye**. Coal or charcoal makes black, and
-cactus (or 4 leaves) makes green. Mix red + yellow for orange, red + white for pink, and blue + green for cyan.
-
-| Make | From |
-| --- | --- |
-| 4 Dyed wool | 4 wool + 1 dye |
-| 3 Dyed carpets | 2 dyed wool (crafting table) |
-| 4 Stained glass | 4 glass + 1 dye |
-| 4 Painted planks | 4 planks + 1 dye |
-
-Or tap a placed block of wool, carpet, glass or planks holding a dye to colour it where it stands. Tap
-a sign with a dye to colour its writing.
-
-### Switches, gearboxes and clutches
-
-| Make | Recipe (crafting table) |
-| --- | --- |
-| Lever | 1 stick + 1 cobblestone |
-| 2 Buttons | 1 stone |
-| Pressure plate | 2 stone |
-| Gearbox | 2 stone small gears + 4 cobblestone |
-| Clutch | 2 stone shafts + 1 iron ingot |
-
-A **lever** (on a wall or a floor) flips on and off, a **button** stays on for a moment, and a **pressure
-plate** is on while you, an animal or a creature stands on it. A switch turns on whatever is beside it,
-and whatever is beside the block it's fixed to:
-- doors, fence gates and trapdoors open (and shut again when it goes off);
-- a **clutch** (a shaft with an iron collar) only passes power on while it's switched on, so you can turn
-  machines on and off without breaking anything;
-- a **powered rail** pushes carts along. One that's not switched (or turned by a shaft) brakes and holds a
-  cart, so a powered rail with a button beside it makes a station stop.
-
-A **gearbox** takes power in or out of any face, so a shaft can turn a corner (or go up and down).
-
-### Item frames, sorting hoppers and storage carts
-
-| Make | Recipe (crafting table) |
-| --- | --- |
-| 2 Item frames | 6 sticks + 1 leather |
-| 2 Loader rails | 2 rails + 1 hopper |
-| Storage cart | 1 minecart + 1 chest |
-
-Hang an **item frame** on the side of a block and tap it with something to show it there (tap again to
-take it out). Frames hung on a **hopper** make it a **sorting hopper**: it only takes and passes on things
-that match one of its frames. A hopper under a running belt takes things off the belt as they pass over
-it (if it can), so a belt over a row of sorting hoppers sends each kind of thing to its own machine or chest.
-
-A **storage cart** carries 18 slots of things: tap it to open it, double-tap and hold on it to pick it up (contents and
-all). On a **loader rail** a storage cart stops while hoppers fill it (a hopper pointing at the rail) or
-empty it (a hopper under the rail). It waits until nothing has moved for a moment, then rolls on.
-
-### Wear and repair
-
-Tools, swords, armour and shields wear a little with each use (each block dug with the right tool, each
-hit, each blow taken), shown by a bar on their slot. A worn-out one breaks. Wooden things last about
-60 uses, stone 130, and metals more and more up to tungsten (1,500). Tap an **anvil** (5 iron ingots +
-2 iron plates) holding a worn thing to mend half its wear with one piece of what it's made of: planks,
-cobblestone, the metal's ingot, or leather. Wear can be turned off in the ☰ menu.
-
-### Shields
-
-| Make | Recipe (crafting table) |
-| --- | --- |
-| Wooden shield | 6 planks + 1 iron ingot (or 2 leather) |
-| Iron shield | 4 iron plates + 1 leather |
-
-Wear a shield in the fifth armour slot. It stops any hit or thorn that comes from in front of you, and
-wears by how hard the hit was.
-
-### Cauldron and teas
-
-A **cauldron** (5 iron or copper ingots) is filled by tapping it with a water bucket, or by leaving it out
-in the rain. Tap it to open it like an oven: put in **glass bottles** (3 glass make 3) and herbs, and fuel
-underneath. Every two teas use a level of water.
-
-| Tea | Brewed from | Effect |
-| --- | --- | --- |
-| Night-Eye Tea | bottle + cornflower | see in the dark for 4 minutes |
-| Miner's Tea | bottle + dandelion | dig half as fast again for 3 minutes |
-| Fireproof Tea | bottle + poppy + cactus | lava doesn't burn you for 2 minutes |
-| Healing Tea | bottle + lavender + daisy, or bottle + 3 berries | heals you quickly |
-
-Active teas show with their time left next to your coordinates. You keep the bottle.
-
-### Dungeons and the Mossback King
-
-Rare rooms of mossy stone bricks lie deep underground (about one in forty chunks, between heights 8 and
-34), with a glowing **shrine** in the middle and a chest or two of loot: ingots, gunpowder, silver arrows,
-teas, sometimes a shield. Come near the shrine and its guardian, the **Mossback King**, rises to meet you.
-He's huge, slow and hits very hard, with a health bar at the top of the screen. Beat him for his
-**crown** (a helmet worth 5 armour points) and gold, and the shrine falls quiet. Leave and come back
-and he's waiting again.
-
-### Weather
-
-Every so often it rains for a few minutes. In the tundra it snows, and in the desert a sandstorm blows
-in and closes the view right down. The sky clouds over and the day dims. Rain makes crops grow twice
-as fast and fills cauldrons left under the open sky.
-
-### Berries, wolves, camels and the trader
-
-**Berry bushes** grow wild on grass. Tap a ripe one to pick 2–3 berries (2 food each); it grows more.
-Break a bush to take it and plant it on grass or dirt.
-
-**Wolves** roam the tundra. Feed one raw or baked fish and it may decide it likes you. A tame wolf
-wears a red collar, follows you and chases any night creature that comes near. Tap it to make it stay,
-and again to call it. **Camels** wander the desert. Feed one wheat to tame it, then tap it to ride (steer
-as you'd walk, tap to get off). Pets are saved with your world and catch up if you leave them behind.
-
-Now and then on a fine day, a **wandering trader** turns up nearby with four offers. Tap the trader to
-trade: rare things like tungsten, electrum, gold and stainless steel for things you have plenty of. The
-trader moves on after a few minutes.
-
-### Recipes, sorting and the map
-
-Search recipes by name (of what they make, or what goes in) at the top of the crafting list, tap ☆ to
-favourite a recipe (favourites come first), and use ★ and ✓ to show only favourites or only what you can
-make right now. **Sort backpack** (and **Sort** in a chest) stacks things up and puts them in order.
-
-**Throwing things.** Press Q (Shift + Q for the whole stack), or hold a hotbar slot, to throw what you're
-holding. It lies on the ground until you walk over it (things you've just thrown wait a moment first) and
-vanishes after five minutes. A thrown item that lands on a running **conveyor belt** rides off along it, and
-one that lands on a **hopper** drops in (sorting hoppers still only take what matches their frames). You can
-also tap a belt or hopper holding an item to put it straight in. Breaking a chest, oven or machine **spills**
-what was inside onto the ground, with enchantments and wear kept.
-
-Tooltips (on by default, ☰ → Tooltips) name what the crosshair is on, and in 🎒 show the name and details of
-the item under the mouse or the one you tap.
-
-Holding the map, tap a sign to mark it on the map (named by its first line), or a bed. Tap it again
-to take the mark off. Marks off the edge of the map show as arrows pointing toward them.
-
-### Seasons, rivers, villages and bees
-
-The year turns through **spring, summer, autumn and winter**, six days each (the season shows beside the
-day). Crops grow fastest in summer and barely at all in winter; leaves turn in autumn and fall in winter,
-when the grass frosts over and the rain turns to snow.
-
-**Rivers** wind across the land. Fish in a river for **salmon**, in cold water for **icefish**, and in warm
-water for **pufferfish** (which poison you if you eat them); now and then you hook junk or treasure. Bake
-fish into a **fish pie** (with flour and butter) for a hearty meal.
-
-**Villages** have houses, a well, a wheat field and a **bell** (tap it to hear the village's name).
-Villagers are farmers, smiths, fishers and clerics, and each trades its own goods: tap one to trade.
-
-**Bee hives** hang in trees. Bees fill them with honey (faster with flowers around, slower in winter) and
-spread new flowers as they go. Tap a full hive holding a **glass bottle** for honey, or break it for
-honeycomb. Honeycomb and a bottle in the cauldron make **honey tea**, which keeps out the cold.
-
-Underground there are flooded caverns, caverns lit by **glowcap mushrooms** (cook three with butter in the
-oven for mushroom stew) and **geodes** lined with **crystal**: break it for crystal shards.
-
-### Enchanting, meals, ailments and lairs
-
-An **enchanting altar** (4 obsidian, 4 crystal shards and a gold ingot) puts enchantments on what you hold:
-**Swift** (tools dig 40% faster), **Sturdy** (wears half as fast), **Keen** (weapons hit 3 harder, needs a sun
-scarab), **Flame** (sets creatures alight, needs an ember core) and **Warmth** (armour keeps out the cold,
-needs a frost heart). Enchanted things glow in the inventory.
-
-A meal worth 6 or more food leaves you **well fed** for a while: hunger drains half as fast, and you heal
-quicker. Spiders **poison** you; staying out in the tundra cold (or a winter night) **chills** you, slowing you
-down until you warm up by a fire, wrap up or drink honey tea; and the desert sun at midday brings on
-**heatstroke**, which makes you hungry fast, until you find shade or water. Healing tea cures all three.
-
-Besides the Mossback King's dungeons there are three **lairs**: desert **tombs** (watch for dart traps on the
-pressure plates) guarded by the **Dune Warden**, tundra **crypts** with the **Frost Wraith**, and deep
-**fortresses** with the **Ember Lord**. Each guardian drops a treasure for the altar, and the crown it guards
-protects you from sun, cold or fire. A bed now lets you sleep through a storm too, by day or night.
+### More power
+
+- A **drive belt** links two shafts or gears on parallel axles up to 8 blocks apart: hold it, tap one, then
+  the other. They turn together at the same speed.
+- A **flywheel** joins up like a shaft. While the network has power to spare it spins up, and when the
+  power drops (a steam engine runs out, say) it keeps the machines going for a while.
+- A **tachometer** is driven like a machine but takes no load. Tap it to see the speed and load; it gives a
+  signal while its network is stopped or overloaded.
+- A **gear shift** joins like a shaft, but while it gets a signal its + end turns twice as fast as the other.
 
 ### Observers, gauges, harvesters, steam and switch rails
 
@@ -753,72 +813,17 @@ These build on the machines you already have:
 - A **switch rail** joins a branch line to a straight one. It runs straight until it gets a signal, then sends
   carts onto the branch. Powered rails that aren't turning still brake carts, so they make station stops.
 
-### Walls, pillars, doors, lights and paintings
+### Machine upgrades and quarry filters
 
-**Walls** (in six stones) join up with each other, with gates and with solid blocks beside them; **pillars** come in stone and sandstone; and
-**stairs** placed beside each other turn inside and outside corners. Dye a **door** or make **stained glass
-panes** in any of the ten colours. Light rooms with an iron **lantern** (it hangs when placed under a block),
-a gold **chandelier**, or **glow lamps** (crystal shards, stained glass and a torch) that cast light in their
-own colour. Hang a **painting** on a wall: it picks the biggest of eight pictures that fits the space.
+- **Speed** (steel, electrum and a gear), **efficiency** (cupronickel and fire bricks) and **yield** (stainless
+  steel, silver and gold) upgrades: tap a machine with one to fit it, up to two of each.
+  - Speed makes it work half as fast again.
+  - Efficiency makes a furnace, oven or kiln burn a third less fuel.
+  - Yield sometimes gives one more from a crusher, pulverizer, washer, sieve, millstone or saw.
+  - The machine's panel lists what's fitted, and a spanner keeps the upgrades in it. New achievement: **Souped Up**.
+- Hang **item frames** on a quarry showing the things you want, and it keeps only those.
 
-### Signals and logic
-
-- **Copper wire** (8 from a copper ingot) lies on top of blocks and carries a signal along the whole line it
-  makes, side by side or a block up or down. Anything that switches on beside any part of it (a lever, button,
-  pressure plate, observer, gauge or logic block) powers the whole line, and the wire powers whatever it
-  touches, and the block it lies on, like a switch.
-- **Inverters**, **delay blocks** and **latches** sit on top of a block and point away from you as you place
-  them. Each takes its signal from the block behind it and gives its own to the block in front. An inverter
-  is on while it gets no signal. A delay block passes its signal on after a moment: tap it to set ½, 1, 1½, 2,
-  3, 4 or 5 seconds. A latch flips on or off each time its signal comes on (tap it to flip it by hand).
-- Logic blocks work out their signal a tenth of a second after what feeds them changes. An inverter whose
-  output loops back to its own input through wire flickers on and off; put a delay block in the loop for a
-  slower **clock**.
-- A **detector rail** gives a signal while a cart is on it.
-
-### Moving things around
-
-- An **ejector** throws what's in the chest or machine behind it out onto the ground in front: one thing every
-  half second while it gets a signal. Tap it to make it throw a whole stack each time the signal comes on.
-- A **collector** is a hopper that also pulls in loose things lying within 4 blocks of it.
-- A **splitting belt** sends what reaches its end off to its left and right in turn; a **sorting belt** sends
-  things matching an item frame hung on it off to the left, and the rest straight on.
-- A **bucket elevator** (stack them into a column) is driven by a shaft like a belt. Things put into it by a
-  belt, a hopper or dropped onto it are lifted up the column and out of the top, into a chest or hopper there,
-  or onto the top.
-- An **auto-crafter** makes whatever an item frame on it shows, a second at a time, whenever the ingredients
-  are inside. Fill it with hoppers or belts and empty it with a hopper underneath.
-
-### More power
-
-- A **drive belt** links two shafts or gears on parallel axles up to 8 blocks apart: hold it, tap one, then
-  the other. They turn together at the same speed.
-- A **flywheel** joins up like a shaft. While the network has power to spare it spins up, and when the
-  power drops (a steam engine runs out, say) it keeps the machines going for a while.
-- A **tachometer** is driven like a machine but takes no load. Tap it to see the speed and load; it gives a
-  signal while its network is stopped or overloaded.
-- A **gear shift** joins like a shaft, but while it gets a signal its + end turns twice as fast as the other.
-
-### Liquids
-
-- A **tank** holds 16 buckets of water or lava. Pour buckets in or take them out by hand, or fill it from a
-  pump through lead pipes; a pump set beside a tank pumps out of it. A storage gauge reads it.
-- A **valve** is a pipe that only lets liquid through while it gets a signal.
-- Lava piped to an **oven**, **smelter**, **blast smelter** or **steam engine** burns as its fuel.
-- A **sprinkler** on a water pipe makes crops in the 5 × 5 patch around it (and a block or two below) grow
-  twice as fast.
-
-### Farm machines
-
-- A **tree feller**, driven by a shaft, cuts down the tree in front of it and passes the logs (and a sapling or
-  two) to whatever is behind it.
-- A **planter** plants a sapling put into it on the grass or dirt in front of it, whenever there's room.
-- A **block breaker** breaks the block in front of it each time its signal comes on, passing what it gives
-  behind it. A **block placer** puts a block from the chest behind it into the space in front of it.
-- An **animal station** shears alpacas, plucks ducks and milks yaks (into empty buckets put into it) within 5
-  blocks, passing what it gets out of its back. Wheat put into it is fed to the animals, so coats and
-  feathers grow back twice as fast.
-- A **fishing net** set in water catches a fish every minute or so; a hopper underneath takes them out.
+## Electricity and reactors
 
 ### Electricity
 
@@ -927,43 +932,7 @@ pickaxe (or better) takes a spawner with it.
 
 Machines make a low hum while they turn, and electric ones a faint buzz, so you can hear a busy workshop.
 
-### Tools and gear
-
-- The **chainsaw** (3 stainless steel, a battery, 2 electrum wire, 2 iron) cuts like the best axe and fells whole
-  trees, using 3 charge a log, and gives you **sawdust** as well as the logs.
-- 4 sawdust and a water bucket make 4 **paper** (you keep the bucket); 6 paper and a buffalo hide make a **book**,
-  which opens the guide.
-- **Backpacks** hold things you carry: a backpack (6 leather, 2 string) has 9 slots, an iron-framed one (8 leather,
-  4 iron, 2 string) 18, and a stainless steel one (8 leather, 4 stainless steel, 2 hides) 27. Tap with one in hand to
-  open it. A backpack can't go in a backpack.
-- The **spanner** (3 steel): tap a machine with it to turn it to face the next way; hold it on a machine to pick it
-  up with everything in it (and its charge), ready to put down somewhere else just as it was.
-- The **grappling hook** (3 iron, 8 string): tap with it in hand to shoot it at a block up to 24 away, and it pulls
-  you there and holds you. Jump to climb up onto the block, sneak or tap again to let go.
-
-### Animal breeding
-
-Feed two animals of the same kind their food and they look for a mate (hearts show over them): seeds for ducks,
-wheat for buffalo, alpacas, yaks and camels, berries for newts, seeds for chickens, berries or wheat for pigs, and
-a fish for tame wolves and cats. A young one appears,
-growing up over 5 minutes, and the pair won't breed again for 5 more. A baby of tame parents is tame. An **animal
-station** with 2 or more of a kind's food in it feeds pairs nearby, so a pen keeps itself stocked. Animals won't
-breed when there are 12 or more about.
-
-### Version 24
-
-#### Bookshelves, the journal and compost
-
-- A **bookshelf** (6 planks, 3 books) near an enchanting altar (within 2 blocks, at the altar's level or one up)
-  makes enchanting cheaper: one crystal shard less for every 5 shelves, down to half. Shelves also unlock three
-  new enchantments: **Lucky** (4 shelves; a pickaxe gets an extra ore 1 time in 3), **Mending** (8; a tool or armour
-  slowly mends itself while you carry it) and **Feather Fall** (12; boots that halve fall damage).
-- A **journal** (a book, a feather, coal dust): tap with it in hand to write in it. "Note where I am" adds your
-  position. What you write is kept with that journal.
-- A **compost bin** (7 planks) rots sawdust, seeds, saplings, wheat, sugar cane and berries into **fertiliser**
-  with no fuel or power. Tap a sapling or a crop with fertiliser to make it grow a stage (or a sapling into a tree).
-
-#### Nuclear waste and radiation
+### Nuclear waste and radiation
 
 - A fuel rod that burns out in a reactor leaves a **spent fuel rod**, which is still radioactive: anywhere within
   6 blocks of one (in a chest, a machine or your inventory) you hear a Geiger counter and slowly lose health.
@@ -973,7 +942,7 @@ breed when there are 12 or more about.
   dust) into **enriched uranium**, and spent rods back into uranium dust. 2 enriched uranium and 2 stainless steel
   make an **enriched fuel rod**, which lasts twice as long.
 
-#### Tesla coils, electric fences, the arc furnace and the freezer
+### Tesla coils, electric fences, the arc furnace and the freezer
 
 - A **tesla coil** (3 invar, 6 copper, 4 electrum wire, a crystal shard) zaps night creatures within 7 blocks for
   6 damage every second or so, using 10 power while it has something to zap.
@@ -986,361 +955,86 @@ breed when there are 12 or more about.
   (you get the bucket back) and **packed ice** from 4 ice. Every face of a reactor touching ice cools it twice as
   well as water, and packed ice three times as well. Ice beside a running reactor slowly melts.
 
-#### Ziplines, boats, balloons and rail stations
-
-- **Zipline posts** (2 from 2 logs and an iron) and **zipline rope** (2 from 6 string and an iron): with rope in
-  hand, tap one post and then another up to 40 blocks away to run a line between them (taking one rope). Tap a
-  post with a grappling hook in hand to slide along the line toward the post you're facing (faster downhill).
-  Sneak to let go. Breaking a post gives its ropes back.
-- A **boat** (5 planks, 2 sticks): tap water with it to put it in, tap the boat to get in. Hold forward to row the
-  way you look and back to slow down; tap to get out. Hold on a boat (or balloon) to pick it up.
-- A **hot-air balloon** (12 wool, 8 string, 4 planks, 2 iron, a lantern): put it on the ground and get in. Jump to
-  rise and sneak to sink; it moves as you walk. Its burner uses a coal or charcoal from your inventory every 45
-  seconds of flight, and sinks gently to the ground when it runs out.
-- A **rail station** (2 from 2 rails, bricks, copper wire) is a straight rail where carts stop and wait until it
-  gets a signal (a button beside it, say) or you push off. A cart that reaches the end of the line turns round.
-
-#### Volcanoes, ruins, shipwrecks and meteorites
-
-- **Volcanoes** are basalt cones with a lava crater and an obsidian rim; their rock is rich in tungsten and uranium.
-- **Ruins** of old stone houses stand on flat grassland, with a loot chest of books, paper, maps, a journal and old
-  iron tools, and sometimes a bookshelf.
-- **Shipwrecks** lie on the deep sea bed, with a chest of gold, a compass, maps, gunpowder and fish.
-- Once on some clear nights a **meteorite** streaks down 30 to 70 blocks away (a message tells you which way). It
-  blasts a crater and leaves glowing **meteorite** rock: mine it with a tungsten pickaxe or better for **meteoric
-  iron**. The arc furnace makes it into **starsteel**, for the best pickaxe, axe, shovel and sword of all.
-
-#### Cats, chickens, pigs and riding buffalo
-
-- **Cats** wander the plains: tame one with fish and it follows you about (tap it to make it stay).
-- **Chickens** lay an **egg** every few minutes: fry it in the oven, or bake a cake with 3 flour, 2 sugar and 2 eggs.
-  They breed on seeds.
-- **Pigs** root up a **truffle** now and then (a snack, and the trader buys them). They breed on berries or wheat.
-- A **saddle** (3 leather, 2 string, an iron): tap a grown buffalo with it, then tap the buffalo to ride it. A
-  saddled buffalo waits where you leave it.
-- A young animal takes its coat colour from one of its parents (and now and then has a new one), so you can breed
-  for the colours you like. Tame animals keep their coats when you come back to a world.
-- **Quick-stack**: the button in the backpack puts everything (except your hotbar, tools and backpacks) that a chest
-  within 6 blocks already holds into that chest. In a chest, **Stack matching** does the same for just that chest.
-- **Splitting stacks**: right-click a stack (or tap it with two fingers) in the backpack or a chest to split off half,
-  one, or any number into the next empty slot.
-
-### Version 25
-
-#### Building and decorating
-
-- **Sit** on a chair: tap it with an empty hand (or anything that isn't a block). Move or jump to stand up.
-- A **shelf** or a **wooden table** shows an item on top: tap it holding the item to put it there, and tap with an
-  empty hand to take it back. Breaking it drops what was on it.
-- **Flower pots** (3 bricks): tap one with a flower, a sapling, a glowcap or a cactus to plant it; tap again with
-  an empty hand to take it out.
-- **Hanging baskets** (a flower pot, 2 string, an iron, 4 leaves) hang under a ceiling; **window boxes** (3 planks,
-  dirt, 3 flowers) go on the side of a wall.
-- **Iron bars** (16 from 6 iron) join up like glass panes.
-
-#### Fruit trees, the cooking pot, greenhouses and scarecrows
-
-- Some trees in the temperate lands are **apple**, **cherry** or **orange** trees. They blossom in spring and
-  fruit in summer and autumn: tap a leaf with fruit on it to pick it (apples and oranges are 4 food, cherries 3).
-  Fruit leaves sometimes drop a **fruit sapling** to plant your own orchard.
-- A **cooking pot** (5 iron, a log; burns fuel like an oven) makes meals that also give you a buff:
-  **apple pie** (3 apples, 2 flour, sugar, an egg; warms you through), **cherry pie** (heals you), **fish soup**
-  (2 fish, a water bucket; warms you), **truffle soup** (a truffle, 2 glowcaps, a water bucket; see in the dark),
-  **berry jam** (6 berries, 2 sugar, a bottle; heals) and **mushroom stew**. At the crafting grid, **fruit salad**
-  (one of each fruit) lets you dig faster and **orange juice** (3 oranges, a bottle) lets you run faster.
-- A **greenhouse**: crops with glass over them (anywhere above, with nothing but air between) grow as well in
-  winter as in spring.
-- **Crows** come down by day to eat ripe wheat under the open sky, knocking it back to green shoots. A
-  **scarecrow** (3 sticks, 6 wheat, a wool) keeps them off everything within 8 blocks, and they fly off if you come
-  near.
-
-#### Lighthouses, maps, treasure, mist and snow
-
-- **Lighthouses** stand here and there on the coast: red and white towers with a ladder up inside, a gallery round
-  the top and a **lighthouse lamp** whose beams sweep round at night. The keeper's chest at the bottom often holds
-  a treasure map. Make your own lamp from a lantern, 4 glass and 2 gold.
-- An **explorer's map** (a map, a compass, a gold ingot): while you carry one, the ruins, shipwrecks, lighthouses,
-  volcanoes and villages you come near are marked on the world map.
-- A **treasure map** (from lighthouse and shipwreck chests): tap with it in hand to read it. It tells you how far
-  and which way the treasure is, and marks the spot with an X on the world map. Dig down there for a chest of gold,
-  silver, crystal and sometimes starsteel.
-- Some mornings a **mist** lies in the valleys, thickest at dawn and gone by mid-morning (thinner up high).
-- While it snows, **snow settles** on the ground and on the trees under the open sky, and melts away again when
-  winter is over (but not in the tundra).
-
-#### Creatures
-
-- **Deer** live in the woods and plains. They bolt when you come near, unless you creep up holding sneak. They
-  breed on berries.
-- At night **owls** come to sit in the treetops and hoot, turning their heads to watch you; they fly off if you get
-  close. **Bats** flit about in caves and out over the land at dusk. On warm (spring and summer) nights
-  **fireflies** blink over the grass.
-- An **apiary** (8 planks, 3 honeycomb, a glass) is a bee box that holds more honey than a wild hive (5 levels). When
-  it's full, tap it to take 3 honeycomb and 2 **beeswax** (or, holding a bottle, a bottle of honey, 2 honeycomb and
-  2 beeswax). Any honeycomb can be made into beeswax too. 2 beeswax and a string make 3 **beeswax candles**.
-- Throw a **stick** (the drop key, Q by default) and a tame wolf that isn't staying runs after it and brings it back
-  to your feet.
-- Now and then of a morning, a tame **cat** nearby leaves you a present: a feather, string, a fish, seeds,
-  berries... or an old boot.
-
-#### Machines
-
-- A **belt crossing** (2 belts, an iron) passes whatever a belt brings it straight on across, so two lines of belts
-  can cross.
-- A **farm controller** (2 copper, a copper wire, 4 wheat, 2 planks) watches the wheat within 7 blocks. It gives a
-  signal once half of it is ripe (to set harvesters going), and tapping it tells you how the field is doing.
-- **Pneumatic tubes** (6 from 4 glass and a copper) carry things from a belt, hopper or ejector, through all the
-  tubes joined to them (up, down and round corners), to the nearest chest, machine or belt at the far end that will
-  take them. Hang item frames on a tube beside a chest to make it take only those things.
-- A **cable car** (4 iron, 2 glass, 3 planks): hold it and tap a zipline post to ride the line in a little gondola
-  at an even speed, uphill as well as down. Sneak to get out.
-
-#### The backpack and chests
-
-- **Double-tap** a slot to gather the same things from the rest of your backpack (and the chest, if one is open)
-  into that stack.
-- **Shift-click** a slot (or **press and hold** it on a touch screen) to send the whole stack across: between the
-  hotbar and the backpack, or between your backpack and an open chest or machine.
-- Each item's tip says what it's **used in**.
-- A **compass** now also shows the way to your nearest map waypoint.
-- New achievement: **X Marks the Spot**, for digging up buried treasure.
-
-### Version 26
-
-#### Village life and market stalls
-
-- Villagers walk home at dusk and stay indoors through the night. Each morning the village **bell** rings
-  (tap a bell to hear which village you're in).
-- A **market stall** (6 planks, 4 logs, 3 wool) in a village: put things on it and passing villagers buy them for
-  silver **coins**. Food, wine, cheese and pearls sell best. Traders take coins too.
-- A village you trade with grows: after enough deals the villagers build a new house (up to six).
-
-#### Weather
-
-- **Thunderstorms**: dark skies, thunder and **lightning**, which strikes the highest thing about and can set
-  wood, leaves and wool **on fire**. Fire spreads, more slowly in the rain, and burns out. Stay under a roof.
-- Up in the mountains rain falls as **hail**: it hurts unless you wear a helmet.
-- When the rain stops there's often a **rainbow**, across the sky from the sun.
-
-#### Crops and crop rotation
-
-- **Carrots** and **potatoes** grow from themselves (village farms have rows of them). Bake a potato in the oven.
-- **Pumpkin seeds** (4 from a pumpkin) grow a stem that puts a pumpkin beside it. A pumpkin and a torch make a
-  **jack o'lantern**; a pumpkin, sugar and an egg bake a **pumpkin pie**.
-- **Grapes** grow on a **trellis** (2 from 6 sticks): plant them at its foot.
-- **Crop rotation**: planting the same crop over and over in the same soil tires it, and it grows more slowly
-  (down to about a third). Change crops, or leave the soil for six days, and it recovers. Fertiliser freshens it.
-
-#### Winery and cheese
-
-- A **wine press** (6 planks, 3 logs, an iron) presses 6 grapes and a bottle into **grape juice**; a **cheese
-  press** (the same and a string) presses a milk bucket into **curds**. Neither needs fuel.
-- An **oak barrel** (6 planks, an iron) ages what's in it: juice becomes **wine** after a day and **fine wine**
-  after three more; curds become **cheese**, and cheese becomes **aged cheese**. Tap a barrel to see how they're
-  coming on. Aged things sell for more.
-
-#### Sunken temples and sky islands
-
-- **Sunken temples** lie on the sea bed: a vault with three levers in front. Set the levers right (the lamps over
-  them hint which) and the gate opens on a chest of pearls, coins, gold, sea lanterns and sometimes diving gear.
-- **Sky islands** float high over the land, with coloured pressure plates round a vault: step on them in the
-  right order to open it.
-- **Diving gear**: a **diving helmet** (5 copper, 2 glass) makes your air last five times as long, **flippers**
-  (4 leather, a slime) make you swim faster, and an **air pump** (4 iron, 2 copper, 2 leather, a pipe) fills your
-  air up while you're near it underwater. **Sea lanterns** (2 glass, a pearl) light the deep.
-- New achievement: **Open Sesame**, for opening a temple's or an island's vault.
-
-#### Machines and trains
-
-- **Radio transmitter** and **receiver** (3 copper, 2 wire, a glass each): a receiver gives a signal while any
-  transmitter on the same channel has one, however far apart they are. Tap either with an empty hand to change its
-  channel (1-8).
-- A **sorting machine** (3 tubes, 3 iron, an item frame) sends each thing that goes into it down the pneumatic
-  tube with a matching item frame on it, or else down a tube with no frames.
-- A **locomotive** (a minecart, 6 iron, a steam engine): put it on a rail and tap it with coal or charcoal (one
-  coal lasts a minute). It couples on the carts standing behind it and pulls them along, waits a few seconds at
-  each rail station and sets off again by itself (or at once on a signal), and stops at the end of the line. Ride
-  it and hold back to stop, forward to start. Turning round leaves its train behind.
-
-#### Home comforts
-
-- A **fireplace** (5 bricks, 2 cobblestone, an iron): tap it with logs, planks, sticks or coal to light it. It
-  lights and warms the room (you thaw out fast beside it). Build **chimney** blocks (2 from 3 bricks) straight up
-  from it for the smoke, or the room fills with it.
-- **Pin a recipe** (📌 beside it) to keep it on screen with how many of each thing you have and still need; it
-  goes green when you've got everything. Up to three.
-- The **mortar and pestle** now wears with use: each thing ground in it counts, and it breaks after 96 (the most
-  worn one you carry is used first). Mend it at an anvil with cobblestone.
-- **Auto-refill**: when the stack in your hand runs out, or a tool breaks, the next one of the same thing moves
-  in from your backpack. Turn it off under ☰ if you'd rather not.
-
-### Version 27
-
-#### Horses and stables
-
-- Wild **horses** roam the grassland in small herds, in six coats. Feed one apples, carrots or sugar until it
-  trusts you (it can take a few), then put a **saddle** on it and ride: steer with the joystick or WASD, jump to
-  leap, tap to get off. Every horse has its own **speed** and **jump**, shown when you mount it; feed two tame
-  horses to breed them, and the foal takes after its parents.
-- A **stable** (6 planks, 2 logs, 6 wheat, at a table): tap it and your tame horses come home to it and wait by
-  the manger. It tells you each one's speed and jump.
-- New achievement: **Giddy-up**.
-
-#### Village requests, reputation and festivals
-
-- Each village wants something new every day: tap its **bell** to hear what, and tap it again holding the goods
-  to hand them over for coins.
-- Trading, selling at a village's stall and filling its requests earn its good opinion. A **Neighbour** is
-  welcome; a **Friend** pays a fifth less at its traders, and a **Hero** about a third less. New achievement:
-  **Local Hero**.
-- On the fourth day of every season each village holds a **festival** (Blossom Fair, Midsummer Feast, Harvest
-  Festival, Frost Fair): decorations go up round the well, stalls and requests pay double, the villagers stay up
-  late, and **fireworks** go up after dark. Make your own fireworks (3 from a paper and a gunpowder) and tap with
-  one in hand to send it up.
-- **Snowmen** (3 snow, a carrot, a coal, 2 sticks) face you when you place them, and melt when spring comes.
-
-#### New crops, cider and berry wine, cellars
-
-- **Onions**, **beans**, **tomatoes** and **herbs** grow from themselves (village farms grow them, and farmers sell
-  them). **Beans** never tire the soil: they leave it **rich**, so the next crop grows faster.
-- New meals: **vegetable stew** (an onion, carrot, potato and herbs) and **tomato soup** (3 tomatoes, an onion and
-  a water bucket) in the cooking pot, and **baked beans** (4 beans, a tomato) in the oven.
-- The **wine press** also makes **apple juice** (4 apples) and **berry juice** (8 berries). In an oak barrel
-  apple juice becomes **cider** and then **vintage cider**; berry juice becomes **berry wine** and then **fine
-  berry wine**.
-- A barrel in a **cellar** (no daylight reaching it from any side but below) ages things half as fast again.
-  Tap a barrel to see whether it's in one.
-
-#### Kiln, terracotta and pottery
-
-- A **kiln** (5 clay bricks, an iron, at a table) is fired with fuel like a furnace. It bakes clay blocks into
-  **terracotta**, clay balls into bricks, an **unfired urn** (6 clay balls) into an **urn** (a 6-slot store), and
-  coloured terracotta (4 terracotta and a dye) into shiny **glazed tiles**.
-- **Roof tiles** (4 from 4 terracotta) for warm red roofs.
-
-#### Rope ladders and rope bridges
-
-- A **rope ladder** (4 from 4 string and 3 sticks): tap the side of a block with it, or the top of a cliff edge
-  looking out over it, and it unrolls straight down to the ground, a piece for each block. Tap the ladder with
-  more to make it longer; cut it (or what it hangs from) and it rolls back up into your bag.
-- A **rope bridge** (4 from 3 planks and 3 string): tap the edge of a gap looking across it and the bridge lays
-  itself out to the far side, with rope rails, as long as you have pieces for it.
-
-#### Canal locks
-
-- Build a walled **chamber** of water between two stretches of canal at different heights, with **lock gates**
-  (2 from 6 planks and an iron) in its ends, and put a **sluice wheel** (a log, 2 planks, 2 iron) on its bank.
-- Turn the wheel: every gate shuts, the chamber fills or drains a layer at a time to the level of the next
-  canal, and then that canal's gate swings open. Float a boat in, turn the wheel, and float out at the other
-  level. New achievement: **Lock Keeper**.
-
-#### Caves
-
-- Big caverns now have **stalactites** hanging from the roof and **stalagmites** rising from the floor. Watch
-  out in the dark: a loose stalactite can drop on you (and one falls whenever the rock above it is dug out).
-- **Cave beetles** glow softly in the deep. Tap one to collect a **glow shell**; 3 glow shells and a glass make a
-  **beetle lamp**. Pale **olms** swim in underground pools, and **glow-worms** twinkle on cave ceilings.
-
-#### Finding things and taking pictures
-
-- **Find in chests nearby**: type in the box under your backpack, and it lists every chest, barrel, urn, stall
-  and net within 32 blocks that holds something matching, with how far and which way. **Show** marks it with a
-  gold outline and a beam; **Take** (when it's in reach) moves what matched into your backpack.
-- **Photo mode** (☰ → 📷 Photo mode, or F2): the HUD goes, the world holds still around you and the camera floats
-  free (up to 48 blocks from you) so you can frame a shot. 📷 (or Enter) saves it as a PNG.
-
-### Version 28
-
-#### Ore washing, trace metals and slag
-
-- Crushers, pulverizers and the jackhammer now give **dirty dust**. Smelt it as it is (4 dirty dust make 3
-  ingots, with some slag), or clean it first in an **ore washer** (3 iron, 4 planks, a bucket and a gear, at a
-  table). The washer needs turning power and water touching it on some side. Each dirty dust washes into a
-  clean dust, sometimes with one more beside it, and some **sludge** (4 sludge make a clay block).
-- **Trace metals**: ores carry a little of another metal. Washing iron sometimes gives nickel dust, copper gives
-  gold, tin gives zinc, lead gives silver, bauxite gives iron, and so on. The recipe list shows each chance. New
-  achievement: **Hidden Riches**.
-- What a washer, sieve or smelter makes on the side goes into **by-product slots** to the right of the output.
-  Tap one to collect it, or put a hopper underneath.
-- Smelting ore sometimes leaves **slag**. 2 slag crush into fertiliser, and 4 slag with a clay ball make 4
-  **slag bricks**.
-- A **sieve** (4 planks, 4 sticks, 4 string) needs no power. It sifts gravel into sand with flint and now and
-  then some dirty ore dust. It sifts dirt for **worms**, seeds, flint and saplings.
-
-#### Charcoal piles and cobble generators
-
-- Stack logs, cover them all over with dirt, sand, gravel or stone, and light one log through a gap with a
-  torch. A sealed pile smoulders into **charcoal heaps** (2 charcoal each). If air gets in while it burns, it
-  flares up. New achievement: **Charcoal Burner**.
-- Flowing water that touches lava now makes **cobblestone**, so a cobble generator works.
-
-#### Machine upgrades and quarry filters
-
-- **Speed** (steel, electrum and a gear), **efficiency** (cupronickel and fire bricks) and **yield** (stainless
-  steel, silver and gold) upgrades: tap a machine with one to fit it, up to two of each.
-  - Speed makes it work half as fast again.
-  - Efficiency makes a furnace, oven or kiln burn a third less fuel.
-  - Yield sometimes gives one more from a crusher, pulverizer, washer, sieve, millstone or saw.
-  - The machine's panel lists what's fitted, and a spanner keeps the upgrades in it. New achievement: **Souped Up**.
-- Hang **item frames** on a quarry showing the things you want, and it keeps only those.
-
-#### Horse gear and stables
-
-- **Saddlebags** (4 leather, 2 string, a chest): tap your saddled horse with them. While you ride, 🎒 opens
-  their nine slots.
-- **Horse armour** (6 iron, 2 leather): while you ride, creatures do you half the harm.
-- Tap a stable with **wheat** or a **hay bale** (9 wheat) to fill its manger. Horses kept there eat it and come
-  out **rested**: 15% faster and jumping higher for five minutes of riding.
-
-#### Honey varieties
-
-- Hives and apiaries make honey after the flowers growing thickest around them:
-  - **Lavender honey** comes from lavender.
-  - **Blossom honey** comes from fruit trees.
-  - **Golden honey** comes from dandelions.
-  - With none of these, they make plain wildflower honey.
-- Brew each in the cauldron with its flower (an apple or cherries for blossom honey). Lavender tea keeps you fed
-  for longer, blossom tea makes you swift, and golden tea heals.
-
-#### Fine crops, shows and special trades
-
-- A ripe crop sometimes comes up **fine**: more often in soil that beans have fed or under glass, less often in
-  tired soil, and never in worn-out soil. Fine crops are better eating and sell well at a stall. Craft one back
-  into the ordinary kind whenever you like. New achievement: **Prize Grower**.
-- On a festival day, tap a village's bell holding fine produce to enter its **show**. Show three for first prize.
-- **Friends** of a village are offered a special trade by each villager, and its **Heroes** a second one:
-  - farmers: fertiliser and saddlebags
-  - smiths: speed and yield upgrades
-  - fishers: worms and treasure maps
-  - clerics: golden tea and pearls
-
-#### Bait and fish traps
-
-- Carry **worms** when you fish and one goes on the hook. Fish bite twice as fast, and you won't catch junk.
-- A **fish trap** (8 sticks, 4 string, a plank) sunk in water and baited with worms catches a fish now and
-  then, sometimes a salmon.
-
-#### Chest boats and tenders
-
-- A **chest boat** (a boat and a chest) carries 18 slots. Open them with 🎒 while you row, or sneak and tap it.
-- A storage cart coupled right behind a **locomotive** is its **tender**: the locomotive takes on coal or
-  charcoal from it as it runs out.
-
-### Version 29
-
-#### The guidebook
-
-- Press **G** or tap 📖 for the **guidebook**: 11 chapters of goals, from your first log to a reactor and a
-  logistics network. Goals tick themselves off as you reach them. Each one shows how its item is made and has a
-  small reward to claim. A gold dot on 📖 means a reward is waiting. A chapter opens once half of the one before
-  it is done.
-
-#### Music
-
-- Quiet music now plays, made as you listen, in a mood to suit where you are: day, night, caves, under water,
-  villages, festivals and winter. Set its volume with the **Music** slider in the menu (0 turns it off).
-
-#### Logistics pipes
+## Signals and automation
+
+### Signals and logic
+
+- **Copper wire** (8 from a copper ingot) lies on top of blocks and carries a signal along the whole line it
+  makes, side by side or a block up or down. Anything that switches on beside any part of it (a lever, button,
+  pressure plate, observer, gauge or logic block) powers the whole line, and the wire powers whatever it
+  touches, and the block it lies on, like a switch.
+- **Inverters**, **delay blocks** and **latches** sit on top of a block and point away from you as you place
+  them. Each takes its signal from the block behind it and gives its own to the block in front. An inverter
+  is on while it gets no signal. A delay block passes its signal on after a moment: tap it to set ½, 1, 1½, 2,
+  3, 4 or 5 seconds. A latch flips on or off each time its signal comes on (tap it to flip it by hand).
+- Logic blocks work out their signal a tenth of a second after what feeds them changes. An inverter whose
+  output loops back to its own input through wire flickers on and off; put a delay block in the loop for a
+  slower **clock**.
+- A **detector rail** gives a signal while a cart is on it.
+
+### Switches, gearboxes and clutches
+
+| Make | Recipe (crafting table) |
+| --- | --- |
+| Lever | 1 stick + 1 cobblestone |
+| 2 Buttons | 1 stone |
+| Pressure plate | 2 stone |
+| Gearbox | 2 stone small gears + 4 cobblestone |
+| Clutch | 2 stone shafts + 1 iron ingot |
+
+A **lever** (on a wall or a floor) flips on and off, a **button** stays on for a moment, and a **pressure
+plate** is on while you, an animal or a creature stands on it. A switch turns on whatever is beside it,
+and whatever is beside the block it's fixed to:
+- doors, fence gates and trapdoors open (and shut again when it goes off);
+- a **clutch** (a shaft with an iron collar) only passes power on while it's switched on, so you can turn
+  machines on and off without breaking anything;
+- a **powered rail** pushes carts along. One that's not switched (or turned by a shaft) brakes and holds a
+  cart, so a powered rail with a button beside it makes a station stop.
+
+A **gearbox** takes power in or out of any face, so a shaft can turn a corner (or go up and down).
+
+### Item frames, sorting hoppers and storage carts
+
+| Make | Recipe (crafting table) |
+| --- | --- |
+| 2 Item frames | 6 sticks + 1 leather |
+| 2 Loader rails | 2 rails + 1 hopper |
+| Storage cart | 1 minecart + 1 chest |
+
+Hang an **item frame** on the side of a block and tap it with something to show it there (tap again to
+take it out). Frames hung on a **hopper** make it a **sorting hopper**: it only takes and passes on things
+that match one of its frames. A hopper under a running belt takes things off the belt as they pass over
+it (if it can), so a belt over a row of sorting hoppers sends each kind of thing to its own machine or chest.
+
+A **storage cart** carries 18 slots of things: tap it to open it, double-tap and hold on it to pick it up (contents and
+all). On a **loader rail** a storage cart stops while hoppers fill it (a hopper pointing at the rail) or
+empty it (a hopper under the rail). It waits until nothing has moved for a moment, then rolls on.
+
+### Moving things around
+
+- An **ejector** throws what's in the chest or machine behind it out onto the ground in front: one thing every
+  half second while it gets a signal. Tap it to make it throw a whole stack each time the signal comes on.
+- A **collector** is a hopper that also pulls in loose things lying within 4 blocks of it.
+- A **splitting belt** sends what reaches its end off to its left and right in turn; a **sorting belt** sends
+  things matching an item frame hung on it off to the left, and the rest straight on.
+- A **bucket elevator** (stack them into a column) is driven by a shaft like a belt. Things put into it by a
+  belt, a hopper or dropped onto it are lifted up the column and out of the top, into a chest or hopper there,
+  or onto the top.
+- An **auto-crafter** makes whatever an item frame on it shows, a second at a time, whenever the ingredients
+  are inside. Fill it with hoppers or belts and empty it with a hopper underneath.
+
+## Logistics and liquids
+
+### Liquids
+
+- A **tank** holds 16 buckets of water or lava. Pour buckets in or take them out by hand, or fill it from a
+  pump through lead pipes; a pump set beside a tank pumps out of it. A storage gauge reads it.
+- A **valve** is a pipe that only lets liquid through while it gets a signal.
+- Lava piped to an **oven**, **smelter**, **blast smelter** or **steam engine** burns as its fuel.
+- A **sprinkler** on a water pipe makes crops in the 5 × 5 patch around it (and a block or two below) grow
+  half again as fast.
+
+### Logistics pipes
 
 A routed item network, after the classic Logistics Pipes mod. Logistics pipes join up into a network. Each pipe
 works the chests and machines it touches, according to its job:
@@ -1369,9 +1063,7 @@ works the chests and machines it touches, according to its job:
 - (Classic Logistics Pipes' satellite pipes and chassis modules are left out: a machine here takes all its
   ingredients on one block, and each module is its own pipe instead.)
 
-### Version 30
-
-#### Logistics signals, liquid pipes and courier drones
+### Logistics signals, liquid pipes and courier drones
 
 - **Stock sensor pipe** (a logistics pipe and a daylight sensor): tap it to choose a thing (or water or lava),
   an amount, and whether it signals while the network has **less than** that or **at least** that. Wire it to
@@ -1398,14 +1090,310 @@ works the chests and machines it touches, according to its job:
   around its pipes) stays loaded however far away you go, so distant bases keep working and stay linked. Take
   the pad away and that part unloads as usual. New achievement: **Air Mail**.
 
-#### Fixes
+### Belts, tubes and farm controller
 
-- Leaves from a fruit tree drop that fruit tree's saplings, not oak saplings.
-- Plants grow more slowly: crops take about 10 minutes (most of a 12-minute game day) to ripen, saplings about 15 minutes to grow
-  into trees, and fruit about 10 minutes to come back. Rain, bees and sprinklers still speed them up, but less,
-  and nothing grows almost at once any more. A night's sleep grows plants the same as the time it skips.
+- A **belt crossing** (2 belts, an iron) passes whatever a belt brings it straight on across, so two lines of belts
+  can cross.
+- A **farm controller** (2 copper, a copper wire, 4 wheat, 2 planks) watches the wheat within 7 blocks. It gives a
+  signal once half of it is ripe (to set harvesters going), and tapping it tells you how the field is doing.
+- **Pneumatic tubes** (6 from 4 glass and a copper) carry things from a belt, hopper or ejector, through all the
+  tubes joined to them (up, down and round corners), to the nearest chest, machine or belt at the far end that will
+  take them. Hang item frames on a tube beside a chest to make it take only those things.
+- A **cable car** (4 iron, 2 glass, 3 planks): hold it and tap a zipline post to ride the line in a little gondola
+  at an even speed, uphill as well as down. Sneak to get out.
 
-### Worlds, creative mode, the map and achievements
+## Transport
+
+### Rails, minecarts and maps
+
+| Make | Recipe (crafting table) |
+| --- | --- |
+| 16 Rails | 6 iron ingots + 1 stick |
+| 6 Powered rails | 4 gold + 2 iron ingots + 1 stick |
+| Minecart | 5 iron ingots |
+| 3 Paper | 3 sugar cane |
+| Map | 4 paper + 1 compass |
+
+Rails lie on top of blocks and bend to join the rails beside them, so lay them in the order you want them
+joined. A rail placed beside a rail one block higher (or lower) becomes a slope. Tap a rail holding a
+minecart to set one down, tap the cart to get in, and hold forward to push off. Carts roll on by
+themselves, slow gently, speed up downhill and roll back if they can't make it up a slope. A
+**powered rail** turned by a shaft (from below or from the side) pushes carts along at up to 10 blocks a
+second. One that isn't turning is a brake. Hold on a cart to pick it up.
+
+Hold a **map** to see the land 64 blocks around you from above, with you as an arrow (north is up) and
+home as a red dot.
+
+### Ziplines, boats, balloons and rail stations
+
+- **Zipline posts** (2 from 2 logs and an iron) and **zipline rope** (2 from 6 string and an iron): with rope in
+  hand, tap one post and then another up to 40 blocks away to run a line between them (taking one rope). Tap a
+  post with a grappling hook in hand to slide along the line toward the post you're facing (faster downhill).
+  Sneak to let go. Breaking a post gives its ropes back.
+- A **boat** (5 planks, 2 sticks): tap water with it to put it in, tap the boat to get in. Hold forward to row the
+  way you look and back to slow down; tap to get out. Hold on a boat (or balloon) to pick it up.
+- A **hot-air balloon** (12 wool, 8 string, 4 planks, 2 iron, a lantern): put it on the ground and get in. Jump to
+  rise and sneak to sink; it moves as you walk. Its burner uses a coal or charcoal from your inventory every 45
+  seconds of flight, and sinks gently to the ground when it runs out.
+- A **rail station** (2 from 2 rails, bricks, copper wire) is a straight rail where carts stop and wait until it
+  gets a signal (a button beside it, say) or you push off. A cart that reaches the end of the line turns round.
+
+### Machines and trains
+
+- **Radio transmitter** and **receiver** (3 copper, 2 wire, a glass each): a receiver gives a signal while any
+  transmitter on the same channel has one, however far apart they are. Tap either with an empty hand to change its
+  channel (1-8).
+- A **sorting machine** (3 tubes, 3 iron, an item frame) sends each thing that goes into it down the pneumatic
+  tube with a matching item frame on it, or else down a tube with no frames.
+- A **locomotive** (a minecart, 6 iron, a steam engine): put it on a rail and tap it with coal or charcoal (one
+  coal lasts a minute). It couples on the carts standing behind it and pulls them along, waits a few seconds at
+  each rail station and sets off again by itself (or at once on a signal), and stops at the end of the line. Ride
+  it and hold back to stop, forward to start. Turning round leaves its train behind.
+
+### Rope ladders and rope bridges
+
+- A **rope ladder** (4 from 4 string and 3 sticks): tap the side of a block with it, or the top of a cliff edge
+  looking out over it, and it unrolls straight down to the ground, a piece for each block. Tap the ladder with
+  more to make it longer; cut it (or what it hangs from) and it rolls back up into your bag.
+- A **rope bridge** (4 from 3 planks and 3 string): tap the edge of a gap looking across it and the bridge lays
+  itself out to the far side, with rope rails, as long as you have pieces for it.
+
+### Canal locks
+
+- Build a walled **chamber** of water between two stretches of canal at different heights, with **lock gates**
+  (2 from 6 planks and an iron) in its ends, and put a **sluice wheel** (a log, 2 planks, 2 iron) on its bank.
+- Turn the wheel: every gate shuts, the chamber fills or drains a layer at a time to the level of the next
+  canal, and then that canal's gate swings open. Float a boat in, turn the wheel, and float out at the other
+  level. New achievement: **Lock Keeper**.
+
+### Chest boats and tenders
+
+- A **chest boat** (a boat and a chest) carries 18 slots. Open them with 🎒 while you row, or sneak and tap it.
+- A storage cart coupled right behind a **locomotive** is its **tender**: the locomotive takes on coal or
+  charcoal from it as it runs out.
+
+## Animals and creatures
+
+### Night creatures
+
+Night creatures come out in the dark: on the surface at night, and in caves at any time, but never where torches
+light the ground. **Gloomlings** are quick shadow imps, **mossbacks** are slow, hard-hitting stone golems, and
+**thornspitters** keep their distance and spit thorns. Fight them by tapping (an axe hits hardest) or with the bow;
+they drop coal, cobblestone or arrows. Caught in daylight, they dissolve. Four difficulty levels in the ☰ menu:
+**Peaceful** (they roam but only fight back if you attack them), **Worrying** (easy), **Scary** (hard) and
+**Terrifying** (nightmare).
+
+### Animal breeding
+
+Feed two animals of the same kind their food and they look for a mate (hearts show over them): seeds for ducks,
+wheat for buffalo, alpacas, yaks and camels, berries for newts, seeds for chickens, berries or wheat for pigs, and
+a fish for tame wolves and cats. A young one appears,
+growing up over 5 minutes, and the pair won't breed again for 5 more. A baby of tame parents is tame. An **animal
+station** with 2 or more of a kind's food in it feeds pairs nearby, so a pen keeps itself stocked. Animals won't
+breed when there are 12 or more about.
+
+### Cats, chickens, pigs and riding buffalo
+
+- **Cats** wander the plains: tame one with fish and it follows you about (tap it to make it stay).
+- **Chickens** lay an **egg** every few minutes: fry it in the oven, or bake a cake with 3 flour, 2 sugar and 2 eggs.
+  They breed on seeds.
+- **Pigs** root up a **truffle** now and then (a snack, and the trader buys them). They breed on berries or wheat.
+- A **saddle** (3 leather, 2 string, an iron): tap a grown buffalo with it, then tap the buffalo to ride it. A
+  saddled buffalo waits where you leave it.
+- A young animal takes its coat colour from one of its parents (and now and then has a new one), so you can breed
+  for the colours you like. Tame animals keep their coats when you come back to a world.
+- **Quick-stack**: the button in the backpack puts everything (except your hotbar, tools and backpacks) that a chest
+  within 6 blocks already holds into that chest. In a chest, **Stack matching** does the same for just that chest.
+- **Splitting stacks**: right-click a stack (or tap it with two fingers) in the backpack or a chest to split off half,
+  one, or any number into the next empty slot.
+
+### Creatures
+
+- **Deer** live in the woods and plains. They bolt when you come near, unless you creep up holding sneak. They
+  breed on berries.
+- At night **owls** come to sit in the treetops and hoot, turning their heads to watch you; they fly off if you get
+  close. **Bats** flit about in caves and out over the land at dusk. On warm (spring and summer) nights
+  **fireflies** blink over the grass.
+- An **apiary** (8 planks, 3 honeycomb, a glass) is a bee box that holds more honey than a wild hive (5 levels). When
+  it's full, tap it to take 3 honeycomb and 2 **beeswax** (or, holding a bottle, a bottle of honey, 2 honeycomb and
+  2 beeswax). Any honeycomb can be made into beeswax too. 2 beeswax and a string make 3 **beeswax candles**.
+- Throw a **stick** (the drop key, Q by default) and a tame wolf that isn't staying runs after it and brings it back
+  to your feet.
+- Now and then of a morning, a tame **cat** nearby leaves you a present: a feather, string, a fish, seeds,
+  berries... or an old boot.
+
+### Horses and stables
+
+- Wild **horses** roam the grassland in small herds, in six coats. Feed one apples, carrots or sugar until it
+  trusts you (it can take a few), then put a **saddle** on it and ride: steer with the joystick or WASD, jump to
+  leap, tap to get off. Every horse has its own **speed** and **jump**, shown when you mount it; feed two tame
+  horses to breed them, and the foal takes after its parents.
+- A **stable** (6 planks, 2 logs, 6 wheat, at a table): tap it and your tame horses come home to it and wait by
+  the manger. It tells you each one's speed and jump.
+- New achievement: **Giddy-up**.
+
+### Horse gear and stables
+
+- **Saddlebags** (4 leather, 2 string, a chest): tap your saddled horse with them. While you ride, 🎒 opens
+  their nine slots.
+- **Horse armour** (6 iron, 2 leather): while you ride, creatures do you half the harm.
+- Tap a stable with **wheat** or a **hay bale** (9 wheat) to fill its manger. Horses kept there eat it and come
+  out **rested**: 15% faster and jumping higher for five minutes of riding.
+
+### Berries, wolves, camels and the trader
+
+**Berry bushes** grow wild on grass. Tap a ripe one to pick 2–3 berries (2 food each); it grows more.
+Break a bush to take it and plant it on grass or dirt.
+
+**Wolves** roam the tundra. Feed one raw or baked fish and it may decide it likes you. A tame wolf
+wears a red collar, follows you and chases any night creature that comes near. Tap it to make it stay,
+and again to call it. **Camels** wander the desert. Feed one wheat to tame it, then tap it to ride (steer
+as you'd walk, tap to get off). Pets are saved with your world and catch up if you leave them behind.
+
+Now and then on a fine day, a **wandering trader** turns up nearby with four offers. Tap the trader to
+trade: rare things like tungsten, electrum, gold and stainless steel for things you have plenty of. The
+trader moves on after a few minutes.
+
+## Villages and trade
+
+### Village life and market stalls
+
+- Villagers walk home at dusk and stay indoors through the night. Each morning the village **bell** rings
+  (tap a bell to hear which village you're in).
+- A **market stall** (6 planks, 4 logs, 3 wool) in a village: put things on it and passing villagers buy them for
+  silver **coins**. Food, wine, cheese and pearls sell best. Traders take coins too.
+- A village you trade with grows: after enough deals the villagers build a new house (up to six).
+
+### Village requests, reputation and festivals
+
+- Each village wants something new every day: tap its **bell** to hear what, and tap it again holding the goods
+  to hand them over for coins.
+- Trading, selling at a village's stall and filling its requests earn its good opinion. A **Neighbour** is
+  welcome; a **Friend** pays a fifth less at its traders, and a **Hero** about a third less. New achievement:
+  **Local Hero**.
+- On the fourth day of every season each village holds a **festival** (Blossom Fair, Midsummer Feast, Harvest
+  Festival, Frost Fair): decorations go up round the well, stalls and requests pay double, the villagers stay up
+  late, and **fireworks** go up after dark. Make your own fireworks (3 from a paper and a gunpowder) and tap with
+  one in hand to send it up.
+- **Snowmen** (3 snow, a carrot, a coal, 2 sticks) face you when you place them, and melt when spring comes.
+
+## Survival, dungeons and exploration
+
+### Enchanting, meals, ailments and lairs
+
+An **enchanting altar** (4 obsidian, 4 crystal shards and a gold ingot) puts enchantments on what you hold:
+**Swift** (tools dig 40% faster), **Sturdy** (wears half as fast), **Keen** (weapons hit 3 harder, needs a sun
+scarab), **Flame** (sets creatures alight, needs an ember core) and **Warmth** (armour keeps out the cold,
+needs a frost heart). Enchanted things glow in the inventory.
+
+A meal worth 6 or more food leaves you **well fed** for a while: hunger drains half as fast, and you heal
+quicker. Spiders **poison** you; staying out in the tundra cold (or a winter night) **chills** you, slowing you
+down until you warm up by a fire, wrap up or drink honey tea; and the desert sun at midday brings on
+**heatstroke**, which makes you hungry fast, until you find shade or water. Healing tea cures all three.
+
+Besides the Mossback King's dungeons there are three **lairs**: desert **tombs** (watch for dart traps on the
+pressure plates) guarded by the **Dune Warden**, tundra **crypts** with the **Frost Wraith**, and deep
+**fortresses** with the **Ember Lord**. Each guardian drops a treasure for the altar, and the crown it guards
+protects you from sun, cold or fire. A bed now lets you sleep through a storm too, by day or night.
+
+### Dungeons and the Mossback King
+
+Rare rooms of mossy stone bricks lie deep underground (about one in forty chunks, between heights 8 and
+34), with a glowing **shrine** in the middle and a chest or two of loot: ingots, gunpowder, silver arrows,
+teas, sometimes a shield. Come near the shrine and its guardian, the **Mossback King**, rises to meet you.
+He's huge, slow and hits very hard, with a health bar at the top of the screen. Beat him for his
+**crown** (a helmet worth 5 armour points) and gold, and the shrine falls quiet. Leave and come back
+and he's waiting again.
+
+### Volcanoes, ruins, shipwrecks and meteorites
+
+- **Volcanoes** are basalt cones with a lava crater and an obsidian rim; their rock is rich in tungsten and uranium.
+- **Ruins** of old stone houses stand on flat grassland, with a loot chest of books, paper, maps, a journal and old
+  iron tools, and sometimes a bookshelf.
+- **Shipwrecks** lie on the deep sea bed, with a chest of gold, a compass, maps, gunpowder and fish.
+- Once on some clear nights a **meteorite** streaks down 30 to 70 blocks away (a message tells you which way). It
+  blasts a crater and leaves glowing **meteorite** rock: mine it with a tungsten pickaxe or better for **meteoric
+  iron**. The arc furnace makes it into **starsteel**, for the best pickaxe, axe, shovel and sword of all.
+
+### Lighthouses, maps, treasure, mist and snow
+
+- **Lighthouses** stand here and there on the coast: red and white towers with a ladder up inside, a gallery round
+  the top and a **lighthouse lamp** whose beams sweep round at night. The keeper's chest at the bottom often holds
+  a treasure map. Make your own lamp from a lantern, 4 glass and 2 gold.
+- An **explorer's map** (a map, a compass, a gold ingot): while you carry one, the ruins, shipwrecks, lighthouses,
+  volcanoes and villages you come near are marked on the world map.
+- A **treasure map** (from lighthouse and shipwreck chests): tap with it in hand to read it. It tells you how far
+  and which way the treasure is, and marks the spot with an X on the world map. Dig down there for a chest of gold,
+  silver, crystal and sometimes starsteel.
+- Some mornings a **mist** lies in the valleys, thickest at dawn and gone by mid-morning (thinner up high).
+- While it snows, **snow settles** on the ground and on the trees under the open sky, and melts away again when
+  winter is over (but not in the tundra).
+
+### Sunken temples and sky islands
+
+- **Sunken temples** lie on the sea bed: a vault with three levers in front. Set the levers right (the lamps over
+  them hint which) and the gate opens on a chest of pearls, coins, gold, sea lanterns and sometimes diving gear.
+- **Sky islands** float high over the land, with coloured pressure plates round a vault: step on them in the
+  right order to open it.
+- **Diving gear**: a **diving helmet** (5 copper, 2 glass) makes your air last five times as long, **flippers**
+  (4 leather, a slime) make you swim faster, and an **air pump** (4 iron, 2 copper, 2 leather, a pipe) fills your
+  air up while you're near it underwater. **Sea lanterns** (2 glass, a pearl) light the deep.
+- New achievement: **Open Sesame**, for opening a temple's or an island's vault.
+
+## Inventory and recipes
+
+### Recipes, sorting and the map
+
+Search recipes by name (of what they make, or what goes in) at the top of the crafting list, tap ☆ to
+favourite a recipe (favourites come first), and use ★ and ✓ to show only favourites or only what you can
+make right now. **Sort backpack** (and **Sort** in a chest) stacks things up and puts them in order.
+
+**Throwing things.** Press Q (Shift + Q for the whole stack), or hold a hotbar slot, to throw what you're
+holding. It lies on the ground until you walk over it (things you've just thrown wait a moment first) and
+vanishes after five minutes. A thrown item that lands on a running **conveyor belt** rides off along it, and
+one that lands on a **hopper** drops in (sorting hoppers still only take what matches their frames). You can
+also tap a belt or hopper holding an item to put it straight in. Breaking a chest, oven or machine **spills**
+what was inside onto the ground, with enchantments and wear kept.
+
+Tooltips (on by default, ☰ → Tooltips) name what the crosshair is on, and in 🎒 show the name and details of
+the item under the mouse or the one you tap.
+
+Holding the map, tap a sign to mark it on the map (named by its first line), or a bed. Tap it again
+to take the mark off. Marks off the edge of the map show as arrows pointing toward them.
+
+### The backpack and chests
+
+- **Double-tap** a slot to gather the same things from the rest of your backpack (and the chest, if one is open)
+  into that stack.
+- **Shift-click** a slot (or **press and hold** it on a touch screen) to send the whole stack across: between the
+  hotbar and the backpack, or between your backpack and an open chest or machine.
+- Each item's tip says what it's **used in**.
+- A **compass** now also shows the way to your nearest map waypoint.
+- New achievement: **X Marks the Spot**, for digging up buried treasure.
+
+### Finding things and taking pictures
+
+- **Find in chests nearby**: type in the box under your backpack, and it lists every chest, barrel, urn, stall
+  and net within 32 blocks that holds something matching, with how far and which way. **Show** marks it with a
+  gold outline and a beam; **Take** (when it's in reach) moves what matched into your backpack.
+- **Photo mode** (☰ → 📷 Photo mode, or F2): the HUD goes, the world holds still around you and the camera floats
+  free (up to 48 blocks from you) so you can frame a shot. 📷 (or Enter) saves it as a PNG.
+
+## Guidebook and music
+
+### The guidebook
+
+- Press **G** or tap 📖 for the **guidebook**: 11 chapters of goals, from your first log to a reactor and a
+  logistics network. Goals tick themselves off as you reach them. Each one shows how its item is made and has a
+  small reward to claim. A gold dot on 📖 means a reward is waiting. A chapter opens once half of the one before
+  it is done.
+
+### Music
+
+- Quiet music now plays, made as you listen, in a mood to suit where you are: day, night, caves, under water,
+  villages, festivals and winter. Set its volume with the **Music** slider in the menu (0 turns it off).
+
+## Worlds, creative mode, the map and achievements
 
 ☰ → **Worlds…** holds three worlds. Play any of them, start a new **survival** or **creative** world in a slot,
 **Export** a world to a file (to keep it, or move it to another device) and **Import** one into a slot.
@@ -1421,6 +1409,36 @@ on the hand-held map too.
 
 ☰ → **Guide & achievements** lists 31 achievements for each world (with a pop-up as you earn them) and a short
 guide to how everything works.
+
+## Recent fixes
+
+- Leaves from a fruit tree drop that fruit tree's saplings, not oak saplings.
+- Plants grow more slowly: crops take about 10 minutes (most of a 12-minute game day) to ripen, saplings about 15 minutes to grow
+  into trees, and fruit about 10 minutes to come back. Rain, bees and sprinklers still speed them up, but less,
+  and nothing grows almost at once any more. A night's sleep grows plants the same as the time it skips.
+
+## Version history
+
+- **Version 31**: bee breeding (bee scoops, bee houses, sixteen kinds of bee and their mutations, frames), the
+  comb centrifuge, and honey drops, propolis, pollen, royal jelly, mead, honey cake and honeyed apples.
+- **Version 30**: logistics signals (the stock sensor pipe and junctions that pause), liquid pipes, courier
+  drones, liquid returns and sinks, bottlers, and drone pads that keep their networks loaded.
+- **Version 29**: the guidebook, generated music, and logistics pipes.
+- **Version 28**: ore washing, trace metals, slag, sieves, charcoal piles, cobblestone generators, machine
+  upgrades, horse gear, honey varieties, fine crops and shows, bait and fish traps, chest boats and tenders.
+- **Version 27**: horses and stables, village requests and reputation, festivals, new crops, cider and berry wine,
+  cellars, kilns, rope ladders and bridges, canal locks, caves, and photo mode.
+- **Version 26**: village life and market stalls, thunderstorms, more crops and crop rotation, the winery and
+  cheese press, sunken temples and sky islands, diving gear, radios, a sorting machine, trains, fireplaces,
+  pinned recipes and auto-refill.
+- **Version 25**: decorating, fruit trees, the cooking pot, greenhouses, scarecrows, lighthouses, explorer and
+  treasure maps, mist and snow, deer, owls, bats, fireflies, the apiary, belts, pneumatic tubes, cable cars, and
+  inventory shortcuts.
+- **Version 24**: bookshelves, the journal and compost, nuclear waste and radiation, tesla coils, electric fences,
+  the arc furnace, the freezer, ziplines, boats, balloons, rail stations, volcanoes, ruins, shipwrecks, meteorites,
+  cats, chickens, pigs, riding buffalo, and quick-stack.
+- **Versions 19–23**: caves, enchanting and survival, signals, item logistics, drive belts, tanks, farms, the
+  electricity grid, electric machines and tools, the 32 × 32 atlas, uranium and the reactor, and chainsaws and books.
 
 ## Code layout
 
@@ -1454,6 +1472,7 @@ guide to how everything works.
 | `js/guidebook.js` | The guidebook's chapters and goals |
 | `js/music.js` | The generated music and its moods |
 | `js/bees.js` | Bees buzzing around their hives |
+| `js/apiculture.js` | Bee breeding: queens at work in bee houses, combs, young bees and mutations |
 | `js/birds.js` | Crows that come down to eat ripe wheat, and the scarecrows that keep them off |
 | `js/critters.js` | Owls, bats and fireflies |
 | `js/paintings.js` | Paintings: the pictures and the panels that show them |
