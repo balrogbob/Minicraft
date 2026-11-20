@@ -10,6 +10,7 @@ import {
   ORES, COAL_OR_CHARCOAL, FUEL_ROD, FERTILISER, SAWDUST, CUPRONICKEL_INGOT, ENRICHED_ROD, SPENT_ROD, URANIUM_INGOT, URANIUM_DUST, ENRICHED_URANIUM, WATER_BUCKET, ICE, PACKED_ICE, INVAR_INGOT, METEORIC_IRON, STARSTEEL_INGOT, NICKEL_INGOT, IRON_INGOT, COPPER_INGOT, TIN_INGOT, ZINC_INGOT, ALUMINIUM_INGOT, SILVER_INGOT, GOLD_INGOT,
   BRONZE_INGOT, ELECTRUM_INGOT, STAINLESS_INGOT, STEEL_INGOT, AL_BRONZE_INGOT,
   GRAVEL, FLINT, FLINT_DUST, CLAY_BALL, CLAY_DUST, BRICK, FIRE_CLAY, FIRE_BRICK, oreDust, HIDE, LEATHER,
+  dirtyDust, SLUDGE, SLAG, WORM, TRACE_METALS, DIRT,
   LAVA_BUCKET, LEAD_BUCKET, SALTPETRE, SANDSTONE, WHEAT, SUGAR_CANE, COAL_DUST, PLATE_METALS, PLATES, TUNGSTEN_INGOT, FILAMENT,
   SAPLING, ELECTRIC_ITEMS, chargeCap, GLASS_BOTTLE, NIGHT_TEA, HASTE_TEA, FIRE_TEA, HEAL_TEA, BERRIES, CORNFLOWER, DANDELION, POPPY, CACTUS, LAVENDER, DAISY, CAULDRON,
   EGG, FRIED_EGG, TRUFFLE, APPLE, CHERRIES, APPLE_PIE, CHERRY_PIE, FISH_SOUP, TRUFFLE_SOUP, BERRY_JAM,
@@ -53,6 +54,7 @@ export const STATION_KINDS = {
   smelter: {
     name: 'Smelter',
     inputs: 4,
+    sides: 1, // (the slag)
     recipes: [
       // alloys first (stainless steel before plain steel, as it needs the same plus zinc).
       // Coal here is an ingredient, separate from whatever is burning in the fuel slot.
@@ -63,9 +65,11 @@ export const STATION_KINDS = {
       { out: [ELECTRUM_INGOT, 2], in: [[SILVER_INGOT, 1], [GOLD_INGOT, 1]], time: 6 },
       { out: [CUPRONICKEL_INGOT, 4], in: [[COPPER_INGOT, 3], [NICKEL_INGOT, 1]], time: 6 },
       // ores into ingots
-      ...ORES.filter((o) => o.ingot).map((o) => ({ out: [o.ingot, 1], in: [[o.id, 1]], time: o.tier >= 5 ? 8 : 5 })),
+      ...ORES.filter((o) => o.ingot).map((o) => ({ out: [o.ingot, 1], in: [[o.id, 1]], time: o.tier >= 5 ? 8 : 5, side: [[SLAG, 0.15]] })),
       // crushed ore: each dust is a whole ingot, so crushing first doubles what an ore gives
-      ...ORES.filter((o) => o.ingot).map((o) => ({ out: [o.ingot, 1], in: [[oreDust(o.id), 1]], time: o.tier >= 5 ? 6 : 4 })),
+      ...ORES.filter((o) => o.ingot).map((o) => ({ out: [o.ingot, 1], in: [[oreDust(o.id), 1]], time: o.tier >= 5 ? 6 : 4, side: [[SLAG, 0.05]] })),
+      // v28: dirty dust (straight from the crusher) smelts too, but four make only three ingots, and more slag
+      ...ORES.filter((o) => o.ingot).map((o) => ({ out: [o.ingot, 3], in: [[dirtyDust(o.id), 4]], time: o.tier >= 5 ? 18 : 12, side: [[SLAG, 0.4]] })),
       { out: [STONE, 1], in: [[COBBLE, 1]], time: 4 },
       { out: [GLASS, 2], in: [[FLINT_DUST, 1], [SAND, 1]], time: 4 }, // flint dust helps sand melt into twice the glass
       { out: [GLASS, 1], in: [[SAND, 1]], time: 4 },
@@ -82,7 +86,8 @@ export const STATION_KINDS = {
     inputs: 1,
     powered: true,
     recipes: [
-      ...ORES.map((o) => ({ out: o.crush ?? [oreDust(o.id), 2], in: [[o.id, 1]], time: o.tier >= 5 ? 12 : 8 })),
+      ...ORES.map((o) => ({ out: o.crush ?? [dirtyDust(o.id), 2], in: [[o.id, 1]], time: o.tier >= 5 ? 12 : 8 })), // (v28: the dust comes out dirty)
+      { out: [FERTILISER, 1], in: [[SLAG, 2]], time: 4 },
       { out: [GRAVEL, 1], in: [[COBBLE, 1]], time: 4 },
       { out: [SAND, 1], in: [[GRAVEL, 1]], time: 4 },
       { out: [FLINT_DUST, 2], in: [[FLINT, 1]], time: 4 },
@@ -142,7 +147,7 @@ STATION_KINDS.esmelter = { ...STATION_KINDS.smelter, name: 'Electric Smelter', v
 // The arc furnace: smelts everything the smelter does at half the time (and at 2x with full power), and
 // makes alloys that need more heat than any fire gives.
 STATION_KINDS.arc = {
-  name: 'Arc Furnace', verb: 'Smelting', inputs: 4, powered: true, electric: true,
+  name: 'Arc Furnace', verb: 'Smelting', inputs: 4, powered: true, electric: true, sides: 1,
   recipes: [
     { out: [STARSTEEL_INGOT, 1], in: [[METEORIC_IRON, 2], [TUNGSTEN_INGOT, 1], [COAL_OR_CHARCOAL, 1]], time: 12 },
     { out: [INVAR_INGOT, 3], in: [[IRON_INGOT, 2], [NICKEL_INGOT, 1]], time: 6 },
@@ -257,6 +262,7 @@ export class Stations {
     let st = this.map.get(k);
     if (!st || st.kind !== kind) {
       st = { kind, inputs: new Array(STATION_KINDS[kind].inputs).fill(null), fuel: null, out: null, burn: 0, burnMax: 0, progress: 0 };
+      if (STATION_KINDS[kind].sides) st.side = new Array(STATION_KINDS[kind].sides).fill(null);
       this.map.set(k, st);
     }
     return st;
@@ -267,7 +273,7 @@ export class Stations {
     const st = this.map.get(key(x, y, z));
     this.map.delete(key(x, y, z));
     if (!st) return [];
-    return [...st.inputs, st.fuel, st.out].filter(Boolean).map((s) => [s.id, s.count]);
+    return [...st.inputs, st.fuel, st.out, ...(st.side ?? [])].filter(Boolean).map((s) => [s.id, s.count]);
   }
 
   // Like remove, but the whole stacks (keeping wear and enchantments), for spilling them on the ground.
@@ -275,7 +281,7 @@ export class Stations {
     const st = this.map.get(key(x, y, z));
     this.map.delete(key(x, y, z));
     if (!st) return [];
-    return [...st.inputs, st.fuel, st.out].filter(Boolean).map((s) => ({ ...s }));
+    return [...st.inputs, st.fuel, st.out, ...(st.side ?? [])].filter(Boolean).map((s) => ({ ...s }));
   }
 
   count(st, id) {
@@ -292,8 +298,11 @@ export class Stations {
     for (const r of list) {
       if (!r.in.every(([id, n]) => this.count(st, id) >= n)) continue;
       if (!(r.tools ?? []).every((id) => this.count(st, id) > 0)) continue;
-      const [oid, on] = r.out;
-      if (st.out && (st.out.id !== oid || st.out.count + on > maxStack(oid))) continue;
+      if (r.out) {
+        const [oid, on] = r.out;
+        if (st.out && (st.out.id !== oid || st.out.count + on > maxStack(oid))) continue;
+      }
+      if (r.side && !r.side.some(([id, , n = 1]) => this.sideFits(st, id, n))) continue; // (by-product trays with no room at all stop it)
       return r;
     }
     return null;
@@ -314,9 +323,31 @@ export class Stations {
       const i = st.inputs.findIndex((x) => !x);
       if (i >= 0) st.inputs[i] = { id: r.leaves, count: 1 };
     }
+    for (const [id, p, k = 1] of r.side ?? []) if (Math.random() < p) this.putSide(st, id, k);
+    if (!r.out) return;
     const n = r.out[1] + (r.bonus && Math.random() < r.bonus && (st.out?.count ?? 0) + r.out[1] < maxStack(r.out[0]) ? 1 : 0);
     if (st.out) st.out.count += n;
     else st.out = { id: r.out[0], count: n, ...(chargeCap(r.out[0]) ? { wear: chargeCap(r.out[0]) } : {}) }; // (batteries come out flat)
+  }
+
+  // v28: by-products (slag, sludge, trace metals...) go into a station's side slots.
+  sideSlots(st) {
+    const n = STATION_KINDS[st.kind]?.sides ?? 0;
+    if (!n) return [];
+    if (!st.side || st.side.length !== n) st.side = Array.from({ length: n }, (_, i) => st.side?.[i] ?? null);
+    return st.side;
+  }
+  sideFits(st, id, n = 1) {
+    const sl = this.sideSlots(st);
+    return sl.some((s) => !s || (s.id === id && s.count + n <= maxStack(id)));
+  }
+  putSide(st, id, n = 1) {
+    const sl = this.sideSlots(st);
+    const i = sl.findIndex((s) => s?.id === id && s.count + n <= maxStack(id));
+    if (i >= 0) { sl[i].count += n; return true; }
+    const j = sl.indexOf(null);
+    if (j >= 0) { sl[j] = { id, count: n }; return true; }
+    return false;
   }
 
   // Advance every loaded station by dt seconds. setLit(x, y, z, lit) is called when one lights or goes out.
@@ -341,7 +372,7 @@ export class Stations {
         if (st.progress >= CRAFT_TIME) { this.make(st, r); st.progress = 0; }
         continue;
       }
-      const r = K.water && !(BLOCKS[id].water > 0) ? null : this.recipeFor(st); // a dry cauldron can't brew
+      const r = (K.water && !(BLOCKS[id].water > 0)) || (K.wet && !wetAt(world, x, y, z)) ? null : this.recipeFor(st); // a dry cauldron can't brew, nor a washer wash
       if (!r) st.progress = 0;
       if (K.powered) {
         const speed = K.passive ? 1 : powerAt(x, y, z);
@@ -402,6 +433,7 @@ export class Stations {
         kind: st.kind,
         inputs: Array.from({ length: n }, (_, i) => clean(st.inputs?.[i])),
         fuel: clean(st.fuel), out: clean(st.out),
+        ...(STATION_KINDS[st.kind].sides ? { side: Array.from({ length: STATION_KINDS[st.kind].sides }, (_, i) => clean(st.side?.[i])) } : {}),
         burn: Math.max(0, +st.burn || 0), burnMax: Math.max(0, +st.burnMax || 0), progress: Math.max(0, +st.progress || 0), brews: st.brews | 0,
         ...(Array.isArray(st.age) && Array.isArray(st.ageOf) ? { age: Array.from({ length: n }, (_, i) => Math.max(0, +st.age[i] || 0)), ageOf: Array.from({ length: n }, (_, i) => st.ageOf[i] | 0) } : {}),
       });
@@ -417,3 +449,27 @@ STATION_KINDS.kiln = { name: 'Kiln', verb: 'Firing', inputs: 2, recipes: [
   ...COLORS.map((c, i) => ({ out: [GLAZED_TILE + i, 1], in: [[TERRA_COL + i, 1]], time: 5 })),
 ] };
 STATION_KINDS.urn = { name: 'Urn', inputs: 6, storage: true, recipes: [] };
+
+// ---------- v28 A: ore washer and sieve ----------
+// Water touching the washer on any side (a source or flowing).
+export function wetAt(world, x, y, z) {
+  for (const [dx, dy, dz] of [[1, 0, 0], [-1, 0, 0], [0, 0, 1], [0, 0, -1], [0, 1, 0], [0, -1, 0]]) if (world.isWater(x + dx, y + dy, z + dz)) return true;
+  return false;
+}
+// Washing a dirty dust gives the clean dust; now and then one more, a trace of another metal, and sludge.
+STATION_KINDS.washer = {
+  name: 'Ore Washer', verb: 'Washing', inputs: 2, powered: true, wet: true, sides: 3,
+  recipes: ORES.filter((o) => o.ingot).map((o) => {
+    const trace = TRACE_METALS[o.id];
+    return { out: [oreDust(o.id), 1], in: [[dirtyDust(o.id), 1]], time: o.tier >= 5 ? 6 : 4,
+      side: [[oreDust(o.id), 0.1], ...(trace ? [[oreDust(trace[0]), trace[1]]] : []), [SLUDGE, 0.3]] };
+  }),
+};
+// The sieve needs no power: it's shaken by hand (it just takes a while). Dirt gives only what's in it.
+STATION_KINDS.sieve = {
+  name: 'Sieve', verb: 'Sifting', inputs: 2, powered: true, passive: true, sides: 4,
+  recipes: [
+    { out: [SAND, 1], in: [[GRAVEL, 1]], time: 3, side: [[FLINT, 0.25], [dirtyDust(ORES[0].id), 0.08], [dirtyDust(ORES[1].id), 0.06], [dirtyDust(ORES.find((o) => o.name === 'Gold Ore').id), 0.02]] },
+    { out: null, in: [[DIRT, 1]], time: 3, side: [[WORM, 0.35], [SEEDS, 0.2], [FLINT, 0.06], [SAPLING, 0.03]] },
+  ],
+};

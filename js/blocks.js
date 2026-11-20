@@ -1,6 +1,7 @@
 // Block and item definitions.
 
 // Block ids: < 100, 190..255, 400..999 and 1100 up. Stored in each chunk's Uint16Array.
+// Item ids: 100..189, 300..399, 1000..1099 and (from v28) 3000 up, out of the way of the blocks.
 // Item ids: 100..189, 300..399 and 1000..1099 (never stored in the world).
 export const AIR = 0, GRASS = 1, DIRT = 2, STONE = 3, COBBLE = 4, LOG = 5, PLANKS = 6,
   LEAVES = 7, SAND = 8, GLASS = 9, TABLE = 10, BRICKS = 11, COAL_ORE = 12, BEDROCK = 13, WATER = 14,
@@ -140,7 +141,7 @@ export const T = {
   LEAD_CHEST_SIDE: 267, LEAD_CHEST_TOP: 268, LEAD_CHEST_FRONT: 269, CENTRIFUGE_SIDE: 270, CENTRIFUGE_TOP: 271, TESLA: 272, TESLA_TOP: 273,
   FENCE_POST: 274, FENCE_WIRE: 275, FREEZER_SIDE: 276, FREEZER_FRONT: 277, ARC_SIDE: 278, ARC_FRONT: 279, PACKED_ICE: 280, INVAR: 281, RAIL_STOP: 282, BASALT: 283, BASALT_TOP: 284, METEORITE: 285,
   IRON_BARS: 286, POT: 287, IVY: 288, BOX_FLOWERS: 289,
-  FRUIT_LEAVES: 290, FRUIT_RIPE: 293, FRUIT_SAPLING: 296, HAY: 299, SACK: 300, BEACON: 301, APIARY_SIDE: 302, APIARY_FRONT: 303, APIARY_FULL: 304, APIARY_TOP: 305, BELT_CROSS: 306, FARM_CTRL: 307, FARM_CTRL_ON: 308, TUBE: 309, TUBE_END: 310, AWNING: 311, FIRE: 312, CARROT_0: 313, POTATO_0: 317, STEM_0: 321, PUMPKIN_SIDE: 324, PUMPKIN_TOP: 325, JACK_FACE: 326, TRELLIS: 327, VINE_0: 328, BARREL_SIDE: 331, BARREL_TOP: 332, CHEESE: 333, SEA_BRICK: 334, SEA_LANTERN: 335, VAULT: 336, SKY_STONE: 337, AIR_PUMP: 338, RADIO: 339, RADIO_ON: 340, SORTBOX: 341, SORTBOX_TOP: 342, HEARTH: 343, HEARTH_LIT: 344, CHIMNEY_TOP: 345, STABLE_SIDE: 346, SNOWMAN_FRONT: 347, ONION_0: 348, BEAN_0: 352, TOMATO_0: 356, HERB_0: 360, KILN_SIDE: 364, KILN_TOP: 365, KILN_FRONT: 366, KILN_FRONT_LIT: 367, TERRACOTTA: 368, TERRA_COL: 369, GLAZED: 379, ROOF_TILES: 389, URN: 390, ROPE: 391, LOCK_GATE: 392, LOCK_GATE_TOP: 393, DRIPSTONE: 394, BEETLE_LAMP: 395, // (fruit tiles: apple, cherry, orange)
+  FRUIT_LEAVES: 290, FRUIT_RIPE: 293, FRUIT_SAPLING: 296, HAY: 299, SACK: 300, BEACON: 301, APIARY_SIDE: 302, APIARY_FRONT: 303, APIARY_FULL: 304, APIARY_TOP: 305, BELT_CROSS: 306, FARM_CTRL: 307, FARM_CTRL_ON: 308, TUBE: 309, TUBE_END: 310, AWNING: 311, FIRE: 312, CARROT_0: 313, POTATO_0: 317, STEM_0: 321, PUMPKIN_SIDE: 324, PUMPKIN_TOP: 325, JACK_FACE: 326, TRELLIS: 327, VINE_0: 328, BARREL_SIDE: 331, BARREL_TOP: 332, CHEESE: 333, SEA_BRICK: 334, SEA_LANTERN: 335, VAULT: 336, SKY_STONE: 337, AIR_PUMP: 338, RADIO: 339, RADIO_ON: 340, SORTBOX: 341, SORTBOX_TOP: 342, HEARTH: 343, HEARTH_LIT: 344, CHIMNEY_TOP: 345, STABLE_SIDE: 346, SNOWMAN_FRONT: 347, ONION_0: 348, BEAN_0: 352, TOMATO_0: 356, HERB_0: 360, KILN_SIDE: 364, KILN_TOP: 365, KILN_FRONT: 366, KILN_FRONT_LIT: 367, TERRACOTTA: 368, TERRA_COL: 369, GLAZED: 379, ROOF_TILES: 389, URN: 390, ROPE: 391, LOCK_GATE: 392, LOCK_GATE_TOP: 393, DRIPSTONE: 394, BEETLE_LAMP: 395, WASHER_SIDE: 396, WASHER_TOP: 397, WASHER_FRONT: 398, SIEVE: 399, SLAG_BRICKS: 400, // (fruit tiles: apple, cherry, orange)
 };
 
 // Ores, deepest-reaching last. tier: the pickaxe tier needed to mine it (see TOOL_TIERS);
@@ -2731,3 +2732,55 @@ block(STALAGMITE, {
 block(BEETLE_LAMP, { name: 'Beetle Lamp', sound: 'glass', tex: T.BEETLE_LAMP, hardness: 0.5, light: 12 });
 ITEMS[GLOW_SHELL] = { name: 'Glow Shell', about: 'from a cave beetle: it still glows' };
 RECIPES.push({ out: [BEETLE_LAMP, 1], in: [[GLOW_SHELL, 3], [GLASS, 1]] });
+
+// ---------- v28 A: ore washer, sieve and slag ----------
+// Crushed ore comes out dirty. Dirty dust smelts as it is, though it loses a quarter; washed in an ore washer
+// (driven by a shaft, with water touching it) it comes clean, and the washings now and then give up a trace
+// of another metal (nickel from iron, gold from copper, silver from lead...) as well as sludge. A sieve sifts
+// gravel and dirt for flint, scraps of ore, seeds and worms. Smelting leaves slag, which crushes into
+// fertiliser or makes rough bricks.
+export const DIRTY_DUST = 3000; // 3000..3049: one for each ore, in ORES order
+export const SLUDGE = 3050, SLAG = 3051, WORM = 3052;
+export const WASHER = 1451, SIEVE = 1455, SLAG_BRICKS = 1456; // washer 1451..1454: + facing
+export const dirtyDust = (oreId) => DIRTY_DUST + ORES.findIndex((o) => o.id === oreId);
+// what washing each ore's dust can turn up: [ore whose clean dust it gives, chance]
+const traceOf = (name) => ORES.find((o) => o.name === name)?.id;
+export const TRACE_METALS = {
+  [traceOf('Iron Ore')]: [traceOf('Nickel Ore'), 0.1],
+  [traceOf('Copper Ore')]: [traceOf('Gold Ore'), 0.06],
+  [traceOf('Tin Ore')]: [traceOf('Zinc Ore'), 0.1],
+  [traceOf('Lead Ore')]: [traceOf('Silver Ore'), 0.1],
+  [traceOf('Zinc Ore')]: [traceOf('Lead Ore'), 0.08],
+  [traceOf('Bauxite')]: [traceOf('Iron Ore'), 0.12],
+  [traceOf('Silver Ore')]: [traceOf('Gold Ore'), 0.06],
+  [traceOf('Gold Ore')]: [traceOf('Silver Ore'), 0.1],
+  [traceOf('Tungsten Ore')]: [traceOf('Tin Ore'), 0.1],
+  [traceOf('Nickel Ore')]: [traceOf('Copper Ore'), 0.1],
+  [traceOf('Uranium Ore')]: [traceOf('Lead Ore'), 0.12],
+};
+for (const o of ORES) if (o.ingot) ITEMS[dirtyDust(o.id)] = { name: `Dirty ${o.name.replace(' Ore', '')} Dust`, about: 'wash it for clean dust (and maybe a trace of another metal), or smelt it as it is' };
+ITEMS[SLUDGE] = { name: 'Sludge', about: 'the muck washed out of ore: 4 make a clay block' };
+ITEMS[SLAG] = { name: 'Slag', about: 'left over from smelting: crush it for fertiliser, or make bricks' };
+ITEMS[WORM] = { name: 'Worm', about: 'fishing bait (sift dirt for more)' };
+for (let k = 0; k < 4; k++) {
+  block(WASHER + k, {
+    name: 'Ore Washer', station: 'washer', side: T.WASHER_SIDE, top: T.WASHER_TOP, bottom: T.WASHER_SIDE, front: T.WASHER_FRONT,
+    facing: k, hardness: 2.5, tool: 'pick', variantOf: k ? WASHER : 0, drop: WASHER, stationBase: WASHER, machine: { load: 3 },
+  });
+}
+block(SIEVE, {
+  name: 'Sieve', station: 'sieve', sound: 'wood', transparent: true, hardness: 1.2, tool: 'axe', stationBase: SIEVE,
+  model: [
+    [0, 0, 0, 2, 10, 2, T.PLANKS], [14, 0, 0, 16, 10, 2, T.PLANKS], [0, 0, 14, 2, 10, 16, T.PLANKS], [14, 0, 14, 16, 10, 16, T.PLANKS], // legs
+    [0, 10, 0, 16, 13, 1.5, T.PLANKS], [0, 10, 14.5, 16, 13, 16, T.PLANKS], [0, 10, 1.5, 1.5, 13, 14.5, T.PLANKS], [14.5, 10, 1.5, 16, 13, 14.5, T.PLANKS], // frame
+    [1.5, 10.5, 1.5, 14.5, 11, 14.5, T.SIEVE], // the mesh
+  ],
+  boxes: [[0, 0, 0, 16, 13, 16]],
+});
+block(SLAG_BRICKS, { name: 'Slag Bricks', sound: 'stone', tex: T.SLAG_BRICKS, hardness: 2, tool: 'pick' });
+RECIPES.push(
+  { out: [WASHER, 1], in: [[IRON_INGOT, 3], [PLANKS, 4], [BUCKET, 1], [kineticId('gear', 0), 1]], table: true, metal: IRON_INGOT },
+  { out: [SIEVE, 1], in: [[PLANKS, 4], [STICK, 4], [STRING, 4]], table: true },
+  { out: [CLAY, 1], in: [[SLUDGE, 4]] },
+  { out: [SLAG_BRICKS, 4], in: [[SLAG, 4], [CLAY_BALL, 1]] },
+);

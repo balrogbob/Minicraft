@@ -22,7 +22,7 @@ import {
   TINTS, WALL, LANTERN, HANGING_LANTERN, CHANDELIER, PAINTING, ART, isWall,
   ENCHANT_ALTAR, LAIRS, ENCHANTS, hasEnch, HONEY_TEA, CRYSTAL_BLOCK, SUN_SCARAB, FROST_HEART, EMBER_CORE, OBSIDIAN, SANDSTONE,
   STICK, STRING, PAPER, CAKE, COOKIE, LEATHER, FISHING_ROD as ROD, WEIGHTED_ROD as WROD, SEEDS, FLOUR, BUTTER, COPY_WAND,
-  ELECTRUM_WIRE, PULVERIZER, BATTERY, PORTABLE_LAMP, JACKHAMMER, JETPACK, CHARGE_USE, chargeCap, chargeLeft, ORES, oreDust,
+  ELECTRUM_WIRE, PULVERIZER, BATTERY, PORTABLE_LAMP, JACKHAMMER, JETPACK, CHARGE_USE, chargeCap, chargeLeft, ORES, oreDust, dirtyDust, WASHER,
   E_SMELTER, QUARRY, ITEM_COUNTER, TELEPAD, PROG_CRAFTER, PAD_PLAYER, ELECTRIC_DRILL, HOVER_BOOTS, NV_GOGGLES, MAGNET_RING, isElectricLamp, SPAWNER,
   WIRE, INVERTER, DELAY, LATCH, DETECTOR_RAIL, DRIVE_BELT, TREE_FELLER, PLANTER, BREAKER, PLACER, ANIMAL_STATION, EJECTOR, COLLECTOR, BELT_SPLITTER, BELT_SORTER,
   ELECTRIC_RAIL, LIFT, LIFT_REACH, WIRELESS_REACH, CHAINSAW, SAWDUST, SPANNER, GRAPPLE, isBackpack, kineticId, MELTDOWN, REACTOR_POWER, ROD_LIFE, BOOK,
@@ -50,7 +50,7 @@ import { ItemDrops } from './drops.js';
 import { ACHIEVEMENTS, ACHIEVEMENT_IDS } from './achievements.js';
 import { MobManager, DIFFICULTY, DIFFICULTY_ORDER, SPECIES } from './mobs.js';
 import { ArrowManager } from './arrows.js';
-import { Stations, STATION_KINDS, isFuel, inCellar } from './stations.js';
+import { Stations, STATION_KINDS, isFuel, inCellar, wetAt } from './stations.js';
 import { Fishing } from './fishing.js';
 import { Kinetics } from './kinetics.js';
 import { Electric } from './electric.js';
@@ -1360,6 +1360,7 @@ function stationSlot(area, i) {
   if (area === 'in') return { get: () => st.inputs[i], set: (v) => { st.inputs[i] = v; } };
   if (area === 'fuel') return { get: () => st.fuel, set: (v) => { st.fuel = v; } };
   if (area === 'out') return { get: () => st.out, set: (v) => { st.out = v; } };
+  if (area === 'side') return { get: () => stations.sideSlots(st)[i], set: (v) => { stations.sideSlots(st)[i] = v; } };
   return { get: () => inventory.slots[i], set: (v) => { inventory.slots[i] = v; } };
 }
 
@@ -1401,6 +1402,9 @@ function openStation(x, y, z, cart = null) {
     if (!K.storage && !K.holder && (area === 'out' || !(K.powered || K.crafter))) make($(id), area, 0);
   }
   $('station').querySelector('.st-fuel-row').style.display = K.powered || K.crafter || K.holder ? 'none' : '';
+  $('st-side').innerHTML = '';
+  if (!cart) for (let i = 0; i < (K.sides ?? 0); i++) make($('st-side'), 'side', i);
+  $('st-side').classList.toggle('hidden', !K.sides || !!cart);
   $('st-inv').innerHTML = ''; $('st-hotbar').innerHTML = '';
   for (let i = 9; i < SLOTS; i++) make($('st-inv'), 'inv', i);
   for (let i = 0; i < 9; i++) make($('st-hotbar'), 'inv', i);
@@ -1409,8 +1413,9 @@ function openStation(x, y, z, cart = null) {
   $('st-recipes').innerHTML = shownRecipes.map((r) => {
     const ing = r.in.map(([id, n]) => `<span class="ing" title="${idsOf(id).map(itemName).join(' or ')}"><img src="${icons[idsOf(id)[0]]}" alt="">${n}</span>`).join('');
     const tools = (r.tools ?? []).map((id) => `<span class="ing tool" title="${itemName(id)} (not used up)"><img src="${icons[id]}" alt="">kept</span>`).join('');
-    return `<div class="recipe">${ing}${tools}<span class="arrow">→</span><img class="outimg" src="${icons[r.out[0]]}" alt="">` +
-      `<span class="name">${r.out[1] > 1 ? r.out[1] + ' × ' : ''}${itemName(r.out[0])}</span></div>`;
+    const side = (r.side ?? []).map(([id, p]) => `<span class="ing side" title="${itemName(id)}: ${Math.round(p * 100)}% of the time"><img src="${icons[id]}" alt="">${Math.round(p * 100)}%</span>`).join('');
+    return `<div class="recipe">${ing}${tools}<span class="arrow">→</span>` + (r.out ? `<img class="outimg" src="${icons[r.out[0]]}" alt="">` +
+      `<span class="name">${r.out[1] > 1 ? r.out[1] + ' × ' : ''}${itemName(r.out[0])}</span>` : '') + (side ? `<span class="sides">${r.out ? '+ ' : ''}${side}</span>` : '') + '</div>';
   }).join('') + (kind === 'charger' ? '<p class="hint">Put in a battery, or anything that runs on one (a portable lamp, jackhammer, jetpack, drill, chainsaw, hover boots, goggles or magnet ring): ' +
     'it charges while it has electricity. Join it to a generator with electrum wire, or set it right beside one.</p>'
     : kind === 'reactor' ? `<p class="hint">Put fuel rods in: each burns for ${ROD_LIFE / 60} minutes (an enriched rod twice as long), making ${REACTOR_POWER} power, and heats the reactor. ` +
@@ -1420,6 +1425,9 @@ function openStation(x, y, z, cart = null) {
     : 'Put empty buckets in for milking yaks, and wheat to feed the animals (their coats grow back faster). Wheat, seeds or berries also feed pairs of animals so they have young. What it gets comes out of its back, into a chest, hopper or belt.'}</p>`
     : kind === 'winepress' || kind === 'cheesepress' ? `<p class="hint">It needs no fuel or power. Lay what it makes down in an oak barrel to age: ${kind === 'winepress' ? 'grape juice becomes wine, apple juice cider and berry juice berry wine in a day, and finer still three days later' : 'curds become cheese in a day, and aged cheese three days later'}.</p>`
     : kind === 'compost' ? '<p class="hint">It needs no fuel or power: scraps just rot down, given time. Tap a crop or sapling with fertiliser to grow it a step.</p>'
+    : kind === 'sieve' ? '<p class="hint">It needs no fuel or power: you shake it by hand. What it sifts out (shown as a chance) collects in the trays on the right: keep them emptied (a hopper underneath does it), or things that don\'t fit are lost, and once they\'re full it stops.</p>'
+    : kind === 'washer' ? '<p class="hint">Times are at 1x speed. Drive it with a shaft like the rock crusher, and give it water: a source or flowing water touching any side. ' +
+      'Clean dust smelts one for one (dirty dust only three for four). The washings sometimes give an extra dust, a trace of another metal, and sludge (4 make clay).</p>'
     : kind === 'pcrafter' ? '<p class="hint">Hang item frames on it (up to four) showing what to make: it makes the first, and steps on ' +
     'to the next each time it gets a signal (a lever, button, item counter...). Fill it with hoppers or belts and empty it with a hopper underneath.</p>'
     : K.crafter ? '<p class="hint">Hang an item frame on it showing what to make. Whenever the ingredients are inside, ' +
@@ -1492,6 +1500,16 @@ function renderStation() {
     $('st-status').textContent = !want ? 'Hang an item frame on it showing what to make' : r ? `Making ${itemName(want.out[0]).toLowerCase()}…` : `Put in what ${itemName(want.out[0]).toLowerCase()} needs`;
     return;
   }
+  const sideFull = !r && (st.side ?? []).length && st.side.every(Boolean) && K.recipes.some((q) => q.side && q.in.every(([id, n]) => stations.count(st, id) >= n));
+  if (st.kind === 'sieve') {
+    $('st-status').textContent = r ? `Sifting ${itemName(r.in[0][0]).toLowerCase()}…` : sideFull ? 'The trays are full: take what\'s been sifted out' : 'Put gravel or dirt in';
+    return;
+  }
+  if (st.kind === 'washer' && !wetAt(world, openStationAt.x, openStationAt.y, openStationAt.z)) {
+    $('st-status').textContent = `It needs water touching it. ${kinetics.statusAt(openStationAt.x, openStationAt.y, openStationAt.z)}`;
+    return;
+  }
+  if (sideFull) { $('st-status').textContent = 'The by-product slots are full: empty them to carry on'; return; }
   if (K.passive) {
     $('st-status').textContent = r ? `Rotting down into ${itemName(r.out[0]).toLowerCase()}…` : 'Put plant scraps in: sawdust, leaves, seeds, saplings, wheat, cane, berries or flowers';
     return;
@@ -1600,10 +1618,11 @@ function onStationSlot(area, i) {
   }
   lastStTap = { area, i, t: now };
   // tapping the result collects it
-  if (area === 'out' && !stPicked) {
-    if (st.out) {
-      const left = inventory.addItem(st.out);
-      st.out = left ? { id: st.out.id, count: left } : null;
+  if ((area === 'out' || area === 'side') && !stPicked) {
+    const slot = stationSlot(area, i), got = slot.get();
+    if (got) {
+      const left = inventory.addItem(got);
+      slot.set(left ? { id: got.id, count: left } : null);
       if (left) toast('Inventory full'); else sound.pop();
     }
     renderStation();
@@ -1619,7 +1638,7 @@ function onStationSlot(area, i) {
   if (fromArea === area && fromI === i) { renderStation(); return; }
   const from = stationSlot(fromArea, fromI), to = stationSlot(area, i);
   const a = from.get(), b = to.get();
-  if (!a || area === 'out') { renderStation(); return; } // nothing can be put into the result slot
+  if (!a || area === 'out' || area === 'side') { renderStation(); return; } // nothing can be put into the result slots
   const K = STATION_KINDS[st.kind];
   if (area === 'in' && openStationAt.cart?.backpack && isBackpack(a.id)) { toast('A backpack won\'t go inside a backpack'); renderStation(); return; }
   if (area === 'in' && K?.accepts && !K.accepts.includes(a.id)) { toast(`The ${K.name.toLowerCase()} won't take ${itemName(a.id).toLowerCase()}`); renderStation(); return; }
@@ -2358,9 +2377,9 @@ function spannerTake(x, y, z) {
   const id = world.get(x, y, z), k = `${x},${y},${z}`, kind = stationKind(id);
   let content = null;
   const st = kind && stations.map.get(k);
-  if (st && [...st.inputs, st.fuel, st.out].some(Boolean)) {
-    content = { kind, inputs: st.inputs.map((s) => (s ? { ...s } : null)), fuel: st.fuel && { ...st.fuel }, out: st.out && { ...st.out } };
-    st.inputs.fill(null); st.fuel = null; st.out = null;
+  if (st && [...st.inputs, st.fuel, st.out, ...(st.side ?? [])].some(Boolean)) {
+    content = { kind, inputs: [...st.inputs, ...(st.side ?? [])].map((s) => (s ? { ...s } : null)), fuel: st.fuel && { ...st.fuel }, out: st.out && { ...st.out } };
+    st.inputs.fill(null); st.fuel = null; st.out = null; st.side?.fill(null);
   }
   const charge = electric.store.get(k);
   if (charge > 0) { (content ??= {}).charge = charge; electric.store.delete(k); }
@@ -4008,7 +4027,7 @@ function placeInner() {
     if (there !== AIR || !world.isSolid(x, y - 1, z)) { toast(`${BLOCKS[id].name}s need something solid underneath`); return; }
   } else {
     // chairs face you; curtains hang across your line of sight
-    if ([CHAIR, SCARECROW, COOK_POT, OVEN, SMELTER, BLAST_SMELTER, CRUSHER, PULVERIZER, E_SMELTER, CHEST, IRON_CHEST, SAW, TRIP_HAMMER, LEAD_CHEST, FREEZER, ARC_FURNACE, MARKET_STALL, FIREPLACE, SNOWMAN, KILN].includes(id)) id += facingTowardPlayer(x, z); // the front faces you
+    if ([CHAIR, SCARECROW, COOK_POT, OVEN, SMELTER, BLAST_SMELTER, CRUSHER, PULVERIZER, E_SMELTER, CHEST, IRON_CHEST, SAW, TRIP_HAMMER, LEAD_CHEST, FREEZER, ARC_FURNACE, MARKET_STALL, FIREPLACE, SNOWMAN, KILN, WASHER].includes(id)) id += facingTowardPlayer(x, z); // the front faces you
     else if (id === DRILL) id += player.pitch < -0.75 ? 4 : (facingTowardPlayer(x, z) + 2) % 4; // drills the way you're looking
     else if (id === ITEM_COUNTER) id += ((facingTowardPlayer(x, z) + 2) % 4) * 2; // passes things on the way you're looking
     else if ([OBSERVER, GAUGE, HARVESTER, EJECTOR, TREE_FELLER, PLANTER, BREAKER, PLACER, QUARRY].includes(id)) id += (facingTowardPlayer(x, z) + 2) % 4; // looks (or reaps) the way you're looking
@@ -4362,7 +4381,7 @@ function breakBlock(x, y, z) {
   if (tool === JACKHAMMER && def.hardness > 0) {
     // the jackhammer uses a little charge for each block, and now and then shakes some dust off an ore as well
     drawCharge(inventory.held(), CHARGE_USE.jackhammer);
-    if (drops.length && ORES.some((o) => o.id === id && o.ingot) && Math.random() < JACK_DUST) drops.push([oreDust(id), 1]);
+    if (drops.length && ORES.some((o) => o.id === id && o.ingot) && Math.random() < JACK_DUST) drops.push([dirtyDust(id), 1]);
   }
   // a Lucky pickaxe now and then turns up a second ore
   if (hasEnch(inventory.held(), 'lucky') && drops.length && ORES.some((o) => o.id === id) && Math.random() < 1 / 3) drops.push([drops[0][0], 1]);

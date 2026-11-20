@@ -305,7 +305,14 @@ export class Machines {
       if (!peek && !--st.inputs[i].count) st.inputs[i] = null;
       return it;
     }
-    if (!ok(st.out)) return 0;
+    if (!ok(st.out)) {
+      // v28: by-products (slag, sludge, trace metals) come out once the result slot is empty
+      const sl = st.side ?? [], j = sl.findIndex(ok);
+      if (j < 0) return 0;
+      const it = one(sl[j]);
+      if (!peek && !--sl[j].count) sl[j] = null;
+      return it;
+    }
     const it = one(st.out);
     if (!peek && !--st.out.count) st.out = null;
     return it;
@@ -923,7 +930,7 @@ export class Machines {
     const kind = stationKind(id);
     if (!kind) return false;
     const st = stations.get(x, y, z, kind);
-    const slots = [...st.inputs, ...(STATION_KINDS[kind].storage ? [] : [st.out])];
+    const slots = [...st.inputs, ...(STATION_KINDS[kind].storage ? [] : [st.out, ...(st.side ?? [])])];
     return full ? st.inputs.every((s) => s && s.count >= maxStack(s.id)) : slots.some(Boolean);
   }
 
