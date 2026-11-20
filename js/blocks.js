@@ -2853,3 +2853,9 @@ block(FISH_TRAP, {
 });
 RECIPES.push({ out: [FISH_TRAP, 1], in: [[STICK, 8], [STRING, 4], [PLANKS, 1]], table: true });
 ITEMS[WORM].about = 'bait: carry some when you fish and fish bite twice as fast (and no junk), or put them in a fish trap. Sift dirt for more';
+
+// ---------- v28 F: chest boats ----------
+export const CHEST_BOAT = 3073;
+ITEMS[CHEST_BOAT] = { name: 'Chest Boat', stack: 1, vehicle: 'boat', chest: true, about: 'a boat with a chest in the stern: open it with 🎒 while you row, or sneak and tap it' };
+RECIPES.push({ out: [CHEST_BOAT, 1], in: [[BOAT, 1], [CHEST, 1]] });
+ITEMS[LOCOMOTIVE].about = 'put it on a rail and tap it with coal: it pulls the carts behind it. A storage cart coupled right behind it is its tender: it keeps it in coal';

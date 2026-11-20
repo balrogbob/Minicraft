@@ -32,7 +32,7 @@ import {
   SNOWMAN, FIREWORK, PUMPKIN, JACK_O_LANTERN, EGG, POPPY, DANDELION, DAISY, LAVENDER,
   ONION, BEANS, TOMATO, HERBS, CIDER, VINTAGE_CIDER, BERRY_WINE, FINE_BERRY_WINE,
   KILN, ROPE_LADDER, ROPE_BRIDGE, BRIDGE_RAIL, LOCK_GATE, SLUICE_WHEEL, STALACTITE, STALAGMITE,
-  CHARCOAL_HEAP, CLAY, STONE, UPGRADES, FINE_CROPS, isFine, WORM, SADDLEBAGS, GOLDEN_TEA, SPEED_UPGRADE, YIELD_UPGRADE, HAY_BALE, LAVENDER_HONEY, BLOSSOM_HONEY, GOLDEN_HONEY, FRUIT_LEAVES,
+  CHARCOAL_HEAP, CLAY, STONE, UPGRADES, CHEST_BOAT, FINE_CROPS, isFine, WORM, SADDLEBAGS, GOLDEN_TEA, SPEED_UPGRADE, YIELD_UPGRADE, HAY_BALE, LAVENDER_HONEY, BLOSSOM_HONEY, GOLDEN_HONEY, FRUIT_LEAVES,
 } from './blocks.js';
 import { Smoke } from './smoke.js';
 import { Fireworks } from './fireworks.js';
@@ -58,7 +58,7 @@ import { Electric } from './electric.js';
 import { Signs } from './signs.js';
 import { Machines } from './machines.js';
 import { Carts, railBeyond } from './carts.js';
-import { Vehicles } from './vehicles.js';
+import { Vehicles, newBoatStore } from './vehicles.js';
 import { MiniMap } from './minimap.js';
 import { Frames, isDisplay } from './frames.js';
 import { Crows } from './birds.js';
@@ -313,6 +313,7 @@ carts.onLoco = (c, what) => {
   }
   else if (what === 'hoot') sound.hoot(g);
   else if (what === 'couple') sound.place('stone');
+  else if (what === 'tender' && riding === c) toast(`The locomotive takes on coal from its tender (${c.loco.coal})`, 1500);
 };
 const vehicles = new Vehicles(scene); // boats and balloons
 const crows = new Crows(scene); // after ripe wheat (see birds.js)
@@ -1081,7 +1082,7 @@ function lookName() {
     if (l) return `Locomotive${l.burn > 0 || l.coal > 0 ? ` (coal: ${l.coal}${l.burn > 0 ? ` + ${Math.ceil(l.burn)}s` : ''})` : ' (no coal)'}${c.towed?.length ? `, pulling ${c.towed.length}` : ''}`;
     return (c.store ? 'Storage Cart' : 'Minecart') + (c.tow ? ' (coupled)' : '');
   }
-  if (targetVehicle) return targetVehicle.v.kind === 'boat' ? 'Boat' : 'Hot-Air Balloon';
+  if (targetVehicle) return targetVehicle.v.kind === 'boat' ? (targetVehicle.v.store ? 'Chest Boat (sneak and tap to open)' : 'Boat') : 'Hot-Air Balloon';
   if (targetMob) {
     const m = targetMob.mob;
     const name = m.spec.name ?? (m.kind === 'villager' ? `Villager (${m.profession ?? 'farmer'})` : capital(m.kind));
@@ -1354,6 +1355,7 @@ function toggleInventory() {
   if (photoMode) return;
   if (openStationAt) { closeStation(); return; }
   if (ridingMob?.bags && $('inventory').classList.contains('hidden') && $('menu').classList.contains('hidden')) { openSaddlebags(ridingMob); return; }
+  if (boarded?.store && $('inventory').classList.contains('hidden') && $('menu').classList.contains('hidden')) { openBoatChest(boarded); return; }
   if ($('inventory').classList.contains('hidden')) {
     if ($('menu').classList.contains('hidden')) openInventory();
   } else closeInventory();
@@ -3434,13 +3436,17 @@ function waterInSight() {
   }
   return null;
 }
-function putVehicle(kind) {
+function openBoatChest(v) {
+  sound.click();
+  openStation(0, 0, 0, { store: v.store, title: 'Chest Boat' });
+}
+function putVehicle(kind, chest = false) {
   if (kind === 'boat') {
     const w = waterInSight();
     if (!w) { toast('Put a boat on water', 1500); return false; }
     let y = w[1];
     while (world.isWater(w[0], y + 1, w[2])) y++;
-    vehicles.add('boat', w[0] + 0.5, y + 0.55, w[2] + 0.5, player.yaw + Math.PI);
+    vehicles.add('boat', w[0] + 0.5, y + 0.55, w[2] + 0.5, player.yaw + Math.PI, 0, chest ? newBoatStore() : null);
   } else {
     if (!target) return false;
     const { x, y, z } = target;
@@ -3455,7 +3461,7 @@ function boardVehicle(v) {
   boarded = v;
   player.vel.set(0, 0, 0);
   sound.place('wood');
-  toast(v.kind === 'boat' ? 'Hold forward to row the way you look, back to slow down. Tap to get out.'
+  toast(v.kind === 'boat' ? `Hold forward to row the way you look, back to slow down. Tap to get out.${v.store ? ' Open the chest with 🎒.' : ''}`
     : 'Jump to rise, sneak to sink, and move as you walk. The burner uses coal or charcoal from your inventory. Tap to get out.', 3500);
 }
 function leaveVehicle() {
@@ -3653,8 +3659,8 @@ function placeInner() {
     if (c.store) { sound.click(); openStation(c.x, c.y, c.z, c); } else getInCart(c);
     return;
   }
-  if (targetVehicle) { boardVehicle(targetVehicle.v); return; }
-  if (held && ITEMS[held.id]?.vehicle && putVehicle(ITEMS[held.id].vehicle)) { inventory.consumeHeld(); return; }
+  if (targetVehicle) { if (targetVehicle.v.store && controls.down) openBoatChest(targetVehicle.v); else boardVehicle(targetVehicle.v); return; }
+  if (held && ITEMS[held.id]?.vehicle && putVehicle(ITEMS[held.id].vehicle, ITEMS[held.id].chest)) { inventory.consumeHeld(); return; }
   if (held?.id === ZIP_LINE && target?.id === ZIP_POST) { linkZip(target.x, target.y, target.z); return; }
   if (held?.id === GRAPPLE && target?.id === ZIP_POST) { startZip(target.x, target.y, target.z); return; }
   if (held?.id === CABLE_CAR && target?.id === ZIP_POST) { startZip(target.x, target.y, target.z, true); return; }
@@ -4335,7 +4341,8 @@ function updateBreaking(dt) {
       vehicles.remove(v);
       targetVehicle = null;
       breakState.cart = 0;
-      giveDrops([[v.kind === 'boat' ? BOAT : BALLOON, 1]]);
+      if (v.store && openStationAt?.cart?.store === v.store) closeStation();
+      giveDrops([[v.kind === 'boat' ? (v.store ? CHEST_BOAT : BOAT) : BALLOON, 1], ...(v.store?.inputs ?? []).filter(Boolean).map((it) => [it.id, it.count])]);
     }
     crack.visible = false;
     return;
