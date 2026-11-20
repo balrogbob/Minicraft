@@ -49,6 +49,7 @@ import { Controls, KEY_ACTIONS, DEFAULT_KEYS, keyLabel } from './controls.js';
 import { WorldMap } from './worldmap.js';
 import { ItemDrops } from './drops.js';
 import { ACHIEVEMENTS, ACHIEVEMENT_IDS } from './achievements.js';
+import { GUIDE, GOALS, chapterOpen, goalItem } from './guidebook.js';
 import { MobManager, DIFFICULTY, DIFFICULTY_ORDER, SPECIES } from './mobs.js';
 import { ArrowManager } from './arrows.js';
 import { Stations, STATION_KINDS, isFuel, inCellar, wetAt, upgradeStacks, upgradeRefusal } from './stations.js';
@@ -547,6 +548,8 @@ async function startWorld(save, opts = {}) {
   creative = !!(save ? save.creative : opts.creative);
   player.flying = creative && !!save?.flying;
   achieved = new Set((Array.isArray(save?.achievements) ? save.achievements : []).filter((a) => ACHIEVEMENT_IDS.has(a)));
+  guideDone = new Set((Array.isArray(save?.guidebook?.done) ? save.guidebook.done : []).filter((g) => GOAL_IDS.has(g)));
+  guideClaimed = new Set((Array.isArray(save?.guidebook?.claimed) ? save.guidebook.claimed : []).filter((g) => guideDone.has(g)));
   worldMap.load(save?.explored);
   wand.a = null; wand.clip = null;
   air = MAX_AIR;
@@ -655,6 +658,7 @@ function saveGame() {
     creative,
     flying: player.flying,
     achievements: [...achieved],
+    guidebook: { done: [...guideDone], claimed: [...guideClaimed] },
     explored: worldMap.serialize(),
     loose: loose.serialize(),
     start: startPos,
@@ -4704,6 +4708,7 @@ controls = null;
     scrollSlot: (d) => selectSlot((inventory.selected + d + 9) % 9),
     toggleInventory,
     toggleMap: () => (worldMap.open ? closeMap() : !paused && !dead && !photoMode && openMap()),
+    toggleGuidebook: () => ($('guidebook').classList.contains('hidden') ? openGuidebook() : closeGuidebook()),
     toggleFly,
     throwItem: (all) => !photoMode && throwHeld(all),
     quickHold: () => inventory.heldId() === BOW,
@@ -4856,6 +4861,7 @@ function tickProgress(dt) {
   if (player.pos.y > 46) achieve('peak');
   if (startPos && Math.hypot(player.pos.x - startPos.x, player.pos.z - startPos.z) > 1000) achieve('far');
   if (day >= 7) achieve('week');
+  tickGuidebook();
 }
 
 // ---------- guide ----------
@@ -4875,6 +4881,95 @@ const guideTab = (ach) => {
 $('tab-ach').addEventListener('click', () => guideTab(true));
 $('tab-guide').addEventListener('click', () => guideTab(false));
 $('btn-close-guide').addEventListener('click', () => { $('guide').classList.add('hidden'); paused = false; });
+
+// ---------- v29 A: the guidebook ----------
+// Chapters of goals (see guidebook.js), ticked off as you reach them, each with a reward to claim.
+let guideDone = new Set(), guideClaimed = new Set(), gbChapter = 0;
+const GOAL_IDS = new Set(GOALS.map((g) => g.id));
+const GOAL_TESTS = { armour: () => armourShare() > 0 };
+function goalMet(g) {
+  const c = g.check;
+  if (c.has != null) return [].concat(c.has).some((id) => inventory.count(id) > 0);
+  if (c.count) return inventory.count(c.count[0]) >= c.count[1];
+  if (c.ach) return achieved.has(c.ach);
+  if (c.fn) return !!GOAL_TESTS[c.fn]?.();
+  return false;
+}
+function tickGuidebook() {
+  let fresh = null;
+  GUIDE.forEach((ch, i) => {
+    if (!chapterOpen(i, guideDone)) return;
+    for (const g of ch.goals) if (!guideDone.has(g.id) && goalMet(g)) { guideDone.add(g.id); fresh = g; }
+  });
+  if (fresh) {
+    toast(`📖 ${fresh.name}: done! ${fresh.reward ? 'Claim your reward in the guidebook' : ''}`, 2600);
+    sound.ding?.(0.8);
+    if (!$('guidebook').classList.contains('hidden')) renderGuidebook();
+  }
+  $('btn-guidebook').classList.toggle('claim', unclaimed().length > 0);
+}
+const unclaimed = () => GOALS.filter((g) => g.reward && guideDone.has(g.id) && !guideClaimed.has(g.id));
+function claimGoal(g) {
+  if (!guideDone.has(g.id) || guideClaimed.has(g.id) || !g.reward) return;
+  if (inventory.room(g.reward[0]) < g.reward[1]) { toast('Make room in your backpack first', 1500); return; }
+  guideClaimed.add(g.id);
+  inventory.add(g.reward[0], g.reward[1]);
+  sound.pop();
+  $('btn-guidebook').classList.toggle('claim', unclaimed().length > 0);
+  renderGuidebook();
+}
+function openGuidebook() {
+  if (paused || dead || photoMode) return;
+  paused = true; controls.reset(); document.exitPointerLock?.();
+  // open at the first chapter with something to claim, or else still to do
+  const open = GUIDE.map((_, i) => chapterOpen(i, guideDone));
+  const claim = GUIDE.findIndex((ch, i) => open[i] && ch.goals.some((g) => g.reward && guideDone.has(g.id) && !guideClaimed.has(g.id)));
+  const todo = GUIDE.findIndex((ch, i) => open[i] && ch.goals.some((g) => !guideDone.has(g.id)));
+  gbChapter = claim >= 0 ? claim : todo >= 0 ? todo : 0;
+  renderGuidebook();
+  $('guidebook').classList.remove('hidden');
+}
+function closeGuidebook() { $('guidebook').classList.add('hidden'); paused = false; }
+const gbIcon = (id) => (id && icons[id] ? `<img class="icon" src="${icons[id]}" alt="">` : '<span class="icon"></span>');
+function renderGuidebook() {
+  const total = GOALS.length, nDone = GOALS.filter((g) => guideDone.has(g.id)).length;
+  $('gb-progress').textContent = `${nDone} of ${total} goals`;
+  const chs = $('gb-chapters');
+  chs.innerHTML = '';
+  GUIDE.forEach((ch, i) => {
+    const open = chapterOpen(i, guideDone), done = ch.goals.filter((g) => guideDone.has(g.id)).length;
+    const b = document.createElement('button');
+    b.className = `gb-ch${i === gbChapter ? ' on' : ''}${open ? '' : ' locked'}`;
+    const claim = ch.goals.some((g) => g.reward && guideDone.has(g.id) && !guideClaimed.has(g.id));
+    b.innerHTML = `${open ? '' : '🔒 '}${ch.name}${claim ? '<span class="dot"></span>' : ''}<span class="n">${done}/${ch.goals.length}</span>`;
+    b.title = open ? '' : `Opens when half of "${GUIDE[ch.after].name}" is done`;
+    if (open) b.addEventListener('click', () => { gbChapter = i; renderGuidebook(); });
+    chs.appendChild(b);
+  });
+  const ch = GUIDE[gbChapter], list = $('gb-goals');
+  list.innerHTML = '';
+  if (!chapterOpen(gbChapter, guideDone)) { list.innerHTML = `<p class="hint">Do half of "${GUIDE[ch.after].name}" to open this chapter.</p>`; return; }
+  for (const g of ch.goals) {
+    const done = guideDone.has(g.id), claimed = guideClaimed.has(g.id);
+    const row = document.createElement('div');
+    row.className = `gb-goal${done ? ' done' : ''}${done && g.reward && !claimed ? ' unclaimed' : ''}`;
+    const item = goalItem(g), r = item && !g.check.ach && RECIPES.find((x) => x.out[0] === item);
+    const made = r && !done ? `<div class="made">Made from: ${r.in.map(([id, n]) => `${n > 1 ? n + ' × ' : ''}${gbIcon(id).replace('class="icon"', '')}${escapeHtml(itemName(id))}`).join(', ')}${r.table ? ' (at a table)' : ''}</div>` : '';
+    const reward = g.reward ? `<div class="reward">Reward: ${gbIcon(g.reward[0]).replace('class="icon"', '')}${g.reward[1] > 1 ? g.reward[1] + ' × ' : ''}${escapeHtml(itemName(g.reward[0]))}</div>` : '';
+    row.innerHTML = `${gbIcon(item)}<div class="txt"><b>${escapeHtml(g.name)} ${done ? '<span class="tick">✓</span>' : ''}</b><div class="hint">${escapeHtml(g.hint)}</div>${made}${reward}</div>`;
+    if (done && g.reward && !claimed) {
+      const btn = document.createElement('button');
+      btn.className = 'btn';
+      btn.textContent = 'Claim';
+      btn.addEventListener('click', () => claimGoal(g));
+      row.appendChild(btn);
+    }
+    list.appendChild(row);
+  }
+}
+$('btn-guidebook').addEventListener('click', () => ($('guidebook').classList.contains('hidden') ? openGuidebook() : closeGuidebook()));
+$('btn-close-guidebook').addEventListener('click', closeGuidebook);
+$('guidebook').addEventListener('click', (e) => { if (e.target.id === 'guidebook') closeGuidebook(); });
 
 // ---------- world map ----------
 const worldMap = new WorldMap($('worldmap'), $('bigmap'), minimap, {
@@ -6580,5 +6675,5 @@ window.minicraft = {
   arrows, fishing, kinetics, electric, lightUniforms, bees, catchAt, seasonOf, applySeason, set day(v) { day = v; applySeason(); }, frames, signalAt, setSwitch, logic, machines, carts, minimap, signs, armour, damage, placeRail, getInCart, getOutOfCart,
   get riding() { return riding; }, explode, lightFuse, fuses, clockTime, compassText, place, editSign, closeSign, openInventory, closeInventory, chestMove, lamps, tickLamps, sleepUntilMorning, stations, openStation, closeStation,
   get caneToday() { return caneToday; }, get creative() { return creative; }, set creative(v) { creative = v; applyCreative(); }, toggleFly, wand, useWand, get achieved() { return achieved; }, achieve, worldMap, openMap, closeMap, openGuide, switchSlot, store, saveGame, renderWorlds, openWorlds, exportSlot, get target() { return target; }, set target(v) { target = v; }, applyKeys, renderKeys, camera, get controls() { return controls; }, loose, throwHeld, get waypoints() { return waypoints; }, toggleWaypoint, sortSlots, quickStack, dropMeteor, get meteors() { return meteors; }, weather, openTrade, closeTrade, mountMob, dismount, get ridingMob() { return ridingMob; }, effects, armourWear, useAnvil, rollLoot, settings,
-  get bedSpawn() { return bedSpawn; }, fertilise, openJournal, closeJournal, get packs() { return packs; }, radiationAt, vehicles, boardVehicle, leaveVehicle, get boarded() { return boarded; }, get seated() { return seated; }, crows, onInvSlot, onStationSlot, quickMoveInv, quickMoveStation, usedIn, itemTipHTML, critters, tickPets, get catGiftDay() { return catGiftDay; }, get villageGrowth() { return villageGrowth; }, notePlanting, tickPuzzles, airPumpNear, useStable, stableNear, horseLabel, fineChance, fineHarvest, showProduce, specialTrades, catchAt, stockStable, tickStables, mangers, openSaddlebags, honeyAt, fitUpgrade, piles, lightCharcoalPile, tickPiles, searchChests, takeFromChest, markChest, get chestMark() { return chestMark; }, enterPhotoMode, exitPhotoMode, snapPhoto, get photoMode() { return photoMode; }, photoCam, get lastPhoto() { return lastPhoto; }, tickStalactites, loosenStalactite, fallingRocks, shaking, workLock, findLock, tickLocks, openGates, lockJobs, hangRopeLadder, layBridge, rollUpRope, fireworks, ringBell, requestFor, festivalToday, repOf, addRep, tradeCost, tickFestival, villageEntry, hearths, tickHearths, feedHearth, chimneyTop, smoke, renderPins, togglePin, lightning, igniteAt, fires, tickFires, tickStorm, growVillage, buildVillageHouse, stallPrice, tickStalls, tickVillages, set catGiftDay(v) { catGiftDay = v; }, get places() { return places; }, get treasures() { return treasures; }, readTreasureMap, tickTreasure, beams, tickBeams, beaconSpots: () => beaconSpots, mistNow, tickSnow, tickExplore, sitOn, standUp, useDisplay, zips, linkZip, startZip, get zipping() { return zipping; }, burnCoal, get health() { return health; }, set health(v) { health = v; }, paintings, placeSwitchRail, signalAt, ailments, armourEnch, openAltar, lairNear, useBed, eat, drinkTea,
+  get bedSpawn() { return bedSpawn; }, fertilise, openJournal, closeJournal, get packs() { return packs; }, radiationAt, vehicles, boardVehicle, leaveVehicle, get boarded() { return boarded; }, get seated() { return seated; }, crows, onInvSlot, onStationSlot, quickMoveInv, quickMoveStation, usedIn, itemTipHTML, critters, tickPets, get catGiftDay() { return catGiftDay; }, get villageGrowth() { return villageGrowth; }, notePlanting, tickPuzzles, airPumpNear, useStable, stableNear, horseLabel, get guideDone() { return guideDone; }, get guideClaimed() { return guideClaimed; }, tickGuidebook, openGuidebook, closeGuidebook, claimGoal, goalMet, fineChance, fineHarvest, showProduce, specialTrades, catchAt, stockStable, tickStables, mangers, openSaddlebags, honeyAt, fitUpgrade, piles, lightCharcoalPile, tickPiles, searchChests, takeFromChest, markChest, get chestMark() { return chestMark; }, enterPhotoMode, exitPhotoMode, snapPhoto, get photoMode() { return photoMode; }, photoCam, get lastPhoto() { return lastPhoto; }, tickStalactites, loosenStalactite, fallingRocks, shaking, workLock, findLock, tickLocks, openGates, lockJobs, hangRopeLadder, layBridge, rollUpRope, fireworks, ringBell, requestFor, festivalToday, repOf, addRep, tradeCost, tickFestival, villageEntry, hearths, tickHearths, feedHearth, chimneyTop, smoke, renderPins, togglePin, lightning, igniteAt, fires, tickFires, tickStorm, growVillage, buildVillageHouse, stallPrice, tickStalls, tickVillages, set catGiftDay(v) { catGiftDay = v; }, get places() { return places; }, get treasures() { return treasures; }, readTreasureMap, tickTreasure, beams, tickBeams, beaconSpots: () => beaconSpots, mistNow, tickSnow, tickExplore, sitOn, standUp, useDisplay, zips, linkZip, startZip, get zipping() { return zipping; }, burnCoal, get health() { return health; }, set health(v) { health = v; }, paintings, placeSwitchRail, signalAt, ailments, armourEnch, openAltar, lairNear, useBed, eat, drinkTea,
 };

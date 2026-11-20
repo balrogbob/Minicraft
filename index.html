@@ -65,6 +65,7 @@
     <div id="hotbar-wrap">
       <div id="hotbar"></div>
       <button class="btn" id="btn-inventory" title="Inventory & crafting">🎒</button>
+      <button class="btn" id="btn-guidebook" title="Guidebook (G)">📖</button>
     </div>
 
     <button class="btn round" id="btn-jump" title="Jump">⤒</button>
@@ -248,6 +249,19 @@
       </div>
     </div>
 
+    <div id="guidebook" class="overlay hidden">
+      <div class="panel gb-panel">
+        <div class="panel-head">
+          <h2>📖 Guidebook</h2>
+          <span id="gb-progress"></span>
+          <button class="btn small" id="btn-close-guidebook">✕</button>
+        </div>
+        <div class="gb-body">
+          <div id="gb-chapters"></div>
+          <div id="gb-goals"></div>
+        </div>
+      </div>
+    </div>
     <div id="guide" class="overlay hidden">
       <div class="panel guide-panel">
         <div class="panel-head">
