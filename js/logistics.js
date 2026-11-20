@@ -315,7 +315,7 @@ export class Logistics {
         this.arrive(t);
         continue;
       }
-      if (!t.sprite && this.machines.makeSprite && i < 80) { t.sprite = this.machines.makeSprite(t.id); t.sprite.scale.setScalar(0.28); }
+      if (!t.sprite && this.machines.makeSprite && i < 80) { t.sprite = this.machines.makeSprite(t.id); t.sprite.scale.setScalar(0.42); } // (wider than the tube, so it shows going along)
       if (t.sprite) {
         const j = Math.floor(t.d), u = t.d - j, a = t.path[j], b = t.path[j + 1];
         t.sprite.position.set(a[0] + 0.5 + (b[0] - a[0]) * u, a[1] + 0.5 + (b[1] - a[1]) * u, a[2] + 0.5 + (b[2] - a[2]) * u);

@@ -2885,7 +2885,10 @@ const LP_COLOURS = [[170, 170, 160], [70, 130, 220], [80, 180, 90], [160, 90, 20
 P[T.LP_ARM] = (t) => {
   for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
     const rim = y < 1 || y > 14, ring = x % 8 === 0;
-    if (rim) t.set(x, y, [214, 176, 70]); else if (ring) t.set(x, y, [190, 150, 60]); else t.set(x, y, [200, 230, 240], 0.35);
+    // a solid tube of smoky glass: gold rims and rings, a dark body, a pale highlight along it (so it reads as a pipe)
+    const shine = y >= 4 && y <= 5, shade = y >= 11;
+    if (rim) t.set(x, y, [214, 176, 70]); else if (ring) t.set(x, y, [176, 138, 52]);
+    else t.set(x, y, t.vary(shine ? [170, 214, 226] : shade ? [40, 72, 86] : [66, 112, 130], 0.04));
   }
 };
 LP_COLOURS.forEach((c, i) => {
