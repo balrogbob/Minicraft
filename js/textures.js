@@ -3125,3 +3125,40 @@ ITEM_PAINTERS[POLYMER_SHEET] = (ctx) => {
     px(ctx, x, y, y === 4 || x === 13 ? [150, 176, 200] : (x + y) % 7 === 0 ? [250, 252, 255] : [210, 226, 240]);
   }
 };
+
+// ---------- v32 B: polymer blocks and gear ----------
+import { POLYMER_BOAT, PADDED_BOOTS, polymerTool } from './blocks.js';
+// a bounce pad: a taut black rubber skin with a pale target, over a plank frame
+P[T.BOUNCE_TOP] = (t) => {
+  for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+    const d = Math.hypot(x - 7.5, y - 7.5), rim = x < 1 || x > 14 || y < 1 || y > 14;
+    t.set(x, y, rim ? [150, 110, 64] : d > 2.5 && d < 3.8 ? [230, 200, 70] : d < 1.5 ? [230, 200, 70] : t.vary([46, 44, 48], 0.05));
+  }
+};
+P[T.BOUNCE_SIDE] = (t) => {
+  for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) t.set(x, y, y < 3 ? t.vary([46, 44, 48], 0.05) : y === 8 && x % 5 === 2 ? [190, 190, 196] : t.vary([170, 122, 70], 0.06));
+};
+// polymer: flat, smooth colour with a soft sheen along one edge
+COLORS.forEach((c, i) => {
+  const hi = c.rgb.map((v) => Math.min(255, v + 40));
+  P[T.POLY_COL + i] = (t) => { for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) t.set(x, y, x + y < 5 ? hi : x === 15 || y === 15 ? shade(c.rgb, 0.82) : t.vary(c.rgb, 0.015)); };
+});
+// a lumen panel: clear, with a glowing grid
+P[T.LUMEN] = (t) => {
+  for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+    const edge = x === 0 || y === 0 || x === 15 || y === 15, grid = x % 5 === 0 || y % 5 === 0;
+    if (edge) t.set(x, y, [236, 246, 255]); else if (grid) t.set(x, y, [200, 236, 255], 200); else t.set(x, y, [210, 240, 255], 70);
+  }
+};
+MAT.polymer = [[236, 240, 244], [150, 170, 190]];
+for (const kind of ['pick', 'axe', 'shovel']) ITEM_PAINTERS[polymerTool(kind)] = toolPainter(kind, 'polymer');
+ITEM_PAINTERS[polymerTool('sword')] = swordPainter('polymer');
+ITEM_PAINTERS[POLYMER_BOAT] = (ctx) => {
+  rect(ctx, 1, 8, 14, 3, [232, 236, 240]); rect(ctx, 3, 11, 10, 2, [200, 206, 214]); rect(ctx, 0, 6, 2, 3, [232, 236, 240]); rect(ctx, 14, 6, 2, 3, [232, 236, 240]);
+  rect(ctx, 1, 9, 14, 1, [60, 120, 210]); for (let k = 0; k < 6; k++) px(ctx, 4 + k, 7 - (k >> 1), [106, 68, 38]);
+};
+ITEM_PAINTERS[PADDED_BOOTS] = (ctx) => {
+  rect(ctx, 2, 3, 4, 8, [120, 84, 50]); rect(ctx, 10, 3, 4, 8, [120, 84, 50]);
+  rect(ctx, 1, 10, 6, 3, [140, 100, 60]); rect(ctx, 9, 10, 6, 3, [140, 100, 60]);
+  rect(ctx, 1, 13, 6, 2, [44, 42, 46]); rect(ctx, 9, 13, 6, 2, [44, 42, 46]);
+};

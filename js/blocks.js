@@ -141,7 +141,7 @@ export const T = {
   LEAD_CHEST_SIDE: 267, LEAD_CHEST_TOP: 268, LEAD_CHEST_FRONT: 269, CENTRIFUGE_SIDE: 270, CENTRIFUGE_TOP: 271, TESLA: 272, TESLA_TOP: 273,
   FENCE_POST: 274, FENCE_WIRE: 275, FREEZER_SIDE: 276, FREEZER_FRONT: 277, ARC_SIDE: 278, ARC_FRONT: 279, PACKED_ICE: 280, INVAR: 281, RAIL_STOP: 282, BASALT: 283, BASALT_TOP: 284, METEORITE: 285,
   IRON_BARS: 286, POT: 287, IVY: 288, BOX_FLOWERS: 289,
-  FRUIT_LEAVES: 290, FRUIT_RIPE: 293, FRUIT_SAPLING: 296, HAY: 299, SACK: 300, BEACON: 301, APIARY_SIDE: 302, APIARY_FRONT: 303, APIARY_FULL: 304, APIARY_TOP: 305, BELT_CROSS: 306, FARM_CTRL: 307, FARM_CTRL_ON: 308, TUBE: 309, TUBE_END: 310, AWNING: 311, FIRE: 312, CARROT_0: 313, POTATO_0: 317, STEM_0: 321, PUMPKIN_SIDE: 324, PUMPKIN_TOP: 325, JACK_FACE: 326, TRELLIS: 327, VINE_0: 328, BARREL_SIDE: 331, BARREL_TOP: 332, CHEESE: 333, SEA_BRICK: 334, SEA_LANTERN: 335, VAULT: 336, SKY_STONE: 337, AIR_PUMP: 338, RADIO: 339, RADIO_ON: 340, SORTBOX: 341, SORTBOX_TOP: 342, HEARTH: 343, HEARTH_LIT: 344, CHIMNEY_TOP: 345, STABLE_SIDE: 346, SNOWMAN_FRONT: 347, ONION_0: 348, BEAN_0: 352, TOMATO_0: 356, HERB_0: 360, KILN_SIDE: 364, KILN_TOP: 365, KILN_FRONT: 366, KILN_FRONT_LIT: 367, TERRACOTTA: 368, TERRA_COL: 369, GLAZED: 379, ROOF_TILES: 389, URN: 390, ROPE: 391, LOCK_GATE: 392, LOCK_GATE_TOP: 393, DRIPSTONE: 394, BEETLE_LAMP: 395, WASHER_SIDE: 396, WASHER_TOP: 397, WASHER_FRONT: 398, SIEVE: 399, SLAG_BRICKS: 400, CHARCOAL_HEAP: 401, LP_ARM: 402, LP_CORE: 403, LP_TABLE_TOP: 409, LP_TABLE_SIDE: 410, LP_JUNCTION: 411, LP_SENSOR_CORE: 412, LP_SENSOR_ON: 413, LP_FPROVIDER: 414, LP_FSUPPLIER: 415, DRONE_PAD_TOP: 416, DRONE_PAD_SIDE: 417, LP_FSINK: 418, BOTTLER_SIDE: 419, BOTTLER_TOP: 420, BEEHOUSE_SIDE: 421, BEEHOUSE_TOP: 422, BEEHOUSE_FRONT: 423, COMB_SPIN_SIDE: 424, COMB_SPIN_TOP: 425, TAP_SIDE: 426, TAP_LATEX: 427, PRESS_SIDE: 428, PRESS_TOP: 429, INSWIRE_OFF: 430, INSWIRE_ON: 431, // (fruit tiles: apple, cherry, orange)
+  FRUIT_LEAVES: 290, FRUIT_RIPE: 293, FRUIT_SAPLING: 296, HAY: 299, SACK: 300, BEACON: 301, APIARY_SIDE: 302, APIARY_FRONT: 303, APIARY_FULL: 304, APIARY_TOP: 305, BELT_CROSS: 306, FARM_CTRL: 307, FARM_CTRL_ON: 308, TUBE: 309, TUBE_END: 310, AWNING: 311, FIRE: 312, CARROT_0: 313, POTATO_0: 317, STEM_0: 321, PUMPKIN_SIDE: 324, PUMPKIN_TOP: 325, JACK_FACE: 326, TRELLIS: 327, VINE_0: 328, BARREL_SIDE: 331, BARREL_TOP: 332, CHEESE: 333, SEA_BRICK: 334, SEA_LANTERN: 335, VAULT: 336, SKY_STONE: 337, AIR_PUMP: 338, RADIO: 339, RADIO_ON: 340, SORTBOX: 341, SORTBOX_TOP: 342, HEARTH: 343, HEARTH_LIT: 344, CHIMNEY_TOP: 345, STABLE_SIDE: 346, SNOWMAN_FRONT: 347, ONION_0: 348, BEAN_0: 352, TOMATO_0: 356, HERB_0: 360, KILN_SIDE: 364, KILN_TOP: 365, KILN_FRONT: 366, KILN_FRONT_LIT: 367, TERRACOTTA: 368, TERRA_COL: 369, GLAZED: 379, ROOF_TILES: 389, URN: 390, ROPE: 391, LOCK_GATE: 392, LOCK_GATE_TOP: 393, DRIPSTONE: 394, BEETLE_LAMP: 395, WASHER_SIDE: 396, WASHER_TOP: 397, WASHER_FRONT: 398, SIEVE: 399, SLAG_BRICKS: 400, CHARCOAL_HEAP: 401, LP_ARM: 402, LP_CORE: 403, LP_TABLE_TOP: 409, LP_TABLE_SIDE: 410, LP_JUNCTION: 411, LP_SENSOR_CORE: 412, LP_SENSOR_ON: 413, LP_FPROVIDER: 414, LP_FSUPPLIER: 415, DRONE_PAD_TOP: 416, DRONE_PAD_SIDE: 417, LP_FSINK: 418, BOTTLER_SIDE: 419, BOTTLER_TOP: 420, BEEHOUSE_SIDE: 421, BEEHOUSE_TOP: 422, BEEHOUSE_FRONT: 423, COMB_SPIN_SIDE: 424, COMB_SPIN_TOP: 425, TAP_SIDE: 426, TAP_LATEX: 427, PRESS_SIDE: 428, PRESS_TOP: 429, INSWIRE_OFF: 430, INSWIRE_ON: 431, BOUNCE_TOP: 432, BOUNCE_SIDE: 433, POLY_COL: 434, LUMEN: 444, // (434..443: polymer + colour) // (fruit tiles: apple, cherry, orange)
 };
 
 // Ores, deepest-reaching last. tier: the pickaxe tier needed to mine it (see TOOL_TIERS);
@@ -3065,4 +3065,38 @@ RECIPES.push(
   { out: [TREE_TAP, 1], in: [[PLANKS, 3], [IRON_INGOT, 1]], table: true, metal: IRON_INGOT },
   { out: [POLYMER_PRESS, 1], in: [[IRON_INGOT, 4], [STONE, 2], [kineticId('gear', 0), 1], [PLANKS, 2]], table: true, metal: IRON_INGOT },
   { out: [INSULATED_WIRE, 4], in: [[ELECTRUM_WIRE, 4], [RUBBER, 1]], table: true },
+);
+
+// ---------- v32 B: polymer blocks and gear ----------
+// Polymer sheets, dyed, make smooth coloured blocks; with a glow shell, a clear panel that lights a room. Rubber
+// on planks makes a bounce pad that throws you back up as high as you fell (or a bit more than a jump), and
+// never hurts. Padded boots stop all fall damage. Polymer tools are light and quick, but not as hard-wearing
+// as metal; a polymer boat is faster than a wooden one.
+export const BOUNCE_PAD = 1485, POLYMER_BLOCK = 1486, LUMEN_PANEL = 1496; // polymer blocks 1486..1495: + colour
+export const POLYMER_TOOLS = 3176, POLYMER_BOAT = 3180, PADDED_BOOTS = 3181; // tools 3176..3179: pick, axe, shovel, sword
+export const polymerTool = (kind) => POLYMER_TOOLS + ['pick', 'axe', 'shovel', 'sword'].indexOf(kind);
+block(BOUNCE_PAD, { name: 'Bounce Pad', sound: 'wool', top: T.BOUNCE_TOP, side: T.BOUNCE_SIDE, bottom: T.PLANKS, hardness: 0.8, bounce: 11 });
+COLORS.forEach((c, i) => block(POLYMER_BLOCK + i, { name: `${c.name} Polymer`, sound: 'stone', tex: T.POLY_COL + i, hardness: 1.2, color: i }));
+block(LUMEN_PANEL, { name: 'Lumen Panel', sound: 'glass', tex: T.LUMEN, transparent: true, hardness: 0.6, light: 14 });
+ITEMS[BOUNCE_PAD] = { name: 'Bounce Pad', about: 'land on it to bounce back up; it never hurts' };
+ITEMS[LUMEN_PANEL] = { name: 'Lumen Panel', about: 'a clear panel that glows' };
+['pick', 'axe', 'shovel'].forEach((kind, i) => {
+  ITEMS[POLYMER_TOOLS + i] = {
+    name: `Polymer ${KIND_NAMES[kind]}`, mat: 'polymer', wearMax: 350, repair: POLYMER_SHEET,
+    tool: { type: kind, speed: 9, tier: 3, damage: KIND_DAMAGE[kind] + 2 }, about: 'light and quick, but wears out sooner than metal',
+  };
+});
+ITEMS[polymerTool('sword')] = { name: 'Polymer Sword', mat: 'polymer', wearMax: 350, repair: POLYMER_SHEET, tool: { type: 'sword', speed: 1, tier: 0, damage: 8 } };
+ITEMS[POLYMER_BOAT] = { name: 'Polymer Boat', stack: 1, vehicle: 'boat', fast: true, about: 'a light moulded hull: much faster than a wooden boat' };
+ITEMS[PADDED_BOOTS] = { name: 'Padded Boots', stack: 1, armour: { piece: 3, points: 1 }, wearMax: 300, repair: RUBBER, guards: 'fall', about: 'rubber soles: falls never hurt you' };
+RECIPES.push(
+  ...COLORS.map((c, i) => ({ out: [POLYMER_BLOCK + i, 4], in: [[POLYMER_SHEET, 2], [DYE + i, 1]], metal: DYE + i })),
+  { out: [LUMEN_PANEL, 2], in: [[POLYMER_SHEET, 2], [GLOW_SHELL, 1]] },
+  { out: [BOUNCE_PAD, 1], in: [[RUBBER, 4], [PLANKS, 1]], table: true },
+  { out: [PADDED_BOOTS, 1], in: [[RUBBER, 3], [LEATHER, 2]], table: true },
+  { out: [polymerTool('pick'), 1], in: [[POLYMER_SHEET, 3], [STICK, 2]], table: true },
+  { out: [polymerTool('axe'), 1], in: [[POLYMER_SHEET, 3], [STICK, 2]], table: true },
+  { out: [polymerTool('shovel'), 1], in: [[POLYMER_SHEET, 1], [STICK, 2]], table: true },
+  { out: [polymerTool('sword'), 1], in: [[POLYMER_SHEET, 2], [STICK, 1]], table: true },
+  { out: [POLYMER_BOAT, 1], in: [[POLYMER_SHEET, 5], [STICK, 2]], table: true },
 );

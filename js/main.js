@@ -937,7 +937,13 @@ function updateHealth(dt, wasGround, prevY) {
     const fall = fallTop - player.pos.y;
     fallTop = null;
     const hurt = Math.floor((fall - 3) * (armourEnch[3]?.includes('feather') ? 0.5 : 1));
-    if (fall > 3.5 && hurt > 0) damage(hurt, 'You fell from a high place.');
+    // v32: a bounce pad throws you back up (hold jump to bounce higher, sneak to stop), and never hurts
+    const pad = BLOCKS[world.get(Math.floor(player.pos.x), Math.floor(player.pos.y - 0.05), Math.floor(player.pos.z))]?.bounce;
+    if (pad) {
+      const back = Math.min(24, Math.sqrt(2 * 28 * Math.max(0, fall)) * 0.85);
+      const v = controls.down ? 0 : Math.max(back, controls.jump ? pad : 0);
+      if (v > 2) { player.vel.y = v; player.onGround = false; sound.place('wool'); }
+    } else if (fall > 3.5 && hurt > 0 && !guarded('fall')) damage(hurt, 'You fell from a high place.'); // (padded boots: no fall damage)
   }
   // drowning
   player.swimMul = guarded('swim') ? 1.9 : 1; // flippers
@@ -1103,7 +1109,7 @@ function lookName() {
     if (l) return `Locomotive${l.burn > 0 || l.coal > 0 ? ` (coal: ${l.coal}${l.burn > 0 ? ` + ${Math.ceil(l.burn)}s` : ''})` : ' (no coal)'}${c.towed?.length ? `, pulling ${c.towed.length}` : ''}`;
     return (c.store ? 'Storage Cart' : 'Minecart') + (c.tow ? ' (coupled)' : '');
   }
-  if (targetVehicle) return targetVehicle.v.kind === 'boat' ? (targetVehicle.v.store ? 'Chest Boat (sneak and tap to open)' : 'Boat') : 'Hot-Air Balloon';
+  if (targetVehicle) return targetVehicle.v.kind === 'boat' ? (targetVehicle.v.store ? 'Chest Boat (sneak and tap to open)' : targetVehicle.v.fast ? 'Polymer Boat' : 'Boat') : 'Hot-Air Balloon';
   if (targetMob) {
     const m = targetMob.mob;
     const name = m.spec.name ?? (m.kind === 'villager' ? `Villager (${m.profession ?? 'farmer'})` : capital(m.kind));
@@ -3479,13 +3485,13 @@ function openBoatChest(v) {
   sound.click();
   openStation(0, 0, 0, { store: v.store, title: 'Chest Boat' });
 }
-function putVehicle(kind, chest = false) {
+function putVehicle(kind, chest = false, fast = false) {
   if (kind === 'boat') {
     const w = waterInSight();
     if (!w) { toast('Put a boat on water', 1500); return false; }
     let y = w[1];
     while (world.isWater(w[0], y + 1, w[2])) y++;
-    vehicles.add('boat', w[0] + 0.5, y + 0.55, w[2] + 0.5, player.yaw + Math.PI, 0, chest ? newBoatStore() : null);
+    vehicles.add('boat', w[0] + 0.5, y + 0.55, w[2] + 0.5, player.yaw + Math.PI, 0, chest ? newBoatStore() : null, fast);
   } else {
     if (!target) return false;
     const { x, y, z } = target;
@@ -3699,7 +3705,7 @@ function placeInner() {
     return;
   }
   if (targetVehicle) { if (targetVehicle.v.store && controls.down) openBoatChest(targetVehicle.v); else boardVehicle(targetVehicle.v); return; }
-  if (held && ITEMS[held.id]?.vehicle && putVehicle(ITEMS[held.id].vehicle, ITEMS[held.id].chest)) { inventory.consumeHeld(); return; }
+  if (held && ITEMS[held.id]?.vehicle && putVehicle(ITEMS[held.id].vehicle, ITEMS[held.id].chest, ITEMS[held.id].fast)) { inventory.consumeHeld(); return; }
   if (held?.id === ZIP_LINE && target?.id === ZIP_POST) { linkZip(target.x, target.y, target.z); return; }
   if (held?.id === GRAPPLE && target?.id === ZIP_POST) { startZip(target.x, target.y, target.z); return; }
   if (held?.id === CABLE_CAR && target?.id === ZIP_POST) { startZip(target.x, target.y, target.z, true); return; }
@@ -4389,7 +4395,7 @@ function updateBreaking(dt) {
       targetVehicle = null;
       breakState.cart = 0;
       if (v.store && openStationAt?.cart?.store === v.store) closeStation();
-      giveDrops([[v.kind === 'boat' ? (v.store ? CHEST_BOAT : BOAT) : BALLOON, 1], ...(v.store?.inputs ?? []).filter(Boolean).map((it) => [it.id, it.count])]);
+      giveDrops([[v.kind === 'boat' ? (v.store ? CHEST_BOAT : v.fast ? POLYMER_BOAT : BOAT) : BALLOON, 1], ...(v.store?.inputs ?? []).filter(Boolean).map((it) => [it.id, it.count])]);
     }
     crack.visible = false;
     return;
@@ -6981,7 +6987,7 @@ apiculture.onYoung = (x, y, z, sp, mate, kids) => {
 };
 
 // ---------- v32: tree taps ----------
-import { TREE_TAP, LATEX, MAX_LATEX } from './blocks.js';
+import { TREE_TAP, LATEX, MAX_LATEX, POLYMER_BOAT } from './blocks.js';
 // Tapping a tree tap takes the latex in it.
 function useTap(x, y, z, tid) {
   const lv = BLOCKS[tid].tap;
