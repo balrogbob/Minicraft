@@ -19,7 +19,7 @@
 //               things between the pads
 // A power junction that gets a signal pauses its part of the network.
 import * as THREE from 'three';
-import { BLOCKS, stationKind, maxStack, RECIPES, WATER, LAVA, TANK_CAP, WATER_BUCKET, LAVA_BUCKET } from './blocks.js';
+import { BLOCKS, stationKind, maxStack, RECIPES, WATER, LAVA, TANK_CAP, WATER_BUCKET, LAVA_BUCKET, BUCKET, LEAD_BUCKET } from './blocks.js';
 import { STATION_KINDS, isFuel } from './stations.js';
 
 const key = (x, y, z) => `${x},${y},${z}`;
@@ -34,6 +34,9 @@ const SENSE_EVERY = 0.5, FLUID_EVERY = 2, FLUID_MAX = 4; // (buckets sent at a t
 const ENGINE_BURN = 30; // (as in machines.js: seconds of steam for a hundredth of a bucket of lava)
 const FIRES = ['oven', 'smelter', 'blast'];
 export const CHANNELS = 16;
+export const BOTTLER_CAP = 4; // buckets a bottler holds
+const BOTTLE_EVERY = 1;
+const CHUNK = 16;
 const LIQUIDS = [WATER, LAVA];
 const isLiquid = (id) => LIQUIDS.includes(id);
 export const liquidIcon = (id) => (id === LAVA ? LAVA_BUCKET : WATER_BUCKET);
@@ -46,7 +49,7 @@ export class Logistics {
     this.pipes = new Map(); // "x,y,z" -> config: { role, filter, mode, fallback, recipe, orders, inflight }
     this.transits = []; // things on their way: { id, count, path, d, dest, sprite }
     this.nets = []; this.netOf = new Map(); this.dirty = true;
-    this.timers = { supply: 0, extract: 0, net: 0, sense: 0, fluid: 0 };
+    this.timers = { supply: 0, extract: 0, net: 0, sense: 0, fluid: 0, bottle: 0 };
     this.segOf = new Map(); // "x,y,z" -> the piped-together part of a network it's in (a network can be several, joined by drones)
     this.onArrive = null; // (dest, id, n) when an order lands at a request table
     this.onSwitch = null; // (x, y, z, on): a stock sensor's signal changed (main.js)
@@ -324,8 +327,8 @@ export class Logistics {
     for (let at = to; at; at = prev.get(at)) out.unshift(unkey(at));
     return out;
   }
-  send(id, count, path, dest, fluid = false) {
-    const t = { id, count, path: dest.table ? path : [...path, [dest.x, dest.y, dest.z]], d: 0, dest, sprite: null, fluid };
+  send(id, count, path, dest, fluid = false, origin = null) {
+    const t = { id, count, path: dest.table ? path : [...path, [dest.x, dest.y, dest.z]], d: 0, dest, sprite: null, fluid, origin };
     this.transits.push(costs(t));
   }
   arrive(t) {
@@ -402,6 +405,7 @@ export class Logistics {
     const powered = new Map(this.nets.map((n) => [n, this.powered(n)]));
     if ((this.timers.sense -= dt) <= 0) { this.timers.sense = SENSE_EVERY; this.tickSensors(); }
     if ((this.timers.fluid -= dt) <= 0) { this.timers.fluid = FLUID_EVERY; this.tickFluids(); }
+    if ((this.timers.bottle -= dt) <= 0) { this.timers.bottle = BOTTLE_EVERY; this.tickBottlers(); }
     this.burnFluids();
     // crafting pipes send on what's been made for their orders
     for (const [pk, c] of this.pipes) {
@@ -499,14 +503,37 @@ export class Logistics {
     for (const pk of this.ofRole(net, 'fprovider')) for (const s of this.fluidSources(pk)) m.set(s.liquid, (m.get(s.liquid) ?? 0) + s.amount);
     return m;
   }
-  // What a liquid supplier feeds: a tank to fill, or something that burns lava. { x, y, z, kind: 'tank' | 'fire', d }
+  // Something that holds liquid: a tank, or a bottler. { t: { liquid, amount }, cap } or null.
+  vessel(x, y, z) {
+    if (!this.world.chunkAt(x, z)) return null;
+    const d = BLOCKS[this.world.get(x, y, z)];
+    if (d?.tank) return { t: this.machines.tank(x, y, z), cap: TANK_CAP };
+    if (d?.station === 'bottler') return { t: this.machines.tank(x, y, z), cap: BOTTLER_CAP };
+    return null;
+  }
+  roomFor(x, y, z, liquid) {
+    const v = this.vessel(x, y, z);
+    if (!v || (v.t.amount > 0.01 && v.t.liquid !== liquid)) return 0;
+    return Math.max(0, v.cap - v.t.amount);
+  }
+  // Pour up to n buckets in; returns how much went in.
+  pour(x, y, z, liquid, n) {
+    const k = Math.min(n, this.roomFor(x, y, z, liquid));
+    if (k <= 0) return 0;
+    const t = this.machines.tank(x, y, z);
+    t.liquid = liquid; t.amount += k;
+    if (BLOCKS[this.world.get(x, y, z)]?.tank) this.machines.showTank(this.world, x, y, z);
+    return k;
+  }
+  // What a liquid supplier (or sink) feeds: a tank or bottler to fill, or something that burns lava. { x, y, z, kind: 'tank' | 'fire', d, cap }
   fluidTarget(pk) {
     const [x, y, z] = unkey(pk);
     for (const [dx, dy, dz] of D6) {
       const ix = x + dx, iy = y + dy, iz = z + dz;
       if (this.pipes.has(key(ix, iy, iz))) continue;
       const d = BLOCKS[this.world.get(ix, iy, iz)];
-      if (d?.tank) return { x: ix, y: iy, z: iz, kind: 'tank', d };
+      if (d?.tank) return { x: ix, y: iy, z: iz, kind: 'tank', d, cap: TANK_CAP };
+      if (d?.station === 'bottler') return { x: ix, y: iy, z: iz, kind: 'tank', d, cap: BOTTLER_CAP };
       if (d?.engine || FIRES.includes(d?.station)) return { x: ix, y: iy, z: iz, kind: 'fire', d };
     }
     return null;
@@ -523,7 +550,7 @@ export class Logistics {
         if (k <= 0) continue;
         if (s.tank) { s.tank.amount -= k; this.machines.showTank(this.world, s.x, s.y, s.z); }
         left -= k;
-        this.send(liquid, k, [[s.x, s.y, s.z], ...p.path], dest, true);
+        this.send(liquid, k, [[s.x, s.y, s.z], ...p.path], dest, true, { pk: p.pk, x: s.x, y: s.y, z: s.z, pool: !s.tank });
       }
       if (left <= 0) break;
     }
@@ -546,7 +573,7 @@ export class Logistics {
       if (!f || !isLiquid(f.id)) continue;
       const t = this.machines.tank(tg.x, tg.y, tg.z);
       if (t.amount > 0.01 && t.liquid !== f.id) continue; // (a tank of the other liquid: leave it be)
-      const want = Math.min(f.count, TANK_CAP) - t.amount - (c.inflight[f.id] ?? 0);
+      const want = Math.min(f.count, tg.cap) - t.amount - (c.inflight[f.id] ?? 0);
       if (want >= 1) this.expect(dest, f.id, this.fetchFluid(net, f.id, Math.min(FLUID_MAX, Math.floor(want)), dest));
     }
   }
@@ -561,14 +588,76 @@ export class Logistics {
       if (st.burn < 0.5 && c.buf >= 0.01) { st.burn += 1; st.burnMax = Math.max(st.burnMax, 1); c.buf -= 0.01; }
     }
   }
+  // Liquid that got where it was going. What doesn't fit goes back where it came from; what doesn't fit there
+  // goes to a liquid sink; and if there's none (or it's full too), it's lost.
   arriveFluid(t, c) {
     const { dest } = t;
     if (dest.fuel) { if (c) c.buf = (c.buf ?? 0) + t.count; return; }
-    if (!this.world.chunkAt(dest.x, dest.z) || !BLOCKS[this.world.get(dest.x, dest.y, dest.z)]?.tank) return;
-    const tk = this.machines.tank(dest.x, dest.y, dest.z);
-    if (tk.amount > 0.01 && tk.liquid !== t.id) return;
-    tk.liquid = t.id; tk.amount = Math.min(TANK_CAP, tk.amount + t.count);
-    this.machines.showTank(this.world, dest.x, dest.y, dest.z);
+    if (dest.back && t.origin?.pool) return; // (back into its pool)
+    const left = t.count - this.pour(dest.x, dest.y, dest.z, t.id, t.count);
+    if (left <= 1e-6) return;
+    if (!dest.back && !dest.sink && t.origin) {
+      const back = t.path.slice(0, -1).reverse(); // (the way it came, ending beside where it came from)
+      this.send(t.id, left, back.length ? back : [[dest.x, dest.y, dest.z]], { pk: t.origin.pk, x: t.origin.x, y: t.origin.y, z: t.origin.z, back: true }, true, t.origin);
+      return;
+    }
+    if (dest.sink) return; // (a sink that filled up on the way: lost)
+    const sink = this.fluidSinkFor(t.id, dest.pk, dest);
+    if (sink) this.send(t.id, left, sink.path, sink.dest, true, null);
+  }
+  // The nearest liquid sink with room for some of a liquid: { path, dest }.
+  fluidSinkFor(liquid, fromPk, not) {
+    const net = this.netOf.get(fromPk);
+    if (!net) return null;
+    let best = null;
+    for (const pk of this.ofRole(net, 'fsink')) {
+      const tg = this.fluidTarget(pk);
+      if (!tg || tg.kind !== 'tank' || (not && tg.x === not.x && tg.y === not.y && tg.z === not.z)) continue;
+      if (this.roomFor(tg.x, tg.y, tg.z, liquid) <= 0) continue;
+      const path = this.path(net, fromPk, pk);
+      if (path && (!best || path.length < best.path.length)) best = { path, dest: { pk, x: tg.x, y: tg.y, z: tg.z, sink: true } };
+    }
+    return best;
+  }
+  // Bottlers fill their empty buckets from what's been piped in.
+  tickBottlers() {
+    for (const [k, st] of this.stations.map) {
+      if (st.kind !== 'bottler') continue;
+      const [x, y, z] = unkey(k);
+      if (!this.world.chunkAt(x, z)) continue;
+      const t = this.machines.tanks.get(k);
+      if (!t || t.amount < 1 - 1e-6) continue;
+      const empty = t.liquid === LAVA ? LEAD_BUCKET : BUCKET, full = t.liquid === LAVA ? LAVA_BUCKET : WATER_BUCKET;
+      const i = st.inputs.findIndex((s) => s?.id === empty);
+      if (i < 0) continue;
+      let put = null;
+      if (!st.out) put = (v) => { st.out = v; };
+      else { const j = (st.side ?? []).findIndex((s) => !s); if (j >= 0) put = (v) => { st.side[j] = v; }; }
+      if (!put) continue;
+      if (--st.inputs[i].count <= 0) st.inputs[i] = null;
+      put({ id: full, count: 1 });
+      t.amount -= 1;
+    }
+  }
+  bottlerText(x, y, z) {
+    const t = this.machines.tanks.get(key(x, y, z));
+    return t?.amount > 0.01 ? `${Math.floor(t.amount * 10) / 10} of ${BOTTLER_CAP} buckets of ${t.liquid === LAVA ? 'lava' : 'water'}` : 'nothing yet';
+  }
+
+  // ---- drone pads keep their networks loaded ----
+  // The chunks (and those around them) of every part of a network with a drone pad on it: ["cx,cz", ...]
+  loaderChunks() {
+    if (this.dirty) this.rebuild();
+    const out = new Set(), segs = new Set();
+    for (const [k, c] of this.pipes) if (c.role === 'pad') segs.add(this.segOf.get(k));
+    for (const seg of segs) {
+      if (!seg) continue;
+      for (const k of seg.nodes) {
+        const [x, , z] = unkey(k), cx = Math.floor(x / CHUNK), cz = Math.floor(z / CHUNK);
+        for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) out.add(`${cx + dx},${cz + dz}`);
+      }
+    }
+    return [...out];
   }
 
   // ---- couriers ----
@@ -610,7 +699,7 @@ export class Logistics {
   serialize() {
     return {
       pipes: [...this.pipes].map(([k, c]) => [k, { ...c, recipe: c.recipe ? { out: c.recipe.out, in: c.recipe.in, i: RECIPES.indexOf(c.recipe) } : null }]),
-      transits: this.transits.map((t) => [t.id, t.count, t.path, +t.d.toFixed(2), t.dest, t.fluid ? 1 : 0]),
+      transits: this.transits.map((t) => [t.id, t.count, t.path, +t.d.toFixed(2), t.dest, t.fluid ? 1 : 0, t.origin ?? null]),
     };
   }
   load(o) {
@@ -631,7 +720,7 @@ export class Logistics {
     }
     for (const a of Array.isArray(o?.transits) ? o.transits : []) {
       if (!Array.isArray(a) || !(a[0] > 0) || !(a[1] > 0) || !Array.isArray(a[2]) || !a[4]) continue;
-      this.transits.push(costs({ id: a[0], count: a[1], path: a[2], d: +a[3] || 0, dest: a[4], sprite: null, fluid: !!a[5] }));
+      this.transits.push(costs({ id: a[0], count: a[1], path: a[2], d: +a[3] || 0, dest: a[4], sprite: null, fluid: !!a[5], origin: a[6] && typeof a[6] === 'object' ? a[6] : null }));
     }
     this.dirty = true;
   }

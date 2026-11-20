@@ -1382,12 +1382,21 @@ works the chests and machines it touches, according to its job:
   touches. Dipped in a still pool of water or lava, it offers as much as you like.
 - **Liquid supplier pipe** (a logistics pipe, a pipe and 2 copper): on a tank, tap it to keep the tank filled
   with water or lava up to a level. On an oven, smelter or steam engine, it keeps the fire fed with lava.
-- Liquids go along the pipes as buckets, 4 at a time at most.
+- **Liquid sink pipe** (a logistics pipe, a pipe and an item frame): on a tank or a bottler, it takes in liquid that
+  has nowhere else to go.
+- Liquids go along the pipes as buckets, 4 at a time at most. Whatever doesn't fit where it was sent goes **back
+  where it came from**. If there's no room there either, it goes to a liquid sink, and if there's none (or they're
+  all full), it's lost.
+- **Bottler** (4 iron, a tank, a bucket and a hopper): pipe water or lava into it (with a liquid sink or supplier
+  pipe) and put empty buckets in: it fills them, water into buckets and lava into lead buckets. Put an extractor
+  pipe on it to send the full buckets off to an item sink and store them in chests.
 - **Drone pad** (a logistics pipe, 4 iron, a crystal shard and a battery block): networks with a pad on the same
   channel (1 to 16; tap a pad to set it) work as one network. Anything one has can be ordered at the other's
   request table, crafting pipes on either can be used, and suppliers and sinks reach across. **Courier drones**
-  fly things between the pads. Each part needs its own powered junction, and both parts of the world must be
-  loaded. New achievement: **Air Mail**.
+  fly things between the pads. Each part needs its own powered junction.
+- **Drone pads keep their networks loaded**: every part of a network with a drone pad on it (and the chunks
+  around its pipes) stays loaded however far away you go, so distant bases keep working and stay linked. Take
+  the pad away and that part unloads as usual. New achievement: **Air Mail**.
 
 ### Worlds, creative mode, the map and achievements
 

@@ -1431,9 +1431,9 @@ function openStation(x, y, z, cart = null) {
   for (let i = 0; i < nIn; i++) make(ins, 'in', i);
   for (const [id, area] of [['st-fuel', 'fuel'], ['st-out', 'out']]) {
     $(id).innerHTML = '';
-    if (!K.storage && !K.holder && (area === 'out' || !(K.powered || K.crafter))) make($(id), area, 0);
+    if (!K.storage && !K.holder && (area === 'out' || !(K.powered || K.crafter || K.nofuel))) make($(id), area, 0);
   }
-  $('station').querySelector('.st-fuel-row').style.display = K.powered || K.crafter || K.holder ? 'none' : '';
+  $('station').querySelector('.st-fuel-row').style.display = K.powered || K.crafter || K.holder || K.nofuel ? 'none' : '';
   $('st-side').innerHTML = '';
   if (!cart) for (let i = 0; i < (K.sides ?? 0); i++) make($('st-side'), 'side', i);
   $('st-side').classList.toggle('hidden', !K.sides || !!cart);
@@ -1456,6 +1456,7 @@ function openStation(x, y, z, cart = null) {
     : K.holder ? `<p class="hint">${kind === 'planter' ? 'Put saplings, seeds or vegetables in (or feed them in with a hopper): it plants one on the grass or dirt in front of it whenever there\'s room.'
     : 'Put empty buckets in for milking yaks, and wheat to feed the animals (their coats grow back faster). Wheat, seeds or berries also feed pairs of animals so they have young. What it gets comes out of its back, into a chest, hopper or belt.'}</p>`
     : kind === 'winepress' || kind === 'cheesepress' ? `<p class="hint">It needs no fuel or power. Lay what it makes down in an oak barrel to age: ${kind === 'winepress' ? 'grape juice becomes wine, apple juice cider and berry juice berry wine in a day, and finer still three days later' : 'curds become cheese in a day, and aged cheese three days later'}.</p>`
+    : kind === 'bottler' ? `<p class="hint">Pipe water or lava into it with a liquid sink or supplier pipe: it fills the buckets put in it (lava goes in lead buckets). It holds ${logistics.bottlerText(x, y, z)}.</p>`
     : kind === 'compost' ? '<p class="hint">It needs no fuel or power: scraps just rot down, given time. Tap a crop or sapling with fertiliser to grow it a step.</p>'
     : kind === 'fishtrap' ? '<p class="hint">Sink it in water and put worms in for bait: every so often something swims in. Collect the catch from the trays (or put a hopper under it).</p>'
     : kind === 'sieve' ? '<p class="hint">It needs no fuel or power: you shake it by hand. What it sifts out (shown as a chance) collects in the trays on the right: keep them emptied (a hopper underneath does it), or things that don\'t fit are lost, and once they\'re full it stops.</p>'
@@ -4464,6 +4465,7 @@ function breakBlock(x, y, z) {
   if (id === LIGHTHOUSE_LAMP) beaconSpots.delete(`${x},${y},${z}`);
   if (stationKind(id)) loose.spill(stations.removeStacks(x, y, z), x, y, z); // whatever was inside spills out
   if (def.lpipe) logistics.remove(x, y, z);
+  if (def.station === 'bottler') machines.tanks.delete(`${x},${y},${z}`); // (the liquid in it is lost)
   if (isElectricLamp(id)) electric.signalLamps.delete(`${x},${y},${z}`);
   if (def.machine || def.engine || def.sensor || def.ejector || def.hopper || def.tank || def.farm || def.quarry || def.pad || def.spawner) loose.spill(machines.removeAt(x, y, z).map(([i, n, st]) => ({ id: i, count: n, ...st })), x, y, z); // and whatever was on a belt or in a drill
   if (isBed(id)) {
@@ -4917,6 +4919,7 @@ const LP_INFO = {
   sensor: ['Stock Sensor Pipe', 'Gives a signal (to wires, doors, lamps...) while the network has less than some amount of a thing, or, set to, at least that much. A power junction that gets a signal pauses its network.'],
   fprovider: ['Liquid Provider Pipe', 'Offers the water or lava in the tanks it touches to the network. Dipped in a still pool, it offers as much as you like.'],
   fsupplier: ['Liquid Supplier Pipe', 'Keeps the tank it touches filled to the level you set, or the oven, smelter or steam engine it touches fed with lava as fuel.'],
+  fsink: ['Liquid Sink Pipe', 'Takes in liquid that has nowhere else to go (more than its tank had room for, with no room back where it came from), into the tank or bottler it touches. A bottler fills buckets from it.'],
   pad: ['Drone Pad', 'Networks with a pad on the same channel are one network: courier drones fly things between the pads. Each part needs its own powered junction.'],
 };
 const SENSOR_STEPS = [1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024];
@@ -4924,7 +4927,8 @@ const TANK_STEPS = [1, 2, 4, 8, 12, 16];
 const lpIconOf = (id) => (id === WATER || id === LAVA ? liquidIcon(id) : id);
 const LP_STEPS = [1, 2, 4, 8, 16, 32, 64];
 let lpOpen = null; // { x, y, z, mode: 'pipe' | 'order', pick, search, recipePick }
-let ordererLink = null; // the request table the remote orderer is linked to: "x,y,z"
+let ordererLink = null;
+let keepTimer = 0; // (v30: drone pads keep their networks' chunks loaded; worked out each second) // the request table the remote orderer is linked to: "x,y,z"
 logistics.onArrive = (dest, id, n) => {
   if (Math.hypot(dest.x - player.pos.x, dest.z - player.pos.z) < 48 || lpOpen?.mode === 'order') toast(`📦 ${n > 1 ? n + ' × ' : ''}${itemName(id)} arrived at the request table`, 1800);
   if (lpOpen) renderLogistics();
@@ -4965,7 +4969,7 @@ function renderLogistics() {
       if (cfg.orders.length) html += `<p class="hint">Working on: ${cfg.orders.map((o) => `${o.left} × ${escapeHtml(itemName(o.id))}`).join(', ')}</p>`;
     }
   }
-  if (role === 'sensor' || role === 'fprovider' || role === 'fsupplier' || role === 'pad') { renderLpExtra(body, html, role, cfg, x, y, z); return; }
+  if (role === 'sensor' || role === 'fprovider' || role === 'fsupplier' || role === 'fsink' || role === 'pad') { renderLpExtra(body, html, role, cfg, x, y, z); return; }
   if (role === 'provider' || role === 'sink' || role === 'supplier') {
     if (role === 'provider') html += `<button class="btn" id="lp-mode">${cfg.mode === 'include' ? 'Offers only these:' : 'Offers everything except these:'}</button>`;
     if (role === 'sink') html += `<button class="btn" id="lp-fallback">Default route: ${cfg.fallback ? 'on (takes anything)' : 'off'}</button><p class="hint">Takes in:</p>`;
@@ -5023,19 +5027,26 @@ function renderLpExtra(body, html, role, cfg, x, y, z) {
     body.innerHTML = html;
     return;
   }
+  if (role === 'fsink') {
+    const tg = logistics.fluidTarget(pk);
+    html += tg?.kind === 'tank' ? `<p>Into the ${escapeHtml(tg.d.name.toLowerCase())}: it has ${Math.floor(machines.tank(tg.x, tg.y, tg.z).amount * 10) / 10} of ${tg.cap} buckets.</p>`
+      : '<p class="lp-warn">Put it against a tank or a bottler.</p>';
+    body.innerHTML = html;
+    return;
+  }
   if (role === 'fsupplier') {
     const tg = logistics.fluidTarget(pk);
     if (!tg) html += '<p class="lp-warn">Put it against a tank, or an oven, smelter or steam engine.</p>';
     else if (tg.kind === 'fire') html += `<p>Feeds lava to the ${escapeHtml(tg.d.name.toLowerCase())} as fuel. Holding ${Math.floor((cfg.buf ?? 0) * 100)}% of a bucket.</p>`;
     else {
       const f = cfg.filter[0];
-      html += `<p>Keep the tank filled with ${[WATER, LAVA].map((l) => `<button class="btn small${f?.id === l ? ' on' : ''}" data-l="${l}">${l === LAVA ? 'lava' : 'water'}</button>`).join(' ')}`;
-      if (f) html += ` up to <button class="btn small" data-c="-1">−</button> <b>${f.count}</b> <button class="btn small" data-c="1">+</button> buckets (of ${TANK_CAP})`;
-      html += `.</p><p class="hint">It has ${Math.floor(machines.tank(tg.x, tg.y, tg.z).amount * 10) / 10} now.</p>`;
+      html += `<p>Keep the ${escapeHtml(tg.d.name.toLowerCase())} filled with ${[WATER, LAVA].map((l) => `<button class="btn small${f?.id === l ? ' on' : ''}" data-l="${l}">${l === LAVA ? 'lava' : 'water'}</button>`).join(' ')}`;
+      if (f) html += ` up to <button class="btn small" data-c="-1">−</button> <b>${f.count}</b> <button class="btn small" data-c="1">+</button> buckets (of ${tg.cap})`;
+      html += `.</p><p class="hint">It has ${Math.floor(machines.tank(tg.x, tg.y, tg.z).amount * 10) / 10} of ${tg.cap} now.</p>`;
     }
     body.innerHTML = html;
-    body.querySelectorAll('[data-l]').forEach((b) => b.addEventListener('click', () => { cfg.filter[0] = { id: +b.dataset.l, count: cfg.filter[0]?.count ?? TANK_CAP }; sound.click(); renderLogistics(); }));
-    body.querySelectorAll('[data-c]').forEach((b) => b.addEventListener('click', () => { cfg.filter[0].count = step(TANK_STEPS, cfg.filter[0].count, +b.dataset.c); sound.click(); renderLogistics(); }));
+    body.querySelectorAll('[data-l]').forEach((b) => b.addEventListener('click', () => { cfg.filter[0] = { id: +b.dataset.l, count: cfg.filter[0]?.count ?? tg.cap }; sound.click(); renderLogistics(); }));
+    body.querySelectorAll('[data-c]').forEach((b) => b.addEventListener('click', () => { cfg.filter[0].count = Math.min(tg.cap, step(TANK_STEPS, cfg.filter[0].count, +b.dataset.c)); sound.click(); renderLogistics(); }));
     return;
   }
   // a drone pad
@@ -6725,7 +6736,7 @@ function frame(now) {
   try { stepGame(now, dt); } catch (err) { reportError(err); }
   try {
     if (!dead) stations.tick(dt, world, setStationLit, powerAt, boostAt, crafterRecipe);
-    if (!dead && worldReady) logistics.update(dt);
+    if (!dead && worldReady) { logistics.update(dt); if ((keepTimer -= dt) <= 0) { keepTimer = 1; world.keepLoaded = new Set(logistics.loaderChunks()); } }
     if (openStationAt && (stationRefresh -= dt) <= 0) { stationRefresh = 0.15; renderStation(); }
   } catch (err) { reportError(err); }
   try { world.update(player.pos.x, player.pos.z, scene, materials, 6, dt); } catch (err) { reportError(err); }

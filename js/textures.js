@@ -20,7 +20,7 @@ import {
   ELECTRIC_RAIL, CHAINSAW, SAWDUST, BOOK, BACKPACK, BIG_BACKPACK, HUGE_BACKPACK, SPANNER, GRAPPLE, URANIUM_INGOT, FUEL_ROD, JOURNAL, FERTILISER, SPENT_ROD, ENRICHED_URANIUM, ENRICHED_ROD, hazmatId, INVAR_INGOT, RAIL_STATION, BOAT, BALLOON, ZIP_LINE, METEORIC_IRON, STARSTEEL_INGOT, starsteelTool, EGG, FRIED_EGG, SADDLE, TRUFFLE, FLOWER_POT, HANGING_PLANT, WINDOW_BOX, APPLE, CHERRIES, ORANGE_FRUIT, APPLE_PIE, CHERRY_PIE, FRUIT_SALAD, ORANGE_JUICE, FISH_SOUP, TRUFFLE_SOUP, BERRY_JAM, COOK_POT, SCARECROW, EXPLORER_MAP, TREASURE_MAP, BEESWAX, CABLE_CAR, COIN, CARROT, POTATO, BAKED_POTATO, PUMPKIN_SEEDS, PUMPKIN_PIE, GRAPES, GRAPE_JUICE, WINE, FINE_WINE, CURDS, CHEESE, AGED_CHEESE, DIVING_HELMET, FLIPPERS, PEARL, LOCOMOTIVE, FIREWORK, UNFIRED_URN, GLOW_SHELL,
   ONION, BEANS, TOMATO, HERBS, APPLE_JUICE, BERRY_JUICE, CIDER, VINTAGE_CIDER, BERRY_WINE, FINE_BERRY_WINE, VEG_STEW, TOMATO_SOUP, BAKED_BEANS,
   dirtyDust, SLUDGE, SLAG, WORM, SPEED_UPGRADE, EFFICIENCY_UPGRADE, YIELD_UPGRADE,
-  FINE_CROPS, CHEST_BOAT, LP_ROLES, LP_PIPE, REMOTE_ORDERER, LP_SENSOR, LP_FPROVIDER, LP_FSUPPLIER, SADDLEBAGS, HORSE_ARMOUR, LAVENDER_HONEY, BLOSSOM_HONEY, GOLDEN_HONEY, LAVENDER_TEA, BLOSSOM_TEA, GOLDEN_TEA,
+  FINE_CROPS, CHEST_BOAT, LP_ROLES, LP_PIPE, REMOTE_ORDERER, LP_SENSOR, LP_FPROVIDER, LP_FSUPPLIER, LP_FSINK, SADDLEBAGS, HORSE_ARMOUR, LAVENDER_HONEY, BLOSSOM_HONEY, GOLDEN_HONEY, LAVENDER_TEA, BLOSSOM_TEA, GOLDEN_TEA,
   SALTPETRE, GUNPOWDER, LEAD_SINKER, WEIGHTED_ROD, LEAD_BUCKET, LAVA_BUCKET, GOLD_CLOCK, COMPASS, SILVER_ARROW, MIRROR_LAMP,
 } from './blocks.js';
 
@@ -2938,6 +2938,20 @@ P[T.LP_SENSOR_ON] = lpCore([70, 74, 86], (x, y) => (Math.hypot(x - 7.5, y - 7.5)
 const drop = (x, y) => (Math.hypot(x - 7.5, y - 8.5) < 2.6 || (y >= 4 && y < 7 && Math.abs(x - 7.5) < (y - 3) * 0.7) ? [210, 240, 255] : null);
 P[T.LP_FPROVIDER] = lpCore([40, 170, 170], drop);
 P[T.LP_FSUPPLIER] = lpCore([40, 80, 190], drop);
+P[T.LP_FSINK] = lpCore([120, 70, 170], drop);
+P[T.BOTTLER_SIDE] = (t) => {
+  for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+    const edge = x < 1 || x > 14 || y < 1 || y > 14, glass = x > 3 && x < 12 && y > 2 && y < 10, level = glass && y > 6;
+    const bucket = y > 10 && y < 14 && ((x > 2 && x < 6) || (x > 9 && x < 13));
+    t.set(x, y, edge ? [150, 154, 162] : level ? [70, 130, 220] : glass ? [200, 230, 240] : bucket ? [190, 194, 200] : t.vary([112, 116, 124], 0.06));
+  }
+};
+P[T.BOTTLER_TOP] = (t) => {
+  for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+    const edge = x < 1 || x > 14 || y < 1 || y > 14, port = Math.hypot(x - 7.5, y - 7.5) < 3;
+    t.set(x, y, edge ? [150, 154, 162] : port ? (Math.hypot(x - 7.5, y - 7.5) < 2 ? [40, 44, 50] : [214, 176, 70]) : t.vary([112, 116, 124], 0.06));
+  }
+};
 P[T.DRONE_PAD_TOP] = (t) => {
   for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
     const edge = x < 1 || x > 14 || y < 1 || y > 14, ring = Math.abs(Math.hypot(x - 7.5, y - 7.5) - 5.5) < 0.8;
@@ -2956,6 +2970,7 @@ const lpIconOf = (core, mark) => (ctx) => {
 ITEM_PAINTERS[LP_SENSOR] = lpIconOf([70, 74, 86], (ctx) => rect(ctx, 7, 7, 2, 2, [255, 90, 70]));
 ITEM_PAINTERS[LP_FPROVIDER] = lpIconOf([40, 170, 170], (ctx) => { rect(ctx, 7, 6, 2, 1, [210, 240, 255]); rect(ctx, 6, 7, 4, 3, [210, 240, 255]); });
 ITEM_PAINTERS[LP_FSUPPLIER] = lpIconOf([40, 80, 190], (ctx) => { rect(ctx, 7, 6, 2, 1, [210, 240, 255]); rect(ctx, 6, 7, 4, 3, [210, 240, 255]); });
+ITEM_PAINTERS[LP_FSINK] = lpIconOf([120, 70, 170], (ctx) => { rect(ctx, 7, 6, 2, 1, [210, 240, 255]); rect(ctx, 6, 7, 4, 3, [210, 240, 255]); });
 ITEM_PAINTERS[REMOTE_ORDERER] = (ctx) => {
   rect(ctx, 4, 2, 8, 12, [60, 64, 74]); rect(ctx, 5, 3, 6, 5, [90, 200, 230]); rect(ctx, 5, 9, 2, 1, [214, 176, 70]); rect(ctx, 9, 9, 2, 1, [214, 176, 70]); rect(ctx, 5, 11, 6, 1, [214, 176, 70]); rect(ctx, 7, 0, 1, 2, [180, 180, 190]);
 };
