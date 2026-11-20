@@ -90,6 +90,9 @@ const CHAPTERS = [
     ['crafting', 'Crafting Pipe', has(B.LP_CRAFTING), 'On an auto-crafter or a machine, it lets the network make things: ingredients first.', [B.AUTO_CRAFTER, 1]],
     ['order', 'Supply Chain', ach('logistics'), 'Order something at a request table.', [B.GOLD_INGOT, 2]],
     ['remote', 'From Afar', has(B.REMOTE_ORDERER), 'Link a remote orderer to a request table and order from anywhere nearby.', [B.CRYSTAL_SHARD, 1]],
+    ['sensor', 'Running Low', has(B.LP_SENSOR), 'A stock sensor pipe signals while the network runs short of something: wire it to a lamp, or a machine.', [B.WIRE, 8]],
+    ['liquid', 'Liquid Assets', has([B.LP_FPROVIDER, B.LP_FSUPPLIER]), 'Liquid pipes fill tanks, and feed lava to ovens, smelters and engines.', [B.TANK, 1]],
+    ['courier', 'Air Mail', ach('courier'), 'Drone pads on the same channel join two networks: couriers fly between them.', [B.CRYSTAL_SHARD, 1]],
   ]],
   ['village', 'Village Life', 2, [
     ['trade', 'Fair Trade', ach('trade'), 'Find a village and trade with a villager, or a wandering trader.', [B.COIN, 4]],

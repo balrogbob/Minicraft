@@ -1369,6 +1369,26 @@ works the chests and machines it touches, according to its job:
 - (Classic Logistics Pipes' satellite pipes and chassis modules are left out: a machine here takes all its
   ingredients on one block, and each module is its own pipe instead.)
 
+### Version 30
+
+#### Logistics signals, liquid pipes and courier drones
+
+- **Stock sensor pipe** (a logistics pipe and a daylight sensor): tap it to choose a thing (or water or lava),
+  an amount, and whether it signals while the network has **less than** that or **at least** that. Wire it to
+  lamps, doors, machines or anything else that takes a signal.
+- A **power junction** that gets a signal (from a lever, wire or anything but the network's own pipes)
+  **pauses** its part of the network.
+- **Liquid provider pipe** (a logistics pipe, a pipe and a bucket): offers the water or lava in the tanks it
+  touches. Dipped in a still pool of water or lava, it offers as much as you like.
+- **Liquid supplier pipe** (a logistics pipe, a pipe and 2 copper): on a tank, tap it to keep the tank filled
+  with water or lava up to a level. On an oven, smelter or steam engine, it keeps the fire fed with lava.
+- Liquids go along the pipes as buckets, 4 at a time at most.
+- **Drone pad** (a logistics pipe, 4 iron, a crystal shard and a battery block): networks with a pad on the same
+  channel (1 to 16; tap a pad to set it) work as one network. Anything one has can be ordered at the other's
+  request table, crafting pipes on either can be used, and suppliers and sinks reach across. **Courier drones**
+  fly things between the pads. Each part needs its own powered junction, and both parts of the world must be
+  loaded. New achievement: **Air Mail**.
+
 ### Worlds, creative mode, the map and achievements
 
 ☰ → **Worlds…** holds three worlds. Play any of them, start a new **survival** or **creative** world in a slot,

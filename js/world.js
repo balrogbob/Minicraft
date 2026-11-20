@@ -1134,7 +1134,7 @@ export class World {
       if (def.shape === 'lpipe') {
         // a logistics pipe: a coloured core (by its job) with clear arms out to each pipe, chest or machine it touches
         const model = [[4.5, 4.5, 4.5, 11.5, 11.5, 11.5, def.side]];
-        const joins = (id) => { const d = BLOCKS[id]; return !!(d?.lpipe || d?.station); };
+        const joins = (id) => { const d = BLOCKS[id]; return !!(d?.lpipe || d?.station || d?.tank || d?.engine || (d?.liquid && def.lpipe === 'fprovider')); };
         if (joins(this.get(x + 1, y, z))) model.push([11.5, 5.5, 5.5, 16, 10.5, 10.5, T.LP_ARM]);
         if (joins(this.get(x - 1, y, z))) model.push([0, 5.5, 5.5, 4.5, 10.5, 10.5, T.LP_ARM]);
         if (joins(this.get(x, y + 1, z))) model.push([5.5, 11.5, 5.5, 10.5, 16, 10.5, T.LP_ARM]);

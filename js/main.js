@@ -32,7 +32,7 @@ import {
   SNOWMAN, FIREWORK, PUMPKIN, JACK_O_LANTERN, EGG, POPPY, DANDELION, DAISY, LAVENDER,
   ONION, BEANS, TOMATO, HERBS, CIDER, VINTAGE_CIDER, BERRY_WINE, FINE_BERRY_WINE,
   KILN, ROPE_LADDER, ROPE_BRIDGE, BRIDGE_RAIL, LOCK_GATE, SLUICE_WHEEL, STALACTITE, STALAGMITE,
-  CHARCOAL_HEAP, CLAY, STONE, UPGRADES, CHEST_BOAT, LP_TABLE, LP_POWER, REMOTE_ORDERER, FINE_CROPS, isFine, WORM, SADDLEBAGS, GOLDEN_TEA, SPEED_UPGRADE, YIELD_UPGRADE, HAY_BALE, LAVENDER_HONEY, BLOSSOM_HONEY, GOLDEN_HONEY, FRUIT_LEAVES,
+  CHARCOAL_HEAP, CLAY, STONE, UPGRADES, CHEST_BOAT, LP_TABLE, LP_POWER, REMOTE_ORDERER, DRONE_PAD, TANK_CAP, FINE_CROPS, isFine, WORM, SADDLEBAGS, GOLDEN_TEA, SPEED_UPGRADE, YIELD_UPGRADE, HAY_BALE, LAVENDER_HONEY, BLOSSOM_HONEY, GOLDEN_HONEY, FRUIT_LEAVES,
 } from './blocks.js';
 import { Smoke } from './smoke.js';
 import { Fireworks } from './fireworks.js';
@@ -44,7 +44,7 @@ import { buildLegacyWorld, LEGACY_W } from './legacy.js';
 import { Sky, DAY_LENGTH } from './sky.js';
 import { Sound } from './sound.js';
 import { Music } from './music.js';
-import { Logistics } from './logistics.js';
+import { Logistics, CHANNELS, liquidIcon } from './logistics.js';
 import { Player } from './player.js';
 import { Inventory, SLOTS } from './inventory.js';
 import { Controls, KEY_ACTIONS, DEFAULT_KEYS, keyLabel } from './controls.js';
@@ -73,7 +73,7 @@ import { Logic } from './logic.js';
 
 // v2 = the 16k x 16k streaming world (player state here, edited chunks in IndexedDB).
 // v1 = the old 128 x 128 world, migrated into the middle of the big world on first launch.
-const GAME_VERSION = '29'; // shown in the menu; bump with each release
+const GAME_VERSION = '30'; // shown in the menu; bump with each release
 const SAVE_KEY = 'minicraft-save-v2';
 const LEGACY_SAVE_KEY = 'minicraft-save-v1';
 const SETTINGS_KEY = 'minicraft-settings-v1';
@@ -3189,6 +3189,10 @@ mobs.onWorldKill = (m, drops) => {
 mobs.onBred = (baby) => { if (Math.hypot(baby.pos.x - player.pos.x, baby.pos.z - player.pos.z) < 24) toast(`A young ${baby.kind} is born!`, 2200); };
 machines.onBlockChanged = (x, y, z) => { logic.near(world, x, y, z); dropUnsupported(x, y, z); };
 machines.signalAt = signalAt;
+// (v30) stock sensors switch like other switches; a power junction getting a signal (not from the network's own sensors) pauses it
+logistics.onSwitch = (x, y, z, on) => setSwitch(x, y, z, on);
+logistics.onFlight = () => achieve('courier');
+logistics.pausedAt = (x, y, z) => SIDES6.some(([dx, dy, dz]) => !BLOCKS[world.get(x + dx, y + dy, z + dz)]?.lpipe && feeds(x, y, z, x + dx, y + dy, z + dz, false));
 
 function setSwitch(x, y, z, on) {
   const d = BLOCKS[world.get(x, y, z)];
@@ -3198,7 +3202,7 @@ function setSwitch(x, y, z, on) {
       : d.switch === 'observer' ? OBSERVER + d.facing + (on ? 4 : 0)
         : d.switch === 'gauge' ? GAUGE + d.facing + (on ? 4 : 0) : PRESSURE_PLATE + (on ? 1 : 0);
   world.setBlock(x, y, z, id);
-  if (!d.sensor && !d.logic && d.switch !== 'detector') sound.click();
+  if (!d.sensor && !d.logic && d.switch !== 'detector' && d.switch !== 'stock') sound.click();
   signalChanged(x, y, z);
 }
 
@@ -3717,6 +3721,7 @@ function placeInner() {
     if (BLOCKS[tid].switch === 'lever') { setSwitch(tx, ty, tz, !BLOCKS[tid].on); return; }
     if (tid === LP_TABLE && !(held && isBlock(held.id))) { openLogistics(tx, ty, tz, 'order'); return; }
     if (BLOCKS[tid].shape === 'lpipe' && !(held && isBlock(held.id))) { logistics.add(tx, ty, tz); openLogistics(tx, ty, tz, 'pipe'); return; }
+    if (tid === DRONE_PAD && !(held && isBlock(held.id))) { logistics.add(tx, ty, tz); openLogistics(tx, ty, tz, 'pipe'); return; }
     if (tid === LP_POWER && !(held && isBlock(held.id))) { toast(`${logistics.status(tx, ty, tz)} ${electric.statusAt(tx, ty, tz)}`, 3000); return; }
     if (BLOCKS[tid].stable && (held?.id === HAY_BALE || held?.id === WHEAT)) { stockStable(tx, ty, tz, held.id); return; }
     if (BLOCKS[tid].stable && !(held && isBlock(held.id))) { useStable(tx, ty, tz); return; }
@@ -4909,7 +4914,14 @@ const LP_INFO = {
   supplier: ['Supplier Pipe', 'Keeps the chest or machine it touches stocked with what you set here, ordering more as it\'s used (fuel goes in a machine\'s fuel slot).'],
   sink: ['Item Sink Pipe', 'Takes in the things you set here, from extractors and anything that has nowhere else to go. As the default route it takes in anything.'],
   extractor: ['Extractor Pipe', 'Pulls things out of the chest it touches (or what a machine has made) and sends them off to an item sink.'],
+  sensor: ['Stock Sensor Pipe', 'Gives a signal (to wires, doors, lamps...) while the network has less than some amount of a thing, or, set to, at least that much. A power junction that gets a signal pauses its network.'],
+  fprovider: ['Liquid Provider Pipe', 'Offers the water or lava in the tanks it touches to the network. Dipped in a still pool, it offers as much as you like.'],
+  fsupplier: ['Liquid Supplier Pipe', 'Keeps the tank it touches filled to the level you set, or the oven, smelter or steam engine it touches fed with lava as fuel.'],
+  pad: ['Drone Pad', 'Networks with a pad on the same channel are one network: courier drones fly things between the pads. Each part needs its own powered junction.'],
 };
+const SENSOR_STEPS = [1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024];
+const TANK_STEPS = [1, 2, 4, 8, 12, 16];
+const lpIconOf = (id) => (id === WATER || id === LAVA ? liquidIcon(id) : id);
 const LP_STEPS = [1, 2, 4, 8, 16, 32, 64];
 let lpOpen = null; // { x, y, z, mode: 'pipe' | 'order', pick, search, recipePick }
 let ordererLink = null; // the request table the remote orderer is linked to: "x,y,z"
@@ -4953,6 +4965,7 @@ function renderLogistics() {
       if (cfg.orders.length) html += `<p class="hint">Working on: ${cfg.orders.map((o) => `${o.left} × ${escapeHtml(itemName(o.id))}`).join(', ')}</p>`;
     }
   }
+  if (role === 'sensor' || role === 'fprovider' || role === 'fsupplier' || role === 'pad') { renderLpExtra(body, html, role, cfg, x, y, z); return; }
   if (role === 'provider' || role === 'sink' || role === 'supplier') {
     if (role === 'provider') html += `<button class="btn" id="lp-mode">${cfg.mode === 'include' ? 'Offers only these:' : 'Offers everything except these:'}</button>`;
     if (role === 'sink') html += `<button class="btn" id="lp-fallback">Default route: ${cfg.fallback ? 'on (takes anything)' : 'off'}</button><p class="hint">Takes in:</p>`;
@@ -4984,6 +4997,58 @@ function renderLogistics() {
     sound.click(); renderLogistics();
   }));
 }
+// (v30) The stock sensor, liquid pipes and drone pads.
+function renderLpExtra(body, html, role, cfg, x, y, z) {
+  const net = logistics.netAt(x, y, z), pk = `${x},${y},${z}`;
+  const step = (list, v, d) => { const i = list.findIndex((s) => s >= v); return list[Math.max(0, Math.min(list.length - 1, (i < 0 ? list.length - 1 : i) + d))]; };
+  if (role === 'sensor') {
+    const f = cfg.filter[0], have = f ? logistics.amountOf(net, f.id) : 0;
+    html += `<div class="lp-sense"><div class="lp-ghost" id="lp-sense-slot">${f ? lpIcon(lpIconOf(f.id)) : ''}</div>`;
+    html += f ? `<span>Signals while the network has <button class="btn small" id="lp-when">${cfg.when === 'above' ? 'at least' : 'less than'}</button>
+      <button class="btn small" data-c="-1">−</button> <b>${f.count}</b> <button class="btn small" data-c="1">+</button> ${escapeHtml(itemName(f.id))}${isLiquidId(f.id) ? ' (buckets)' : ''}.<br>
+      It has ${have === Infinity ? 'endless' : Math.floor(have)} now: <b>${logistics.sensed(net, cfg) ? 'signalling' : 'not signalling'}</b>.</span>` : '<span>Choose what to watch:</span>';
+    html += '</div>';
+    html += `<div class="lp-palette">${[WATER, LAVA, ...new Set(inventory.slots.filter(Boolean).map((s) => s.id))].map((i) => `<button class="lp-pal" data-id="${i}" title="${escapeHtml(itemName(i))}">${lpIcon(lpIconOf(i))}</button>`).join('')}</div>`;
+    body.innerHTML = html;
+    body.querySelectorAll('.lp-pal').forEach((b) => b.addEventListener('click', () => { cfg.filter[0] = { id: +b.dataset.id, count: cfg.filter[0]?.count ?? 16 }; sound.click(); renderLogistics(); }));
+    body.querySelector('#lp-sense-slot').addEventListener('click', () => { cfg.filter[0] = null; renderLogistics(); });
+    body.querySelector('#lp-when')?.addEventListener('click', () => { cfg.when = cfg.when === 'above' ? 'below' : 'above'; renderLogistics(); });
+    body.querySelectorAll('[data-c]').forEach((b) => b.addEventListener('click', () => { cfg.filter[0].count = step(SENSOR_STEPS, cfg.filter[0].count, +b.dataset.c); sound.click(); renderLogistics(); }));
+    return;
+  }
+  if (role === 'fprovider') {
+    const src = logistics.fluidSources(pk);
+    html += src.length ? `<p>Offers: ${src.map((s) => `${s.amount === Infinity ? 'endless' : Math.floor(s.amount * 10) / 10 + ' buckets of'} ${s.liquid === LAVA ? 'lava' : 'water'}${s.tank ? ' (tank)' : ' (pool)'}`).join(', ')}</p>`
+      : '<p class="lp-warn">Put it against a tank with something in it, or dip it in a still pool of water or lava.</p>';
+    body.innerHTML = html;
+    return;
+  }
+  if (role === 'fsupplier') {
+    const tg = logistics.fluidTarget(pk);
+    if (!tg) html += '<p class="lp-warn">Put it against a tank, or an oven, smelter or steam engine.</p>';
+    else if (tg.kind === 'fire') html += `<p>Feeds lava to the ${escapeHtml(tg.d.name.toLowerCase())} as fuel. Holding ${Math.floor((cfg.buf ?? 0) * 100)}% of a bucket.</p>`;
+    else {
+      const f = cfg.filter[0];
+      html += `<p>Keep the tank filled with ${[WATER, LAVA].map((l) => `<button class="btn small${f?.id === l ? ' on' : ''}" data-l="${l}">${l === LAVA ? 'lava' : 'water'}</button>`).join(' ')}`;
+      if (f) html += ` up to <button class="btn small" data-c="-1">−</button> <b>${f.count}</b> <button class="btn small" data-c="1">+</button> buckets (of ${TANK_CAP})`;
+      html += `.</p><p class="hint">It has ${Math.floor(machines.tank(tg.x, tg.y, tg.z).amount * 10) / 10} now.</p>`;
+    }
+    body.innerHTML = html;
+    body.querySelectorAll('[data-l]').forEach((b) => b.addEventListener('click', () => { cfg.filter[0] = { id: +b.dataset.l, count: cfg.filter[0]?.count ?? TANK_CAP }; sound.click(); renderLogistics(); }));
+    body.querySelectorAll('[data-c]').forEach((b) => b.addEventListener('click', () => { cfg.filter[0].count = step(TANK_STEPS, cfg.filter[0].count, +b.dataset.c); sound.click(); renderLogistics(); }));
+    return;
+  }
+  // a drone pad
+  const others = [...logistics.pipes].filter(([k, c]) => k !== pk && c.role === 'pad' && c.channel === cfg.channel).length;
+  const linked = net?.pads?.filter((k) => k !== pk && logistics.pipes.get(k).channel === cfg.channel).length ?? 0;
+  html += `<p>Channel <button class="btn small" data-ch="-1">−</button> <b>${cfg.channel}</b> <button class="btn small" data-ch="1">+</button></p>
+    <p class="hint">${others ? `${others} other pad${others > 1 ? 's' : ''} on this channel; ${linked} linked now${linked < others ? ' (a pad links while its network is powered and its part of the world is loaded)' : ''}.` : 'No other pads on this channel yet.'}</p>`;
+  body.innerHTML = html;
+  body.querySelectorAll('[data-ch]').forEach((b) => b.addEventListener('click', () => {
+    cfg.channel = ((cfg.channel - 1 + +b.dataset.ch + CHANNELS) % CHANNELS) + 1; logistics.dirty = true; sound.click(); renderLogistics();
+  }));
+}
+const isLiquidId = (id) => id === WATER || id === LAVA;
 // Choosing what a crafting pipe makes: the recipes of the thing it's on.
 function renderRecipePick(body, inv) {
   const cfg = logistics.config(lpOpen.x, lpOpen.y, lpOpen.z), q = lpOpen.search.toLowerCase();
