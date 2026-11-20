@@ -2,12 +2,13 @@
 // with block light and sunlight flowing across chunk borders, chunk meshing and raycasting.
 import * as THREE from 'three';
 import {
-  BLOCKS, AIR, LEAVES, LOG, isLeaves, FRUIT_SAPLING, FRUITS, fruitLeaves, GLASS, DIRT, GRASS, WATER, MAX_LIGHT, SUGAR_CANE, MAX_CANE_HEIGHT,
+  BLOCKS, AIR, LEAVES, LOG, isLeaves, FRUIT_SAPLING, FRUITS, fruitLeaves, saplingLeaves, GLASS, DIRT, GRASS, WATER, MAX_LIGHT, SUGAR_CANE, MAX_CANE_HEIGHT,
   PUMPKIN, isWheat, WATER_FLOW, WATER_FALL, WATER_WHEEL, isWaterId, isFlowing, waterLevel, LAVA, OBSIDIAN, COBBLE, PIPE, PUMP, SPOUT, T, FLOWERS, isFlower, FACING_DIRS,
 } from './blocks.js';
 
 // Water wheels let water run through their cell (and over them); see waterAt().
 const isWheel = (id) => id === WATER_WHEEL || id === WATER_WHEEL + 1;
+const MOULD_SECONDS = 60; // (v33) seconds, on average, for each step of chocolate setting in a mould
 const TAP_SECONDS = 90; // (v32) seconds, on average, for a tree tap to fill another level of latex
 import { TILE, ATLAS_COLS } from './textures.js';
 import { Generator, CHUNK, H, SEA_LEVEL, WORLD_SIZE, WORLD_CHUNKS, CHUNK_VOLUME, localIndex } from './terrain.js';
@@ -415,6 +416,7 @@ export class World {
         }
         if (def.grows === 'honey') { this.tickHive(x, y, z, id, elapsed); continue; }
         if (def.grows === 'latex') { this.tickTap(x, y, z, id, elapsed); continue; }
+        if (def.grows === 'setting') { this.tickMould(x, y, z, id, elapsed); continue; }
         if (def.grows === 'fruit') { this.tickFruit(x, y, z, def, elapsed); continue; }
         const tired = def.crop || isWheat(id) ? this.soilFactor(x, y - 1, z) : 1;
         // plants grow faster in the rain, near bees, watered, and with the seasons
@@ -429,8 +431,8 @@ export class World {
         if (def.grows === 'up') this.setBlock(x, y + 1, z, SUGAR_CANE);
         else if (def.grows === 'pumpkin') this.growPumpkin(x, y, z);
         else if (def.grows === 'tree') {
-          const k = id - FRUIT_SAPLING; // a fruit tree is a little shorter
-          if (k >= 0 && k < FRUITS.length) this.growTree(x, y, z, 3 + Math.floor(Math.random() * 2), fruitLeaves(k)); else this.growTree(x, y, z);
+          const leaves = saplingLeaves(id); // a fruit (or cocoa) tree is a little shorter
+          if (leaves) this.growTree(x, y, z, 3 + Math.floor(Math.random() * 2), leaves); else this.growTree(x, y, z);
         }
         else this.setBlock(x, y, z, def.grows);
       }
@@ -481,14 +483,15 @@ export class World {
   }
 
   // A fruit tree's leaves: about one in four bears fruit in summer and autumn; ripe fruit falls in winter.
+  // (v33) Cocoa pods ripen in spring, summer and autumn, a third as fast, and don't fall in winter.
   tickFruit(x, y, z, def, elapsed) {
-    const s = this.season ?? 0;
-    if (def.fruit.ripe) {
-      if (s === 3 && Math.random() < elapsed / 60) this.setBlock(x, y, z, fruitLeaves(def.fruit.kind));
+    const s = this.season ?? 0, f = def.fruit;
+    if (f.ripe) {
+      if (s === 3 && !f.tropical && Math.random() < elapsed / 60) this.setBlock(x, y, z, f.bare);
       return;
     }
-    if ((s !== 1 && s !== 2) || ((x * 7 + y * 13 + z * 31) & 3) !== 0) return;
-    if (Math.random() < Math.min(GROW_MAX_CHANCE, elapsed * (this.raining ? 1.5 : 1) / GROW_SECONDS.fruit)) this.setBlock(x, y, z, fruitLeaves(def.fruit.kind, true));
+    if ((f.tropical ? s === 3 : s !== 1 && s !== 2) || ((x * 7 + y * 13 + z * 31) & 3) !== 0) return;
+    if (Math.random() < Math.min(GROW_MAX_CHANCE, elapsed * (this.raining ? 1.5 : 1) / (GROW_SECONDS.fruit * (f.tropical ? 3 : 1)))) this.setBlock(x, y, z, f.ripeId);
   }
 
   // Every loaded bee hive, as [x, y, z].
@@ -506,6 +509,19 @@ export class World {
   tickTap(x, y, z, id, elapsed) {
     if (!this.tapOnTree(x, y, z)) return;
     if (Math.random() < elapsed * Math.max(0.1, this.growthRate ?? 1) / TAP_SECONDS) this.setBlock(x, y, z, id + 1);
+  }
+
+  // (v33) Chocolate in a mould sets in two steps, about a minute each; twice as fast somewhere cold (snowy land,
+  // winter, or ice or snow beside it), and half as fast beside something hot (lava or a fire).
+  mouldChill(x, y, z) {
+    let k = 1;
+    const near = [[1, 0, 0], [-1, 0, 0], [0, 0, 1], [0, 0, -1], [0, -1, 0]].map(([dx, dy, dz]) => BLOCKS[this.get(x + dx, y + dy, z + dz)]);
+    if ((this.season ?? 0) === 3 || this.generator?.biomeAt?.(x, z) === 'tundra' || near.some((d) => /Ice|Snow/.test(d?.name ?? ''))) k = 2;
+    if (near.some((d) => d?.lit || /Lava|Fire|Furnace|Oven/.test(d?.name ?? ''))) k *= 0.5;
+    return k;
+  }
+  tickMould(x, y, z, id, elapsed) {
+    if (Math.random() < elapsed * this.mouldChill(x, y, z) / MOULD_SECONDS) this.setBlock(x, y, z, id + 1);
   }
 
   tickHive(x, y, z, id, elapsed) {

@@ -75,7 +75,7 @@ import { Logic } from './logic.js';
 
 // v2 = the 16k x 16k streaming world (player state here, edited chunks in IndexedDB).
 // v1 = the old 128 x 128 world, migrated into the middle of the big world on first launch.
-const GAME_VERSION = '32'; // shown in the menu; bump with each release
+const GAME_VERSION = '33'; // shown in the menu; bump with each release
 const SAVE_KEY = 'minicraft-save-v2';
 const LEGACY_SAVE_KEY = 'minicraft-save-v1';
 const SETTINGS_KEY = 'minicraft-settings-v1';
@@ -478,7 +478,7 @@ async function startWorld(save, opts = {}) {
     if (dead || (x + 0.5 - p.x) ** 2 + (y + 0.5 - p.y) ** 2 + (z + 0.5 - p.z) ** 2 > 16 * 16) return;
     // a fruit tree's leaves give its own saplings (but not their fruit, which you'd pick)
     const fruit = BLOCKS[was]?.fruit;
-    const drops = dropsFor(fruit ? fruitLeaves(fruit.kind) : LEAVES, 0);
+    const drops = dropsFor(fruit ? fruit.bare : LEAVES, 0);
     if (drops.length) giveDrops(drops);
   };
   mobs.reset(world); bees.clear(); crows.clear(); critters.clear(); fires.clear(); hearths.clear(); smoke.clear(); fireworks.clear(); exitPhotoMode(); clearChestMark(); openGates.clear(); lockJobs.length = 0; piles.length = 0; mangers.clear(); clearRocks(); strikeIn = 20; catGiftDay = -1; bellDay = -1; villageGrowth = new Map(); shownSeason = -1;
@@ -3804,12 +3804,14 @@ function placeInner() {
     if (BLOCKS[tid].bell) { ringBell(tx, tz, held); return; }
     if (tid === SLUICE_WHEEL) { workLock(tx, ty, tz); return; }
     if (tid === LOG && held?.id === TORCH && lightCharcoalPile(tx, ty, tz, [target.nx, target.ny, target.nz])) return;
+    if (tid >= CHOC_MOULD && tid < CHOC_MOULD + 4) { useMould(tx, ty, tz, tid, held); return; }
+    if (tid >= CHOC_CAKE && tid < CHOC_CAKE + CAKE_SLICES && !(held && isBlock(held.id))) { eatCakeSlice(tx, ty, tz, tid); return; }
     if (BLOCKS[tid].fruit?.ripe) {
       // pick the fruit off a fruit tree's leaves
       const f = BLOCKS[tid].fruit;
-      world.setBlock(tx, ty, tz, fruitLeaves(f.kind));
+      world.setBlock(tx, ty, tz, f.bare);
       sound.breakBlock('leaves');
-      giveDrops([[FRUITS[f.kind].item, 1 + (Math.random() < 0.3 ? 1 : 0)]]);
+      giveDrops([[f.item, 1 + (Math.random() < 0.3 ? 1 : 0)]]);
       return;
     }
     if (tid === BERRY_BUSH + 1) {
@@ -6993,6 +6995,7 @@ apiculture.onYoung = (x, y, z, sp, mate, kids) => {
 };
 
 // ---------- v32: tree taps ----------
+import { CHOC_MOULD, CHOC_CAKE, CAKE_SLICES, MOULD_BARS, MELTED_CHOC, CHOC_BAR } from './blocks.js';
 import { TREE_TAP, LATEX, MAX_LATEX, POLYMER_BOAT, DEMO_CHARGE, DETONATOR, DEMO_RADIUS, DETONATOR_LINKS, DETONATOR_RANGE } from './blocks.js';
 // Tapping a tree tap takes the latex in it.
 function useTap(x, y, z, tid) {
@@ -7036,3 +7039,37 @@ function useDetonator(held, target) {
   else toast(far ? 'The linked charges are out of range' : 'None of the linked charges are left', 2000);
 }
 window.minicraft.useDetonator = useDetonator;
+
+// ---------- v33: the chocolate mould and chocolate cake ----------
+// Tap an empty mould holding melted chocolate to pour it in; tap it once it's set to knock out the bars.
+function useMould(x, y, z, tid, held) {
+  const k = tid - CHOC_MOULD;
+  if (k === 0) {
+    if (held?.id !== MELTED_CHOC) { toast('Pour melted chocolate into the mould (melt cocoa powder, sugar and butter in a cooking pot)', 2400); return; }
+    inventory.consumeHeld();
+    if (inventory.add(GLASS_BOTTLE, 1)) toast('Inventory full');
+    world.setBlock(x, y, z, CHOC_MOULD + 1);
+    sound.pour();
+    const chill = world.mouldChill(x, y, z);
+    toast(`Poured. Leave it to set${chill > 1 ? ': it\'s nice and cold here, so it won\'t be long' : chill < 1 ? ', though it\'s too warm here for it to set quickly' : ''}.`, 2200);
+    return;
+  }
+  if (k < 3) { toast(k === 1 ? 'The chocolate is still runny' : 'The chocolate is nearly set', 1500); return; }
+  world.setBlock(x, y, z, CHOC_MOULD);
+  sound.click();
+  giveDrops([[CHOC_BAR, MOULD_BARS]]);
+  achieve('chocolate');
+}
+function eatCakeSlice(x, y, z, tid) {
+  if (hunger > MAX_HUNGER - 1) { toast('You\'re not hungry'); return; }
+  const k = tid - CHOC_CAKE;
+  hunger = Math.min(MAX_HUNGER, hunger + 5);
+  health = Math.min(MAX_HEALTH, health + 2);
+  effects.fed = Math.max(effects.fed, 100);
+  world.setBlock(x, y, z, k + 1 < CAKE_SLICES ? tid + 1 : AIR);
+  sound.eat();
+  toast(k + 1 < CAKE_SLICES ? `Ate a slice of chocolate cake (${CAKE_SLICES - k - 1} left)` : 'Ate the last slice of chocolate cake', 1500);
+  renderHunger(); renderHealth();
+}
+window.minicraft.useMould = useMould;
+window.minicraft.eatCakeSlice = eatCakeSlice;

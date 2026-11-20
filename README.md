@@ -288,6 +288,33 @@ Active teas show with their time left next to your coordinates. You keep the bot
   **scarecrow** (3 sticks, 6 wheat, a wool) keeps them off everything within 8 blocks, and they fly off if you come
   near.
 
+### Cocoa and chocolate
+
+**Cocoa trees** grow wild in the warmest green land, where it borders the deserts. Their pods ripen in spring,
+summer and autumn (more slowly than orchard fruit) and stay on through winter. Pick them like fruit, or plant a
+cocoa sapling (from their leaves) to grow your own.
+
+| Make | From | Where |
+| --- | --- | --- |
+| 3 Cocoa beans | 1 cocoa pod | anywhere |
+| Roasted cocoa beans | cocoa beans | oven |
+| Cocoa powder | 2 roasted cocoa beans | mortar |
+| 3 Chocolate milk | milk bucket + 2 cocoa powder + 1 sugar + 3 glass bottles | anywhere |
+| Hot chocolate | chocolate milk | oven |
+| 2 Melted chocolate | 2 cocoa powder + 1 sugar + 1 butter + 2 glass bottles | cooking pot |
+| Chocolate mould | 3 tin ingots | crafting table |
+| Chocolate cake | 2 chocolate bars + chocolate milk + 2 flour + egg + sugar | crafting table |
+| 4 Chocolate cookies | 4 cookies + 1 cocoa powder | anywhere |
+| 2 Chocolate cherries | 4 cherries + 1 chocolate bar | anywhere |
+
+- **The chocolate mould.** Set it down and tap it holding melted chocolate to pour it in. It sets in two
+  steps of about a minute each: twice as fast somewhere cold (snowy land, winter, or with ice or snow beside
+  it) and half as fast beside something hot. Tap it once it's set to knock out 4 chocolate bars.
+- **Chocolate bars** give you a short burst of speed. **Hot chocolate** warms you right through (and keeps the
+  chill off for longer than tea). **Chocolate cherries** heal you.
+- **Chocolate cake** is set down like a block: tap it to eat a slice (4 slices). Each slice fills you up a
+  little and heals a heart.
+
 ### Crops and crop rotation
 
 - **Carrots** and **potatoes** grow from themselves (village farms have rows of them). Bake a potato in the oven.
@@ -1463,6 +1490,8 @@ guide to how everything works.
 
 ## Version history
 
+- **Version 33**: cocoa trees, cocoa beans and powder, chocolate milk and hot chocolate, melted chocolate and the
+  chocolate mould, chocolate bars, chocolate cake (eaten a slice at a time), chocolate cookies and cherries.
 - **Version 32**: rubber and polymers (tree taps, latex, rubber, hide glue, the polymer press), insulated wire
   and the wire power limit, coloured polymer blocks, lumen panels, bounce pads, padded boots, polymer tools
   and the polymer boat, and demolition charges with a detonator.

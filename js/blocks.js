@@ -141,7 +141,7 @@ export const T = {
   LEAD_CHEST_SIDE: 267, LEAD_CHEST_TOP: 268, LEAD_CHEST_FRONT: 269, CENTRIFUGE_SIDE: 270, CENTRIFUGE_TOP: 271, TESLA: 272, TESLA_TOP: 273,
   FENCE_POST: 274, FENCE_WIRE: 275, FREEZER_SIDE: 276, FREEZER_FRONT: 277, ARC_SIDE: 278, ARC_FRONT: 279, PACKED_ICE: 280, INVAR: 281, RAIL_STOP: 282, BASALT: 283, BASALT_TOP: 284, METEORITE: 285,
   IRON_BARS: 286, POT: 287, IVY: 288, BOX_FLOWERS: 289,
-  FRUIT_LEAVES: 290, FRUIT_RIPE: 293, FRUIT_SAPLING: 296, HAY: 299, SACK: 300, BEACON: 301, APIARY_SIDE: 302, APIARY_FRONT: 303, APIARY_FULL: 304, APIARY_TOP: 305, BELT_CROSS: 306, FARM_CTRL: 307, FARM_CTRL_ON: 308, TUBE: 309, TUBE_END: 310, AWNING: 311, FIRE: 312, CARROT_0: 313, POTATO_0: 317, STEM_0: 321, PUMPKIN_SIDE: 324, PUMPKIN_TOP: 325, JACK_FACE: 326, TRELLIS: 327, VINE_0: 328, BARREL_SIDE: 331, BARREL_TOP: 332, CHEESE: 333, SEA_BRICK: 334, SEA_LANTERN: 335, VAULT: 336, SKY_STONE: 337, AIR_PUMP: 338, RADIO: 339, RADIO_ON: 340, SORTBOX: 341, SORTBOX_TOP: 342, HEARTH: 343, HEARTH_LIT: 344, CHIMNEY_TOP: 345, STABLE_SIDE: 346, SNOWMAN_FRONT: 347, ONION_0: 348, BEAN_0: 352, TOMATO_0: 356, HERB_0: 360, KILN_SIDE: 364, KILN_TOP: 365, KILN_FRONT: 366, KILN_FRONT_LIT: 367, TERRACOTTA: 368, TERRA_COL: 369, GLAZED: 379, ROOF_TILES: 389, URN: 390, ROPE: 391, LOCK_GATE: 392, LOCK_GATE_TOP: 393, DRIPSTONE: 394, BEETLE_LAMP: 395, WASHER_SIDE: 396, WASHER_TOP: 397, WASHER_FRONT: 398, SIEVE: 399, SLAG_BRICKS: 400, CHARCOAL_HEAP: 401, LP_ARM: 402, LP_CORE: 403, LP_TABLE_TOP: 409, LP_TABLE_SIDE: 410, LP_JUNCTION: 411, LP_SENSOR_CORE: 412, LP_SENSOR_ON: 413, LP_FPROVIDER: 414, LP_FSUPPLIER: 415, DRONE_PAD_TOP: 416, DRONE_PAD_SIDE: 417, LP_FSINK: 418, BOTTLER_SIDE: 419, BOTTLER_TOP: 420, BEEHOUSE_SIDE: 421, BEEHOUSE_TOP: 422, BEEHOUSE_FRONT: 423, COMB_SPIN_SIDE: 424, COMB_SPIN_TOP: 425, TAP_SIDE: 426, TAP_LATEX: 427, PRESS_SIDE: 428, PRESS_TOP: 429, INSWIRE_OFF: 430, INSWIRE_ON: 431, BOUNCE_TOP: 432, BOUNCE_SIDE: 433, POLY_COL: 434, LUMEN: 444, DEMO_SIDE: 445, DEMO_TOP: 446, DEMO_ARMED: 447, DETONATOR_TILE: 448, // (434..443: polymer + colour) // (fruit tiles: apple, cherry, orange)
+  FRUIT_LEAVES: 290, FRUIT_RIPE: 293, FRUIT_SAPLING: 296, HAY: 299, SACK: 300, BEACON: 301, APIARY_SIDE: 302, APIARY_FRONT: 303, APIARY_FULL: 304, APIARY_TOP: 305, BELT_CROSS: 306, FARM_CTRL: 307, FARM_CTRL_ON: 308, TUBE: 309, TUBE_END: 310, AWNING: 311, FIRE: 312, CARROT_0: 313, POTATO_0: 317, STEM_0: 321, PUMPKIN_SIDE: 324, PUMPKIN_TOP: 325, JACK_FACE: 326, TRELLIS: 327, VINE_0: 328, BARREL_SIDE: 331, BARREL_TOP: 332, CHEESE: 333, SEA_BRICK: 334, SEA_LANTERN: 335, VAULT: 336, SKY_STONE: 337, AIR_PUMP: 338, RADIO: 339, RADIO_ON: 340, SORTBOX: 341, SORTBOX_TOP: 342, HEARTH: 343, HEARTH_LIT: 344, CHIMNEY_TOP: 345, STABLE_SIDE: 346, SNOWMAN_FRONT: 347, ONION_0: 348, BEAN_0: 352, TOMATO_0: 356, HERB_0: 360, KILN_SIDE: 364, KILN_TOP: 365, KILN_FRONT: 366, KILN_FRONT_LIT: 367, TERRACOTTA: 368, TERRA_COL: 369, GLAZED: 379, ROOF_TILES: 389, URN: 390, ROPE: 391, LOCK_GATE: 392, LOCK_GATE_TOP: 393, DRIPSTONE: 394, BEETLE_LAMP: 395, WASHER_SIDE: 396, WASHER_TOP: 397, WASHER_FRONT: 398, SIEVE: 399, SLAG_BRICKS: 400, CHARCOAL_HEAP: 401, LP_ARM: 402, LP_CORE: 403, LP_TABLE_TOP: 409, LP_TABLE_SIDE: 410, LP_JUNCTION: 411, LP_SENSOR_CORE: 412, LP_SENSOR_ON: 413, LP_FPROVIDER: 414, LP_FSUPPLIER: 415, DRONE_PAD_TOP: 416, DRONE_PAD_SIDE: 417, LP_FSINK: 418, BOTTLER_SIDE: 419, BOTTLER_TOP: 420, BEEHOUSE_SIDE: 421, BEEHOUSE_TOP: 422, BEEHOUSE_FRONT: 423, COMB_SPIN_SIDE: 424, COMB_SPIN_TOP: 425, TAP_SIDE: 426, TAP_LATEX: 427, PRESS_SIDE: 428, PRESS_TOP: 429, INSWIRE_OFF: 430, INSWIRE_ON: 431, BOUNCE_TOP: 432, BOUNCE_SIDE: 433, POLY_COL: 434, LUMEN: 444, DEMO_SIDE: 445, DEMO_TOP: 446, DEMO_ARMED: 447, DETONATOR_TILE: 448, COCOA_LEAVES: 449, COCOA_RIPE: 450, COCOA_SAPLING: 451, MOULD: 452, CHOC: 453, CHOC_LIQUID: 454, CAKE_TOP: 455, CAKE_SIDE: 456, // (434..443: polymer + colour) // (fruit tiles: apple, cherry, orange)
 };
 
 // Ores, deepest-reaching last. tier: the pickaxe tier needed to mine it (see TOOL_TIERS);
@@ -2265,14 +2265,14 @@ export const FRUITS = [
   { key: 'cherry', name: 'Cherry', item: CHERRIES },
   { key: 'orange', name: 'Orange', item: ORANGE_FRUIT },
 ];
-export const isLeaves = (id) => id === LEAVES || (id >= FRUIT_LEAVES && id < FRUIT_LEAVES + FRUITS.length * 2);
+export const isLeaves = (id) => id === LEAVES || (id >= FRUIT_LEAVES && id < FRUIT_LEAVES + FRUITS.length * 2) || id === COCOA_LEAVES || id === COCOA_LEAVES + 1; // (v33: and cocoa)
 export const fruitLeaves = (k, ripe = false) => FRUIT_LEAVES + k * 2 + (ripe ? 1 : 0);
 FRUITS.forEach((f, k) => {
   block(FRUIT_SAPLING + k, { ...plant, name: `${f.name} Sapling`, tex: T.FRUIT_SAPLING + k, grows: 'tree' });
   for (const ripe of [false, true]) {
     block(fruitLeaves(k, ripe), {
       name: `${f.name} Leaves`, sound: 'leaves', tex: ripe ? T.FRUIT_RIPE + k : T.FRUIT_LEAVES + k, transparent: true, hardness: 0.3,
-      grows: 'fruit', fruit: { kind: k, ripe }, variantOf: ripe ? fruitLeaves(k) : 0, drop: () => [
+      grows: 'fruit', fruit: { kind: k, ripe, bare: fruitLeaves(k), ripeId: fruitLeaves(k, true), item: f.item }, variantOf: ripe ? fruitLeaves(k) : 0, drop: () => [
         [FRUIT_SAPLING + k, Math.random() < 0.08 ? 1 : 0], [STICK, Math.random() < 0.12 ? 1 : 0], [f.item, ripe ? 1 : 0]],
     });
   }
@@ -3117,4 +3117,67 @@ ITEMS[DETONATOR] = { name: 'Detonator', stack: 1, about: `tap demolition charges
 RECIPES.push(
   { out: [DEMO_CHARGE, 1], in: [[BLAST_CHARGE, 2], [POLYMER_SHEET, 1], [COPPER_INGOT, 1]], table: true, metal: GUNPOWDER },
   { out: [DETONATOR, 1], in: [[POLYMER_SHEET, 2], [INSULATED_WIRE, 2], [COPPER_INGOT, 1], [RUBBER, 1]], table: true },
+);
+
+// ---------- v33: cocoa and chocolate ----------
+// Cocoa trees grow wild in the warmest green land, at the edge of the deserts. Their pods ripen in any season
+// but winter (and more slowly than orchard fruit), and pick like fruit. Pods split into beans; roast the beans
+// in an oven and grind them with the mortar into cocoa powder. Cocoa powder, milk and sugar make chocolate
+// milk, which an oven heats into hot chocolate. Melt cocoa powder, sugar and butter in the cooking pot, pour
+// it into a chocolate mould and leave it to set (faster somewhere cold), then tap the mould for chocolate bars.
+// Bars go into a chocolate cake you set down and eat a slice at a time, and into a few sweets.
+export const COCOA_SAPLING = 1499, COCOA_LEAVES = 1500, // 1501 = with ripe pods
+  CHOC_MOULD = 1502, // 1502..1505: empty, just poured, setting, set
+  CHOC_CAKE = 1506; // 1506..1509: + slices eaten (4 slices)
+export const COCOA_POD = 3183, COCOA_BEANS = 3184, ROASTED_COCOA = 3185, COCOA_POWDER = 3186, CHOC_MILK = 3187, HOT_CHOC = 3188,
+  MELTED_CHOC = 3189, CHOC_BAR = 3190, CHOC_COOKIE = 3191, CHOC_CHERRIES = 3192;
+export const CAKE_SLICES = 4, MOULD_BARS = 4;
+export const saplingLeaves = (id) => (id === COCOA_SAPLING ? COCOA_LEAVES : id >= FRUIT_SAPLING && id < FRUIT_SAPLING + FRUITS.length ? fruitLeaves(id - FRUIT_SAPLING) : 0);
+block(COCOA_SAPLING, { ...plant, name: 'Cocoa Sapling', tex: T.COCOA_SAPLING, grows: 'tree' });
+for (const ripe of [false, true]) {
+  block(COCOA_LEAVES + (ripe ? 1 : 0), {
+    name: 'Cocoa Leaves', sound: 'leaves', tex: ripe ? T.COCOA_RIPE : T.COCOA_LEAVES, transparent: true, hardness: 0.3,
+    grows: 'fruit', fruit: { kind: -1, ripe, bare: COCOA_LEAVES, ripeId: COCOA_LEAVES + 1, item: COCOA_POD, tropical: true }, variantOf: ripe ? COCOA_LEAVES : 0,
+    drop: () => [[COCOA_SAPLING, Math.random() < 0.08 ? 1 : 0], [STICK, Math.random() < 0.12 ? 1 : 0], [COCOA_POD, ripe ? 1 : 0]],
+  });
+}
+const MOULD_MODEL = (k) => [
+  [2, 0, 2, 14, 1, 14, T.MOULD], [2, 1, 2, 14, 3, 3, T.MOULD], [2, 1, 13, 14, 3, 14, T.MOULD], [2, 1, 3, 3, 3, 13, T.MOULD], [13, 1, 3, 14, 3, 13, T.MOULD],
+  [7.5, 1, 3, 8.5, 3, 13, T.MOULD], // the divider between the bars
+  ...(k ? [[3, 1, 3, 13, k === 1 ? 2.6 : 2.2, 13, k === 1 ? T.CHOC_LIQUID : T.CHOC]] : []),
+];
+for (let k = 0; k < 4; k++) {
+  block(CHOC_MOULD + k, {
+    name: 'Chocolate Mould', sound: 'stone', transparent: true, solid: false, hardness: 0.5, model: MOULD_MODEL(k), boxes: [[2, 0, 2, 14, 3, 14]],
+    variantOf: k ? CHOC_MOULD : 0, drop: () => [[CHOC_MOULD, 1], ...(k === 3 ? [[CHOC_BAR, MOULD_BARS]] : [])], grows: k === 1 || k === 2 ? 'setting' : null,
+  });
+}
+for (let k = 0; k < CAKE_SLICES; k++) {
+  const w = 14 * (CAKE_SLICES - k) / CAKE_SLICES;
+  block(CHOC_CAKE + k, {
+    name: 'Chocolate Cake', sound: 'wool', transparent: true, hardness: 0.3, model: [[1, 0, 1, 1 + w, 8, 15, { side: T.CAKE_SIDE, top: T.CAKE_TOP, bottom: T.CAKE_SIDE }]],
+    boxes: [[1, 0, 1, 1 + w, 8, 15]], variantOf: k ? CHOC_CAKE : 0, drop: k ? 0 : CHOC_CAKE,
+  });
+}
+ITEMS[COCOA_SAPLING] = { name: 'Cocoa Sapling', about: 'grows best in warm land' };
+ITEMS[CHOC_MOULD] = { name: 'Chocolate Mould', about: 'pour melted chocolate into it, leave it to set (faster somewhere cold), then tap it for bars' };
+ITEMS[CHOC_CAKE] = { name: 'Chocolate Cake', stack: 4, about: `set it down and tap it to eat a slice (${CAKE_SLICES} slices)` };
+ITEMS[COCOA_POD] = { name: 'Cocoa Pod', about: 'split it open for cocoa beans' };
+ITEMS[COCOA_BEANS] = { name: 'Cocoa Beans', about: 'roast them in an oven' };
+ITEMS[ROASTED_COCOA] = { name: 'Roasted Cocoa Beans', about: 'grind them with the mortar' };
+ITEMS[COCOA_POWDER] = { name: 'Cocoa Powder' };
+ITEMS[CHOC_MILK] = { name: 'Chocolate Milk', stack: 8, food: 5, bottle: true, about: 'heat it in an oven for hot chocolate' };
+ITEMS[HOT_CHOC] = { name: 'Hot Chocolate', stack: 8, food: 7, meal: ['warm', 420], bottle: true, about: 'warms you right through' };
+ITEMS[MELTED_CHOC] = { name: 'Melted Chocolate', stack: 8, bottle: true, about: 'pour it into a chocolate mould' };
+ITEMS[CHOC_BAR] = { name: 'Chocolate Bar', food: 5, meal: ['swift', 60], about: 'get a burst of energy' };
+ITEMS[CHOC_COOKIE] = { name: 'Chocolate Cookie', food: 4 };
+ITEMS[CHOC_CHERRIES] = { name: 'Chocolate Cherries', food: 7, meal: ['heal', 4], about: 'heals you' };
+RECIPES.push(
+  { out: [COCOA_BEANS, 3], in: [[COCOA_POD, 1]] },
+  { out: [COCOA_POWDER, 1], in: [[ROASTED_COCOA, 2]], tools: [MORTAR] },
+  { out: [CHOC_MILK, 3], in: [[MILK_BUCKET, 1], [COCOA_POWDER, 2], [SUGAR, 1], [GLASS_BOTTLE, 3]], also: [[BUCKET, 1]] },
+  { out: [CHOC_MOULD, 1], in: [[TIN_INGOT, 3]], table: true, metal: TIN_INGOT },
+  { out: [CHOC_COOKIE, 4], in: [[COOKIE, 4], [COCOA_POWDER, 1]] },
+  { out: [CHOC_CHERRIES, 2], in: [[CHERRIES, 4], [CHOC_BAR, 1]] },
+  { out: [CHOC_CAKE, 1], in: [[CHOC_BAR, 2], [CHOC_MILK, 1], [FLOUR, 2], [EGG, 1], [SUGAR, 1]], also: [[GLASS_BOTTLE, 1]], table: true },
 );
