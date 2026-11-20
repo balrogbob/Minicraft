@@ -43,6 +43,7 @@ import { ChunkStore } from './store.js';
 import { buildLegacyWorld, LEGACY_W } from './legacy.js';
 import { Sky, DAY_LENGTH } from './sky.js';
 import { Sound } from './sound.js';
+import { Music } from './music.js';
 import { Player } from './player.js';
 import { Inventory, SLOTS } from './inventory.js';
 import { Controls, KEY_ACTIONS, DEFAULT_KEYS, keyLabel } from './controls.js';
@@ -90,7 +91,7 @@ function writeSave(obj, slot = settings.slot) {
 }
 // Settings live apart from the world so they survive "New world".
 const settings = (() => {
-  const defaults = { sens: 6, volume: 70, viewDistance: 6, perf: false, difficulty: 'worrying', wear: true, favs: [], pins: [], slot: 0, fov: 72, keys: {}, tips: true, doubleTap: true };
+  const defaults = { sens: 6, volume: 70, music: 50, viewDistance: 6, perf: false, difficulty: 'worrying', wear: true, favs: [], pins: [], slot: 0, fov: 72, keys: {}, tips: true, doubleTap: true };
   let s;
   try { s = { ...defaults, ...JSON.parse(localStorage.getItem(SETTINGS_KEY)) }; } catch { s = { ...defaults }; }
   s.slot = Math.max(0, Math.min(SLOT_COUNT - 1, s.slot | 0));
@@ -160,7 +161,9 @@ const materials = { solid: material, water: waterMat };
 
 const sky = new Sky(scene);
 const sound = new Sound();
+const music = new Music(sound); // (v29)
 sound.volume = settings.volume / 100;
+music.volume = settings.music / 100;
 // audio may only start after a user gesture
 for (const ev of ['touchstart', 'pointerdown', 'keydown']) {
   window.addEventListener(ev, () => sound.unlock(), { capture: true, passive: true });
@@ -4659,6 +4662,8 @@ $('view').addEventListener('input', (e) => {
 });
 $('sens').value = settings.sens;
 $('sens').addEventListener('input', (e) => { settings.sens = +e.target.value; controls.lookSens = settings.sens / 1000; saveSettings(); });
+$('music').value = settings.music;
+$('music').addEventListener('input', (e) => { settings.music = +e.target.value; music.volume = settings.music / 100; saveSettings(); });
 $('volume').value = settings.volume;
 $('volume').addEventListener('input', (e) => {
   settings.volume = +e.target.value;
@@ -4881,6 +4886,24 @@ const guideTab = (ach) => {
 $('tab-ach').addEventListener('click', () => guideTab(true));
 $('tab-guide').addEventListener('click', () => guideTab(false));
 $('btn-close-guide').addEventListener('click', () => { $('guide').classList.add('hidden'); paused = false; });
+
+// ---------- v29 B: music ----------
+// What the music should sound like here and now (see music.js).
+let moodTimer = 0, moodNow = 'day';
+function musicMood(dt) {
+  if ((moodTimer -= dt) > 0) return moodNow;
+  moodTimer = 1.5;
+  const e = player.eye, x = Math.floor(e.x), y = Math.floor(e.y), z = Math.floor(e.z);
+  const v = world.generator.nearestVillage(x, z, 1);
+  const nearVillage = v && Math.hypot(v.x - e.x, v.z - e.z) < 56;
+  moodNow = player.eyeInWater ? 'water'
+    : !(world.skyAt(x, y, z) > 0) && y < 26 ? 'cave'
+    : nearVillage && festivalToday() ? 'festival'
+    : nearVillage && !sky.isNight ? 'village'
+    : sky.isNight ? 'night'
+    : seasonOf(day) === 3 ? 'winter' : 'day';
+  return moodNow;
+}
 
 // ---------- v29 A: the guidebook ----------
 // Chapters of goals (see guidebook.js), ticked off as you reach them, each with a reward to claim.
@@ -6620,6 +6643,7 @@ function stepGame(now, dt) {
   sky.weather = { overcast: weather.overcast, level: weather.level, kind: weather.kind };
   world.raining = weather.raining && biome !== 'desert';
   sound.weather(paused ? 0 : weather.level, weather.kind);
+  if (worldReady) music.update(dt, paused ? null : musicMood(dt));
   const before = sky.time;
   if (world && worldReady) { tickBeams(paused ? 0 : dt); sky.mist = mistNow(); }
   sky.update(paused ? 0 : dt, eye, lightUniforms.uDay, player.eyeInWater);
@@ -6675,5 +6699,5 @@ window.minicraft = {
   arrows, fishing, kinetics, electric, lightUniforms, bees, catchAt, seasonOf, applySeason, set day(v) { day = v; applySeason(); }, frames, signalAt, setSwitch, logic, machines, carts, minimap, signs, armour, damage, placeRail, getInCart, getOutOfCart,
   get riding() { return riding; }, explode, lightFuse, fuses, clockTime, compassText, place, editSign, closeSign, openInventory, closeInventory, chestMove, lamps, tickLamps, sleepUntilMorning, stations, openStation, closeStation,
   get caneToday() { return caneToday; }, get creative() { return creative; }, set creative(v) { creative = v; applyCreative(); }, toggleFly, wand, useWand, get achieved() { return achieved; }, achieve, worldMap, openMap, closeMap, openGuide, switchSlot, store, saveGame, renderWorlds, openWorlds, exportSlot, get target() { return target; }, set target(v) { target = v; }, applyKeys, renderKeys, camera, get controls() { return controls; }, loose, throwHeld, get waypoints() { return waypoints; }, toggleWaypoint, sortSlots, quickStack, dropMeteor, get meteors() { return meteors; }, weather, openTrade, closeTrade, mountMob, dismount, get ridingMob() { return ridingMob; }, effects, armourWear, useAnvil, rollLoot, settings,
-  get bedSpawn() { return bedSpawn; }, fertilise, openJournal, closeJournal, get packs() { return packs; }, radiationAt, vehicles, boardVehicle, leaveVehicle, get boarded() { return boarded; }, get seated() { return seated; }, crows, onInvSlot, onStationSlot, quickMoveInv, quickMoveStation, usedIn, itemTipHTML, critters, tickPets, get catGiftDay() { return catGiftDay; }, get villageGrowth() { return villageGrowth; }, notePlanting, tickPuzzles, airPumpNear, useStable, stableNear, horseLabel, get guideDone() { return guideDone; }, get guideClaimed() { return guideClaimed; }, tickGuidebook, openGuidebook, closeGuidebook, claimGoal, goalMet, fineChance, fineHarvest, showProduce, specialTrades, catchAt, stockStable, tickStables, mangers, openSaddlebags, honeyAt, fitUpgrade, piles, lightCharcoalPile, tickPiles, searchChests, takeFromChest, markChest, get chestMark() { return chestMark; }, enterPhotoMode, exitPhotoMode, snapPhoto, get photoMode() { return photoMode; }, photoCam, get lastPhoto() { return lastPhoto; }, tickStalactites, loosenStalactite, fallingRocks, shaking, workLock, findLock, tickLocks, openGates, lockJobs, hangRopeLadder, layBridge, rollUpRope, fireworks, ringBell, requestFor, festivalToday, repOf, addRep, tradeCost, tickFestival, villageEntry, hearths, tickHearths, feedHearth, chimneyTop, smoke, renderPins, togglePin, lightning, igniteAt, fires, tickFires, tickStorm, growVillage, buildVillageHouse, stallPrice, tickStalls, tickVillages, set catGiftDay(v) { catGiftDay = v; }, get places() { return places; }, get treasures() { return treasures; }, readTreasureMap, tickTreasure, beams, tickBeams, beaconSpots: () => beaconSpots, mistNow, tickSnow, tickExplore, sitOn, standUp, useDisplay, zips, linkZip, startZip, get zipping() { return zipping; }, burnCoal, get health() { return health; }, set health(v) { health = v; }, paintings, placeSwitchRail, signalAt, ailments, armourEnch, openAltar, lairNear, useBed, eat, drinkTea,
+  get bedSpawn() { return bedSpawn; }, fertilise, openJournal, closeJournal, get packs() { return packs; }, radiationAt, vehicles, boardVehicle, leaveVehicle, get boarded() { return boarded; }, get seated() { return seated; }, crows, onInvSlot, onStationSlot, quickMoveInv, quickMoveStation, usedIn, itemTipHTML, critters, tickPets, get catGiftDay() { return catGiftDay; }, get villageGrowth() { return villageGrowth; }, notePlanting, tickPuzzles, airPumpNear, useStable, stableNear, horseLabel, music, musicMood, get guideDone() { return guideDone; }, get guideClaimed() { return guideClaimed; }, tickGuidebook, openGuidebook, closeGuidebook, claimGoal, goalMet, fineChance, fineHarvest, showProduce, specialTrades, catchAt, stockStable, tickStables, mangers, openSaddlebags, honeyAt, fitUpgrade, piles, lightCharcoalPile, tickPiles, searchChests, takeFromChest, markChest, get chestMark() { return chestMark; }, enterPhotoMode, exitPhotoMode, snapPhoto, get photoMode() { return photoMode; }, photoCam, get lastPhoto() { return lastPhoto; }, tickStalactites, loosenStalactite, fallingRocks, shaking, workLock, findLock, tickLocks, openGates, lockJobs, hangRopeLadder, layBridge, rollUpRope, fireworks, ringBell, requestFor, festivalToday, repOf, addRep, tradeCost, tickFestival, villageEntry, hearths, tickHearths, feedHearth, chimneyTop, smoke, renderPins, togglePin, lightning, igniteAt, fires, tickFires, tickStorm, growVillage, buildVillageHouse, stallPrice, tickStalls, tickVillages, set catGiftDay(v) { catGiftDay = v; }, get places() { return places; }, get treasures() { return treasures; }, readTreasureMap, tickTreasure, beams, tickBeams, beaconSpots: () => beaconSpots, mistNow, tickSnow, tickExplore, sitOn, standUp, useDisplay, zips, linkZip, startZip, get zipping() { return zipping; }, burnCoal, get health() { return health; }, set health(v) { health = v; }, paintings, placeSwitchRail, signalAt, ailments, armourEnch, openAltar, lairNear, useBed, eat, drinkTea,
 };
