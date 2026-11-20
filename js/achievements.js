@@ -37,6 +37,7 @@ export const ACHIEVEMENTS = [
   { id: 'bees', icon: '🐝', name: 'Busy Bees', about: 'Catch a colony of wild bees with a scoop.' },
   { id: 'mutation', icon: '👑', name: 'Queen of Bees', about: 'Breed a new species of bee in a bee house.' },
   { id: 'latex', icon: '🌳', name: 'Sticky Fingers', about: 'Collect latex from a tree tap.' },
+  { id: 'chocolate', icon: '🍫', name: 'Chocolatier', about: 'Knock chocolate bars out of a mould.' },
   { id: 'demolition', icon: '💥', name: 'Controlled Demolition', about: 'Set off demolition charges with a detonator.' },
 ];
 

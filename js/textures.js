@@ -3188,3 +3188,89 @@ ITEM_PAINTERS[DETONATOR] = (ctx) => {
   rect(ctx, 6, 7, 4, 3, [214, 50, 40]); rect(ctx, 7, 11, 2, 2, [60, 60, 66]);
   for (let y = 0; y < 5; y++) px(ctx, 10, y, [40, 40, 44]); px(ctx, 10, 0, [255, 80, 60]);
 };
+
+// ---------- v33: cocoa and chocolate ----------
+import { COCOA_POD, COCOA_BEANS, ROASTED_COCOA, COCOA_POWDER, CHOC_MILK, HOT_CHOC, MELTED_CHOC, CHOC_BAR, CHOC_COOKIE, CHOC_CHERRIES } from './blocks.js';
+const COCOA_GREEN = [44, 104, 50], POD = [[196, 120, 40], [232, 170, 60]], CHOC = [92, 52, 30], CHOC_HI = [140, 88, 52];
+// broad, dark, glossy leaves; ripe ones have long ridged orange pods hanging among them
+const cocoaLeaves = (t) => {
+  for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+    if (t.r() < 0.16) t.set(x, y, [0, 0, 0], 0);
+    else t.set(x, y, t.vary((x + 2 * y) % 7 === 0 ? shade(COCOA_GREEN, 1.3) : COCOA_GREEN, 0.22));
+  }
+};
+P[T.COCOA_LEAVES] = cocoaLeaves;
+P[T.COCOA_RIPE] = (t) => {
+  cocoaLeaves(t);
+  for (const [fx, fy] of [[3, 2], [11, 4], [6, 10]]) for (let dy = 0; dy < 4; dy++) for (let dx = 0; dx < 2; dx++) t.set(fx + dx, fy + dy, dx === 0 && dy < 3 ? POD[1] : POD[0]);
+};
+P[T.COCOA_SAPLING] = (t) => {
+  for (let y = 8; y < TILE; y++) { t.set(7, y, t.vary([112, 80, 46], 0.1)); t.set(8, y, t.vary([88, 62, 34], 0.1)); }
+  for (const [cx, cy, r] of [[8, 5, 3], [4, 9, 2], [12, 8, 2]]) for (let y = cy - r; y <= cy + r; y++) for (let x = cx - r; x <= cx + r; x++) {
+    if ((x - cx) ** 2 + (y - cy) ** 2 > r * r + 1 || t.r() < 0.12) continue;
+    t.set(x, y, t.vary(COCOA_GREEN, 0.25));
+  }
+  t.set(9, 8, POD[0]); t.set(9, 9, POD[0]);
+};
+// a tin mould, and chocolate (glossy when set, smooth and runny when poured)
+P[T.MOULD] = (t) => { for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) t.set(x, y, t.vary(y === 0 || x === 0 ? [232, 236, 242] : [196, 200, 208], 0.03)); };
+P[T.CHOC] = (t) => { for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) t.set(x, y, x % 4 === 0 || y % 4 === 0 ? shade(CHOC, 0.8) : (x + y) % 9 === 1 ? CHOC_HI : t.vary(CHOC, 0.03)); };
+P[T.CHOC_LIQUID] = (t) => { for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) t.set(x, y, t.vary(Math.sin(x * 0.7 + y * 0.3) > 0.7 ? CHOC_HI : [110, 64, 36], 0.03)); };
+// chocolate cake: dark frosting with cherries on top, sponge and cream layers on the side
+P[T.CAKE_TOP] = (t) => {
+  for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) t.set(x, y, t.vary(CHOC, 0.05));
+  for (const [cx, cy] of [[4, 4], [11, 4], [4, 11], [11, 11], [8, 8]]) { t.set(cx, cy, [170, 20, 40]); t.set(cx + 1, cy, [170, 20, 40]); t.set(cx, cy - 1, [220, 80, 90]); }
+};
+P[T.CAKE_SIDE] = (t) => {
+  for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+    const c = y < 4 ? CHOC : y === 8 ? [240, 226, 200] : [120, 72, 42];
+    t.set(x, y, t.vary(c, 0.05));
+  }
+};
+ITEM_PAINTERS[COCOA_POD] = (ctx) => {
+  for (let y = 2; y < 15; y++) for (let x = 3; x < 13; x++) {
+    if (Math.hypot((x - 7.5) / 4.5, (y - 8.5) / 6.5) >= 1) continue;
+    px(ctx, x, y, x % 3 === 0 ? [170, 100, 30] : x < 7 ? POD[1] : POD[0]);
+  }
+  px(ctx, 7, 1, [90, 70, 30]); px(ctx, 8, 1, [90, 70, 30]);
+};
+const beans = (c, hi) => (ctx) => {
+  for (const [cx, cy] of [[5, 5], [10, 6], [7, 10], [11, 11], [4, 11]]) for (let y = cy - 1; y <= cy + 1; y++) for (let x = cx - 2; x <= cx + 1; x++) {
+    if (Math.abs(x - cx + 0.5) + Math.abs(y - cy) > 2.2) continue;
+    px(ctx, x, y, y < cy ? hi : x === cx ? shade(c, 0.7) : c);
+  }
+};
+ITEM_PAINTERS[COCOA_BEANS] = beans([150, 96, 70], [190, 140, 110]);
+ITEM_PAINTERS[ROASTED_COCOA] = beans([84, 48, 28], [120, 76, 48]);
+ITEM_PAINTERS[COCOA_POWDER] = (ctx) => {
+  for (let y = 6; y < 14; y++) for (let x = 2; x < 14; x++) {
+    if (Math.abs(x - 7.5) > (y - 5) * 0.9) continue;
+    px(ctx, x, y, (x * 3 + y * 5) % 7 === 0 ? [140, 90, 60] : [110, 66, 40]);
+  }
+};
+const bottleOf = (c, steam) => (ctx) => {
+  rect(ctx, 6, 1, 4, 2, [150, 110, 70]); rect(ctx, 6, 3, 4, 2, [210, 230, 240]);
+  for (let y = 5; y < 15; y++) for (let x = 4; x < 12; x++) px(ctx, x, y, x === 4 || x === 11 || y === 14 ? [200, 220, 232] : y < 7 ? [230, 240, 248] : x === 5 ? shade(c, 1.25) : c);
+  if (steam) for (const [x, y] of [[2, 2], [2, 4], [13, 1], [13, 3]]) px(ctx, x, y, [240, 240, 240]);
+};
+ITEM_PAINTERS[CHOC_MILK] = bottleOf([176, 120, 80], false);
+ITEM_PAINTERS[HOT_CHOC] = bottleOf([120, 70, 40], true);
+ITEM_PAINTERS[MELTED_CHOC] = bottleOf([90, 50, 28], false);
+ITEM_PAINTERS[CHOC_BAR] = (ctx) => {
+  rect(ctx, 2, 3, 12, 10, CHOC);
+  for (let y = 3; y < 13; y++) for (let x = 2; x < 14; x++) if ((x - 2) % 4 === 3 || (y - 3) % 5 === 4) px(ctx, x, y, shade(CHOC, 0.75)); else if ((x - 2) % 4 === 0 && (y - 3) % 5 === 0) px(ctx, x, y, CHOC_HI);
+  rect(ctx, 2, 9, 12, 4, [200, 50, 40]); rect(ctx, 2, 10, 12, 1, [236, 200, 80]);
+};
+ITEM_PAINTERS[CHOC_COOKIE] = (ctx) => {
+  for (let y = 2; y < 14; y++) for (let x = 2; x < 14; x++) {
+    if (Math.hypot(x - 7.5, y - 7.5) >= 6) continue;
+    px(ctx, x, y, (x * 7 + y * 3) % 11 === 0 ? [50, 26, 14] : [210, 160, 100]);
+  }
+};
+ITEM_PAINTERS[CHOC_CHERRIES] = (ctx) => {
+  for (const [cx, cy] of [[5, 10], [11, 10]]) {
+    for (let y = cy - 3; y <= cy + 3; y++) for (let x = cx - 3; x <= cx + 3; x++) if (Math.hypot(x - cx, y - cy) < 3.2) px(ctx, x, y, y > cy ? [150, 20, 40] : CHOC);
+    px(ctx, cx - 1, cy - 2, CHOC_HI);
+  }
+  for (let k = 0; k < 6; k++) { px(ctx, 5 + (k >> 1), 6 - k, [70, 90, 30]); px(ctx, 11 - (k >> 1), 6 - k, [70, 90, 30]); }
+};

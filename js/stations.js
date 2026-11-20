@@ -554,3 +554,13 @@ STATION_KINDS.oven.recipes.push(
   { out: [RUBBER, 1], in: [[LATEX, 2]], time: 6 },
   { out: [HIDE_GLUE, 1], in: [[LEATHER, 1]], time: 8 },
 );
+
+// v33: cocoa and chocolate
+import { COCOA_BEANS, ROASTED_COCOA, COCOA_POWDER, CHOC_MILK, HOT_CHOC, MELTED_CHOC } from './blocks.js';
+STATION_KINDS.oven.recipes.push(
+  { out: [ROASTED_COCOA, 1], in: [[COCOA_BEANS, 1]], time: 3 },
+  { out: [HOT_CHOC, 1], in: [[CHOC_MILK, 1]], time: 4 },
+);
+STATION_KINDS.cookpot.recipes.push(
+  { out: [MELTED_CHOC, 2], in: [[COCOA_POWDER, 2], [SUGAR, 1], [BUTTER, 1], [GLASS_BOTTLE, 2]], time: 6 },
+);

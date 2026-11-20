@@ -121,6 +121,13 @@ const CHAPTERS = [
     ['boots', 'Soft Landing', has(B.PADDED_BOOTS), 'Padded boots take the harm out of falls.', [B.POLYMER_SHEET, 2]],
     ['boom', 'Controlled Demolition', ach('demolition'), 'Link demolition charges to a detonator, stand well back, and set them off.', [B.DEMO_CHARGE, 2]],
   ]],
+  ['cocoa', 'Chocolate', 2, [
+    ['pod', 'Cocoa Pods', has(B.COCOA_POD), 'Cocoa trees grow in the warm land by the deserts. Pick their ripe pods.', [B.SUGAR, 4]],
+    ['powder', 'Cocoa Powder', has(B.COCOA_POWDER), 'Split pods for beans, roast them in an oven and grind them with the mortar.', [B.GLASS_BOTTLE, 3]],
+    ['hotchoc', 'Hot Chocolate', has(B.HOT_CHOC), 'Mix chocolate milk, then heat it in an oven. It keeps the cold out.', [B.BUTTER, 2]],
+    ['chocbar', 'Chocolatier', ach('chocolate'), 'Melt chocolate in the cooking pot, pour it into a mould and let it set.', [B.TIN_INGOT, 3]],
+    ['chocake', 'Chocolate Cake', has(B.CHOC_CAKE), 'Bake a chocolate cake, set it down and share it out a slice at a time.', [B.EGG, 3]],
+  ]],
   ['master', 'Mastery', 7, [
     ['enchant', 'Spellbound', ach('enchant'), 'Enchant a tool at an altar. Bookshelves round it help.', [B.BOOK, 3]],
     ['quarry', 'Quarry', has(B.QUARRY), 'Digs out a whole area by itself. Item frames on it pick what it keeps.', [B.YIELD_UPGRADE, 1]],
