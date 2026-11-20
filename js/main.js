@@ -45,6 +45,8 @@ import { Sky, DAY_LENGTH } from './sky.js';
 import { Sound } from './sound.js';
 import { Music } from './music.js';
 import { Logistics, CHANNELS, liquidIcon } from './logistics.js';
+import { Apiculture, wildSpecies } from './apiculture.js';
+import { BEE_SCOOP, BEE_SPECIES, princessOf, droneOf } from './blocks.js';
 import { Player } from './player.js';
 import { Inventory, SLOTS } from './inventory.js';
 import { Controls, KEY_ACTIONS, DEFAULT_KEYS, keyLabel } from './controls.js';
@@ -308,6 +310,10 @@ function loadPacks(list, next) {
 const signs = new Signs(scene); // what's written on each sign
 const machines = new Machines(scene, icons); // pumps, drills, hoppers and belts
 const logistics = new Logistics({ get world() { return world; }, stations, machines, electric }); // (v29: logistics pipes)
+const apiculture = new Apiculture(); // (v31: bee houses)
+// Where a bee house stands: is it day, is it raining, what season and what land.
+const beeEnv = (x, y, z) => ({ day: sky.light > 0.5, raining: !!world.raining, season: seasonOf(day), biome: world.generator.biomeAt(x, z) });
+const nightEnv = (x, y, z) => ({ ...beeEnv(x, y, z), day: false, raining: false });
 const loose = new ItemDrops(scene, (id) => machines.makeSprite(id)); // items lying on the ground
 const carts = new Carts(scene); // minecarts on rails
 carts.onLoco = (c, what) => {
@@ -1459,6 +1465,10 @@ function openStation(x, y, z, cart = null) {
     : 'Put empty buckets in for milking yaks, and wheat to feed the animals (their coats grow back faster). Wheat, seeds or berries also feed pairs of animals so they have young. What it gets comes out of its back, into a chest, hopper or belt.'}</p>`
     : kind === 'winepress' || kind === 'cheesepress' ? `<p class="hint">It needs no fuel or power. Lay what it makes down in an oak barrel to age: ${kind === 'winepress' ? 'grape juice becomes wine, apple juice cider and berry juice berry wine in a day, and finer still three days later' : 'curds become cheese in a day, and aged cheese three days later'}.</p>`
     : kind === 'bottler' ? `<p class="hint">Pipe water or lava into it with a liquid sink or supplier pipe: it fills the buckets put in it (lava goes in lead buckets). It holds ${logistics.bottlerText(x, y, z)}.</p>`
+    : kind === 'beehouse' ? '<p class="hint">Put in a princess and a drone (catch them from a wild hive with a bee scoop), and up to two frames for more combs. ' +
+      'The princess becomes a queen and works through her life filling the trays with combs, then leaves a new princess and some drones. ' +
+      'Each of them takes after one parent or the other, but two different species can now and then breed a new one. ' +
+      'Each species needs its own flowers nearby and its own time and place to work: see its tip. Spin the combs in a comb centrifuge.</p>'
     : kind === 'compost' ? '<p class="hint">It needs no fuel or power: scraps just rot down, given time. Tap a crop or sapling with fertiliser to grow it a step.</p>'
     : kind === 'fishtrap' ? '<p class="hint">Sink it in water and put worms in for bait: every so often something swims in. Collect the catch from the trays (or put a hopper under it).</p>'
     : kind === 'sieve' ? '<p class="hint">It needs no fuel or power: you shake it by hand. What it sifts out (shown as a chance) collects in the trays on the right: keep them emptied (a hopper underneath does it), or things that don\'t fit are lost, and once they\'re full it stops.</p>'
@@ -1521,6 +1531,11 @@ function renderStation() {
     $('st-progress').style.width = s && chargeCap(s.id) ? `${chargeLeft(s) / chargeCap(s.id) * 100}%` : '0%';
     $('st-status').textContent = !s ? `Put a battery in. ${electric.statusAt(x, y, z)}` : !s.wear ? `${itemName(s.id)}: fully charged` :
       `${itemName(s.id)}: ${Math.floor(chargeLeft(s) / chargeCap(s.id) * 100)}% charged. ${electric.statusAt(x, y, z)}`;
+    return;
+  }
+  if (st.kind === 'beehouse') {
+    $('st-progress').style.width = `${apiculture.progress(st) * 100}%`;
+    $('st-status').textContent = apiculture.status(st);
     return;
   }
   if (st.kind === 'reactor') {
@@ -2081,6 +2096,7 @@ async function napThroughStorm() {
   weather.set(false);
   const secs = skip * DAY_LENGTH;
   stations.tick(secs, world, setStationLit, powerAt, boostAt, crafterRecipe);
+  apiculture.tick(secs, stations, world, beeEnv);
   tickLamps(secs);
   for (let i = 0, n = Math.max(1, Math.ceil(secs / 60)); i < n; i++) world.tickPlants(secs / n);
   hunger = Math.max(0, hunger - 1);
@@ -2101,6 +2117,7 @@ async function sleepUntilMorning() {
   day++;
   caneToday = 0;
   stations.tick(skipped, world, setStationLit, powerAt, boostAt, crafterRecipe);
+  apiculture.tick(skipped, stations, world, nightEnv); // (night bees work while you sleep)
   tickLamps(skipped);
   const steps = Math.max(1, Math.ceil(skipped / 60)); // (a minute at a time, so plants grow as they would have)
   for (let i = 0; i < steps; i++) world.tickPlants(skipped / steps);
@@ -3749,6 +3766,7 @@ function placeInner() {
     if (isDisplay(tid) && target.ny === 1 && (frames.get(tx, ty, tz) || (held && !isBlock(held.id)))) { useDisplay(tx, ty, tz, held); return; }
     if (isChair(tid) && !(held && isBlock(held.id))) { sitOn(tx, ty, tz); return; }
     if (potOf(tid) >= 0 && usePot(tx, ty, tz, tid, held)) return;
+    if (held?.id === BEE_SCOOP && BLOCKS[tid].hive >= 0) { scoopHive(tx, ty, tz, tid); return; }
     if (BLOCKS[tid].apiary && (held?.id === GLASS_BOTTLE || !held || !isBlock(held.id))) {
       // an apiary: take the comb and wax by hand (and a bottle of honey too, if you hold a bottle)
       const lv = BLOCKS[tid].hive;
@@ -6738,7 +6756,7 @@ function frame(now) {
   // gameplay, streaming and rendering are isolated so an error in one can't stop the others
   try { stepGame(now, dt); } catch (err) { reportError(err); }
   try {
-    if (!dead) stations.tick(dt, world, setStationLit, powerAt, boostAt, crafterRecipe);
+    if (!dead) { stations.tick(dt, world, setStationLit, powerAt, boostAt, crafterRecipe); apiculture.tick(dt, stations, world, beeEnv); }
     if (!dead && worldReady) { logistics.update(dt); if ((keepTimer -= dt) <= 0) { keepTimer = 1; world.keepLoaded = new Set(logistics.loaderChunks()); } }
     if (openStationAt && (stationRefresh -= dt) <= 0) { stationRefresh = 0.15; renderStation(); }
   } catch (err) { reportError(err); }
@@ -6936,5 +6954,26 @@ window.minicraft = {
   arrows, fishing, kinetics, electric, lightUniforms, bees, catchAt, seasonOf, applySeason, set day(v) { day = v; applySeason(); }, frames, signalAt, setSwitch, logic, machines, carts, minimap, signs, armour, damage, placeRail, getInCart, getOutOfCart,
   get riding() { return riding; }, explode, lightFuse, fuses, clockTime, compassText, place, editSign, closeSign, openInventory, closeInventory, chestMove, lamps, tickLamps, sleepUntilMorning, stations, openStation, closeStation,
   get caneToday() { return caneToday; }, get creative() { return creative; }, set creative(v) { creative = v; applyCreative(); }, toggleFly, wand, useWand, get achieved() { return achieved; }, achieve, worldMap, openMap, closeMap, openGuide, switchSlot, store, saveGame, renderWorlds, openWorlds, exportSlot, get target() { return target; }, set target(v) { target = v; }, applyKeys, renderKeys, camera, get controls() { return controls; }, loose, throwHeld, get waypoints() { return waypoints; }, toggleWaypoint, sortSlots, quickStack, dropMeteor, get meteors() { return meteors; }, weather, openTrade, closeTrade, mountMob, dismount, get ridingMob() { return ridingMob; }, effects, armourWear, useAnvil, rollLoot, settings,
-  get bedSpawn() { return bedSpawn; }, fertilise, openJournal, closeJournal, get packs() { return packs; }, radiationAt, vehicles, boardVehicle, leaveVehicle, get boarded() { return boarded; }, get seated() { return seated; }, crows, onInvSlot, onStationSlot, quickMoveInv, quickMoveStation, usedIn, itemTipHTML, critters, tickPets, get catGiftDay() { return catGiftDay; }, get villageGrowth() { return villageGrowth; }, notePlanting, tickPuzzles, airPumpNear, useStable, stableNear, horseLabel, logistics, openLogistics, closeLogistics, placeOrder, get lpOpen() { return lpOpen; }, music, musicMood, get guideDone() { return guideDone; }, get guideClaimed() { return guideClaimed; }, tickGuidebook, openGuidebook, closeGuidebook, claimGoal, goalMet, fineChance, fineHarvest, showProduce, specialTrades, catchAt, stockStable, tickStables, mangers, openSaddlebags, honeyAt, fitUpgrade, piles, lightCharcoalPile, tickPiles, searchChests, takeFromChest, markChest, get chestMark() { return chestMark; }, enterPhotoMode, exitPhotoMode, snapPhoto, get photoMode() { return photoMode; }, photoCam, get lastPhoto() { return lastPhoto; }, tickStalactites, loosenStalactite, fallingRocks, shaking, workLock, findLock, tickLocks, openGates, lockJobs, hangRopeLadder, layBridge, rollUpRope, fireworks, ringBell, requestFor, festivalToday, repOf, addRep, tradeCost, tickFestival, villageEntry, hearths, tickHearths, feedHearth, chimneyTop, smoke, renderPins, togglePin, lightning, igniteAt, fires, tickFires, tickStorm, growVillage, buildVillageHouse, stallPrice, tickStalls, tickVillages, set catGiftDay(v) { catGiftDay = v; }, get places() { return places; }, get treasures() { return treasures; }, readTreasureMap, tickTreasure, beams, tickBeams, beaconSpots: () => beaconSpots, mistNow, tickSnow, tickExplore, sitOn, standUp, useDisplay, zips, linkZip, startZip, get zipping() { return zipping; }, burnCoal, get health() { return health; }, set health(v) { health = v; }, paintings, placeSwitchRail, signalAt, ailments, armourEnch, openAltar, lairNear, useBed, eat, drinkTea,
+  get bedSpawn() { return bedSpawn; }, fertilise, openJournal, closeJournal, get packs() { return packs; }, radiationAt, vehicles, boardVehicle, leaveVehicle, get boarded() { return boarded; }, get seated() { return seated; }, crows, onInvSlot, onStationSlot, quickMoveInv, quickMoveStation, usedIn, itemTipHTML, critters, tickPets, get catGiftDay() { return catGiftDay; }, get villageGrowth() { return villageGrowth; }, notePlanting, tickPuzzles, airPumpNear, useStable, stableNear, horseLabel, logistics, openLogistics, closeLogistics, placeOrder, get lpOpen() { return lpOpen; }, music, musicMood, get guideDone() { return guideDone; }, get guideClaimed() { return guideClaimed; }, tickGuidebook, openGuidebook, closeGuidebook, claimGoal, goalMet, fineChance, fineHarvest, showProduce, specialTrades, catchAt, stockStable, tickStables, mangers, openSaddlebags, honeyAt, apiculture, scoopHive, beeEnv, fitUpgrade, piles, lightCharcoalPile, tickPiles, searchChests, takeFromChest, markChest, get chestMark() { return chestMark; }, enterPhotoMode, exitPhotoMode, snapPhoto, get photoMode() { return photoMode; }, photoCam, get lastPhoto() { return lastPhoto; }, tickStalactites, loosenStalactite, fallingRocks, shaking, workLock, findLock, tickLocks, openGates, lockJobs, hangRopeLadder, layBridge, rollUpRope, fireworks, ringBell, requestFor, festivalToday, repOf, addRep, tradeCost, tickFestival, villageEntry, hearths, tickHearths, feedHearth, chimneyTop, smoke, renderPins, togglePin, lightning, igniteAt, fires, tickFires, tickStorm, growVillage, buildVillageHouse, stallPrice, tickStalls, tickVillages, set catGiftDay(v) { catGiftDay = v; }, get places() { return places; }, get treasures() { return treasures; }, readTreasureMap, tickTreasure, beams, tickBeams, beaconSpots: () => beaconSpots, mistNow, tickSnow, tickExplore, sitOn, standUp, useDisplay, zips, linkZip, startZip, get zipping() { return zipping; }, burnCoal, get health() { return health; }, set health(v) { health = v; }, paintings, placeSwitchRail, signalAt, ailments, armourEnch, openAltar, lairNear, useBed, eat, drinkTea,
+};
+
+// ---------- v31: catching bees ----------
+// A bee scoop takes the colony out of a wild hive (one with honey in it): a princess and a drone or two of the
+// local species, and whatever comb was in it. The empty hive is left behind for a new swarm.
+function scoopHive(x, y, z, tid) {
+  if (BLOCKS[tid].apiary) { toast('An apiary\'s bees won\'t leave it: scoop a wild hive', 2200); return; }
+  const lv = BLOCKS[tid].hive;
+  if (lv < 1) { toast('No bees have moved into this hive yet', 2000); return; }
+  const sp = wildSpecies(world.generator.biomeAt(x, z)), drones = 1 + (Math.random() < 0.5 ? 1 : 0);
+  world.setBlock(x, y, z, BEE_HIVE);
+  giveDrops([[princessOf(sp), 1], [droneOf(sp), drones], ...(lv > 1 ? [[HONEYCOMB, lv - 1]] : [])]);
+  sound.pop();
+  toast(`You scoop up a colony of ${BEE_SPECIES[sp].name.toLowerCase()} bees: a princess and ${drones === 1 ? 'a drone' : 'two drones'}`, 2500);
+  achieve('bees');
+}
+apiculture.onYoung = (x, y, z, sp, mate, kids) => {
+  const fresh = kids.filter((k) => k !== sp && k !== mate);
+  if (!fresh.length) return;
+  achieve('mutation');
+  if (Math.hypot(x + 0.5 - player.pos.x, z + 0.5 - player.pos.z) < 32) toast(`A new kind of bee in the bee house: ${[...new Set(fresh)].map((k) => BEE_SPECIES[k].name.toLowerCase()).join(' and ')}!`, 3000);
 };

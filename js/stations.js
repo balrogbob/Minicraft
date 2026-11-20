@@ -20,6 +20,12 @@ import {
   ONION, BEANS, TOMATO, HERBS, APPLE_JUICE, BERRY_JUICE, VEG_STEW, TOMATO_SOUP, BAKED_BEANS,
   CLAY, TERRACOTTA, TERRA_COL, GLAZED_TILE, URN, UNFIRED_URN, COLORS,
 } from './blocks.js';
+import {
+  HONEYCOMB as COMB_PLAIN, FROSTY_COMB, DRY_COMB, FLORAL_COMB, BLOSSOM_COMB, MINERAL_COMB, EMBER_COMB, ROYAL_COMB, GLOW_COMB, CRYSTAL_COMB, GILDED_COMB, STARRY_COMB,
+  HONEY_DROP, PROPOLIS, POLLEN, ROYAL_JELLY, HONEY_MUST, HONEY_CAKE, BEESWAX, SULPHUR, GLOW_SHELL, CRYSTAL_SHARD,
+  IRON_ORE, COPPER_ORE, TIN_ORE, GOLD_ORE, SILVER_ORE, BEE_SPECIES, princessOf, droneOf, BEE_FRAMES,
+} from './blocks.js';
+import { cleanQueen } from './apiculture.js';
 
 // A recipe ingredient can be one id or a list of alternatives (coal or charcoal).
 const idsOf = (spec) => (Array.isArray(spec) ? spec : [spec]);
@@ -281,7 +287,7 @@ export class Stations {
     const st = this.map.get(key(x, y, z));
     this.map.delete(key(x, y, z));
     if (!st) return [];
-    return [...st.inputs, st.fuel, st.out, ...(st.side ?? []), ...upgradeStacks(st)].filter(Boolean).map((s) => [s.id, s.count]);
+    return [...st.inputs, st.fuel, st.out, ...(st.side ?? []), ...upgradeStacks(st), ...queenStacks(st)].filter(Boolean).map((s) => [s.id, s.count]);
   }
 
   // Like remove, but the whole stacks (keeping wear and enchantments), for spilling them on the ground.
@@ -289,7 +295,7 @@ export class Stations {
     const st = this.map.get(key(x, y, z));
     this.map.delete(key(x, y, z));
     if (!st) return [];
-    return [...st.inputs, st.fuel, st.out, ...(st.side ?? []), ...upgradeStacks(st)].filter(Boolean).map((s) => ({ ...s }));
+    return [...st.inputs, st.fuel, st.out, ...(st.side ?? []), ...upgradeStacks(st), ...queenStacks(st)].filter(Boolean).map((s) => ({ ...s }));
   }
 
   count(st, id) {
@@ -445,6 +451,8 @@ export class Stations {
         ...(STATION_KINDS[st.kind].sides ? { side: Array.from({ length: STATION_KINDS[st.kind].sides }, (_, i) => clean(st.side?.[i])) } : {}),
         burn: Math.max(0, +st.burn || 0), burnMax: Math.max(0, +st.burnMax || 0), progress: Math.max(0, +st.progress || 0), brews: st.brews | 0,
         ...(st.up && typeof st.up === 'object' ? { up: { speed: Math.min(2, st.up.speed | 0), eff: Math.min(2, st.up.eff | 0), yield: Math.min(2, st.up.yield | 0) } } : {}),
+        ...(st.kind === 'beehouse' && cleanQueen(st.queen) ? { queen: cleanQueen(st.queen) } : {}),
+        ...(st.kind === 'beehouse' && Array.isArray(st.fu) && Array.isArray(st.fuOf) ? { fu: Array.from({ length: n }, (_, i) => Math.max(0, st.fu[i] | 0)), fuOf: Array.from({ length: n }, (_, i) => st.fuOf[i] | 0) } : {}),
         ...(Array.isArray(st.age) && Array.isArray(st.ageOf) ? { age: Array.from({ length: n }, (_, i) => Math.max(0, +st.age[i] || 0)), ageOf: Array.from({ length: n }, (_, i) => st.ageOf[i] | 0) } : {}),
       });
     }
@@ -503,3 +511,33 @@ export function upgradeRefusal(kind, upId) {
   if (what === 'yield' && !K.yieldUp) return 'A yield upgrade fits crushers, pulverizers, washers, sieves, millstones and saws';
   return '';
 }
+
+// ---------- v31: bee houses and the comb centrifuge ----------
+// A bee house holds a princess, drones and frames; its queen fills the trays (see apiculture.js).
+export const BEE_ACCEPTS = [...BEE_SPECIES.flatMap((_, i) => [princessOf(i), droneOf(i)]), ...Object.keys(BEE_FRAMES).map(Number)];
+STATION_KINDS.beehouse = { name: 'Bee House', inputs: 4, sides: 5, nofuel: true, noLit: true, bees: true, accepts: BEE_ACCEPTS, recipes: [] };
+// A queen still in a house that's broken comes out as a princess again.
+export function queenStacks(st) { return st.queen ? [{ id: princessOf(st.queen.sp), count: 1 }] : []; }
+// Spinning combs: the main product, and what else comes out (each a chance) into the trays.
+export const COMB_RECIPES = [
+  { out: [HONEY_DROP, 1], in: [[COMB_PLAIN, 1]], time: 4, side: [[BEESWAX, 0.8], [HONEY_DROP, 0.4]] },
+  { out: [HONEY_DROP, 1], in: [[FROSTY_COMB, 1]], time: 4, side: [[BEESWAX, 0.7], [ICE, 0.3]] },
+  { out: [BEESWAX, 1], in: [[DRY_COMB, 1]], time: 4, side: [[PROPOLIS, 0.6], [SAND, 0.3]] },
+  { out: [HONEY_DROP, 1], in: [[FLORAL_COMB, 1]], time: 4, side: [[POLLEN, 0.6], [BEESWAX, 0.5]] },
+  { out: [HONEY_DROP, 2], in: [[BLOSSOM_COMB, 1]], time: 4, side: [[POLLEN, 0.3], [BEESWAX, 0.5]] },
+  { out: [BEESWAX, 1], in: [[MINERAL_COMB, 1]], time: 6, side: [[dirtyDust(IRON_ORE), 0.4], [dirtyDust(COPPER_ORE), 0.3], [dirtyDust(TIN_ORE), 0.2], [PROPOLIS, 0.2]] },
+  { out: [BEESWAX, 1], in: [[EMBER_COMB, 1]], time: 6, side: [[SULPHUR, 0.5], [COAL_DUST, 0.4], [PROPOLIS, 0.2]] },
+  { out: [ROYAL_JELLY, 1], in: [[ROYAL_COMB, 1]], time: 6, side: [[BEESWAX, 0.5], [HONEY_DROP, 0.5]] },
+  { out: [BEESWAX, 1], in: [[GLOW_COMB, 1]], time: 6, side: [[GLOW_SHELL, 0.35], [GLOW_MUSHROOM, 0.2]] },
+  { out: [BEESWAX, 1], in: [[CRYSTAL_COMB, 1]], time: 8, side: [[CRYSTAL_SHARD, 0.5]] },
+  { out: [HONEY_DROP, 1], in: [[GILDED_COMB, 1]], time: 8, side: [[dirtyDust(GOLD_ORE), 0.4], [dirtyDust(SILVER_ORE), 0.3], [BEESWAX, 0.5]] },
+  { out: [BEESWAX, 1], in: [[STARRY_COMB, 1]], time: 10, side: [[METEORIC_IRON, 0.15], [CRYSTAL_SHARD, 0.25], [HONEY_DROP, 0.3]] },
+];
+// the comb centrifuge is turned by a shaft, like a millstone
+STATION_KINDS.combspin = { name: 'Comb Centrifuge', verb: 'Spinning', inputs: 2, powered: true, sides: 4, yieldUp: true, recipes: COMB_RECIPES };
+// and the electric centrifuge spins combs too
+STATION_KINDS.centrifuge.sides = 4;
+STATION_KINDS.centrifuge.recipes.push(...COMB_RECIPES);
+// honey must for mead, and honey cake
+STATION_KINDS.winepress.recipes.push({ out: [HONEY_MUST, 1], in: [[HONEY_DROP, 6], [GLASS_BOTTLE, 1]], time: 8 });
+STATION_KINDS.oven.recipes.push({ out: [HONEY_CAKE, 1], in: [[FLOUR, 3], [HONEY_DROP, 4], [EGG, 1]], time: 10 });

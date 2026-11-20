@@ -2974,3 +2974,99 @@ ITEM_PAINTERS[LP_FSINK] = lpIconOf([120, 70, 170], (ctx) => { rect(ctx, 7, 6, 2,
 ITEM_PAINTERS[REMOTE_ORDERER] = (ctx) => {
   rect(ctx, 4, 2, 8, 12, [60, 64, 74]); rect(ctx, 5, 3, 6, 5, [90, 200, 230]); rect(ctx, 5, 9, 2, 1, [214, 176, 70]); rect(ctx, 9, 9, 2, 1, [214, 176, 70]); rect(ctx, 5, 11, 6, 1, [214, 176, 70]); rect(ctx, 7, 0, 1, 2, [180, 180, 190]);
 };
+
+// ---------- v31: bees, combs and honey products ----------
+import {
+  BEE_SPECIES, princessOf, droneOf, COMBS, COMB_NAMES, BEE_SCOOP, WOODEN_FRAME, WAXED_FRAME, PROVEN_FRAME, HONEY_DROP, PROPOLIS, POLLEN,
+  ROYAL_JELLY, HONEY_MUST, MEAD, FINE_MEAD, HONEY_CAKE, HONEYED_APPLE,
+} from './blocks.js';
+// a bee house: a little wooden hut on legs, with a pitched roof and a round entrance
+const beeHouseSide = (t) => {
+  for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+    const board = y % 4 === 3, roof = y < 2;
+    t.set(x, y, roof ? t.vary([150, 60, 40], 0.06) : board ? [150, 106, 56] : t.vary([214, 168, 96], 0.05));
+  }
+  for (let y = 2; y < TILE; y++) { t.set(0, y, [120, 84, 44]); t.set(15, y, [120, 84, 44]); }
+};
+P[T.BEEHOUSE_SIDE] = beeHouseSide;
+P[T.BEEHOUSE_TOP] = (t) => {
+  for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) t.set(x, y, (x + (y >> 1) % 2 * 2) % 4 === 0 ? [120, 44, 30] : t.vary([170, 70, 46], 0.06));
+};
+P[T.BEEHOUSE_FRONT] = (t) => {
+  beeHouseSide(t);
+  for (let y = 5; y < 12; y++) for (let x = 4; x < 12; x++) if (Math.hypot(x - 7.5, y - 8) < 2.6) t.set(x, y, [40, 26, 12]);
+  for (let x = 3; x < 13; x++) t.set(x, 11, [120, 84, 44]); // the landing board
+  for (const [x, y] of [[4, 4], [11, 6], [9, 13]]) { t.set(x, y, [240, 190, 40]); t.set(x + 1, y, [30, 24, 10]); }
+};
+// the comb centrifuge: an iron drum with a window onto the honey whirling round, and a crank gear on top
+P[T.COMB_SPIN_SIDE] = (t) => {
+  for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+    const edge = x < 1 || x > 14 || y < 1 || y > 14, band = y === 3 || y === 12;
+    const win = Math.hypot(x - 7.5, y - 7.5) < 3.4, swirl = win && (Math.atan2(y - 7.5, x - 7.5) * 2 + Math.hypot(x - 7.5, y - 7.5)) % 2 < 1;
+    t.set(x, y, edge ? [150, 154, 162] : win ? (swirl ? [250, 196, 60] : [214, 150, 30]) : band ? [96, 100, 108] : t.vary([128, 132, 140], 0.05));
+  }
+};
+P[T.COMB_SPIN_TOP] = (t) => {
+  for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+    const r = Math.hypot(x - 7.5, y - 7.5), ang = Math.atan2(y - 7.5, x - 7.5);
+    const gear = r < 5 + (Math.cos(ang * 8) > 0 ? 1 : 0);
+    t.set(x, y, r < 1.5 ? [60, 60, 66] : gear ? [176, 132, 70] : t.vary([128, 132, 140], 0.05));
+  }
+};
+// a bee: a princess wears a little gold crown, a drone is plainer and rounder
+const beePainter = (col, princess) => (ctx) => {
+  const dark = [40, 30, 20];
+  for (let y = 5; y < 13; y++) for (let x = 3; x < 13; x++) {
+    const d = Math.hypot((x - 8) / (princess ? 5 : 4.4), (y - 9) / 3.6);
+    if (d >= 1) continue;
+    px(ctx, x, y, x === 6 || x === 9 ? dark : x > 11 ? shade(col, 0.6) : y < 7 ? shade(col, 1.2) : col);
+  }
+  for (let y = 3; y < 7; y++) for (let x = 5; x < 11; x++) if (Math.hypot(x - (x < 8 ? 6 : 9.5), y - 5) < 1.7) px(ctx, x, y, [220, 236, 250]); // wings
+  px(ctx, 3, 9, dark); px(ctx, 2, 8, dark); // head and feeler
+  if (princess) for (const [x, y] of [[11, 3], [12, 2], [13, 3]]) px(ctx, x, y, [250, 210, 60]);
+};
+BEE_SPECIES.forEach((s, i) => { ITEM_PAINTERS[princessOf(i)] = beePainter(s.col, true); ITEM_PAINTERS[droneOf(i)] = beePainter(shade(s.col, 0.85), false); });
+const COMB_COLS = [[190, 226, 240], [210, 190, 140], [230, 150, 210], [250, 180, 190], [150, 150, 160], [220, 90, 40], [180, 120, 220], [140, 240, 170], [200, 170, 250], [250, 214, 80], [80, 90, 170]];
+const combPainter = (c) => (ctx) => {
+  for (let y = 3; y < 14; y++) for (let x = 2; x < 14; x++) {
+    const cell = ((x + (Math.floor(y / 3) % 2) * 2) % 4 === 0) || y % 3 === 0;
+    px(ctx, x, y, cell ? shade(c, 0.7) : c);
+  }
+};
+COMB_NAMES.forEach((_, i) => { ITEM_PAINTERS[COMBS + i] = combPainter(COMB_COLS[i]); });
+ITEM_PAINTERS[BEE_SCOOP] = (ctx) => {
+  drawHandle(ctx, 2, 8);
+  for (let y = 1; y < 8; y++) for (let x = 8; x < 15; x++) {
+    const d = Math.hypot(x - 11.5, y - 4.5);
+    if (d < 3.6) px(ctx, x, y, d > 2.8 ? [150, 110, 60] : (x + y) % 2 ? [236, 232, 220] : [200, 196, 186]);
+  }
+};
+const framePainter = (wood, fill) => (ctx) => {
+  rect(ctx, 2, 2, 12, 12, wood); rect(ctx, 4, 4, 8, 8, fill);
+  for (let y = 4; y < 12; y++) for (let x = 4; x < 12; x++) if (((x + (Math.floor(y / 2) % 2)) % 3 === 0)) px(ctx, x, y, shade(fill, 0.8));
+};
+ITEM_PAINTERS[WOODEN_FRAME] = framePainter([170, 120, 64], [230, 220, 196]);
+ITEM_PAINTERS[WAXED_FRAME] = framePainter([170, 120, 64], [246, 206, 96]);
+ITEM_PAINTERS[PROVEN_FRAME] = framePainter([110, 60, 36], [240, 180, 60]);
+ITEM_PAINTERS[HONEY_DROP] = (ctx) => {
+  for (let y = 2; y < 14; y++) for (let x = 3; x < 13; x++) {
+    const w = y < 8 ? (y - 2) * 0.6 : Math.sqrt(Math.max(0, 16 - (y - 9.5) ** 2)) * 1.1;
+    if (Math.abs(x - 7.5) <= w) px(ctx, x, y, x < 7 && y < 10 ? [255, 214, 100] : y > 11 ? [196, 120, 20] : [240, 166, 30]);
+  }
+};
+ITEM_PAINTERS[PROPOLIS] = (ctx) => { for (let y = 5; y < 13; y++) for (let x = 3; x < 13; x++) if (Math.hypot(x - 8, (y - 9) * 1.3) < 5 - ((x * 3 + y) % 4 === 0 ? 1 : 0)) px(ctx, x, y, y < 8 ? [150, 96, 40] : [110, 66, 28]); };
+ITEM_PAINTERS[POLLEN] = (ctx) => { for (let y = 6; y < 14; y++) for (let x = 2; x < 14; x++) if (Math.abs(x - 8) < (y - 5) * 0.8 && (x * 7 + y * 5) % 3) px(ctx, x, y, (x + y) % 4 ? [246, 214, 60] : [226, 170, 30]); };
+ITEM_PAINTERS[ROYAL_JELLY] = (ctx) => {
+  rect(ctx, 4, 6, 8, 8, [214, 232, 240]); rect(ctx, 5, 8, 6, 5, [250, 244, 220]); rect(ctx, 4, 4, 8, 2, [150, 70, 180]); px(ctx, 6, 9, [255, 255, 255]);
+};
+ITEM_PAINTERS[HONEY_MUST] = bottlePainter([236, 214, 140]);
+ITEM_PAINTERS[MEAD] = bottlePainter([226, 160, 40]);
+ITEM_PAINTERS[FINE_MEAD] = bottlePainter([190, 110, 30]);
+ITEM_PAINTERS[HONEY_CAKE] = (ctx) => {
+  for (let y = 6; y < 14; y++) for (let x = 2; x < 14; x++) px(ctx, x, y, y < 8 ? [240, 176, 40] : y === 10 ? [246, 214, 120] : [200, 140, 70]);
+  for (const x of [4, 8, 11]) px(ctx, x, 8, [240, 176, 40]);
+};
+ITEM_PAINTERS[HONEYED_APPLE] = (ctx) => {
+  for (let y = 4; y < 14; y++) for (let x = 3; x < 13; x++) if (Math.hypot(x - 8, y - 9) < 4.8) px(ctx, x, y, y > 10 ? [200, 130, 30] : x < 7 ? [226, 70, 50] : [190, 40, 34]);
+  rect(ctx, 8, 2, 1, 3, [100, 70, 40]); px(ctx, 6, 7, [255, 220, 140]);
+};
