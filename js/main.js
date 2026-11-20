@@ -1975,6 +1975,7 @@ function eat(id) {
     effects[meal[0]] = Math.max(effects[meal[0]], meal[1]);
     if (meal[0] === 'heal') { poisoned = 0; renderHealth(); }
     if (meal[0] === 'warm') ailments.chill = 0;
+    if (meal[0] === 'cool') ailments.heat = 0;
     toast(`${itemName(id)}: you ${ITEMS[id].about}`, 1800);
   }
   if (ITEMS[id]?.bottle && inventory.add(GLASS_BOTTLE, 1)) toast('Inventory full');
@@ -2633,8 +2634,8 @@ function useAnvil() {
 }
 
 // ---------- teas ----------
-const effects = { night: 0, haste: 0, fire: 0, heal: 0, warm: 0, fed: 0, swift: 0 }; // seconds left of each
-const EFFECT_ICONS = { night: '🌙', haste: '⛏', fire: '🔥', heal: '💚', warm: '🍯', fed: '🍗', swift: '🏃' };
+const effects = { night: 0, haste: 0, fire: 0, heal: 0, warm: 0, fed: 0, swift: 0, cool: 0 }; // seconds left of each
+const EFFECT_ICONS = { night: '🌙', haste: '⛏', fire: '🔥', heal: '💚', warm: '🍯', fed: '🍗', swift: '🏃', cool: '🍦' };
 function drinkTea(id) {
   const [kind, secs] = ITEMS[id].tea;
   effects[kind] = Math.max(effects[kind], secs);
@@ -2770,7 +2771,7 @@ function tickAilments(dt) {
   ailments.chill = Math.max(0, ailments.chill + (cold && !warm ? dt / 45 : hearths.size && hearthNear() ? -dt / 3 : -dt / 12));
   const sun = sky.light > 0.95 && sky.time > 0.15 && sky.time < 0.35;
   const hot = biome === 'desert' && outside && (sun || (weather.raining && weather.level > 0.5));
-  const shaded = armour[0] || effects.fire > 0 || guarded('heat');
+  const shaded = armour[0] || effects.fire > 0 || effects.cool > 0 || guarded('heat'); // (v34: ice cream cools you)
   ailments.heat = Math.max(0, ailments.heat + (hot && !shaded ? dt / 50 : -dt / 15));
   for (const k of ['chill', 'heat']) {
     if (ailments[k] < 1) { timers[k] = 0; if (ailments[k] < 0.5) warned[k] = false; continue; }
@@ -6926,6 +6927,7 @@ function stepGame(now, dt) {
     eye.y > HAIL_HEIGHT, Math.cos(sky.time * Math.PI * 2), sky.light);
   sky.weather = { overcast: weather.overcast, level: weather.level, kind: weather.kind };
   world.raining = weather.raining && biome !== 'desert';
+  world.daylight = sky.light; // (v34: drying racks)
   sound.weather(paused ? 0 : weather.level, weather.kind);
   if (worldReady) music.update(dt, paused ? null : musicMood(dt));
   const before = sky.time;

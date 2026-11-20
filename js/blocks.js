@@ -141,7 +141,7 @@ export const T = {
   LEAD_CHEST_SIDE: 267, LEAD_CHEST_TOP: 268, LEAD_CHEST_FRONT: 269, CENTRIFUGE_SIDE: 270, CENTRIFUGE_TOP: 271, TESLA: 272, TESLA_TOP: 273,
   FENCE_POST: 274, FENCE_WIRE: 275, FREEZER_SIDE: 276, FREEZER_FRONT: 277, ARC_SIDE: 278, ARC_FRONT: 279, PACKED_ICE: 280, INVAR: 281, RAIL_STOP: 282, BASALT: 283, BASALT_TOP: 284, METEORITE: 285,
   IRON_BARS: 286, POT: 287, IVY: 288, BOX_FLOWERS: 289,
-  FRUIT_LEAVES: 290, FRUIT_RIPE: 293, FRUIT_SAPLING: 296, HAY: 299, SACK: 300, BEACON: 301, APIARY_SIDE: 302, APIARY_FRONT: 303, APIARY_FULL: 304, APIARY_TOP: 305, BELT_CROSS: 306, FARM_CTRL: 307, FARM_CTRL_ON: 308, TUBE: 309, TUBE_END: 310, AWNING: 311, FIRE: 312, CARROT_0: 313, POTATO_0: 317, STEM_0: 321, PUMPKIN_SIDE: 324, PUMPKIN_TOP: 325, JACK_FACE: 326, TRELLIS: 327, VINE_0: 328, BARREL_SIDE: 331, BARREL_TOP: 332, CHEESE: 333, SEA_BRICK: 334, SEA_LANTERN: 335, VAULT: 336, SKY_STONE: 337, AIR_PUMP: 338, RADIO: 339, RADIO_ON: 340, SORTBOX: 341, SORTBOX_TOP: 342, HEARTH: 343, HEARTH_LIT: 344, CHIMNEY_TOP: 345, STABLE_SIDE: 346, SNOWMAN_FRONT: 347, ONION_0: 348, BEAN_0: 352, TOMATO_0: 356, HERB_0: 360, KILN_SIDE: 364, KILN_TOP: 365, KILN_FRONT: 366, KILN_FRONT_LIT: 367, TERRACOTTA: 368, TERRA_COL: 369, GLAZED: 379, ROOF_TILES: 389, URN: 390, ROPE: 391, LOCK_GATE: 392, LOCK_GATE_TOP: 393, DRIPSTONE: 394, BEETLE_LAMP: 395, WASHER_SIDE: 396, WASHER_TOP: 397, WASHER_FRONT: 398, SIEVE: 399, SLAG_BRICKS: 400, CHARCOAL_HEAP: 401, LP_ARM: 402, LP_CORE: 403, LP_TABLE_TOP: 409, LP_TABLE_SIDE: 410, LP_JUNCTION: 411, LP_SENSOR_CORE: 412, LP_SENSOR_ON: 413, LP_FPROVIDER: 414, LP_FSUPPLIER: 415, DRONE_PAD_TOP: 416, DRONE_PAD_SIDE: 417, LP_FSINK: 418, BOTTLER_SIDE: 419, BOTTLER_TOP: 420, BEEHOUSE_SIDE: 421, BEEHOUSE_TOP: 422, BEEHOUSE_FRONT: 423, COMB_SPIN_SIDE: 424, COMB_SPIN_TOP: 425, TAP_SIDE: 426, TAP_LATEX: 427, PRESS_SIDE: 428, PRESS_TOP: 429, INSWIRE_OFF: 430, INSWIRE_ON: 431, BOUNCE_TOP: 432, BOUNCE_SIDE: 433, POLY_COL: 434, LUMEN: 444, DEMO_SIDE: 445, DEMO_TOP: 446, DEMO_ARMED: 447, DETONATOR_TILE: 448, COCOA_LEAVES: 449, COCOA_RIPE: 450, COCOA_SAPLING: 451, MOULD: 452, CHOC: 453, CHOC_LIQUID: 454, CAKE_TOP: 455, CAKE_SIDE: 456, // (434..443: polymer + colour) // (fruit tiles: apple, cherry, orange)
+  FRUIT_LEAVES: 290, FRUIT_RIPE: 293, FRUIT_SAPLING: 296, HAY: 299, SACK: 300, BEACON: 301, APIARY_SIDE: 302, APIARY_FRONT: 303, APIARY_FULL: 304, APIARY_TOP: 305, BELT_CROSS: 306, FARM_CTRL: 307, FARM_CTRL_ON: 308, TUBE: 309, TUBE_END: 310, AWNING: 311, FIRE: 312, CARROT_0: 313, POTATO_0: 317, STEM_0: 321, PUMPKIN_SIDE: 324, PUMPKIN_TOP: 325, JACK_FACE: 326, TRELLIS: 327, VINE_0: 328, BARREL_SIDE: 331, BARREL_TOP: 332, CHEESE: 333, SEA_BRICK: 334, SEA_LANTERN: 335, VAULT: 336, SKY_STONE: 337, AIR_PUMP: 338, RADIO: 339, RADIO_ON: 340, SORTBOX: 341, SORTBOX_TOP: 342, HEARTH: 343, HEARTH_LIT: 344, CHIMNEY_TOP: 345, STABLE_SIDE: 346, SNOWMAN_FRONT: 347, ONION_0: 348, BEAN_0: 352, TOMATO_0: 356, HERB_0: 360, KILN_SIDE: 364, KILN_TOP: 365, KILN_FRONT: 366, KILN_FRONT_LIT: 367, TERRACOTTA: 368, TERRA_COL: 369, GLAZED: 379, ROOF_TILES: 389, URN: 390, ROPE: 391, LOCK_GATE: 392, LOCK_GATE_TOP: 393, DRIPSTONE: 394, BEETLE_LAMP: 395, WASHER_SIDE: 396, WASHER_TOP: 397, WASHER_FRONT: 398, SIEVE: 399, SLAG_BRICKS: 400, CHARCOAL_HEAP: 401, LP_ARM: 402, LP_CORE: 403, LP_TABLE_TOP: 409, LP_TABLE_SIDE: 410, LP_JUNCTION: 411, LP_SENSOR_CORE: 412, LP_SENSOR_ON: 413, LP_FPROVIDER: 414, LP_FSUPPLIER: 415, DRONE_PAD_TOP: 416, DRONE_PAD_SIDE: 417, LP_FSINK: 418, BOTTLER_SIDE: 419, BOTTLER_TOP: 420, BEEHOUSE_SIDE: 421, BEEHOUSE_TOP: 422, BEEHOUSE_FRONT: 423, COMB_SPIN_SIDE: 424, COMB_SPIN_TOP: 425, TAP_SIDE: 426, TAP_LATEX: 427, PRESS_SIDE: 428, PRESS_TOP: 429, INSWIRE_OFF: 430, INSWIRE_ON: 431, BOUNCE_TOP: 432, BOUNCE_SIDE: 433, POLY_COL: 434, LUMEN: 444, DEMO_SIDE: 445, DEMO_TOP: 446, DEMO_ARMED: 447, DETONATOR_TILE: 448, COCOA_LEAVES: 449, COCOA_RIPE: 450, COCOA_SAPLING: 451, MOULD: 452, CHOC: 453, CHOC_LIQUID: 454, CAKE_TOP: 455, CAKE_SIDE: 456, RACK: 457, // (434..443: polymer + colour) // (fruit tiles: apple, cherry, orange)
 };
 
 // Ores, deepest-reaching last. tier: the pickaxe tier needed to mine it (see TOOL_TIERS);
@@ -3193,3 +3193,46 @@ ITEMS[ROAST_CHICKEN] = { name: 'Roast Chicken', food: 7, meat: true };
 ITEMS[CHICKEN_SOUP] = { name: 'Chicken Soup', food: 10, meal: ['heal', 6], about: 'heals you and cures food poisoning' };
 ITEMS[PORK_PIE] = { name: 'Pork Pie', food: 14, meal: ['fed', 600], about: 'keeps you full for a long time' };
 ITEMS[PORK_AND_BEANS] = { name: 'Pork and Beans', food: 12, meal: ['warm', 300], about: 'warms you through' };
+
+// ---------- v34 B: dairy and preserving ----------
+// Spin milk in the comb centrifuge for cream (it churns into twice the butter). The freezer makes ice cream and
+// ice lollies, which cool you down in the desert. Juice left in an urn sours into vinegar, for pickles and fish
+// and chips. A chimney over a burning fireplace smokes fish, ham and cheese hung in it; a drying rack out in the
+// sun dries fruit, grapes and pork (twice as fast in the desert, and not at all in the rain or at night).
+export const DRYING_RACK = 1510;
+export const CREAM = 3200, CHOC_ICE_CREAM = 3201, CHERRY_ICE_CREAM = 3202, HONEY_ICE_CREAM = 3203, ICE_LOLLY = 3204, VINEGAR = 3205,
+  PICKLES = 3206, FISH_AND_CHIPS = 3207, SMOKED_FISH = 3208, SMOKED_HAM = 3209, SMOKED_CHEESE = 3210, RAISINS = 3211, DRIED_FRUIT = 3212,
+  JERKY = 3213, TRAIL_MIX = 3214;
+// (seconds for each to turn into the next)
+export const URN_AGING = { [GRAPE_JUICE]: [VINEGAR, 1], [APPLE_JUICE]: [VINEGAR, 1], [BERRY_JUICE]: [VINEGAR, 1] }; // (game days)
+export const SMOKING = { [RAW_FISH]: [SMOKED_FISH, 60], [SALMON]: [SMOKED_FISH, 60], [ICEFISH]: [SMOKED_FISH, 60], [RAW_PORK]: [SMOKED_HAM, 120], [CHEESE]: [SMOKED_CHEESE, 120] };
+export const DRYING = { [GRAPES]: [RAISINS, 90], [APPLE]: [DRIED_FRUIT, 90], [CHERRIES]: [DRIED_FRUIT, 90], [ORANGE_FRUIT]: [DRIED_FRUIT, 90], [BERRIES]: [DRIED_FRUIT, 90], [RAW_PORK]: [JERKY, 150] };
+BLOCKS[CHIMNEY].station = 'smokehouse';
+const RACK_MODEL = [
+  [1, 0, 7, 2, 14, 9, wood], [14, 0, 7, 15, 14, 9, wood], // the posts
+  [1, 13, 7.5, 15, 14, 8.5, wood], [1, 9, 7.5, 15, 10, 8.5, wood], [1, 5, 7.5, 15, 6, 8.5, wood], // the rails
+  [2, 6, 7.2, 14, 13, 7.6, T.RACK], // the netting
+];
+block(DRYING_RACK, { ...furniture, name: 'Drying Rack', station: 'dryrack', model: RACK_MODEL, boxes: [[1, 0, 7, 15, 14, 9]] });
+ITEMS[DRYING_RACK] = { name: 'Drying Rack', about: 'out in the sun it dries fruit, grapes and pork (fastest in the desert)' };
+ITEMS[CREAM] = { name: 'Cream', about: 'churn it for butter, or freeze it into ice cream' };
+ITEMS[CHOC_ICE_CREAM] = { name: 'Chocolate Ice Cream', food: 6, meal: ['cool', 300], about: 'cools you down in the heat' };
+ITEMS[CHERRY_ICE_CREAM] = { name: 'Cherry Ice Cream', food: 6, meal: ['cool', 300], about: 'cools you down in the heat' };
+ITEMS[HONEY_ICE_CREAM] = { name: 'Honey Ice Cream', food: 6, meal: ['cool', 300], about: 'cools you down in the heat' };
+ITEMS[ICE_LOLLY] = { name: 'Ice Lolly', food: 3, meal: ['cool', 180], about: 'cools you down in the heat' };
+ITEMS[VINEGAR] = { name: 'Vinegar', stack: 8, about: 'for pickles, and fish and chips' };
+ITEMS[PICKLES] = { name: 'Pickles', stack: 8, food: 6, meal: ['fed', 400], bottle: true, about: 'keep you going for a long time' };
+ITEMS[FISH_AND_CHIPS] = { name: 'Fish and Chips', food: 14, meal: ['fed', 400], about: 'keeps you full for a long time' };
+ITEMS[SMOKED_FISH] = { name: 'Smoked Fish', food: 8, meal: ['fed', 300], about: 'keeps you full for longer', fish: true };
+ITEMS[SMOKED_HAM] = { name: 'Smoked Ham', food: 10, meal: ['fed', 400], about: 'keeps you full for a long time', meat: true };
+ITEMS[SMOKED_CHEESE] = { name: 'Smoked Cheese', food: 9, meal: ['warm', 300], about: 'warms you through' };
+ITEMS[RAISINS] = { name: 'Raisins', food: 3 };
+ITEMS[DRIED_FRUIT] = { name: 'Dried Fruit', food: 4 };
+ITEMS[JERKY] = { name: 'Jerky', food: 6, meat: true };
+ITEMS[TRAIL_MIX] = { name: 'Trail Mix', food: 8, meal: ['swift', 150], about: 'run faster' };
+RECIPES.push(
+  { out: [DRYING_RACK, 1], in: [[STICK, 6], [STRING, 2]], table: true },
+  { out: [BUTTER, 2], in: [[CREAM, 1]], churn: true },
+  { out: [PICKLES, 1], in: [[[ONION, BEANS, CARROT], 3], [VINEGAR, 1], [GLASS_BOTTLE, 1]] },
+  { out: [TRAIL_MIX, 2], in: [[RAISINS, 1], [DRIED_FRUIT, 1], [ROASTED_COCOA, 1], [HONEY_DROP, 1]] },
+);

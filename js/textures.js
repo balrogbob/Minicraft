@@ -3308,3 +3308,62 @@ ITEM_PAINTERS[PORK_PIE] = (ctx) => {
   for (let y = 4; y < 14; y++) for (let x = 2; x < 14; x++) px(ctx, x, y, y < 6 ? [226, 170, 90] : y === 13 ? [150, 96, 44] : (x + y) % 4 === 0 ? [200, 140, 70] : [214, 156, 80]);
   for (let x = 3; x < 13; x += 2) px(ctx, x, 4, [240, 200, 120]);
 };
+
+// ---------- v34 B: dairy and preserving ----------
+import { CREAM, CHOC_ICE_CREAM, CHERRY_ICE_CREAM, HONEY_ICE_CREAM, ICE_LOLLY, VINEGAR, PICKLES, FISH_AND_CHIPS, SMOKED_FISH, SMOKED_HAM, SMOKED_CHEESE, RAISINS, DRIED_FRUIT, JERKY, TRAIL_MIX } from './blocks.js';
+// a drying rack's netting: loose string mesh (mostly see-through)
+P[T.RACK] = (t) => { for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) { if (x % 3 === 0 || y % 3 === 0) t.set(x, y, t.vary([226, 214, 180], 0.05)); else t.set(x, y, [0, 0, 0], 0); } };
+ITEM_PAINTERS[CREAM] = (ctx) => {
+  for (let y = 6; y < 14; y++) for (let x = 2; x < 14; x++) if (Math.abs(x - 7.5) < 6 - (y - 6) * 0.4) px(ctx, x, y, y < 8 ? [252, 248, 236] : [150, 106, 64]);
+  for (let y = 3; y < 7; y++) for (let x = 5; x < 11; x++) if (Math.hypot(x - 7.5, y - 6) < 3) px(ctx, x, y, x < 7 ? [255, 255, 250] : [244, 238, 220]);
+};
+const cone = (scoop, hi) => (ctx) => {
+  for (let y = 8; y < 16; y++) for (let x = 4; x < 12; x++) if (Math.abs(x - 7.5) < (16 - y) * 0.5) px(ctx, x, y, (x + y) % 3 ? [214, 164, 90] : [180, 126, 60]);
+  for (let y = 1; y < 9; y++) for (let x = 3; x < 13; x++) if (Math.hypot(x - 7.5, y - 5) < 4.3) px(ctx, x, y, x < 6 && y < 5 ? hi : scoop);
+};
+ITEM_PAINTERS[CHOC_ICE_CREAM] = cone([110, 66, 40], [150, 100, 66]);
+ITEM_PAINTERS[CHERRY_ICE_CREAM] = cone([240, 150, 170], [255, 200, 210]);
+ITEM_PAINTERS[HONEY_ICE_CREAM] = cone([246, 214, 120], [255, 240, 180]);
+ITEM_PAINTERS[ICE_LOLLY] = (ctx) => {
+  for (let y = 1; y < 11; y++) for (let x = 4; x < 12; x++) px(ctx, x, y, y < 4 ? [250, 150, 60] : y < 7 ? [250, 220, 80] : [230, 80, 90]);
+  for (let y = 11; y < 16; y++) { px(ctx, 7, y, [214, 180, 120]); px(ctx, 8, y, [190, 156, 100]); }
+};
+const jar = (c, lid, bits) => (ctx) => {
+  rect(ctx, 4, 2, 8, 2, lid);
+  for (let y = 4; y < 15; y++) for (let x = 3; x < 13; x++) px(ctx, x, y, x === 3 || x === 12 || y === 14 ? [200, 220, 232] : c);
+  for (const [x, y, cc] of bits) px(ctx, x, y, cc);
+};
+ITEM_PAINTERS[VINEGAR] = jar([196, 150, 110], [120, 90, 60], []);
+ITEM_PAINTERS[PICKLES] = jar([200, 210, 150], [200, 60, 50], [[5, 6, [110, 150, 50]], [9, 8, [240, 230, 210]], [6, 11, [110, 150, 50]], [10, 12, [240, 150, 60]], [7, 9, [110, 150, 50]]]);
+ITEM_PAINTERS[FISH_AND_CHIPS] = (ctx) => {
+  for (let y = 5; y < 15; y++) for (let x = 1; x < 15; x++) if (Math.abs(x - 7.5) < 7 - (14 - y) * 0.3) px(ctx, x, y, [236, 236, 228]);
+  for (let y = 5; y < 10; y++) for (let x = 2; x < 9; x++) if (Math.hypot((x - 5.5) / 3.5, (y - 7.5) / 2.5) < 1) px(ctx, x, y, (x + y) % 3 ? [220, 160, 60] : [190, 124, 40]);
+  for (const x of [9, 11, 13]) for (let y = 3; y < 10; y++) px(ctx, x + (y & 1 ? 0 : 0), y, [250, 214, 110]);
+};
+const fishShape = (c, d) => (ctx) => {
+  for (let y = 4; y < 12; y++) for (let x = 2; x < 12; x++) if (Math.hypot((x - 7) / 5, (y - 8) / 3.5) < 1) px(ctx, x, y, (x + y) % 4 === 0 ? d : c);
+  for (let k = 0; k < 4; k++) { px(ctx, 12 + (k >> 1), 6 + k, c); px(ctx, 13, 5 + k * 2, d); }
+  px(ctx, 4, 7, [20, 20, 20]);
+};
+ITEM_PAINTERS[SMOKED_FISH] = fishShape([180, 110, 50], [130, 74, 34]);
+ITEM_PAINTERS[SMOKED_HAM] = (ctx) => {
+  for (let y = 2; y < 14; y++) for (let x = 2; x < 13; x++) { const d = Math.hypot((x - 7) / 5, (y - 8) / 5.5); if (d < 1) px(ctx, x, y, d > 0.82 ? [120, 60, 30] : (x * y) % 7 === 0 ? [240, 190, 180] : [190, 80, 70]); }
+  rect(ctx, 11, 1, 2, 3, [240, 236, 224]); rect(ctx, 6, 0, 1, 3, [214, 196, 140]);
+};
+ITEM_PAINTERS[SMOKED_CHEESE] = (ctx) => {
+  for (let y = 5; y < 13; y++) for (let x = 2; x < 14; x++) if (x - 2 > (12 - y) * 0.6) px(ctx, x, y, y === 5 || x === 13 ? [150, 96, 40] : (x * 3 + y) % 9 === 0 ? [176, 120, 50] : [214, 160, 70]);
+};
+const scatter = (c, d, n) => (ctx) => {
+  const spots = [[4, 4], [9, 3], [12, 7], [6, 8], [3, 11], [9, 11], [12, 12], [7, 13]].slice(0, n);
+  for (const [cx, cy] of spots) { px(ctx, cx, cy, c); px(ctx, cx + 1, cy, d); px(ctx, cx, cy + 1, d); px(ctx, cx + 1, cy + 1, c); }
+};
+ITEM_PAINTERS[RAISINS] = scatter([80, 40, 60], [50, 24, 40], 8);
+ITEM_PAINTERS[DRIED_FRUIT] = (ctx) => {
+  for (const [cx, cy, c] of [[5, 5, [200, 120, 50]], [10, 6, [170, 40, 50]], [7, 11, [230, 160, 70]]]) for (let y = cy - 2; y <= cy + 2; y++) for (let x = cx - 3; x <= cx + 2; x++) if (Math.hypot((x - cx + 0.5) / 3, (y - cy) / 2) < 1) px(ctx, x, y, (x + y) % 3 ? c : shade(c, 0.75));
+};
+ITEM_PAINTERS[JERKY] = (ctx) => { for (let k = 0; k < 12; k++) for (let w = 0; w < 3; w++) px(ctx, 2 + k, 12 - k + w - (k >> 2), (k + w) % 4 ? [120, 50, 30] : [80, 30, 20]); };
+ITEM_PAINTERS[TRAIL_MIX] = (ctx) => {
+  for (let y = 7; y < 15; y++) for (let x = 2; x < 14; x++) if (Math.abs(x - 7.5) < 6 - (y - 7) * 0.5) px(ctx, x, y, [150, 106, 64]);
+  const bits = [[80, 40, 60], [200, 120, 50], [84, 48, 28], [230, 200, 120]];
+  for (let k = 0; k < 14; k++) px(ctx, 3 + (k * 5) % 10, 5 + (k * 3) % 4, bits[k % 4]);
+};

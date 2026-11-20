@@ -198,7 +198,7 @@ STATION_KINDS.centrifuge = {
 };
 // The freezer turns water into ice (you get the bucket back) and ice into packed ice.
 STATION_KINDS.freezer = {
-  name: 'Freezer', verb: 'Freezing', inputs: 2, powered: true, electric: true,
+  name: 'Freezer', verb: 'Freezing', inputs: 3, powered: true, electric: true,
   recipes: [
     { out: [PACKED_ICE, 1], in: [[ICE, 4]], time: 10 },
     { out: [ICE, 1], in: [[WATER_BUCKET, 1]], leaves: BUCKET, time: 6 },
@@ -376,7 +376,9 @@ export class Stations {
       const id = world.get(x, y, z);
       if (stationKind(id) !== st.kind) { this.map.delete(k); continue; }
       const K = STATION_KINDS[st.kind];
-      if (K.ages) this.age(st, inCellar(world, x, y, z) ? dt * CELLAR_SPEED : dt);
+      if (K.ages) this.age(st, inCellar(world, x, y, z) ? dt * CELLAR_SPEED : dt, K.ages === 'urn' ? URN_AGING : AGING);
+      if (K.smokes && smokedAt(world, x, y, z)) this.age(st, dt, SMOKING, 1); // (v34: these tables are in seconds, not days)
+      if (K.dries) { const d = dryingAt(world, x, y, z); if (d) this.age(st, d * dt, DRYING, 1); }
       if (K.storage || K.holder) continue;
       if (K.crafter) {
         const want = recipeAt(x, y, z);
@@ -424,15 +426,16 @@ export class Stations {
 
   // Things laid down in a barrel age a little each second: a whole stack together. (Taking it out and putting
   // it back starts it again.)
-  age(st, dt) {
+  // unit: seconds per step of the table's times (a game day, or 1 for tables in seconds)
+  age(st, dt, table = AGING, unit = AGE_DAY) {
     st.age ??= new Array(st.inputs.length).fill(0);
     st.ageOf ??= new Array(st.inputs.length).fill(0);
     st.inputs.forEach((s, i) => {
-      const a = s && AGING[s.id];
+      const a = s && table[s.id];
       if (!a) { st.age[i] = 0; st.ageOf[i] = 0; return; }
       if (st.ageOf[i] !== s.id) { st.ageOf[i] = s.id; st.age[i] = 0; }
       st.age[i] += dt;
-      if (st.age[i] >= a[1] * AGE_DAY) { s.id = a[0]; st.ageOf[i] = s.id; st.age[i] = 0; }
+      if (st.age[i] >= a[1] * unit) { s.id = a[0]; st.ageOf[i] = s.id; st.age[i] = 0; }
     });
   }
 
@@ -466,7 +469,7 @@ STATION_KINDS.kiln = { name: 'Kiln', verb: 'Firing', inputs: 2, recipes: [
   { out: [URN, 1], in: [[UNFIRED_URN, 1]], time: 8 },
   ...COLORS.map((c, i) => ({ out: [GLAZED_TILE + i, 1], in: [[TERRA_COL + i, 1]], time: 5 })),
 ] };
-STATION_KINDS.urn = { name: 'Urn', inputs: 6, storage: true, recipes: [] };
+STATION_KINDS.urn = { name: 'Urn', inputs: 6, storage: true, ages: 'urn', recipes: [] }; // (v34: juice sours into vinegar in it)
 
 // ---------- v28 A: ore washer and sieve ----------
 // Water touching the washer on any side (a source or flowing).
@@ -576,3 +579,28 @@ STATION_KINDS.cookpot.recipes.push(
   { out: [CHICKEN_SOUP, 1], in: [[RAW_CHICKEN, 1], [CARROT, 1], [ONION, 1], [WATER_BUCKET, 1]], leaves: BUCKET, time: 8 },
   { out: [PORK_AND_BEANS, 1], in: [[RAW_PORK, 1], [BEANS, 3], [TOMATO, 1]], time: 8 },
 );
+
+// v34 B: dairy and preserving
+import { CREAM, CHOC_ICE_CREAM, CHERRY_ICE_CREAM, HONEY_ICE_CREAM, ICE_LOLLY, VINEGAR, FISH_AND_CHIPS, URN_AGING, SMOKING, DRYING, CHIMNEY, ORANGE_JUICE } from './blocks.js';
+STATION_KINDS.freezer.recipes.push(
+  { out: [CHOC_ICE_CREAM, 2], in: [[CREAM, 1], [SUGAR, 1], [COCOA_POWDER, 1]], time: 8 },
+  { out: [CHERRY_ICE_CREAM, 2], in: [[CREAM, 1], [SUGAR, 1], [CHERRIES, 2]], time: 8 },
+  { out: [HONEY_ICE_CREAM, 2], in: [[CREAM, 1], [HONEY_DROP, 2]], time: 8 },
+  { out: [ICE_LOLLY, 2], in: [[[ORANGE_JUICE, APPLE_JUICE, BERRY_JUICE, GRAPE_JUICE], 1], [STICK, 1]], leaves: GLASS_BOTTLE, time: 6 },
+);
+COMB_RECIPES.push({ out: [CREAM, 2], in: [[MILK_BUCKET, 1]], leaves: BUCKET, time: 4 });
+STATION_KINDS.oven.recipes.push({ out: [FISH_AND_CHIPS, 1], in: [[[RAW_FISH, SALMON], 1], [POTATO, 2], [VINEGAR, 1]], time: 8 });
+// a chimney over a fireplace is a smokehouse while the fire burns; a drying rack works in the sun
+STATION_KINDS.smokehouse = { name: 'Chimney (smoking)', inputs: 4, storage: true, smokes: true, recipes: [] };
+STATION_KINDS.dryrack = { name: 'Drying Rack', inputs: 4, storage: true, dries: true, recipes: [] };
+export function smokedAt(world, x, y, z) {
+  let h = y;
+  while (h > 0 && world.get(x, h - 1, z) === CHIMNEY) h--;
+  const d = BLOCKS[world.get(x, h - 1, z)];
+  return !!(d?.hearth && d.lit);
+}
+// how fast a drying rack dries (0: not at all): in the sun, under open sky, in the day; twice as fast in the desert
+export function dryingAt(world, x, y, z) {
+  if (world.raining || !(world.daylight > 0.5) || !(world.skyAt?.(x, y + 1, z) >= 15)) return 0;
+  return world.generator?.biomeAt?.(x, z) === 'desert' ? 2 : 1;
+}
