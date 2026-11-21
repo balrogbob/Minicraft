@@ -83,6 +83,10 @@ export class Net {
       case 'clock': this.d.on.clock?.(m); break;
       case 'kv': this.d.on.kv?.(m.ch, m.k, m.v); break;
       case 'mobs': this.d.on.mobs?.(m.id, m.l, m.g); break;
+      case 'drop': this.d.on.drop?.(m); break;
+      case 'got': this.d.on.got?.(m.u); break;
+      case 'gone': this.d.on.gone?.(m.u); break;
+      case 'beds': this.d.on.beds?.(m.n, m.of, m.go); break;
       case 'full': this.d.on.status?.('full'); break;
       case 'join': this.addRemote(m.id, m.name, m.look); this.d.on.join?.(m.name); break;
       case 'leave': { const r = this.remotes.get(m.id); if (r) { this.d.on.leave?.(r.name); this.removeRemote(m.id); } break; }

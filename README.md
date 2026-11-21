@@ -121,9 +121,26 @@ hold, and every block anyone places or breaks. Press **T** (or 💬) to chat.
 
 Options: `PORT=9000` (the port), `SEED=1234` (the world's seed, for a new world), `DATA=path/world.json`
 (where the world is kept; `server/world.json` by default), `MAX_PLAYERS=16`. The server saves every half
-minute and when you stop it (Ctrl+C). This is the first stage of multiplayer: the world's blocks, the players
-and chat are shared; what is inside chests and machines, animals and creatures, the time of day and things
-growing are still each player's own.
+minute and when you stop it (Ctrl+C).
+
+What's shared:
+
+- **The time, the day and the weather.** The first player to join is the *host*: their game keeps the clock
+  and the weather for everyone (if they leave, the next player takes over). The server remembers them too.
+- **Chests, machines, signs and item frames.** What's in a chest or a machine, how far along it is, the writing
+  on a sign and what's in a frame are the same for everyone, and kept by the server.
+- **The world running by itself.** Each part of the world is run by the game of the player nearest to it:
+  crops grow, leaves fall, fires spread, machines work and creatures roam there, and everyone sees the result.
+  As you walk about, the parts nearest you pass to your game.
+- **Creatures.** Everyone sees the same animals, villagers and night creatures in the same places. Touching one
+  (a hit, feeding, shearing, riding) hands it to your game for a few seconds so what you do sticks. Your pets
+  are yours: they follow you, they're saved with you, and other players can't take them.
+- **Things on the ground.** Everyone sees what's dropped or thrown, and only one player gets each thing.
+- **Sleep.** Lie down in a bed and you wait for the others: the night passes when everyone is in bed (move
+  away to get up).
+
+Still each player's own: your inventory, health and hunger, your pets' saved state, and things riding conveyor
+belts (only the game that runs that part of the world sees those).
 
 ### Gamepad
 
@@ -1689,6 +1706,10 @@ guide to how everything works.
 
 ## Version history
 
+- **Version 39**: playing together grows up: a host keeps the time and weather for everyone, chests, machines,
+  signs and frames are shared, crops, machines and creatures are run by the nearest player's game and seen by
+  all, pets stay with their owners, things on the ground are shared (one player gets each), and the night
+  passes when everyone's in bed.
 - **Version 38**: you see what you hold (and your arm), your own character in a third-person view (V) with
   a choice of looks, working sounds for every machine, graphics presets with an Auto setting, gamepad support,
   ripples, wakes and splashes on the water, and playing together through the new Node.js server.

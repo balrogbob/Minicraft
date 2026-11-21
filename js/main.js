@@ -79,7 +79,7 @@ import { Logic } from './logic.js';
 
 // v2 = the 16k x 16k streaming world (player state here, edited chunks in IndexedDB).
 // v1 = the old 128 x 128 world, migrated into the middle of the big world on first launch.
-const GAME_VERSION = '38'; // shown in the menu; bump with each release
+const GAME_VERSION = '39'; // shown in the menu; bump with each release
 const SAVE_KEY = 'minicraft-save-v2';
 const LEGACY_SAVE_KEY = 'minicraft-save-v1';
 const SETTINGS_KEY = 'minicraft-settings-v1';
@@ -238,10 +238,11 @@ scene.add(avatar.root);
 // v38: multiplayer (see net.js, and server/server.js)
 const net = new Net({ scene, atlas, icons: icons.canvases, ITEMS, on: {
   welcome: (m) => mpWelcome(m), block: (x, y, z, id) => mpBlock(x, y, z, id), chat: (name, text, mine) => addChat(name, text, mine),
-  host: (me, name) => { if (me && weather.timer > 1e6) weather.timer = 120 + Math.random() * 300; addChat(null, me ? 'You are now the host: your game keeps the time, weather and creatures for everyone' : `${name ?? 'Someone'} is now the host`); clockTimer = 0; },
+  host: (me, name) => { if (me && weather.timer > 1e6) weather.timer = 120 + Math.random() * 300; addChat(null, me ? 'You are now the host: your game keeps the time and weather for everyone' : `${name ?? 'Someone'} is now the host`); clockTimer = 0; },
   clock: (c) => applyClock(c),
   kv: (ch, k, v) => applyKv(ch, k, v),
   mobs: (from, l, g) => { if (worldReady && activeSlot === MP_SLOT) mobs.netIn(from, l, g); },
+  drop: (m) => netDrop(m), got: (u) => netGot(u), gone: (u) => netGone(u), beds: (n, of, go) => netBeds(n, of, go),
   join: (name) => addChat(null, `${name} joined`), leave: (name) => addChat(null, `${name} left`), status: (st, why) => mpStatus(st, why),
 } });
 let viewMode = 0; // 0 first person, 1 behind you, 2 facing you
@@ -474,8 +475,43 @@ const gondola = (() => {
 })();
 machines.frames = frames; machines.carts = carts; machines.loose = loose;
 machines.throwItem = (stack, pos, vel) => loose.spawn(stack, pos, vel, 0.5);
+// v39: in multiplayer, things on the ground are shared. Something this game puts down (you threw it, or it
+// happened in the part of the world your game runs) is sent to the others; what happens by itself in someone
+// else's part (a machine spitting something out) comes from their game instead. Picking one up asks the server
+// first, so only one of you gets it.
+const looseSpawn = loose.spawn.bind(loose);
+let dropN = 0;
+function shareDrop(it) {
+  if (!it) return it;
+  it.uid = `${net.id}-${++dropN}`;
+  net.send({ t: 'drop', u: it.uid, s: it.stack, p: [+it.pos.x.toFixed(2), +it.pos.y.toFixed(2), +it.pos.z.toFixed(2)], v: [+it.vel.x.toFixed(2), +it.vel.y.toFixed(2), +it.vel.z.toFixed(2)], d: it.delay });
+  return it;
+}
+loose.spawn = (stack, pos, vel, delay) => {
+  if (!mpOn() || !worldReady) return looseSpawn(stack, pos, vel, delay);
+  if (!(net.capture > 0) && !ownsSpot(pos.x, pos.z)) return null;
+  return shareDrop(looseSpawn(stack, pos, vel, delay));
+};
+loose.share = () => mpOn();
+loose.owns = (x, z) => ownsSpot(x, z);
+loose.onTake = (it) => net.send({ t: 'take', u: it.uid });
+function netDrop(m) {
+  if (!worldReady || activeSlot !== MP_SLOT || loose.items.some((it) => it.uid === m.u)) return;
+  const p = m.p, v = m.v ?? [0, 0, 0];
+  const it = looseSpawn(m.s, { x: p[0], y: p[1], z: p[2] }, { x: v[0], y: v[1], z: v[2] }, m.d ?? 0);
+  if (it) it.uid = m.u;
+}
+function netGot(u) {
+  const it = loose.items.find((o) => o.uid === u);
+  if (!it) return;
+  loose.remove(it);
+  const s = it.stack;
+  const took = it.to ? machines.insert(world, stations, it.to[0], it.to[1], it.to[2], s, it.to[3], false) : pickUpLoose(s);
+  if (s.count - took > 0) shareDrop(looseSpawn({ ...s, count: s.count - took }, it.pos, { x: 0, y: 0, z: 0 }, it.to ? 0.3 : 1));
+}
+function netGone(u) { const it = loose.items.find((o) => o.uid === u); if (it) loose.remove(it); }
 // Whatever doesn't fit in the inventory drops at your feet, to pick up once you've made room.
-inventory.overflow = (stack) => player && loose.spawn(stack, { x: player.pos.x, y: player.pos.y + 0.6, z: player.pos.z }, { x: 0, y: 1, z: 0 }, 1);
+inventory.overflow = (stack) => { if (!player) return; net.capture++; try { loose.spawn(stack, { x: player.pos.x, y: player.pos.y + 0.6, z: player.pos.z }, { x: 0, y: 1, z: 0 }, 1); } finally { net.capture--; } };
 // An auto-crafter makes what the item frame on it shows: the first recipe for that thing.
 const crafterRecipe = (x, y, z) => {
   const piped = logistics.crafterRecipe(x, y, z); // (a crafting pipe on it says what to make)
@@ -876,7 +912,9 @@ function throwHeld(all) {
   const dir = player.lookDir();
   const from = player.eye.clone().addScaledVector(dir, 0.4);
   from.y -= 0.35;
-  const it = loose.spawn({ ...s, count: n }, from, { x: dir.x * 5.5 + player.vel.x * 0.5, y: dir.y * 5.5 + 2, z: dir.z * 5.5 + player.vel.z * 0.5 }, 1.5);
+  net.capture++;
+  let it;
+  try { it = loose.spawn({ ...s, count: n }, from, { x: dir.x * 5.5 + player.vel.x * 0.5, y: dir.y * 5.5 + 2, z: dir.z * 5.5 + player.vel.z * 0.5 }, 1.5); } finally { net.capture--; }
   if (it && s.id === STICK) it.thrown = true; // a tame wolf will fetch it
   takeFromHeld(n);
   sound.click?.() ?? sound.pop();
@@ -2259,9 +2297,38 @@ function useBed(x, y, z) {
   const lurking = mobs.mobs.some((m) => m.spec.hostile && !m.dying &&
     Math.hypot(m.pos.x - player.pos.x, m.pos.z - player.pos.z) < 12 && Math.abs(m.pos.y - player.pos.y) < 6);
   if (lurking) { toast('You can\'t sleep now: something is lurking nearby', 2500); return; }
+  if (mpOn() && net.remotes.size) { // (v39: playing together, the night passes when everyone's in bed)
+    inBed = { x: player.pos.x, z: player.pos.z };
+    net.send({ t: 'bed', on: true });
+    toast('You lie down. The night passes when everyone is in bed (move to get up).', 3000);
+    return;
+  }
+  goToSleep();
+}
+function goToSleep() {
   if (sky.time <= 0.46) { napThroughStorm(); return; }
   if (weather.raining) weather.set(false); // the storm blows over in the night
   sleepUntilMorning();
+}
+// v39: lying in bed waiting for the others. Getting up (moving away) or the evening passing tells the server.
+let inBed = null, sleptAt = 0;
+function netBeds(n, of, go) {
+  if (go) {
+    if (!inBed) return;
+    inBed = null; sleptAt = performance.now();
+    goToSleep();
+    return;
+  }
+  if (inBed && n < of) toast(`In bed: ${n} of ${of} sleeping`, 1800);
+  else if (!inBed && n > 0) addChat(null, `${n} of ${of} in bed: sleep to pass the night`);
+}
+function tickBed() {
+  if (!inBed) return;
+  if (!net.live || Math.hypot(player.pos.x - inBed.x, player.pos.z - inBed.z) > 1.5 || !canSleepNow()) {
+    inBed = null;
+    if (net.live) net.send({ t: 'bed', on: false });
+    toast('You get up', 1200);
+  }
 }
 // Sleeping through a storm in the daytime: you nap a few hours and wake to clear skies.
 async function napThroughStorm() {
@@ -2292,8 +2359,8 @@ async function sleepUntilMorning() {
   $('sleep').classList.add('show');
   await new Promise((r) => setTimeout(r, 1300));
   const skipped = (1 - sky.time) * DAY_LENGTH; // seconds of night slept through
-  sky.time = 0.001;
-  day++;
+  const together = mpOn() && !net.isHost; // (playing together, the host's game moves the clock on for everyone)
+  if (!together) { sky.time = 0.001; day++; }
   caneToday = 0;
   if (net.isHost) sendClock('slept');
   stations.tick(skipped, world, setStationLit, powerAt, boostAt, crafterRecipe);
@@ -2308,7 +2375,7 @@ async function sleepUntilMorning() {
   await new Promise((r) => setTimeout(r, 400));
   $('sleep').classList.remove('show');
   sound.wake();
-  toast(`Good morning! Day ${day}`, 2500);
+  toast(together ? 'Good morning!' : `Good morning! Day ${day}`, 2500);
   paused = false;
 }
 
@@ -4925,8 +4992,8 @@ function dropUnsupported(x, y, z) {
 // ---------- multiplayer (v38) ----------
 // Joining a server plays its world in a slot of its own (your worlds are left alone). The server gives the
 // seed and every block players have changed; the rest the game builds itself, as usual. Blocks you place or
-// break go to the server and on to everyone else. (Stage 1: what's inside chests and machines, creatures,
-// and water and plants growing are each player's own.)
+// break go to the server and on to everyone else. (v39: so do the clock, chests and machines, creatures and
+// things on the ground; each part of the world is run by the nearest player's game. Water flows on every game.)
 const pendingEdits = new Map(); // chunk key -> [[x, y, z, id]] for parts of the world not loaded yet
 let pendingTimer = 0, netApplying = false;
 {
@@ -5003,6 +5070,7 @@ async function mpWelcome(m) {
   await startWorld(save);
   applyPending(true);
   applyKvAll(m.kv);
+  loose.clear(); for (const d of m.drops ?? []) netDrop(d); // (what's lying about comes from the server)
   if (m.clock && !net.isHost) applyClock({ ...m.clock, why: 'join' });
   if (net.isHost && m.clock) { sky.time = m.clock.time; day = Math.max(1, m.clock.day | 0); weather.set(m.clock.raining, Math.max(10, m.clock.timer || 60), m.clock.storm); applySeason(); }
   toast(`Joined the server${net.remotes.size ? ` (${net.remotes.size} other${net.remotes.size === 1 ? '' : 's'} here)` : ''}. Press ${keyLabel(controls.binds.chat)} to chat.`, 3500);
@@ -5154,7 +5222,7 @@ function applyClock(c) {
   }
   if (c.raining !== weather.raining || !!c.storm !== !!weather.storm) weather.set(c.raining, 1e9, c.storm);
   else weather.timer = 1e9; // (only the host's weather changes by itself)
-  if (c.why === 'slept') toast('The night was slept through', 2000);
+  if (c.why === 'slept' && performance.now() - sleptAt > 6000) toast('The night was slept through', 2000);
 }
 function tickClock(dt) {
   if (!net.isHost || activeSlot !== MP_SLOT || !worldReady) return;
@@ -5164,7 +5232,7 @@ function tickClock(dt) {
 function tickNet(dt) {
   tickClock(dt);
   tickKv(dt);
-  if (worldReady) tickMobsNet();
+  if (worldReady) { tickMobsNet(); tickBed(); }
   if ((pendingTimer -= dt) <= 0) { pendingTimer = 0.4; applyPending(); }
   const p = player.pos;
   net.update(dt, net.live && activeSlot === MP_SLOT && !dead ? {
@@ -7570,7 +7638,7 @@ function stepGame(now, dt) {
     machines.tick(paused ? 0 : dt, world, kinetics, stations, { day: lightUniforms.uDay.value, flicker: lightUniforms.uFlicker.value, ambient: lightUniforms.uAmbient.value });
     electric.update(paused ? 0 : dt, world, kinetics, stations, electricHooks);
     loose.update(paused || dead ? 0 : dt, world, {
-      player, pickup: pickUpLoose, insert: (x, y, z, item, n) => machines.insert(world, stations, x, y, z, item, n, false),
+      player, pickup: pickUpLoose, canTake: (st) => (st.wear || st.ench?.length || st.pack ? inventory.slots.some((x) => !x) : inventory.room(st.id) > 0), insert: (x, y, z, item, n) => machines.insert(world, stations, x, y, z, item, n, false),
       light: { day: lightUniforms.uDay.value, flicker: lightUniforms.uFlicker.value, ambient: lightUniforms.uAmbient.value },
     });
   } catch (err) { reportError(err); }

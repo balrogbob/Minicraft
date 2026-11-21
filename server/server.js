@@ -128,6 +128,20 @@ function everyone(msg) { for (const p of players.values()) if (p.hello) p.ws.sen
 // The host is whoever has been here longest: their game runs the clock, the weather, things growing and the
 // creatures, and tells everyone else. When they leave, the next longest takes over.
 let hostId = 0;
+// v39: things lying on the ground (not kept when the server stops: they'd have vanished by then anyway). Each is
+// { u, s: stack, p: [x, y, z], at }. The first player to ask for one gets it.
+const drops = new Map();
+const DROP_LIFE = 300e3, MAX_DROPS = 600;
+function cleanDrops() {
+  const old = Date.now() - DROP_LIFE;
+  for (const [u, d] of drops) if (d.at < old || drops.size > MAX_DROPS) drops.delete(u); else break;
+}
+// who's in bed: when everyone is, the night is slept through
+function beds(go = false) {
+  const all = [...players.values()].filter((p) => p.hello), n = all.filter((p) => p.bed).length;
+  if (n && n === all.length) { go = true; for (const p of all) p.bed = false; }
+  everyone({ t: 'beds', n, of: all.length, go });
+}
 function electHost() {
   const ids = [...players].filter(([, p]) => p.hello).map(([id]) => id).sort((a, b) => a - b);
   const next = ids[0] ?? 0;
@@ -154,6 +168,7 @@ function join(ws) {
     players.delete(id);
     if (me.hello) { others(id, { t: 'leave', id }); console.log(`${me.name} left (${players.size} playing)`); }
     if (id === hostId) { hostId = 0; electHost(); }
+    if (me.hello && [...players.values()].some((p) => p.bed)) beds(); // (the one still up may have left)
   };
 }
 
@@ -166,7 +181,7 @@ function handle(id, me, m) {
       me.look = cleanLook(m.look);
       const edits = Object.entries(world.edits).map(([k, v]) => { const [x, y, z] = k.split(',').map(Number); return [x, y, z, v]; });
       if (!hostId) hostId = id;
-      me.ws.send({ t: 'welcome', id, host: hostId, clock: world.clock ?? null, kv: world.kv, seed: world.seed, world: world.id, edits, players: [...players].filter(([pid, p]) => pid !== id && p.hello).map(([pid, p]) => ({ id: pid, name: p.name, look: p.look, state: p.state })) });
+      me.ws.send({ t: 'welcome', id, host: hostId, clock: world.clock ?? null, kv: world.kv, seed: world.seed, world: world.id, edits, drops: (cleanDrops(), [...drops.values()]), players: [...players].filter(([pid, p]) => pid !== id && p.hello).map(([pid, p]) => ({ id: pid, name: p.name, look: p.look, state: p.state })) });
       others(id, { t: 'join', id, name: me.name, look: me.look });
       console.log(`${me.name} joined (${players.size} playing)`);
       break;
@@ -217,6 +232,22 @@ function handle(id, me, m) {
       others(id, { t: 'kv', ch: m.ch, k: m.k, v: m.v ?? null });
       break;
     }
+    case 'drop': { // something put on the ground: { u, s: { id, count, ... }, p: [x, y, z], v: [vx, vy, vz] }
+      if (!me.hello || typeof m.u !== 'string' || m.u.length > 24 || drops.has(m.u) || !m.s || !(m.s.id > 0) || !(m.s.count > 0) || m.s.count > 9999) return;
+      if (!Array.isArray(m.p) || m.p.length !== 3 || !m.p.every(Number.isFinite) || JSON.stringify(m.s).length > 4000) return;
+      const v = Array.isArray(m.v) && m.v.length === 3 && m.v.every(Number.isFinite) ? m.v : [0, 0, 0];
+      cleanDrops();
+      drops.set(m.u, { u: m.u, s: m.s, p: m.p, at: Date.now() });
+      others(id, { t: 'drop', u: m.u, s: m.s, p: m.p, v, d: num(m.d, 0, 5) ?? 0 });
+      break;
+    }
+    case 'take': { // a player (or a machine in their part of the world) picks something up: the first to ask gets it
+      if (!me.hello || typeof m.u !== 'string') return;
+      if (drops.delete(m.u)) { me.ws.send({ t: 'got', u: m.u }); others(id, { t: 'gone', u: m.u }); }
+      else me.ws.send({ t: 'gone', u: m.u });
+      break;
+    }
+    case 'bed': if (me.hello) { me.bed = !!m.on; beds(); } break;
     case 'mobs': { // (the creatures a player's game runs, for the others to draw: passed on, not kept)
       if (!me.hello || !Array.isArray(m.l) || m.l.length > 400 || (m.g != null && (!Array.isArray(m.g) || m.g.length > 400))) return;
       others(id, { t: 'mobs', id, l: m.l, g: m.g ?? [] });
