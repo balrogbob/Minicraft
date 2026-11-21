@@ -25,6 +25,17 @@ export const GFX_NAMES = {
   godrays: 'God rays', sway: 'Swaying leaves and plants', reflections: 'Water reflections', ripple: 'Underwater ripple',
 };
 export const SHADOW_LEVELS = ['off', 'low', 'high'];
+// v38: quick presets for the fancy graphics. 'auto' starts at medium and steps up or down to keep the game
+// smooth; changing any single setting makes it 'custom'.
+export const GFX_PRESETS = {
+  off: { ...GFX_DEFAULTS },
+  low: { ...GFX_DEFAULTS, water: true, sway: true, ripple: true },
+  medium: { ...GFX_DEFAULTS, shadows: 1, torches: 3, torchRate: 1, bloom: true, water: true, caustics: true, sway: true, ripple: true },
+  high: { shadows: 2, torches: 8, torchRate: 2, bloom: true, water: true, reflections: true, refraction: true, caustics: true, godrays: true, sway: true, ripple: true },
+  ultra: { shadows: 2, torches: 24, torchRate: 6, bloom: true, water: true, reflections: true, refraction: true, caustics: true, godrays: true, sway: true, ripple: true },
+};
+export const PRESET_ORDER = ['off', 'low', 'medium', 'high', 'ultra'];
+export const PRESET_NAMES = { off: 'Off', low: 'Low', medium: 'Medium', high: 'High', ultra: 'Ultra', auto: 'Auto', custom: 'Custom' };
 
 export const WATER_LAYER = 3; // water meshes: drawn after everything they are looked through
 export const LATE_LAYER = 4; // see-through things drawn after the water (rain, snow)

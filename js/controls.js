@@ -6,6 +6,9 @@
 //         buttons     = jump, inventory (wired up in main.js)
 // Desktop: click to capture mouse, WASD + space, left hold = break, right click = place,
 //          E = inventory, 1-9 / wheel = hotbar.
+// Gamepad (v38, standard layout): left stick walk, right stick look, A jump, B crouch / back, X throw,
+//          Y inventory, LB/RB hotbar, LT place / use, RT break, Back map, Start menu, right stick click
+//          change view, d-pad up guidebook, d-pad left/right hotbar.
 
 const TAP_MS = 250;
 const HOLD_MS = 280;
@@ -14,6 +17,8 @@ const LOOK_SENS = 0.006; // radians per px (touch)
 const MOUSE_SENS = 0.0025;
 const JOY_RADIUS = 60;
 const DOUBLE_MS = 300; // a second touch this soon after a tap (and near it) is a double tap
+const PAD_DEAD = 0.16; // stick dead zone
+const PAD_LOOK = 2.8; // radians per second at full tilt (times the look sensitivity setting)
 const DOUBLE_SLOP = 60; // px between the two touches of a double tap
 
 // Keyboard actions and their default keys (KeyboardEvent.code). The player can rebind them from the menu.
@@ -64,8 +69,8 @@ export class Controls {
     this.bindDesktop();
   }
 
-  get jump() { return this.jumpTouch || this.keys.has(this.binds.jump); }
-  get down() { return this.downTouch || this.keys.has(this.binds.down); }
+  get jump() { return this.jumpTouch || this.padJump || this.keys.has(this.binds.jump); }
+  get down() { return this.downTouch || this.padDown || this.keys.has(this.binds.down); }
 
   reset() {
     this.joy = null; this.look = null;
@@ -173,14 +178,52 @@ export class Controls {
     if (lk && !lk.breaking && (lk.armed || !this.needsDoubleTap()) && performance.now() - lk.stillSince > HOLD_MS) {
       lk.breaking = true;
     }
-    const keyBreak = this.mouseBreak;
+    this.pollPad();
+    const keyBreak = this.mouseBreak || this.padBreak;
     this.breaking = !!(lk?.breaking || keyBreak);
-    if (!this.joy) {
+    if (!this.joy && !this.usingPad) {
       const k = this.keys, b = this.binds;
       const x = (k.has(b.right) ? 1 : 0) - (k.has(b.left) ? 1 : 0);
       const z = (k.has(b.forward) ? 1 : 0) - (k.has(b.back) ? 1 : 0);
       if (x || z || this.usingKeys) { this.moveX = x; this.moveZ = z; this.usingKeys = !!(x || z); }
     }
+  }
+
+  // v38: the first connected gamepad with the standard layout. Buttons act once when pressed; sticks and
+  // triggers are read every frame.
+  pollPad() {
+    const now = performance.now(), dt = Math.min(0.1, (now - (this.padTime ?? now)) / 1000);
+    this.padTime = now;
+    const pads = navigator.getGamepads?.() ?? [];
+    let gp = null;
+    for (const p of pads) if (p?.connected && p.mapping === 'standard') { gp = p; break; }
+    if (!gp) { if (this.usingPad) { this.usingPad = false; this.moveX = this.moveZ = 0; } this.padJump = this.padDown = this.padBreak = false; return; }
+    const b = (i) => !!gp.buttons[i]?.pressed || (gp.buttons[i]?.value ?? 0) > 0.5;
+    const prev = this.padPrev ?? [];
+    const pressed = (i) => b(i) && !prev[i];
+    this.padPrev = gp.buttons.map((_, i) => b(i));
+    const dz = (v) => (Math.abs(v) < PAD_DEAD ? 0 : (v - Math.sign(v) * PAD_DEAD) / (1 - PAD_DEAD));
+    const lx = dz(gp.axes[0] ?? 0), ly = dz(gp.axes[1] ?? 0), rx = dz(gp.axes[2] ?? 0), ry = dz(gp.axes[3] ?? 0);
+    const paused = this.hooks.isPaused();
+    if (pressed(9)) this.hooks.toggleMenu?.();
+    if (pressed(3)) this.hooks.toggleInventory();
+    if (paused) {
+      if (pressed(1)) this.hooks.back?.();
+      if (pressed(8)) this.hooks.toggleMap?.();
+      this.padJump = this.padDown = this.padBreak = false;
+      return;
+    }
+    if (lx || ly || this.usingPad) { this.moveX = lx; this.moveZ = -ly; this.usingPad = !!(lx || ly); }
+    if (rx || ry) { const k = PAD_LOOK * dt * (this.lookSens / LOOK_SENS); this.rotate(rx * Math.abs(rx), ry * Math.abs(ry), k); }
+    this.padJump = b(0); this.padDown = b(1); this.padBreak = b(7);
+    if (pressed(6)) this.hooks.place();
+    if (pressed(4) || pressed(14)) this.hooks.scrollSlot(-1);
+    if (pressed(5) || pressed(15)) this.hooks.scrollSlot(1);
+    if (pressed(2)) this.hooks.throwItem?.(false);
+    if (pressed(8)) this.hooks.toggleMap?.();
+    if (pressed(11)) this.hooks.toggleView?.();
+    if (pressed(12)) this.hooks.toggleGuidebook?.();
+    if (pressed(13)) this.hooks.toggleFly?.();
   }
 
   bindDesktop() {

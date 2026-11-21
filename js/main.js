@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { Viewmodel, Avatar, LOOKS, randomLook } from './held.js';
-import { Graphics, GFX_DEFAULTS, GFX_NAMES, GFX_TOGGLES, SHADOW_LEVELS, MAX_TORCH_SHADOWS, gfxUniforms, GFX_FRAG_HEAD, GFX_SUN_TERM, GFX_WATER, GFX_VERT_HEAD, GFX_VERT_DECODE, GFX_VERT_SWAY, WATER_LAYER, LATE_LAYER } from './graphics.js';
+import { Graphics, GFX_DEFAULTS, GFX_NAMES, GFX_TOGGLES, SHADOW_LEVELS, GFX_PRESETS, PRESET_ORDER, PRESET_NAMES, MAX_TORCH_SHADOWS, gfxUniforms, GFX_FRAG_HEAD, GFX_SUN_TERM, GFX_WATER, GFX_VERT_HEAD, GFX_VERT_DECODE, GFX_VERT_SWAY, WATER_LAYER, LATE_LAYER } from './graphics.js';
 import {
   BLOCKS, RECIPES, TABLE, AIR, WATER, TORCH, TORCH_WALL_W, WALL_TORCH_DIRS,
   GRASS, DIRT, SAND, CHURN, SUGAR_CANE, BREAD, ITEMS, BOW, ARROW, BUCKET,
@@ -96,7 +96,7 @@ function writeSave(obj, slot = settings.slot) {
 }
 // Settings live apart from the world so they survive "New world".
 const settings = (() => {
-  const defaults = { sens: 6, volume: 70, music: 50, viewDistance: 6, perf: false, difficulty: 'worrying', wear: true, favs: [], pins: [], slot: 0, fov: 72, keys: {}, tips: true, doubleTap: true, gfx: {} };
+  const defaults = { gfxPreset: 'custom', sens: 6, volume: 70, music: 50, viewDistance: 6, perf: false, difficulty: 'worrying', wear: true, favs: [], pins: [], slot: 0, fov: 72, keys: {}, tips: true, doubleTap: true, gfx: {} };
   let s;
   try { s = { ...defaults, ...JSON.parse(localStorage.getItem(SETTINGS_KEY)) }; } catch { s = { ...defaults }; }
   s.slot = Math.max(0, Math.min(SLOT_COUNT - 1, s.slot | 0));
@@ -211,7 +211,7 @@ function findWaterLevel(dt) {
   for (const [y, v] of votes) if (v > most) { most = v; best = y; }
   gfx.waterY = best === null ? null : best + 0.875; // (the surface sits a little below the block top)
 }
-gfx.onFail = (key) => { settings.gfx[key] = key === 'torches' || key === 'shadows' ? 0 : false; saveSettings(); updateGfxLabels(); toast(`${GFX_NAMES[key]} doesn't work on this device — turned off`, 4000); };
+gfx.onFail = (key) => { goCustom(); settings.gfx[key] = key === 'torches' || key === 'shadows' ? 0 : false; saveSettings(); updateGfxLabels(); toast(`${GFX_NAMES[key]} doesn't work on this device — turned off`, 4000); };
 
 const sky = new Sky(scene);
 const sound = new Sound();
@@ -4907,11 +4907,55 @@ function updateGfxLabels() {
   for (const key of GFX_TOGGLES) { const b = $(`btn-gfx-${key}`); if (b) b.textContent = `${GFX_NAMES[key]}: ${g[key] ? 'on' : 'off'}`; }
 }
 updateGfxLabels();
-$('torch-shadows').addEventListener('input', (e) => { settings.gfx.torches = +e.target.value; gfx.set('torches', settings.gfx.torches); updateGfxLabels(); saveSettings(); });
-$('torch-rate').addEventListener('input', (e) => { settings.gfx.torchRate = +e.target.value; gfx.set('torchRate', settings.gfx.torchRate); updateGfxLabels(); saveSettings(); });
-$('btn-gfx-shadows').addEventListener('click', () => { settings.gfx.shadows = (settings.gfx.shadows + 1) % 3; gfx.set('shadows', settings.gfx.shadows); updateGfxLabels(); saveSettings(); });
+// v38: presets. Picking one sets everything below; touching any one setting makes it Custom. Auto keeps
+// stepping up or down a level to hold a smooth frame rate.
+const PRESET_CYCLE = ['auto', ...PRESET_ORDER, 'custom'];
+const autoGfx = { level: 2, ceiling: 4, timer: 8, fps: [], good: 0 };
+function applyPreset(name, quiet = false) {
+  const g = GFX_PRESETS[name === 'auto' ? PRESET_ORDER[autoGfx.level] : name];
+  if (g) for (const [k, v] of Object.entries(g)) { settings.gfx[k] = v; gfx.set(k, v); }
+  updateGfxLabels(); saveSettings();
+  if (!quiet && name === 'auto') toast(`Graphics: Auto (${PRESET_NAMES[PRESET_ORDER[autoGfx.level]]} for now)`, 2000);
+}
+function updatePresetLabel() {
+  const p = settings.gfxPreset;
+  $('btn-gfx-preset').textContent = `Graphics preset: ${PRESET_NAMES[p] ?? 'Custom'}${p === 'auto' ? ` (${PRESET_NAMES[PRESET_ORDER[autoGfx.level]]})` : ''}`;
+}
+function goCustom() { if (settings.gfxPreset !== 'custom') { settings.gfxPreset = 'custom'; updatePresetLabel(); } }
+$('btn-gfx-preset').addEventListener('click', () => {
+  const i = PRESET_CYCLE.indexOf(settings.gfxPreset);
+  let next = PRESET_CYCLE[(i + 1) % PRESET_CYCLE.length];
+  if (next === 'custom') next = PRESET_CYCLE[0];
+  settings.gfxPreset = next;
+  if (next === 'auto') { autoGfx.level = 2; autoGfx.ceiling = 4; autoGfx.timer = 6; autoGfx.fps = []; autoGfx.good = 0; }
+  applyPreset(next); updatePresetLabel();
+});
+// Auto: watch the frame rate while playing; below 40 fps step down a level (and don't climb back above
+// it), comfortably above 57 for a while step up.
+function tickAutoGfx(dt) {
+  if (settings.gfxPreset !== 'auto' || paused || dead || document.hidden) return;
+  if (perf.fps) autoGfx.fps.push(perf.fps);
+  if ((autoGfx.timer -= dt) > 0) return;
+  autoGfx.timer = 5;
+  const f = autoGfx.fps.sort((a, b) => a - b), med = f[f.length >> 1] ?? 60;
+  autoGfx.fps = [];
+  if (f.length < 4) return;
+  let to = autoGfx.level;
+  if (med < 40 && to > 0) { to--; autoGfx.ceiling = to; autoGfx.good = 0; }
+  else if (med > 57 && to < autoGfx.ceiling) { if (++autoGfx.good >= 2) { to++; autoGfx.good = 0; } }
+  else autoGfx.good = 0;
+  if (to !== autoGfx.level) {
+    autoGfx.level = to; applyPreset('auto', true); updatePresetLabel();
+    toast(`Graphics: ${PRESET_NAMES[PRESET_ORDER[to]]} (auto, ${med} fps)`, 1800);
+  }
+}
+updatePresetLabel();
+if (settings.gfxPreset === 'auto') applyPreset('auto', true);
+$('torch-shadows').addEventListener('input', (e) => { goCustom(); settings.gfx.torches = +e.target.value; gfx.set('torches', settings.gfx.torches); updateGfxLabels(); saveSettings(); });
+$('torch-rate').addEventListener('input', (e) => { goCustom(); settings.gfx.torchRate = +e.target.value; gfx.set('torchRate', settings.gfx.torchRate); updateGfxLabels(); saveSettings(); });
+$('btn-gfx-shadows').addEventListener('click', () => { goCustom(); settings.gfx.shadows = (settings.gfx.shadows + 1) % 3; gfx.set('shadows', settings.gfx.shadows); updateGfxLabels(); saveSettings(); });
 for (const key of GFX_TOGGLES) {
-  $(`btn-gfx-${key}`)?.addEventListener('click', () => { settings.gfx[key] = !settings.gfx[key]; gfx.set(key, settings.gfx[key]); updateGfxLabels(); saveSettings(); });
+  $(`btn-gfx-${key}`)?.addEventListener('click', () => { goCustom(); settings.gfx[key] = !settings.gfx[key]; gfx.set(key, settings.gfx[key]); updateGfxLabels(); saveSettings(); });
 }
 $('btn-tips').addEventListener('click', () => { settings.tips = !settings.tips; updateTipsLabel(); saveSettings(); if (!settings.tips) $('inv-tip').classList.remove('show'); });
 function updatePerfLabel() { $('btn-perf').textContent = `Performance info: ${settings.perf ? 'on' : 'off'}`; }
@@ -4999,7 +5043,17 @@ controls = null;
     throwItem: (all) => !photoMode && throwHeld(all),
     quickHold: () => inventory.heldId() === BOW,
     isPaused: () => paused,
+    toggleMenu: () => { if ($('menu').classList.contains('hidden')) { if (!paused) $('btn-menu').click(); } else $('btn-close-menu').click(); },
+    back: () => {
+      const shown = (id) => !$(id).classList.contains('hidden');
+      if (!$('menu').classList.contains('hidden')) $('btn-close-menu').click();
+      else if (shown('station')) closeStation();
+      else if (worldMap.open) closeMap();
+      else if (shown('guidebook')) closeGuidebook();
+      else if (shown('inventory')) toggleInventory();
+    },
   });
+  window.addEventListener('gamepadconnected', (e) => { if (e.gamepad.mapping === 'standard') toast('Gamepad connected: left stick walks, right stick looks, RT breaks, LT places', 3500); });
   controls.lookSens = settings.sens / 1000;
   controls.doubleTapBreak = settings.doubleTap;
   applyKeys();
@@ -7046,6 +7100,7 @@ function updatePerf(now) {
 function stepGame(now, dt) {
   // the player waits (frozen) until the chunk they're standing in has loaded
   const here = world.chunkAt(Math.floor(player.pos.x), Math.floor(player.pos.z));
+  if (paused || !here) controls.pollPad(); // (a gamepad can still open and close menus)
   if (photoMode) {
     controls.update();
     movePhotoCam(dt);
@@ -7097,6 +7152,7 @@ function stepGame(now, dt) {
     tickPads(dt);
     tickHum(dt);
     tickMachineSounds(dt);
+    tickAutoGfx(dt);
     renderBossBar();
     updateHunger(dt);
     updateHealth(dt, wasGround, prevY);
