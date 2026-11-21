@@ -3962,7 +3962,7 @@ function placeInner() {
     notePlanting(target.x, target.y, target.z, GRAPE_VINE);
     sound.place('leaves'); inventory.consumeHeld(); return;
   }
-  const plantsCrop = held && isCrop(ITEMS[held.id]?.places) && target?.ny === 1 && [GRASS, DIRT].includes(target.id) && world.get(target.x, target.y + 1, target.z) === AIR;
+  const plantsCrop = held && isCrop(ITEMS[held.id]?.places) && target?.ny === 1 && ([GRASS, DIRT].includes(target.id) || (target.id === SAND && BLOCKS[ITEMS[held.id].places].crop.sandy)) && world.get(target.x, target.y + 1, target.z) === AIR;
   if (held && !plantsCrop && (foodValue(held.id) || ITEMS[held.id]?.drink)) { eat(held.id); return; }
   if (held && ITEMS[held.id]?.tea) { drinkTea(held.id); return; }
   if (held?.id === PORTABLE_LAMP) { switchHandLamp(held); return; }

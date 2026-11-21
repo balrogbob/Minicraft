@@ -141,7 +141,7 @@ export const T = {
   LEAD_CHEST_SIDE: 267, LEAD_CHEST_TOP: 268, LEAD_CHEST_FRONT: 269, CENTRIFUGE_SIDE: 270, CENTRIFUGE_TOP: 271, TESLA: 272, TESLA_TOP: 273,
   FENCE_POST: 274, FENCE_WIRE: 275, FREEZER_SIDE: 276, FREEZER_FRONT: 277, ARC_SIDE: 278, ARC_FRONT: 279, PACKED_ICE: 280, INVAR: 281, RAIL_STOP: 282, BASALT: 283, BASALT_TOP: 284, METEORITE: 285,
   IRON_BARS: 286, POT: 287, IVY: 288, BOX_FLOWERS: 289,
-  FRUIT_LEAVES: 290, FRUIT_RIPE: 293, FRUIT_SAPLING: 296, HAY: 299, SACK: 300, BEACON: 301, APIARY_SIDE: 302, APIARY_FRONT: 303, APIARY_FULL: 304, APIARY_TOP: 305, BELT_CROSS: 306, FARM_CTRL: 307, FARM_CTRL_ON: 308, TUBE: 309, TUBE_END: 310, AWNING: 311, FIRE: 312, CARROT_0: 313, POTATO_0: 317, STEM_0: 321, PUMPKIN_SIDE: 324, PUMPKIN_TOP: 325, JACK_FACE: 326, TRELLIS: 327, VINE_0: 328, BARREL_SIDE: 331, BARREL_TOP: 332, CHEESE: 333, SEA_BRICK: 334, SEA_LANTERN: 335, VAULT: 336, SKY_STONE: 337, AIR_PUMP: 338, RADIO: 339, RADIO_ON: 340, SORTBOX: 341, SORTBOX_TOP: 342, HEARTH: 343, HEARTH_LIT: 344, CHIMNEY_TOP: 345, STABLE_SIDE: 346, SNOWMAN_FRONT: 347, ONION_0: 348, BEAN_0: 352, TOMATO_0: 356, HERB_0: 360, KILN_SIDE: 364, KILN_TOP: 365, KILN_FRONT: 366, KILN_FRONT_LIT: 367, TERRACOTTA: 368, TERRA_COL: 369, GLAZED: 379, ROOF_TILES: 389, URN: 390, ROPE: 391, LOCK_GATE: 392, LOCK_GATE_TOP: 393, DRIPSTONE: 394, BEETLE_LAMP: 395, WASHER_SIDE: 396, WASHER_TOP: 397, WASHER_FRONT: 398, SIEVE: 399, SLAG_BRICKS: 400, CHARCOAL_HEAP: 401, LP_ARM: 402, LP_CORE: 403, LP_TABLE_TOP: 409, LP_TABLE_SIDE: 410, LP_JUNCTION: 411, LP_SENSOR_CORE: 412, LP_SENSOR_ON: 413, LP_FPROVIDER: 414, LP_FSUPPLIER: 415, DRONE_PAD_TOP: 416, DRONE_PAD_SIDE: 417, LP_FSINK: 418, BOTTLER_SIDE: 419, BOTTLER_TOP: 420, BEEHOUSE_SIDE: 421, BEEHOUSE_TOP: 422, BEEHOUSE_FRONT: 423, COMB_SPIN_SIDE: 424, COMB_SPIN_TOP: 425, TAP_SIDE: 426, TAP_LATEX: 427, PRESS_SIDE: 428, PRESS_TOP: 429, INSWIRE_OFF: 430, INSWIRE_ON: 431, BOUNCE_TOP: 432, BOUNCE_SIDE: 433, POLY_COL: 434, LUMEN: 444, DEMO_SIDE: 445, DEMO_TOP: 446, DEMO_ARMED: 447, DETONATOR_TILE: 448, COCOA_LEAVES: 449, COCOA_RIPE: 450, COCOA_SAPLING: 451, MOULD: 452, CHOC: 453, CHOC_LIQUID: 454, CAKE_TOP: 455, CAKE_SIDE: 456, RACK: 457, TOFFEE: 458, TOFFEE_LIQ: 459, CANDY: 460, CANDY_LIQ: 461, // (434..443: polymer + colour) // (fruit tiles: apple, cherry, orange)
+  FRUIT_LEAVES: 290, FRUIT_RIPE: 293, FRUIT_SAPLING: 296, HAY: 299, SACK: 300, BEACON: 301, APIARY_SIDE: 302, APIARY_FRONT: 303, APIARY_FULL: 304, APIARY_TOP: 305, BELT_CROSS: 306, FARM_CTRL: 307, FARM_CTRL_ON: 308, TUBE: 309, TUBE_END: 310, AWNING: 311, FIRE: 312, CARROT_0: 313, POTATO_0: 317, STEM_0: 321, PUMPKIN_SIDE: 324, PUMPKIN_TOP: 325, JACK_FACE: 326, TRELLIS: 327, VINE_0: 328, BARREL_SIDE: 331, BARREL_TOP: 332, CHEESE: 333, SEA_BRICK: 334, SEA_LANTERN: 335, VAULT: 336, SKY_STONE: 337, AIR_PUMP: 338, RADIO: 339, RADIO_ON: 340, SORTBOX: 341, SORTBOX_TOP: 342, HEARTH: 343, HEARTH_LIT: 344, CHIMNEY_TOP: 345, STABLE_SIDE: 346, SNOWMAN_FRONT: 347, ONION_0: 348, BEAN_0: 352, TOMATO_0: 356, HERB_0: 360, KILN_SIDE: 364, KILN_TOP: 365, KILN_FRONT: 366, KILN_FRONT_LIT: 367, TERRACOTTA: 368, TERRA_COL: 369, GLAZED: 379, ROOF_TILES: 389, URN: 390, ROPE: 391, LOCK_GATE: 392, LOCK_GATE_TOP: 393, DRIPSTONE: 394, BEETLE_LAMP: 395, WASHER_SIDE: 396, WASHER_TOP: 397, WASHER_FRONT: 398, SIEVE: 399, SLAG_BRICKS: 400, CHARCOAL_HEAP: 401, LP_ARM: 402, LP_CORE: 403, LP_TABLE_TOP: 409, LP_TABLE_SIDE: 410, LP_JUNCTION: 411, LP_SENSOR_CORE: 412, LP_SENSOR_ON: 413, LP_FPROVIDER: 414, LP_FSUPPLIER: 415, DRONE_PAD_TOP: 416, DRONE_PAD_SIDE: 417, LP_FSINK: 418, BOTTLER_SIDE: 419, BOTTLER_TOP: 420, BEEHOUSE_SIDE: 421, BEEHOUSE_TOP: 422, BEEHOUSE_FRONT: 423, COMB_SPIN_SIDE: 424, COMB_SPIN_TOP: 425, TAP_SIDE: 426, TAP_LATEX: 427, PRESS_SIDE: 428, PRESS_TOP: 429, INSWIRE_OFF: 430, INSWIRE_ON: 431, BOUNCE_TOP: 432, BOUNCE_SIDE: 433, POLY_COL: 434, LUMEN: 444, DEMO_SIDE: 445, DEMO_TOP: 446, DEMO_ARMED: 447, DETONATOR_TILE: 448, COCOA_LEAVES: 449, COCOA_RIPE: 450, COCOA_SAPLING: 451, MOULD: 452, CHOC: 453, CHOC_LIQUID: 454, CAKE_TOP: 455, CAKE_SIDE: 456, RACK: 457, TOFFEE: 458, TOFFEE_LIQ: 459, CANDY: 460, CANDY_LIQ: 461, COFFEE_0: 462, RICE_0: 466, CHILLI_0: 470, // (434..443: polymer + colour) // (fruit tiles: apple, cherry, orange)
 };
 
 // Ores, deepest-reaching last. tier: the pickaxe tier needed to mine it (see TOOL_TIERS);
@@ -3274,3 +3274,36 @@ ITEMS[HONEY_CANDY] = { name: 'Honey Candy', food: 3, meal: ['heal', 3], about: '
 ITEMS[CANDIED_PEEL] = { name: 'Candied Peel', food: 3 };
 ITEMS[MELTED_TOFFEE] = { name: 'Melted Toffee', stack: 8, bottle: true, about: 'pour it into a mould' };
 ITEMS[HONEY_SYRUP] = { name: 'Honey Syrup', stack: 8, bottle: true, about: 'pour it into a mould' };
+
+// ---------- v34 D: coffee, rice and chillies ----------
+// Coffee bushes grow wild in the warm land by the deserts, chillies in the desert itself, and rice on river
+// banks. Coffee and chillies only grow in warm land (or in a greenhouse anywhere); rice needs water right beside
+// the ground it's planted in. Chillies and rice can be planted on sand as well as grass and dirt.
+export const COFFEE_CROP = 1517, RICE_CROP = 1521, CHILLI_CROP = 1525; // 4 stages each (3 is ripe)
+export const COFFEE_CHERRIES = 3224, RICE = 3225, CHILLI = 3226, ROASTED_COFFEE = 3227, GROUND_COFFEE = 3228, COFFEE = 3229, MOCHA = 3230,
+  RICE_PUDDING = 3231, FISH_RICE = 3232, HOT_SAUCE = 3233, CHILLI_CON_CARNE = 3234;
+for (const [base, kind, seed, tex, name, n, needs] of [[COFFEE_CROP, 'coffee', COFFEE_CHERRIES, T.COFFEE_0, 'Coffee Bush', 2, 'warm'],
+  [RICE_CROP, 'rice', RICE, T.RICE_0, 'Rice', 3, 'water'], [CHILLI_CROP, 'chilli', CHILLI, T.CHILLI_0, 'Chilli Plant', 2, 'warm']]) {
+  for (let k = 0; k < 4; k++) {
+    block(base + k, {
+      ...plant, name, tex: tex + k, variantOf: seed, grows: k < 3 ? base + k + 1 : null,
+      crop: { kind, stage: k, ripe: k === 3, seed, first: base, needs, sandy: kind !== 'coffee' },
+      drop: k < 3 ? () => [[seed, 1]] : () => [[seed, n + Math.floor(Math.random() * 2)]],
+    });
+  }
+}
+ITEMS[COFFEE_CHERRIES] = { name: 'Coffee Cherries', places: COFFEE_CROP, about: 'roast them in an oven; plant them in warm land (or a greenhouse)' };
+ITEMS[RICE] = { name: 'Rice', places: RICE_CROP, about: 'plant it right beside water (sand or soil)' };
+ITEMS[CHILLI] = { name: 'Chilli', food: 1, places: CHILLI_CROP, about: 'plant it in warm land (or a greenhouse), even on sand' };
+ITEMS[ROASTED_COFFEE] = { name: 'Roasted Coffee Beans', about: 'grind them with the mortar' };
+ITEMS[GROUND_COFFEE] = { name: 'Ground Coffee', about: 'brew it in the cooking pot' };
+ITEMS[COFFEE] = { name: 'Coffee', stack: 8, food: 2, meal: ['haste', 240], bottle: true, about: 'dig half as fast again' };
+ITEMS[MOCHA] = { name: 'Mocha', stack: 8, food: 5, meal: ['haste', 360], bottle: true, about: 'dig half as fast again, for longer' };
+ITEMS[RICE_PUDDING] = { name: 'Rice Pudding', food: 9, meal: ['warm', 300], about: 'warms you through' };
+ITEMS[FISH_RICE] = { name: 'Fish and Rice', food: 11, meal: ['swift', 180], about: 'run faster' };
+ITEMS[HOT_SAUCE] = { name: 'Hot Sauce', stack: 8, food: 1, meal: ['warm', 480], bottle: true, about: 'warms you right through' };
+ITEMS[CHILLI_CON_CARNE] = { name: 'Chilli con Carne', food: 14, meal: ['warm', 600], about: 'warms you right through for a long time' };
+RECIPES.push(
+  { out: [GROUND_COFFEE, 1], in: [[ROASTED_COFFEE, 2]], tools: [MORTAR] },
+  { out: [MOCHA, 2], in: [[COFFEE, 1], [CHOC_MILK, 1]] },
+);

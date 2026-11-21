@@ -3401,3 +3401,47 @@ ITEM_PAINTERS[HONEY_CANDY] = sweets(AMBER, AMBER_HI, null);
 ITEM_PAINTERS[CANDIED_PEEL] = (ctx) => { for (const [ox, oy] of [[2, 3], [7, 7], [3, 10]]) for (let k = 0; k < 7; k++) { px(ctx, ox + k, oy + (k > 3 ? 1 : 0), [250, 150, 40]); px(ctx, ox + k, oy + 1 + (k > 3 ? 1 : 0), [255, 230, 180]); } };
 ITEM_PAINTERS[MELTED_TOFFEE] = bottleOf([200, 130, 56], false);
 ITEM_PAINTERS[HONEY_SYRUP] = bottleOf([240, 170, 40], false);
+
+// ---------- v34 D: coffee, rice and chillies ----------
+import { COFFEE_CHERRIES, RICE, CHILLI, ROASTED_COFFEE, GROUND_COFFEE, COFFEE, MOCHA, RICE_PUDDING, FISH_RICE, HOT_SAUCE, CHILLI_CON_CARNE } from './blocks.js';
+for (let k = 0; k < 4; k++) {
+  P[T.COFFEE_0 + k] = (t) => { // a glossy dark bush, red cherries when ripe
+    const h = [4, 7, 10, 12][k];
+    for (let y = 16 - h; y < 16; y++) for (let x = 2; x < 14; x++) {
+      if (Math.abs(x - 7.5) > 1 + (y - (16 - h)) * 0.9 || t.r() < 0.25) continue;
+      t.set(x, y, t.vary(y === 15 ? [90, 60, 36] : [34, 100, 40], 0.14));
+    }
+    if (k === 3) for (const [x, y] of [[5, 9], [9, 7], [10, 11], [6, 13], [8, 10]]) { t.set(x, y, [200, 30, 30]); t.set(x + 1, y, [160, 20, 24]); }
+  };
+  P[T.RICE_0 + k] = (t) => { // slim stalks that droop golden heads when ripe
+    const h = [4, 7, 10, 12][k];
+    for (const x of [2, 4, 6, 8, 10, 12, 14]) {
+      const hh = h - 1 + Math.floor(t.r() * 3);
+      for (let y = 0; y < hh; y++) t.set(x + (y > hh - 3 && k === 3 ? 1 : 0), 15 - y, t.vary(k === 3 && y > hh - 4 ? [220, 196, 110] : [96, 170, 70], 0.1));
+    }
+  };
+  P[T.CHILLI_0 + k] = (t) => {
+    leafyCrop(t, k, null);
+    if (k === 3) for (const [x, y] of [[4, 8], [9, 7], [12, 10], [7, 11]]) for (let d = 0; d < 3; d++) t.set(x, y + d, d === 2 ? [180, 20, 20] : [226, 40, 30]);
+  };
+}
+const cherries = (c, d) => (ctx) => { for (const [x, y] of [[5, 6], [10, 5], [8, 10], [4, 11], [11, 11]]) blob(ctx, x, y, 2, 2, c, d); };
+ITEM_PAINTERS[COFFEE_CHERRIES] = cherries([210, 40, 36], [150, 20, 24]);
+ITEM_PAINTERS[ROASTED_COFFEE] = beans([60, 36, 22], [100, 64, 40]);
+ITEM_PAINTERS[GROUND_COFFEE] = (ctx) => {
+  for (let y = 6; y < 14; y++) for (let x = 2; x < 14; x++) {
+    if (Math.abs(x - 7.5) > (y - 5) * 0.9) continue;
+    px(ctx, x, y, (x * 5 + y * 3) % 7 === 0 ? [90, 56, 34] : [56, 34, 20]);
+  }
+};
+ITEM_PAINTERS[RICE] = scatter([244, 240, 226], [210, 200, 170], 14);
+ITEM_PAINTERS[CHILLI] = (ctx) => {
+  for (let k = 0; k < 10; k++) { const x = 4 + k, y = 5 + Math.round(k * 0.6 + Math.sin(k * 0.5) * 1.5); rect(ctx, x, y, 1, k < 8 ? 3 : 2, k % 3 ? [220, 36, 28] : [250, 90, 70]); }
+  rect(ctx, 2, 4, 3, 2, [60, 130, 40]);
+};
+ITEM_PAINTERS[COFFEE] = bottleOf([60, 34, 18], true);
+ITEM_PAINTERS[MOCHA] = bottleOf([130, 80, 50], true);
+ITEM_PAINTERS[HOT_SAUCE] = bottleOf([200, 30, 20], false);
+ITEM_PAINTERS[RICE_PUDDING] = bowl([246, 236, 210], [[5, [240, 210, 160]], [10, [200, 120, 60]]]);
+ITEM_PAINTERS[FISH_RICE] = bowl([244, 240, 226], [[4, [240, 150, 110]], [7, [240, 150, 110]], [10, [80, 150, 60]]]);
+ITEM_PAINTERS[CHILLI_CON_CARNE] = bowl([170, 50, 30], [[3, [120, 60, 40]], [6, [230, 60, 40]], [9, [120, 60, 40]], [12, [60, 130, 40]]]);

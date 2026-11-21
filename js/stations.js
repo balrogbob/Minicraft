@@ -619,6 +619,17 @@ STATION_KINDS.cookpot.recipes.push(
   { out: [CANDIED_PEEL, 3], in: [[ORANGE_FRUIT, 2], [SUGAR, 2]], time: 6 },
 );
 
+// v34 D: coffee, rice and chillies
+import { COFFEE_CHERRIES, ROASTED_COFFEE, GROUND_COFFEE, COFFEE, RICE, RICE_PUDDING, FISH_RICE, CHILLI, HOT_SAUCE, CHILLI_CON_CARNE } from './blocks.js';
+STATION_KINDS.oven.recipes.push({ out: [ROASTED_COFFEE, 1], in: [[COFFEE_CHERRIES, 1]], time: 3 });
+STATION_KINDS.cookpot.recipes.push(
+  { out: [COFFEE, 3], in: [[GROUND_COFFEE, 1], [WATER_BUCKET, 1], [GLASS_BOTTLE, 3]], leaves: BUCKET, time: 5 },
+  { out: [RICE_PUDDING, 2], in: [[RICE, 2], [MILK_BUCKET, 1], [SUGAR, 1]], leaves: BUCKET, time: 8 },
+  { out: [FISH_RICE, 1], in: [[RICE, 2], [[RAW_FISH, SALMON, ICEFISH], 1], [orFine(HERBS), 1]], time: 8 },
+  { out: [HOT_SAUCE, 2], in: [[CHILLI, 3], [VINEGAR, 1], [GLASS_BOTTLE, 2]], time: 6 },
+  { out: [CHILLI_CON_CARNE, 1], in: [[RAW_PORK, 1], [BEANS, 2], [orFine(TOMATO), 1], [CHILLI, 1]], time: 10 },
+);
+
 // (v34) The oven and the pot make the first recipe whose ingredients are all there, so the dishes that use
 // more ingredients go first: otherwise an egg in with the flour, carrots and sugar would just be fried.
 for (const kind of ['oven', 'cookpot']) STATION_KINDS[kind].recipes.sort((a, b) => b.in.length - a.in.length);
