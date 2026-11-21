@@ -32,6 +32,12 @@ try {
   console.log(`Loaded ${DATA}: seed ${world.seed}, ${Object.keys(world.edits).length} changed blocks`);
 } catch { console.log(`New world, seed ${world.seed} (it will be saved to ${DATA})`); }
 let editCount = Object.keys(world.edits).length, dirty = false;
+// v39: the contents of things in the world, by channel and "x,y,z": chests and machines (st), sign writing
+// (sign) and item frames (frame). Whoever changes one sends it; the server keeps the latest.
+const KV_CHANNELS = ['st', 'sign', 'frame'];
+const MAX_KV = 200_000, MAX_VALUE = 16 * 1024;
+world.kv = Object.fromEntries(KV_CHANNELS.map((c) => [c, world.kv?.[c] && typeof world.kv[c] === 'object' ? world.kv[c] : {}]));
+let kvCount = KV_CHANNELS.reduce((n, c) => n + Object.keys(world.kv[c]).length, 0);
 function saveWorld() {
   if (!dirty) return;
   dirty = false;
@@ -159,7 +165,7 @@ function handle(id, me, m) {
       me.look = cleanLook(m.look);
       const edits = Object.entries(world.edits).map(([k, v]) => { const [x, y, z] = k.split(',').map(Number); return [x, y, z, v]; });
       if (!hostId) hostId = id;
-      me.ws.send({ t: 'welcome', id, host: hostId, clock: world.clock ?? null, seed: world.seed, world: world.id, edits, players: [...players].filter(([pid, p]) => pid !== id && p.hello).map(([pid, p]) => ({ id: pid, name: p.name, look: p.look, state: p.state })) });
+      me.ws.send({ t: 'welcome', id, host: hostId, clock: world.clock ?? null, kv: world.kv, seed: world.seed, world: world.id, edits, players: [...players].filter(([pid, p]) => pid !== id && p.hello).map(([pid, p]) => ({ id: pid, name: p.name, look: p.look, state: p.state })) });
       others(id, { t: 'join', id, name: me.name, look: me.look });
       console.log(`${me.name} joined (${players.size} playing)`);
       break;
@@ -195,6 +201,19 @@ function handle(id, me, m) {
       const c = { time: num(m.time, 0, 1) ?? 0, day: Math.max(1, m.day | 0), raining: !!m.raining, storm: !!m.storm, timer: num(m.timer, 0, 1e5) ?? 60, at: Date.now() };
       world.clock = c; dirty = true;
       others(id, { t: 'clock', ...c, why: clean(m.why, 12) });
+      break;
+    }
+    case 'kv': {
+      if (!me.hello || !KV_CHANNELS.includes(m.ch) || typeof m.k !== 'string' || !/^-?\d{1,7},-?\d{1,3},-?\d{1,7}$/.test(m.k)) return;
+      const box = world.kv[m.ch];
+      if (m.v === null || m.v === undefined) { if (m.k in box) { delete box[m.k]; kvCount--; } }
+      else {
+        if (JSON.stringify(m.v).length > MAX_VALUE) return;
+        if (!(m.k in box)) { if (kvCount >= MAX_KV) return; kvCount++; }
+        box[m.k] = m.v;
+      }
+      dirty = true;
+      others(id, { t: 'kv', ch: m.ch, k: m.k, v: m.v ?? null });
       break;
     }
     case 'swing': if (me.hello) others(id, { t: 'swing', id }); break;

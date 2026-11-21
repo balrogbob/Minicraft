@@ -147,7 +147,7 @@ export class Apiculture {
     for (const [k, st] of stations.map) {
       if (st.kind !== 'beehouse') continue;
       const [x, y, z] = k.split(',').map(Number);
-      if (!world.chunkAt(x, z)) continue;
+      if (!world.chunkAt(x, z) || (stations.owns && !stations.owns(x, z))) continue; // (v39: in multiplayer, the nearest player's game runs it)
       if (!st.queen && !this.crown(st)) { st.bees = 'Put in a princess and a drone'; continue; }
       const env = envAt(x, y, z);
       const why = this.why(world, x, y, z, st.queen.sp, env);

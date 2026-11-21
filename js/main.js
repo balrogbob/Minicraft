@@ -240,6 +240,7 @@ const net = new Net({ scene, atlas, icons: icons.canvases, ITEMS, on: {
   welcome: (m) => mpWelcome(m), block: (x, y, z, id) => mpBlock(x, y, z, id), chat: (name, text, mine) => addChat(name, text, mine),
   host: (me, name) => { if (me && weather.timer > 1e6) weather.timer = 120 + Math.random() * 300; addChat(null, me ? 'You are now the host: your game keeps the time, weather and creatures for everyone' : `${name ?? 'Someone'} is now the host`); clockTimer = 0; },
   clock: (c) => applyClock(c),
+  kv: (ch, k, v) => applyKv(ch, k, v),
   join: (name) => addChat(null, `${name} joined`), leave: (name) => addChat(null, `${name} left`), status: (st, why) => mpStatus(st, why),
 } });
 let viewMode = 0; // 0 first person, 1 behind you, 2 facing you
@@ -4991,6 +4992,7 @@ async function mpWelcome(m) {
   $('mp').classList.add('hidden'); $('menu').classList.add('hidden');
   await startWorld(save);
   applyPending(true);
+  applyKvAll(m.kv);
   if (m.clock && !net.isHost) applyClock({ ...m.clock, why: 'join' });
   if (net.isHost && m.clock) { sky.time = m.clock.time; day = Math.max(1, m.clock.day | 0); weather.set(m.clock.raining, Math.max(10, m.clock.timer || 60), m.clock.storm); applySeason(); }
   toast(`Joined the server${net.remotes.size ? ` (${net.remotes.size} other${net.remotes.size === 1 ? '' : 's'} here)` : ''}. Press ${keyLabel(controls.binds.chat)} to chat.`, 3500);
@@ -5028,13 +5030,91 @@ function applyPending(now = false) {
     pendingEdits.delete(k);
   }
 }
+// v39: who runs what. Each part of the world is run by the game of the player nearest it (by chunk; on a tie,
+// whoever joined first): its machines cook, its plants grow and its creatures roam there, and it tells the
+// others. So a base far from everyone else still works while its builder is there.
+const mpOn = () => net.live && activeSlot === MP_SLOT;
+function ownsSpot(x, z) {
+  if (!mpOn()) return true;
+  const cx = Math.floor(x / CHUNK) * CHUNK + 8, cz = Math.floor(z / CHUNK) * CHUNK + 8;
+  const mine = (player.pos.x - cx) ** 2 + (player.pos.z - cz) ** 2;
+  for (const [id, r] of net.remotes) {
+    if (!r.pos) continue;
+    const d = (r.target.x - cx) ** 2 + (r.target.z - cz) ** 2;
+    if (d < mine - 4 || (Math.abs(d - mine) <= 4 && id < net.id)) return false;
+  }
+  return true;
+}
+stations.owns = (x, z) => ownsSpot(x, z);
+
+// v39: what's in chests and machines, the writing on signs and what's in item frames is shared. Every half
+// second each game looks for any that changed since it last sent or heard of them, and sends those.
+const kvKnown = { st: new Map(), sign: new Map(), frame: new Map() };
+const KV = {
+  st: {
+    entries: () => stations.map,
+    apply: (k, v) => { stations.setOne(k, v); return stations.map.get(k); },
+  },
+  sign: {
+    entries: () => new Map([...signs.texts].map(([k, t]) => [k, [t, signs.colors.get(k) ?? null]])),
+    apply: (k, v) => {
+      const [x, y, z] = k.split(',').map(Number);
+      if (!v) { signs.remove(x, y, z); return undefined; }
+      signs.set(x, y, z, String(v[0] ?? ''));
+      if (Number.isInteger(v[1])) signs.colors.set(k, v[1]); else signs.colors.delete(k);
+      return [signs.texts.get(k), signs.colors.get(k) ?? null];
+    },
+  },
+  frame: {
+    entries: () => frames.items,
+    apply: (k, v) => { if (Number.isInteger(v) && v > 0) frames.items.set(k, v); else frames.items.delete(k); return frames.items.get(k); },
+  },
+};
+const kvKey = (v) => (v === undefined || v === null ? '' : JSON.stringify(v));
+function applyKv(ch, k, v) {
+  if (!KV[ch] || activeSlot !== MP_SLOT) return;
+  const got = KV[ch].apply(k, v);
+  if (got === undefined || got === null) kvKnown[ch].delete(k); else kvKnown[ch].set(k, kvKey(got));
+  if (ch === 'st' && openStationAt && !openStationAt.cart && `${openStationAt.x},${openStationAt.y},${openStationAt.z}` === k) {
+    if (v) renderStation(); else closeStation();
+  }
+}
+function applyKvAll(all) {
+  for (const ch of Object.keys(kvKnown)) {
+    kvKnown[ch].clear();
+    for (const [k, v] of Object.entries(all?.[ch] ?? {})) applyKv(ch, k, v);
+  }
+}
+let kvTimer = 0;
+function tickKv(dt) {
+  const t = performance.now(); // (real time, so a slow frame rate doesn't hold things up)
+  if (!mpOn() || !worldReady || t < kvTimer) return;
+  kvTimer = t + 500;
+  for (const ch of Object.keys(KV)) {
+    const known = kvKnown[ch], now = KV[ch].entries();
+    for (const [k, v] of now) {
+      const s = kvKey(v);
+      if (known.get(k) === s) continue;
+      known.set(k, s);
+      net.send({ t: 'kv', ch, k, v });
+    }
+    for (const k of [...known.keys()]) {
+      if (now.has(k)) continue;
+      const [x, , z] = k.split(',').map(Number);
+      if (!world.chunkAt(x, z)) continue; // (not gone: just not loaded here)
+      known.delete(k);
+      net.send({ t: 'kv', ch, k, v: null });
+    }
+  }
+}
+
 // The host's game keeps the clock and the weather and sends them every couple of seconds (and at once when
 // something changes); everyone else follows. (Each game still moves its own sun smoothly in between.)
 let clockTimer = 0, lastClock = '';
 function sendClock(why = '') {
   net.send({ t: 'clock', time: sky.time, day, raining: weather.raining, storm: !!weather.storm, timer: weather.timer, why });
   lastClock = `${day},${weather.raining},${!!weather.storm}`;
-  clockTimer = 2;
+  clockTimer = performance.now() + 2000;
 }
 function applyClock(c) {
   if (activeSlot !== MP_SLOT || !worldReady || net.isHost) return;
@@ -5055,10 +5135,11 @@ function applyClock(c) {
 function tickClock(dt) {
   if (!net.isHost || activeSlot !== MP_SLOT || !worldReady) return;
   const now = `${day},${weather.raining},${!!weather.storm}`;
-  if ((clockTimer -= dt) <= 0 || now !== lastClock) sendClock();
+  if (performance.now() > clockTimer || now !== lastClock) sendClock();
 }
 function tickNet(dt) {
   tickClock(dt);
+  tickKv(dt);
   if ((pendingTimer -= dt) <= 0) { pendingTimer = 0.4; applyPending(); }
   const p = player.pos;
   net.update(dt, net.live && activeSlot === MP_SLOT && !dead ? {
@@ -7541,7 +7622,7 @@ if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').ca
 
 // expose for debugging in the console
 window.minicraft = {
-  gfx, viewmodel, avatar, swingArm, ripples, waterSurfaceAt, net, get activeSlot() { return activeSlot; }, mpLeave, pendingEdits, get viewMode() { return viewMode; },
+  gfx, viewmodel, avatar, swingArm, ripples, waterSurfaceAt, net, ownsSpot, get activeSlot() { return activeSlot; }, mpLeave, pendingEdits, get viewMode() { return viewMode; },
   get world() { return world; }, player, inventory, saveGame, sky, sound, breakBlock, mobs,
   get hunger() { return hunger; }, set hunger(v) { hunger = v; renderHunger(); },
   get day() { return day; },

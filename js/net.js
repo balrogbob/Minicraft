@@ -81,6 +81,7 @@ export class Net {
         break;
       case 'host': this.host = m.id; this.d.on.host?.(m.id === this.id, this.remotes.get(m.id)?.name); break;
       case 'clock': this.d.on.clock?.(m); break;
+      case 'kv': this.d.on.kv?.(m.ch, m.k, m.v); break;
       case 'full': this.d.on.status?.('full'); break;
       case 'join': this.addRemote(m.id, m.name, m.look); this.d.on.join?.(m.name); break;
       case 'leave': { const r = this.remotes.get(m.id); if (r) { this.d.on.leave?.(r.name); this.removeRemote(m.id); } break; }
@@ -136,8 +137,9 @@ export class Net {
       r.avatar.update(dt, { pos: r.pos, yaw: r.yaw, pitch: r.pitch, speed: r.sp, swimming: r.sw, onGround: r.g, light: lightAt(r.pos) });
     }
     if (!this.live || !me) return;
-    if ((this.sendTimer -= dt) > 0) return;
-    this.sendTimer = 0.1;
+    const now = performance.now(); // (real time: ten a second however slowly the game runs)
+    if (now < this.sendTimer) return;
+    this.sendTimer = now + 100;
     const msg = { t: 'move', p: [+me.pos.x.toFixed(2), +me.pos.y.toFixed(2), +me.pos.z.toFixed(2)], yaw: +me.yaw.toFixed(3), pitch: +me.pitch.toFixed(3), held: me.held, sw: me.swimming, sp: +me.speed.toFixed(1), g: me.onGround };
     const s = JSON.stringify(msg);
     if (s === this.lastSent && (this.quiet = (this.quiet ?? 0) + 1) % 10) return; // (standing still: once a second)
