@@ -62,7 +62,12 @@ turn any off again if the game gets slow (☰ → Performance info shows the fra
 
 - **Sun shadows**: the sun casts soft shadows from blocks, trees, animals and machines within about 44
   blocks of you. They lengthen towards evening, fade under clouds and go at night. (Torch and lamp light
-  doesn't need shadows: it spreads block by block, so it already stops at walls.)
+  doesn't need these: it spreads block by block, so it already stops at walls.)
+- **Torch shadows** (a slider, off or 1 to 5): the nearest few torches, lanterns, lamps and other lights
+  cast shadows of their own: pillars, furniture, machines and animals standing in the light throw sharp
+  shadows across the floor and walls. Lights out in the daytime sun are skipped (the sun drowns them out),
+  so in the day this mostly matters indoors and underground; at night every light counts. Each light
+  costs about as much to draw as the sun's shadows, so fewer is faster.
 - **Bloom**: bright things glow a little past their edges: lava, lamps, the sky behind trees, sun glints.
 - **Fancy water**: moving waves, reflections of the sky that get stronger as you look across the water, and
   glints of sunlight.
@@ -1626,7 +1631,8 @@ guide to how everything works.
 
 ## Version history
 
-- **Version 36**: optional fancy graphics in the ☰ menu, all off by default: sun shadows, bloom, a water
+- **Version 36**: optional fancy graphics in the ☰ menu, all off by default: sun shadows, shadows from the
+  nearest 1 to 5 torches and lamps, bloom, a water
   surface with waves, reflections and sun glints, water refraction, and caustics under sunlit water.
 - **Version 35**: the carpenter and crates (9 of a thing to a crate, 64 crates to a slot), the distillery (whisky,
   rubbing alcohol and bandages, biofuel), things that don't fit in a full inventory drop at your feet instead of

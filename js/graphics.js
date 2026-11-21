@@ -5,11 +5,13 @@
 //   water      - a water surface with moving waves, sky reflections and sun glints
 //   refraction - you see the bottom through the water, bent by the waves
 //   caustics   - rippling light on blocks under sunlit water
-// Torch light is already flood-filled block by block, so it never shines through walls;
-// it needs no shadow pictures of its own.
+//   torch shadows (0-5) - the nearest few lights that aren't in sunlight cast shadows too
+// Torch light itself is flood-filled block by block, so it never shines through walls; torch shadows
+// only add the sharper shadows of things standing in the light (pillars, mobs, machines, furniture).
 import * as THREE from 'three';
 
-export const GFX_DEFAULTS = { shadows: false, bloom: false, water: false, refraction: false, caustics: false };
+export const GFX_DEFAULTS = { shadows: false, bloom: false, water: false, refraction: false, caustics: false, torches: 0 };
+export const MAX_TORCH_SHADOWS = 5;
 export const GFX_NAMES = { shadows: 'Sun shadows', bloom: 'Bloom', water: 'Fancy water', refraction: 'Water refraction', caustics: 'Water caustics' };
 
 export const WATER_LAYER = 3; // water meshes: drawn after everything they are looked through
@@ -18,6 +20,12 @@ const SHADOW_LAYER = 2;
 const SHADOW_RES = 2048;
 const SHADOW_RANGE = 44; // blocks around the player that get shadows
 const SHADOW_BACK = 150; // how far towards the sun the shadow camera sits
+const TORCH_TILE = 256; // each light gets 6 tiles (one per cube face) in one shared picture
+const TORCH_FOV = 96; // a little over 90 degrees, so neighbouring faces overlap at the seams
+const TORCH_BUDGET = 2; // lights whose shadows are redrawn each frame (new ones are drawn at once)
+const TORCH_SCAN = 0.4; // seconds between looks for the nearest lights
+// the six cube faces: direction to look in, and which way is up
+const FACES = [[1, 0, 0, 0, 1, 0], [-1, 0, 0, 0, 1, 0], [0, 1, 0, 0, 0, 1], [0, -1, 0, 0, 0, 1], [0, 0, 1, 0, 1, 0], [0, 0, -1, 0, 1, 0]];
 
 // Uniforms shared with the world materials (main.js merges them into its light uniforms).
 export const gfxUniforms = {
@@ -35,6 +43,13 @@ export const gfxUniforms = {
   uRefrTex: { value: null },
   uResolution: { value: new THREE.Vector2(1, 1) },
   uSkyCol: { value: new THREE.Color() },
+  uTorchCount: { value: 0 },
+  uTorchL: { value: Array.from({ length: MAX_TORCH_SHADOWS }, () => new THREE.Vector4()) }, // xyz + reach
+  uTorchSlot: { value: new Array(MAX_TORCH_SHADOWS).fill(0) }, // which row of the picture each light uses
+  uTorchMap: { value: null },
+  uTorchTexel: { value: new THREE.Vector2(1, 1) },
+  uFaceRot: { value: FACES.map(() => new THREE.Matrix3()) },
+  uFaceScale: { value: 1 / Math.tan((TORCH_FOV / 2) * Math.PI / 180) },
 };
 
 // ---------- shader code for the world materials ----------
@@ -54,6 +69,13 @@ uniform float uRefract;
 uniform sampler2D uRefrTex;
 uniform vec2 uResolution;
 uniform vec3 uSkyCol;
+uniform int uTorchCount;
+uniform vec4 uTorchL[${MAX_TORCH_SHADOWS}];
+uniform float uTorchSlot[${MAX_TORCH_SHADOWS}];
+uniform sampler2D uTorchMap;
+uniform vec2 uTorchTexel;
+uniform mat3 uFaceRot[6];
+uniform float uFaceScale;
 varying float vWet;
 vec3 gfxNormal() {
   vec3 n = normalize(cross(dFdx(vWorldP), dFdy(vWorldP)));
@@ -74,6 +96,41 @@ float gfxShadow(vec3 n) {
     lit += step(p.z - bias, texture2D(uShadowMap, p.xy + vec2(float(i), float(j)) * uShadowTexel).r);
   return mix(1.0, min(lit / 9.0, facing), edge);
 }
+// how much of one light reaches this spot: 1 = all, 0 = blocked (4 taps in its cube picture)
+float gfxTorchVis(float row, vec3 L, float d, float reach, float bias) {
+  vec3 a = abs(L);
+  int f = a.x >= a.y && a.x >= a.z ? (L.x > 0.0 ? 0 : 1) : a.y >= a.z ? (L.y > 0.0 ? 2 : 3) : (L.z > 0.0 ? 4 : 5);
+  vec3 p = uFaceRot[f] * L;
+  vec2 uv = clamp(p.xy / -p.z * uFaceScale * 0.5 + 0.5, 0.0, 1.0);
+  vec2 tile = vec2(1.0 / 6.0, 1.0 / ${MAX_TORCH_SHADOWS}.0);
+  vec2 lo = vec2(float(f), row) * tile;
+  vec2 c = lo + uv * tile, hi = lo + tile - uTorchTexel;
+  lo += uTorchTexel;
+  float lit = 0.0;
+  d = (d - bias) / reach; // (the picture holds distance / reach)
+  lit += step(d, texture2D(uTorchMap, clamp(c + vec2(-0.75, -0.75) * uTorchTexel, lo, hi)).r);
+  lit += step(d, texture2D(uTorchMap, clamp(c + vec2(0.75, -0.75) * uTorchTexel, lo, hi)).r);
+  lit += step(d, texture2D(uTorchMap, clamp(c + vec2(-0.75, 0.75) * uTorchTexel, lo, hi)).r);
+  lit += step(d, texture2D(uTorchMap, clamp(c + vec2(0.75, 0.75) * uTorchTexel, lo, hi)).r);
+  return lit * 0.25;
+}
+// torch light at this spot is shaded by the nearby shadow-casting lights, weighted by how close each is
+float gfxTorchShadow(vec3 n) {
+  float sw = 0.0, sv = 0.0;
+  for (int i = 0; i < ${MAX_TORCH_SHADOWS}; i++) {
+    if (i >= uTorchCount) break;
+    vec4 l = uTorchL[i];
+    vec3 L = vWorldP + n * 0.04 - l.xyz;
+    float d = length(L);
+    if (d >= l.w) continue;
+    float w = 1.0 - d / l.w; w *= w;
+    float ndl = dot(n, -L / max(d, 0.001));
+    float v = d < 1.0 ? 1.0 : ndl <= -0.05 ? 0.0 : gfxTorchVis(uTorchSlot[i], L, d, l.w, 0.08 + 0.22 * (1.0 - clamp(ndl, 0.0, 1.0)));
+    sw += w; sv += w * v;
+  }
+  if (sw < 0.001) return 1.0;
+  return mix(1.0, mix(0.22, 1.0, sv / sw), clamp(sw * 4.0, 0.0, 1.0));
+}
 // bright, slowly wandering lines of light, like sun through ripples
 float gfxCaustic(vec3 wp) {
   vec2 p = wp.xz + uSunDir.xz * wp.y * 0.4;
@@ -91,6 +148,8 @@ export const GFX_SUN_TERM = `
 float sunT = uDay * vSky;
 if (uShadowStr > 0.0 && sunT > 0.0) sunT *= 1.0 - uShadowStr * (1.0 - gfxShadow(gfxNormal()));
 if (uCaustics > 0.0 && vWet > 0.5) sunT *= 1.0 + gfxCaustic(vWorldP) * (0.25 + 0.75 * uSunStr);
+vec3 torchT = vTorchC * uFlicker;
+if (uTorchCount > 0 && torchT.r + torchT.g + torchT.b > 0.03) torchT *= gfxTorchShadow(gfxNormal());
 `;
 
 // water surface: runs after the light, only in the water material
@@ -166,6 +225,33 @@ void main() {
   gl_FragColor = vec4(toSRGB(c), 1.0);
 }`;
 
+// distance-from-the-light pictures for torch shadows
+const DIST_VERT = `varying vec3 vWP;
+varying vec2 vUv;
+void main() {
+  vUv = uv;
+  vec4 p = vec4(position, 1.0);
+#ifdef USE_INSTANCING
+  p = instanceMatrix * p;
+#endif
+  vec4 wp = modelMatrix * p;
+  vWP = wp.xyz;
+  gl_Position = projectionMatrix * viewMatrix * wp;
+}`;
+const DIST_FRAG = `uniform vec4 uLight;
+uniform sampler2D map;
+uniform float alphaTest;
+varying vec3 vWP;
+varying vec2 vUv;
+void main() {
+#ifdef CUT_OUT
+  if (texture2D(map, vUv).a < alphaTest) discard;
+#endif
+  float d = length(vWP - uLight.xyz);
+  if (d < 0.9) discard; // the light's own block (a torch's stick, a lantern's glass) casts nothing
+  gl_FragColor = vec4(d / uLight.w, 0.0, 0.0, 1.0); // (cleared to 1: nothing in the way)
+}`;
+
 function pass(frag, uniforms) {
   return new THREE.ShaderMaterial({ vertexShader: QUAD_VERT, fragmentShader: frag, uniforms, depthTest: false, depthWrite: false });
 }
@@ -195,9 +281,39 @@ export class Graphics {
     this.bias = new THREE.Matrix4().set(0.5, 0, 0, 0.5, 0, 0.5, 0, 0.5, 0, 0, 0.5, 0.5, 0, 0, 0, 1);
     this.size = new THREE.Vector2();
     this.casters = [];
+    // torch shadows
+    this.lightU = { value: new THREE.Vector4() };
+    this.distMats = new WeakMap();
+    this.plainDist = this.distMat(null);
+    this.faceCam = new THREE.PerspectiveCamera(TORCH_FOV, 1, 0.05, 16);
+    this.faceCam.layers.set(SHADOW_LAYER);
+    gfxUniforms.uFaceRot.value.forEach((m, f) => {
+      const [dx, dy, dz, ux, uy, uz] = FACES[f];
+      const cam = new THREE.PerspectiveCamera(TORCH_FOV, 1, 0.05, 16);
+      cam.up.set(ux, uy, uz); cam.lookAt(dx, dy, dz); cam.updateMatrixWorld(true);
+      m.setFromMatrix4(cam.matrixWorldInverse);
+    });
+    this.slots = []; // [{ x, y, z, r, row, ready }]
+    this.scanT = 0;
+    this.rr = 0;
+    this.findLights = null; // set by the game: (n) => nearest lights not in sunlight, [{ x, y, z, r }]
   }
 
-  set(key, on) { this.opts[key] = !!on; if (!this.opts.shadows) this.freeShadows(); if (!this.opts.bloom && !this.opts.refraction) this.freeTargets(); }
+  distMat(m) {
+    const cut = !!(m?.map && m.alphaTest > 0);
+    return new THREE.ShaderMaterial({
+      vertexShader: DIST_VERT, fragmentShader: DIST_FRAG, side: THREE.DoubleSide, defines: cut ? { CUT_OUT: '' } : {},
+      uniforms: { uLight: this.lightU, map: { value: cut ? m.map : null }, alphaTest: { value: cut ? m.alphaTest : 0 } },
+    });
+  }
+
+  set(key, on) {
+    this.opts[key] = key === 'torches' ? Math.max(0, Math.min(MAX_TORCH_SHADOWS, on | 0)) : !!on;
+    if (!this.opts.shadows) this.freeShadows();
+    if (!this.opts.bloom && !this.opts.refraction) this.freeTargets();
+    if (!this.opts.torches) this.freeTorches();
+    this.scanT = 0;
+  }
 
   // anything turned on?
   get fancy() { return Object.values(this.opts).some(Boolean); }
@@ -215,6 +331,10 @@ export class Graphics {
     if (o.shadows && sun > 0.01) {
       try { this.renderShadows(scene, camera); U.uShadowStr.value = 0.5 * sun; } catch (err) { this.fail(err, 'shadows'); }
     }
+    U.uTorchCount.value = 0;
+    if (o.torches > 0) {
+      try { this.renderTorches(scene); } catch (err) { this.fail(err, 'torches'); this.freeTorches(); }
+    }
     U.uRefract.value = 0;
     if (!o.bloom && !o.refraction) { r.render(scene, camera); return; }
     try { this.renderPost(scene, camera); } catch (err) {
@@ -228,7 +348,7 @@ export class Graphics {
   // an effect that breaks on this computer is switched off rather than spoiling every frame
   fail(err, key) {
     this.lastError = err;
-    this.opts[key] = false;
+    this.opts[key] = key === 'torches' ? 0 : false;
     this.onFail?.(key, err);
   }
 
@@ -252,35 +372,124 @@ export class Graphics {
     cam.quaternion.setFromRotationMatrix(rot);
     cam.updateMatrixWorld(true);
     gfxUniforms.uShadowMat.value.copy(this.bias).multiply(cam.projectionMatrix).multiply(cam.matrixWorldInverse);
-    // everything solid casts: chunk meshes, mobs, carts... (not glass-like or see-through things)
-    const casters = this.casters;
+    this.withCasters(scene, this.depthMats, (m) => (m.map && m.alphaTest > 0 ? new THREE.MeshDepthMaterial({ map: m.map, alphaTest: m.alphaTest, side: THREE.DoubleSide }) : this.plainDepth), () => {
+      r.setRenderTarget(this.shadowRT);
+      r.clear();
+      r.render(scene, cam);
+    });
+  }
+
+  // Swap every solid thing's material for a shadow-picture one while draw() runs: chunk meshes, mobs,
+  // carts, machines... (not glass-like or see-through things), then put them all back.
+  withCasters(scene, cache, make, draw) {
+    const r = this.renderer, casters = this.casters;
     casters.length = 0;
     scene.traverseVisible((obj) => {
       if (!obj.isMesh) return;
       const m = Array.isArray(obj.material) ? obj.material[0] : obj.material;
       if (!m || m.transparent || m.depthWrite === false || obj.userData.noShadow || obj.layers.isEnabled(WATER_LAYER)) { obj.layers.disable(SHADOW_LAYER); return; }
       obj.layers.enable(SHADOW_LAYER);
-      let dm = this.depthMats.get(m);
-      if (!dm) {
-        dm = m.map && m.alphaTest > 0 ? new THREE.MeshDepthMaterial({ map: m.map, alphaTest: m.alphaTest, side: THREE.DoubleSide }) : this.plainDepth;
-        this.depthMats.set(m, dm);
-      }
+      let sm = cache.get(m);
+      if (!sm) { sm = make(m); cache.set(m, sm); }
       casters.push(obj, obj.material);
-      obj.material = dm;
+      obj.material = sm;
     });
     const bg = scene.background, fog = scene.fog;
     scene.background = null; scene.fog = null;
     const was = r.getRenderTarget();
-    try {
-      r.setRenderTarget(this.shadowRT);
-      r.clear();
-      r.render(scene, cam);
-    } finally {
+    try { draw(); } finally {
       r.setRenderTarget(was);
       scene.background = bg; scene.fog = fog;
       for (let i = 0; i < casters.length; i += 2) casters[i].material = casters[i + 1];
       casters.length = 0;
     }
+  }
+
+  // ---------- torch shadows ----------
+
+  renderTorches(scene) {
+    const r = this.renderer, n = this.opts.torches, U = gfxUniforms;
+    const now = performance.now() / 1000;
+    // every so often, look for the nearest lights; keep the ones we already have where possible
+    if (now >= this.scanT && this.findLights) {
+      this.scanT = now + TORCH_SCAN;
+      const want = this.findLights(n).slice(0, n);
+      const key = (l) => `${l.x},${l.y},${l.z}`;
+      const keep = this.slots.filter((s) => want.some((l) => key(l) === key(s)));
+      const used = new Set(keep.map((s) => s.row));
+      for (const l of want) {
+        if (keep.some((s) => key(s) === key(l))) continue;
+        let row = 0; while (used.has(row)) row++;
+        used.add(row);
+        keep.push({ ...l, row, ready: false });
+      }
+      this.slots = keep;
+    }
+    if (!this.slots.length) return;
+    if (!this.torchRT) {
+      const half = r.extensions.has('EXT_color_buffer_half_float') || r.extensions.has('EXT_color_buffer_float');
+      this.torchRT = new THREE.WebGLRenderTarget(TORCH_TILE * 6, TORCH_TILE * MAX_TORCH_SHADOWS, {
+        type: half ? THREE.HalfFloatType : THREE.UnsignedByteType, generateMipmaps: false, minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter,
+      });
+      U.uTorchMap.value = this.torchRT.texture;
+      U.uTorchTexel.value.set(1 / this.torchRT.width, 1 / this.torchRT.height);
+    }
+    // redraw the new lights, and a couple of the others in turn (things move about in the light)
+    const todo = this.slots.filter((s) => !s.ready);
+    for (let k = 0; k < Math.min(TORCH_BUDGET, this.slots.length) && todo.length < this.slots.length; k++) {
+      const s = this.slots[(this.rr++) % this.slots.length];
+      if (!todo.includes(s)) todo.push(s);
+    }
+    if (todo.length) {
+      const rt = this.torchRT, cam = this.faceCam, cc = new THREE.Color();
+      r.getClearColor(cc);
+      const ca = r.getClearAlpha();
+      this.withCasters(scene, this.distMats, (m) => this.distMat(m), () => {
+        r.setClearColor(0xffffff, 1);
+        r.setRenderTarget(rt);
+        rt.scissorTest = true;
+        try {
+          for (const s of todo) {
+            this.lightU.value.set(s.x, s.y, s.z, s.r);
+            cam.far = s.r + 1; cam.updateProjectionMatrix();
+            for (let f = 0; f < 6; f++) {
+              const [dx, dy, dz, ux, uy, uz] = FACES[f];
+              cam.position.set(s.x, s.y, s.z); cam.up.set(ux, uy, uz); cam.lookAt(s.x + dx, s.y + dy, s.z + dz);
+              cam.updateMatrixWorld(true);
+              rt.viewport.set(f * TORCH_TILE, s.row * TORCH_TILE, TORCH_TILE, TORCH_TILE);
+              rt.scissor.copy(rt.viewport);
+              r.setRenderTarget(rt); // (applies the new viewport)
+              r.setClearColor(0xffffff, 1);
+              r.clear();
+              r.render(scene, cam);
+            }
+            s.ready = true;
+          }
+        } finally {
+          rt.scissorTest = false;
+          rt.viewport.set(0, 0, rt.width, rt.height); rt.scissor.copy(rt.viewport);
+          r.setClearColor(cc, ca);
+        }
+      });
+    }
+    // hand the ready lights to the world shader
+    let c = 0;
+    for (const s of this.slots) {
+      if (!s.ready || c >= MAX_TORCH_SHADOWS) continue;
+      U.uTorchL.value[c].set(s.x, s.y, s.z, s.r);
+      U.uTorchSlot.value[c] = s.row;
+      c++;
+    }
+    U.uTorchCount.value = c;
+  }
+
+  freeTorches() {
+    this.slots = [];
+    gfxUniforms.uTorchCount.value = 0;
+    if (!this.torchRT) return;
+    this.torchRT.dispose();
+    this.torchRT = null;
+    gfxUniforms.uTorchMap.value = null;
   }
 
   freeShadows() {

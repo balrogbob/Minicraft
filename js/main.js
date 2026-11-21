@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { Graphics, GFX_DEFAULTS, GFX_NAMES, gfxUniforms, GFX_FRAG_HEAD, GFX_SUN_TERM, GFX_WATER, WATER_LAYER, LATE_LAYER } from './graphics.js';
+import { Graphics, GFX_DEFAULTS, GFX_NAMES, MAX_TORCH_SHADOWS, gfxUniforms, GFX_FRAG_HEAD, GFX_SUN_TERM, GFX_WATER, WATER_LAYER, LATE_LAYER } from './graphics.js';
 import {
   BLOCKS, RECIPES, TABLE, AIR, WATER, TORCH, TORCH_WALL_W, WALL_TORCH_DIRS,
   GRASS, DIRT, SAND, CHURN, SUGAR_CANE, BREAD, ITEMS, BOW, ARROW, BUCKET,
@@ -103,6 +103,7 @@ const settings = (() => {
   if (!s.keys || typeof s.keys !== 'object') s.keys = {};
   if (!Array.isArray(s.pins)) s.pins = [];
   s.gfx = { ...GFX_DEFAULTS, ...(s.gfx && typeof s.gfx === 'object' ? s.gfx : {}) };
+  s.gfx.torches = Math.max(0, Math.min(MAX_TORCH_SHADOWS, s.gfx.torches | 0));
   return s;
 })();
 function saveSettings() {
@@ -150,7 +151,7 @@ function addTorchLight(mat, water = false) {
     shader.fragmentShader = 'uniform float uDay;\nuniform float uFlicker;\nuniform float uAmbient;\nuniform vec4 uHand;\nvarying vec3 vTorchC;\nvarying float vSky;\nvarying vec3 vWorldP;\n' + GFX_FRAG_HEAD + shader.fragmentShader
       .replace('#include <color_fragment>',
         '#include <color_fragment>\nfloat hl = uHand.w * pow(clamp(1.0 - distance(vWorldP, uHand.xyz) / 13.0, 0.0, 1.0), 1.4);\n' + GFX_SUN_TERM +
-        'diffuseColor.rgb *= max(max(vec3(max(sunT, uAmbient)), vTorchC * uFlicker), vec3(hl, hl * 0.96, hl * 0.86));\n' + (water ? GFX_WATER : ''));
+        'diffuseColor.rgb *= max(max(vec3(max(sunT, uAmbient)), torchT), vec3(hl, hl * 0.96, hl * 0.86));\n' + (water ? GFX_WATER : ''));
   };
 }
 addTorchLight(material);
@@ -168,7 +169,23 @@ addTorchLight(waterMat, true);
 const materials = { solid: material, water: waterMat };
 // optional fancy graphics: shadows, bloom, water (see graphics.js)
 const gfx = new Graphics(renderer, settings.gfx);
-gfx.onFail = (key) => { settings.gfx[key] = false; saveSettings(); updateGfxLabels(); toast(`${GFX_NAMES[key]} doesn't work on this device — turned off`, 4000); };
+// torch shadows: the nearest lights (not lava, not ones out in the sun) within 16 blocks
+gfx.findLights = (n) => {
+  if (!world || !player) return [];
+  const px = Math.floor(player.pos.x), py = Math.floor(player.pos.y + 1), pz = Math.floor(player.pos.z);
+  const day = lightUniforms.uDay.value, found = [];
+  for (let y = py - 10; y <= py + 10; y++) for (let x = px - 16; x <= px + 16; x++) for (let z = pz - 16; z <= pz + 16; z++) {
+    const id = world.get(x, y, z);
+    if (id === AIR) continue;
+    const def = BLOCKS[id];
+    if (!def || !(def.light >= 6) || def.liquid) continue;
+    if (day * world.skyAt(x, y, z) / 15 > 0.35) continue; // drowned out by daylight
+    found.push({ x: x + 0.5, y: y + 0.55, z: z + 0.5, r: def.light + 1, d: (x - px) ** 2 + (y - py) ** 2 + (z - pz) ** 2 });
+  }
+  found.sort((a, b) => a.d - b.d);
+  return found.slice(0, n);
+};
+gfx.onFail = (key) => { settings.gfx[key] = key === 'torches' ? 0 : false; saveSettings(); updateGfxLabels(); toast(`${GFX_NAMES[key]} doesn't work on this device — turned off`, 4000); };
 
 const sky = new Sky(scene);
 const sound = new Sound();
@@ -4761,9 +4778,12 @@ $('btn-break').addEventListener('click', () => { settings.doubleTap = !settings.
 function updateTipsLabel() { $('btn-tips').textContent = `Tooltips: ${settings.tips ? 'on' : 'off'}`; }
 updateTipsLabel();
 function updateGfxLabels() {
+  $('torch-shadows').value = settings.gfx.torches;
+  $('torch-shadows-label').textContent = `Torch shadows: ${settings.gfx.torches ? `nearest ${settings.gfx.torches}` : 'off'}`;
   for (const key of Object.keys(GFX_DEFAULTS)) { const b = $(`btn-gfx-${key}`); if (b) b.textContent = `${GFX_NAMES[key]}: ${settings.gfx[key] ? 'on' : 'off'}`; }
 }
 updateGfxLabels();
+$('torch-shadows').addEventListener('input', (e) => { settings.gfx.torches = +e.target.value; gfx.set('torches', settings.gfx.torches); updateGfxLabels(); saveSettings(); });
 for (const key of Object.keys(GFX_DEFAULTS)) {
   $(`btn-gfx-${key}`)?.addEventListener('click', () => { settings.gfx[key] = !settings.gfx[key]; gfx.set(key, settings.gfx[key]); updateGfxLabels(); saveSettings(); });
 }
