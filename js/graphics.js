@@ -46,7 +46,10 @@ const SHADOW_BACK = 150; // how far towards the sun the shadow camera sits
 // each light gets 6 tiles (one per cube face) in one shared picture, TORCH_ROW lights to a row;
 // the more lights, the smaller the tiles
 const TORCH_ROW = 4;
-const torchTile = (n) => (n <= 5 ? 256 : n <= 16 ? 192 : 128);
+// (and never so big the whole picture is wider or taller than this device can make one: many phones and tablets
+// stop at 4096, and a picture too big for them leaves each light just a small circle with no shadows)
+const torchTile = (n, max = 4096) => Math.min(n <= 5 ? 256 : n <= 16 ? 192 : 128,
+  Math.floor(max / (6 * Math.min(n, TORCH_ROW))), Math.floor(max / Math.ceil(n / TORCH_ROW)));
 const TORCH_FOV = 96; // a little over 90 degrees, so neighbouring faces overlap at the seams
 const TORCH_SCAN = 0.4; // seconds between looks for the nearest lights
 // the six cube faces: direction to look in, and which way is up
@@ -572,7 +575,11 @@ export class Graphics {
       this.slots = keep;
     }
     if (!this.slots.length) return;
-    const T = torchTile(n);
+    if (!this.maxTex) {
+      const gl = r.getContext();
+      this.maxTex = Math.min(r.capabilities.maxTextureSize, gl.getParameter(gl.MAX_RENDERBUFFER_SIZE) || 4096, gl.getParameter(gl.MAX_VIEWPORT_DIMS)?.[0] || 4096);
+    }
+    const T = torchTile(n, this.maxTex);
     if (!this.torchRT) {
       const half = r.extensions.has('EXT_color_buffer_half_float') || r.extensions.has('EXT_color_buffer_float');
       this.torchRT = new THREE.WebGLRenderTarget(T * 6 * Math.min(n, TORCH_ROW), T * Math.ceil(n / TORCH_ROW), {
