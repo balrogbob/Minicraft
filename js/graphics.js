@@ -197,7 +197,11 @@ float gfxTorchShadow(vec3 n) {
     if (d >= reach) continue;
     float w = 1.0 - d / reach; w *= w;
     float ndl = dot(n, -L / max(d, 0.001));
-    float v = d < 1.0 ? 1.0 : ndl <= -0.05 ? 0.0 : gfxTorchVis(slot, L, d, reach, 0.08 + 0.22 * (1.0 - clamp(ndl, 0.0, 1.0)));
+    // the light's own block (a lantern's glass, a torch's stick, and the faces it touches) is always lit: the
+    // light sits 0.55 up its block. (Not everything within a block of the light: that left a round patch of light
+    // with a hard edge, lighting faces that turn away from it.)
+    vec3 own = abs(vWorldP - l.xyz + vec3(0.0, 0.05, 0.0));
+    float v = max(own.x, max(own.y, own.z)) < 0.52 ? 1.0 : ndl <= -0.05 ? 0.0 : gfxTorchVis(slot, L, d, reach, 0.08 + 0.22 * (1.0 - clamp(ndl, 0.0, 1.0)));
     sw += w; sv += w * v;
   }
   if (sw < 0.001) return 1.0;
