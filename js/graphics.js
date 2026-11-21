@@ -1,28 +1,42 @@
-// Fancy graphics (v36): optional effects for computers with a strong graphics card.
+// Fancy graphics (v36-37): optional effects for computers with a strong graphics card.
 // All of them are off unless the player turns them on in the menu.
-//   shadows    - the sun casts shadows (a depth picture of the world taken from the sun)
+//   shadows    - the sun casts shadows (a depth picture of the world taken from the sun): 0 off, 1 low, 2 high
 //   bloom      - bright things (lava, lamps, sun glints) glow softly
 //   water      - a water surface with moving waves, sky reflections and sun glints
 //   refraction - you see the bottom through the water, bent by the waves
 //   caustics   - rippling light on blocks under sunlit water
-//   torch shadows (0-5) - the nearest few lights that aren't in sunlight cast shadows too
+//   torch shadows (0-50) - the nearest lights that aren't in sunlight cast shadows too
+//   godrays    - shafts of sunlight around things that hide the sun
+//   sway       - leaves and plants move in the wind
+//   reflections - water mirrors the world above it (the scene drawn again, upside down)
+//   ripple     - the view wobbles while your head is under water
 // Torch light itself is flood-filled block by block, so it never shines through walls; torch shadows
 // only add the sharper shadows of things standing in the light (pillars, mobs, machines, furniture).
 import * as THREE from 'three';
 
-export const GFX_DEFAULTS = { shadows: false, bloom: false, water: false, refraction: false, caustics: false, torches: 0 };
-export const MAX_TORCH_SHADOWS = 5;
-export const GFX_NAMES = { shadows: 'Sun shadows', bloom: 'Bloom', water: 'Fancy water', refraction: 'Water refraction', caustics: 'Water caustics' };
+export const GFX_DEFAULTS = {
+  shadows: 0, torches: 0, torchRate: 2, bloom: false, water: false, reflections: false, refraction: false, caustics: false,
+  godrays: false, sway: false, ripple: false,
+};
+export const MAX_TORCH_SHADOWS = 50;
+export const GFX_TOGGLES = ['bloom', 'godrays', 'sway', 'water', 'reflections', 'refraction', 'caustics', 'ripple'];
+export const GFX_NAMES = {
+  shadows: 'Sun shadows', torches: 'Torch shadows', bloom: 'Bloom', water: 'Fancy water', refraction: 'Water refraction', caustics: 'Water caustics',
+  godrays: 'God rays', sway: 'Swaying leaves and plants', reflections: 'Water reflections', ripple: 'Underwater ripple',
+};
+export const SHADOW_LEVELS = ['off', 'low', 'high'];
 
 export const WATER_LAYER = 3; // water meshes: drawn after everything they are looked through
 export const LATE_LAYER = 4; // see-through things drawn after the water (rain, snow)
 const SHADOW_LAYER = 2;
-const SHADOW_RES = 2048;
-const SHADOW_RANGE = 44; // blocks around the player that get shadows
+// sun shadow quality: picture size, blocks around the player covered, soft edges, redraw every n frames
+const SHADOW_Q = [null, { res: 1024, range: 32, soft: 0, every: 2 }, { res: 2048, range: 44, soft: 1, every: 1 }];
 const SHADOW_BACK = 150; // how far towards the sun the shadow camera sits
-const TORCH_TILE = 256; // each light gets 6 tiles (one per cube face) in one shared picture
+// each light gets 6 tiles (one per cube face) in one shared picture, TORCH_ROW lights to a row;
+// the more lights, the smaller the tiles
+const TORCH_ROW = 4;
+const torchTile = (n) => (n <= 5 ? 256 : n <= 16 ? 192 : 128);
 const TORCH_FOV = 96; // a little over 90 degrees, so neighbouring faces overlap at the seams
-const TORCH_BUDGET = 2; // lights whose shadows are redrawn each frame (new ones are drawn at once)
 const TORCH_SCAN = 0.4; // seconds between looks for the nearest lights
 // the six cube faces: direction to look in, and which way is up
 const FACES = [[1, 0, 0, 0, 1, 0], [-1, 0, 0, 0, 1, 0], [0, 1, 0, 0, 0, 1], [0, -1, 0, 0, 0, 1], [0, 0, 1, 0, 1, 0], [0, 0, -1, 0, 1, 0]];
@@ -35,7 +49,8 @@ export const gfxUniforms = {
   uShadowMap: { value: null },
   uShadowMat: { value: new THREE.Matrix4() },
   uShadowStr: { value: 0 },
-  uShadowTexel: { value: 1 / SHADOW_RES },
+  uShadowTexel: { value: 1 / 2048 },
+  uShadowSoft: { value: 1 },
   uShadowDepth: { value: SHADOW_BACK * 2 },
   uCaustics: { value: 0 },
   uFancyWater: { value: 0 },
@@ -44,13 +59,42 @@ export const gfxUniforms = {
   uResolution: { value: new THREE.Vector2(1, 1) },
   uSkyCol: { value: new THREE.Color() },
   uTorchCount: { value: 0 },
-  uTorchL: { value: Array.from({ length: MAX_TORCH_SHADOWS }, () => new THREE.Vector4()) }, // xyz + reach
-  uTorchSlot: { value: new Array(MAX_TORCH_SHADOWS).fill(0) }, // which row of the picture each light uses
+  uTorchL: { value: Array.from({ length: MAX_TORCH_SHADOWS }, () => new THREE.Vector4()) }, // xyz, slot * 32 + reach
   uTorchMap: { value: null },
   uTorchTexel: { value: new THREE.Vector2(1, 1) },
+  uTorchTile: { value: new THREE.Vector2(1, 1) },
   uFaceRot: { value: FACES.map(() => new THREE.Matrix3()) },
   uFaceScale: { value: 1 / Math.tan((TORCH_FOV / 2) * Math.PI / 180) },
+  uSway: { value: 0 },
+  uReflect: { value: 0 },
+  uReflH: { value: 0 },
+  uReflMat: { value: new THREE.Matrix4() },
+  uReflTex: { value: null },
 };
+
+// vertex shader: decode the flags packed into the sky attribute (sky + 2 x by-water + 4 x sway), and sway
+// (1 = leaves: the whole block wobbles a little; 2 = the top of a plant: it bends)
+export const GFX_VERT_HEAD = `
+uniform float uTime;
+uniform float uSway;
+varying float vWet;
+`;
+export const GFX_VERT_DECODE = `
+float swayK = floor(sky / 4.0);
+float skyR = sky - swayK * 4.0;
+vWet = step(1.5, skyR);
+vSky = skyR - vWet * 2.0;
+`;
+export const GFX_VERT_SWAY = `
+if (uSway > 0.5 && swayK > 0.5) {
+  vec3 swp = (modelMatrix * vec4(position, 1.0)).xyz;
+  float ph = swp.x * 0.7 + swp.z * 0.6 + swp.y * 0.3;
+  float amp = swayK > 1.5 ? 0.08 : 0.03;
+  transformed.x += (sin(uTime * 1.7 + ph) + 0.4 * sin(uTime * 2.9 + ph * 1.3)) * amp;
+  transformed.z += cos(uTime * 1.3 + ph * 0.8) * amp * 0.8;
+  if (swayK < 1.5) transformed.y += sin(uTime * 2.1 + ph) * amp * 0.3;
+}
+`;
 
 // ---------- shader code for the world materials ----------
 
@@ -62,6 +106,7 @@ uniform sampler2D uShadowMap;
 uniform mat4 uShadowMat;
 uniform float uShadowStr;
 uniform float uShadowTexel;
+uniform float uShadowSoft;
 uniform float uShadowDepth;
 uniform float uCaustics;
 uniform float uFancyWater;
@@ -71,11 +116,15 @@ uniform vec2 uResolution;
 uniform vec3 uSkyCol;
 uniform int uTorchCount;
 uniform vec4 uTorchL[${MAX_TORCH_SHADOWS}];
-uniform float uTorchSlot[${MAX_TORCH_SHADOWS}];
 uniform sampler2D uTorchMap;
 uniform vec2 uTorchTexel;
+uniform vec2 uTorchTile;
 uniform mat3 uFaceRot[6];
 uniform float uFaceScale;
+uniform float uReflect;
+uniform float uReflH;
+uniform mat4 uReflMat;
+uniform sampler2D uReflTex;
 varying float vWet;
 vec3 gfxNormal() {
   vec3 n = normalize(cross(dFdx(vWorldP), dFdy(vWorldP)));
@@ -92,18 +141,26 @@ float gfxShadow(vec3 n) {
   if (edge <= 0.0 || p.z >= 1.0) return 1.0;
   float bias = (0.03 + 0.16 * (1.0 - clamp(ndl, 0.0, 1.0))) / uShadowDepth;
   float lit = 0.0;
-  for (int i = -1; i <= 1; i++) for (int j = -1; j <= 1; j++)
-    lit += step(p.z - bias, texture2D(uShadowMap, p.xy + vec2(float(i), float(j)) * uShadowTexel).r);
-  return mix(1.0, min(lit / 9.0, facing), edge);
+  if (uShadowSoft > 0.5) {
+    for (int i = -1; i <= 1; i++) for (int j = -1; j <= 1; j++)
+      lit += step(p.z - bias, texture2D(uShadowMap, p.xy + vec2(float(i), float(j)) * uShadowTexel).r);
+    lit /= 9.0;
+  } else { // (low quality: 4 taps)
+    for (int i = 0; i < 4; i++)
+      lit += step(p.z - bias, texture2D(uShadowMap, p.xy + (vec2(float(i - (i / 2) * 2), float(i / 2)) - 0.5) * uShadowTexel).r);
+    lit *= 0.25;
+  }
+  return mix(1.0, min(lit, facing), edge);
 }
 // how much of one light reaches this spot: 1 = all, 0 = blocked (4 taps in its cube picture)
-float gfxTorchVis(float row, vec3 L, float d, float reach, float bias) {
+float gfxTorchVis(float slot, vec3 L, float d, float reach, float bias) {
   vec3 a = abs(L);
   int f = a.x >= a.y && a.x >= a.z ? (L.x > 0.0 ? 0 : 1) : a.y >= a.z ? (L.y > 0.0 ? 2 : 3) : (L.z > 0.0 ? 4 : 5);
   vec3 p = uFaceRot[f] * L;
   vec2 uv = clamp(p.xy / -p.z * uFaceScale * 0.5 + 0.5, 0.0, 1.0);
-  vec2 tile = vec2(1.0 / 6.0, 1.0 / ${MAX_TORCH_SHADOWS}.0);
-  vec2 lo = vec2(float(f), row) * tile;
+  vec2 tile = uTorchTile;
+  float row = floor(slot / ${TORCH_ROW}.0);
+  vec2 lo = vec2((slot - row * ${TORCH_ROW}.0) * 6.0 + float(f), row) * tile;
   vec2 c = lo + uv * tile, hi = lo + tile - uTorchTexel;
   lo += uTorchTexel;
   float lit = 0.0;
@@ -120,12 +177,13 @@ float gfxTorchShadow(vec3 n) {
   for (int i = 0; i < ${MAX_TORCH_SHADOWS}; i++) {
     if (i >= uTorchCount) break;
     vec4 l = uTorchL[i];
+    float slot = floor(l.w / 32.0), reach = l.w - slot * 32.0;
     vec3 L = vWorldP + n * 0.04 - l.xyz;
     float d = length(L);
-    if (d >= l.w) continue;
-    float w = 1.0 - d / l.w; w *= w;
+    if (d >= reach) continue;
+    float w = 1.0 - d / reach; w *= w;
     float ndl = dot(n, -L / max(d, 0.001));
-    float v = d < 1.0 ? 1.0 : ndl <= -0.05 ? 0.0 : gfxTorchVis(uTorchSlot[i], L, d, l.w, 0.08 + 0.22 * (1.0 - clamp(ndl, 0.0, 1.0)));
+    float v = d < 1.0 ? 1.0 : ndl <= -0.05 ? 0.0 : gfxTorchVis(slot, L, d, reach, 0.08 + 0.22 * (1.0 - clamp(ndl, 0.0, 1.0)));
     sw += w; sv += w * v;
   }
   if (sw < 0.001) return 1.0;
@@ -154,7 +212,7 @@ if (uTorchCount > 0 && torchT.r + torchT.g + torchT.b > 0.03) torchT *= gfxTorch
 
 // water surface: runs after the light, only in the water material
 export const GFX_WATER = `
-if (uFancyWater > 0.5 || uRefract > 0.5) {
+if (uFancyWater > 0.5 || uRefract > 0.5 || uReflect > 0.5) {
   vec3 ng = gfxNormal();
   vec3 V = normalize(cameraPosition - vWorldP);
   vec3 N = ng;
@@ -176,13 +234,26 @@ if (uFancyWater > 0.5 || uRefract > 0.5) {
     col = mix(under * vec3(0.45, 0.7, 0.8), col, 0.42);
     alpha = 1.0;
   }
+  vec3 R = reflect(-V, N);
+  vec3 refl = vec3(0.0);
+  float mirror = 0.0;
   if (uFancyWater > 0.5) {
-    vec3 R = reflect(-V, N);
-    vec3 refl = mix(uSkyCol * 0.75, uSkyCol * 1.1 + 0.03, clamp(R.y, 0.0, 1.0)) * mix(0.12, 1.0, vSky);
-    float spec = pow(max(dot(R, uSunDir), 0.0), 220.0) * 3.0 * uSunStr * vSky;
-    col = mix(col, refl, F * 0.85) + vec3(1.0, 0.94, 0.78) * spec;
+    refl = mix(uSkyCol * 0.75, uSkyCol * 1.1 + 0.03, clamp(R.y, 0.0, 1.0)) * mix(0.12, 1.0, vSky);
+    mirror = 1.0;
+  }
+  // the world above, mirrored: only on the water surface the mirror picture was taken for
+  if (uReflect > 0.5 && ng.y > 0.5 && abs(vWorldP.y - uReflH) < 0.3) {
+    vec4 rp = uReflMat * vec4(vWorldP, 1.0);
+    vec2 ruv = rp.xy / rp.w + (N.xz - ng.xz) * 0.18;
+    refl = texture2D(uReflTex, clamp(ruv, vec2(0.002), vec2(0.998))).rgb;
+    mirror = 1.0;
+    F = max(F, 0.06);
+  }
+  if (mirror > 0.0) {
+    col = mix(col, refl, F * 0.85);
     alpha = mix(alpha, 1.0, F);
   }
+  if (uFancyWater > 0.5) col += vec3(1.0, 0.94, 0.78) * pow(max(dot(R, uSunDir), 0.0), 220.0) * 3.0 * uSunStr * vSky;
   diffuseColor.rgb = col;
   diffuseColor.a = alpha;
 }
@@ -213,15 +284,37 @@ void main() {
   c += (texture2D(tSrc, vUv + uDir * 3.2308).rgb + texture2D(tSrc, vUv - uDir * 3.2308).rgb) * 0.070270;
   gl_FragColor = vec4(c, 1.0);
 }`;
+// god rays: march from each pixel towards the sun, adding up the bright open sky near the sun that
+// is not hidden behind anything (from the depth picture: nothing drawn there)
+const GOD_FRAG = `uniform sampler2D tDepth; uniform vec2 uSun; uniform float uAspect;
+varying vec2 vUv;
+float glow(vec2 uv) {
+  if (uv.x < 0.0 || uv.y < 0.0 || uv.x > 1.0 || uv.y > 1.0) return 0.0;
+  float sky = step(0.99999, texture2D(tDepth, uv).r);
+  float k = max(0.0, 1.0 - length((uv - uSun) * vec2(uAspect, 1.0)) / 0.32);
+  return sky * k * k;
+}
+void main() {
+  vec2 step1 = (uSun - vUv) / 40.0, uv = vUv;
+  float w = 1.0, acc = 0.0;
+  for (int i = 0; i < 40; i++) { acc += glow(uv) * w; w *= 0.96; uv += step1; }
+  gl_FragColor = vec4(vec3(acc / 40.0), 1.0);
+}`;
 const FINAL_FRAG = `uniform sampler2D tSrc; uniform sampler2D tB1; uniform sampler2D tB2; uniform float uBloom;
+uniform sampler2D tGod; uniform float uGod; uniform vec3 uGodCol; uniform float uRipple; uniform float uTime;
 varying vec2 vUv;
 vec3 toSRGB(vec3 c) {
   c = clamp(c, 0.0, 1.0);
   return mix(c * 12.92, 1.055 * pow(c, vec3(1.0 / 2.4)) - 0.055, step(0.0031308, c));
 }
 void main() {
-  vec3 c = texture2D(tSrc, vUv).rgb;
-  if (uBloom > 0.0) c += (texture2D(tB1, vUv).rgb * 0.7 + texture2D(tB2, vUv).rgb * 0.9) * uBloom;
+  vec2 uv = vUv;
+  if (uRipple > 0.0) uv += vec2(sin(uv.y * 23.0 + uTime * 2.1) + 0.5 * sin(uv.y * 41.0 - uTime * 3.3),
+    cos(uv.x * 19.0 + uTime * 1.7) + 0.5 * cos(uv.x * 37.0 + uTime * 2.6)) * 0.0035 * uRipple;
+  uv = clamp(uv, vec2(0.001), vec2(0.999));
+  vec3 c = texture2D(tSrc, uv).rgb;
+  if (uBloom > 0.0) c += (texture2D(tB1, uv).rgb * 0.7 + texture2D(tB2, uv).rgb * 0.9) * uBloom;
+  if (uGod > 0.0) c += texture2D(tGod, uv).r * uGod * uGodCol;
   gl_FragColor = vec4(toSRGB(c), 1.0);
 }`;
 
@@ -272,9 +365,16 @@ export class Graphics {
     this.copyMat = pass(COPY_FRAG, { tSrc: { value: null } });
     this.brightMat = pass(BRIGHT_FRAG, { tSrc: { value: null }, uTexel: { value: new THREE.Vector2() } });
     this.blurMat = pass(BLUR_FRAG, { tSrc: { value: null }, uDir: { value: new THREE.Vector2() } });
-    this.finalMat = pass(FINAL_FRAG, { tSrc: { value: null }, tB1: { value: null }, tB2: { value: null }, uBloom: { value: 0 } });
+    this.finalMat = pass(FINAL_FRAG, {
+      tSrc: { value: null }, tB1: { value: null }, tB2: { value: null }, uBloom: { value: 0 },
+      tGod: { value: null }, uGod: { value: 0 }, uGodCol: { value: new THREE.Color(1, 0.88, 0.62) }, uRipple: { value: 0 }, uTime: gfxUniforms.uTime,
+    });
+    this.godMat = pass(GOD_FRAG, { tDepth: { value: null }, uSun: { value: new THREE.Vector2() }, uAspect: { value: 1 } });
+    this.underwater = false;
+    this.waterY = null; // set by the game: height of the water surface around the player, for reflections
+    this.frame = 0;
     // shadow camera: looks along the sunlight at the ground around the player
-    this.shadowCam = new THREE.OrthographicCamera(-SHADOW_RANGE, SHADOW_RANGE, SHADOW_RANGE, -SHADOW_RANGE, 1, SHADOW_BACK * 2);
+    this.shadowCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 1, SHADOW_BACK * 2);
     this.shadowCam.layers.set(SHADOW_LAYER);
     this.depthMats = new WeakMap();
     this.plainDepth = new THREE.MeshDepthMaterial({ side: THREE.DoubleSide });
@@ -293,7 +393,11 @@ export class Graphics {
       cam.up.set(ux, uy, uz); cam.lookAt(dx, dy, dz); cam.updateMatrixWorld(true);
       m.setFromMatrix4(cam.matrixWorldInverse);
     });
-    this.slots = []; // [{ x, y, z, r, row, ready }]
+    this.slots = []; // [{ x, y, z, r, row, ready }] (row: the light's place in the shared picture)
+    // reflections: a camera mirrored in the water surface, clipped to what is above it
+    this.mirrorCam = new THREE.PerspectiveCamera();
+    this.mirrorCam.layers.set(0);
+    this.clipPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
     this.scanT = 0;
     this.rr = 0;
     this.findLights = null; // set by the game: (n) => nearest lights not in sunlight, [{ x, y, z, r }]
@@ -308,10 +412,15 @@ export class Graphics {
   }
 
   set(key, on) {
-    this.opts[key] = key === 'torches' ? Math.max(0, Math.min(MAX_TORCH_SHADOWS, on | 0)) : !!on;
-    if (!this.opts.shadows) this.freeShadows();
-    if (!this.opts.bloom && !this.opts.refraction) this.freeTargets();
-    if (!this.opts.torches) this.freeTorches();
+    const o = this.opts, was = o[key];
+    if (key === 'torches') o.torches = Math.max(0, Math.min(MAX_TORCH_SHADOWS, on | 0));
+    else if (key === 'torchRate') o.torchRate = Math.max(1, Math.min(MAX_TORCH_SHADOWS, on | 0));
+    else if (key === 'shadows') o.shadows = Math.max(0, Math.min(2, on === true ? 2 : on | 0));
+    else o[key] = !!on;
+    if (key === 'shadows' && o.shadows !== was) this.freeShadows();
+    if (key === 'torches' && o.torches !== was) this.freeTorches(); // (the picture is sized for the count)
+    if (!o.bloom && !o.refraction && !o.godrays && !o.ripple) this.freeTargets();
+    if (!o.reflections) this.freeReflections();
     this.scanT = 0;
   }
 
@@ -327,18 +436,25 @@ export class Graphics {
     if (scene.fog) U.uSkyCol.value.copy(scene.fog.color);
     U.uFancyWater.value = o.water ? 1 : 0;
     U.uCaustics.value = o.caustics ? 1 : 0;
+    U.uSway.value = o.sway ? 1 : 0;
+    this.frame++;
     U.uShadowStr.value = 0;
     if (o.shadows && sun > 0.01) {
-      try { this.renderShadows(scene, camera); U.uShadowStr.value = 0.5 * sun; } catch (err) { this.fail(err, 'shadows'); }
+      try { this.renderShadows(scene, camera); U.uShadowStr.value = 0.5 * sun; } catch (err) { this.fail(err, 'shadows'); this.freeShadows(); }
     }
     U.uTorchCount.value = 0;
     if (o.torches > 0) {
       try { this.renderTorches(scene); } catch (err) { this.fail(err, 'torches'); this.freeTorches(); }
     }
+    U.uReflect.value = 0;
+    if (o.reflections && this.waterY !== null && !this.underwater && camera.position.y > this.waterY + 0.05) {
+      try { this.renderReflection(scene, camera); } catch (err) { this.fail(err, 'reflections'); this.freeReflections(); }
+    }
     U.uRefract.value = 0;
-    if (!o.bloom && !o.refraction) { r.render(scene, camera); return; }
-    try { this.renderPost(scene, camera); } catch (err) {
-      this.fail(err, o.refraction ? 'refraction' : 'bloom');
+    const godrays = this.godStrength(camera);
+    if (!o.bloom && !o.refraction && !godrays && !(o.ripple && this.underwater)) { r.render(scene, camera); return; }
+    try { this.renderPost(scene, camera, godrays); } catch (err) {
+      this.fail(err, o.refraction ? 'refraction' : o.bloom ? 'bloom' : o.godrays ? 'godrays' : 'ripple');
       r.setRenderTarget(null);
       U.uRefract.value = 0;
       r.render(scene, camera);
@@ -348,18 +464,37 @@ export class Graphics {
   // an effect that breaks on this computer is switched off rather than spoiling every frame
   fail(err, key) {
     this.lastError = err;
-    this.opts[key] = key === 'torches' ? 0 : false;
+    this.opts[key] = key === 'torches' || key === 'shadows' ? 0 : false;
     this.onFail?.(key, err);
+  }
+
+  // how strong the god rays are this frame (0 = none): the sun must be up and in front of you
+  godStrength(camera) {
+    if (!this.opts.godrays || this.underwater) return 0;
+    const fwd = camera.getWorldDirection(new THREE.Vector3());
+    const facing = THREE.MathUtils.smoothstep(fwd.dot(this.sunDir), 0.2, 0.75);
+    const up = THREE.MathUtils.smoothstep(this.sunDir.y, -0.04, 0.12) * (1 - 0.85 * this.overcast);
+    const low = 1 + 0.6 * (1 - THREE.MathUtils.smoothstep(this.sunDir.y, 0.1, 0.6)); // stronger near sunrise and sunset
+    return facing * up * low * 0.9;
   }
 
   // ---------- shadows ----------
 
   renderShadows(scene, camera) {
-    const r = this.renderer;
+    const r = this.renderer, q = SHADOW_Q[this.opts.shadows];
     if (!this.shadowRT) {
-      this.shadowRT = new THREE.WebGLRenderTarget(SHADOW_RES, SHADOW_RES, { depthTexture: new THREE.DepthTexture(SHADOW_RES, SHADOW_RES), generateMipmaps: false });
+      this.shadowRT = new THREE.WebGLRenderTarget(q.res, q.res, { depthTexture: new THREE.DepthTexture(q.res, q.res), generateMipmaps: false });
       gfxUniforms.uShadowMap.value = this.shadowRT.depthTexture;
+      gfxUniforms.uShadowTexel.value = 1 / q.res;
+      gfxUniforms.uShadowSoft.value = q.soft;
+      const sc = this.shadowCam;
+      sc.left = sc.bottom = -q.range; sc.right = sc.top = q.range; sc.updateProjectionMatrix();
+      this.shadowFrame = -1;
     }
+    // (low quality redraws every other frame; the picture keeps its own matrix, so it still lines up)
+    if (q.every > 1 && this.frame - this.shadowFrame < q.every) return;
+    this.shadowFrame = this.frame;
+    const SHADOW_RES = q.res, SHADOW_RANGE = q.range;
     // aim along the sunlight; snap to whole shadow texels so edges don't crawl as you walk
     const cam = this.shadowCam, d = this.sunDir;
     const rot = new THREE.Matrix4().lookAt(d, new THREE.Vector3(), new THREE.Vector3(0, 0, 1));
@@ -426,17 +561,19 @@ export class Graphics {
       this.slots = keep;
     }
     if (!this.slots.length) return;
+    const T = torchTile(n);
     if (!this.torchRT) {
       const half = r.extensions.has('EXT_color_buffer_half_float') || r.extensions.has('EXT_color_buffer_float');
-      this.torchRT = new THREE.WebGLRenderTarget(TORCH_TILE * 6, TORCH_TILE * MAX_TORCH_SHADOWS, {
+      this.torchRT = new THREE.WebGLRenderTarget(T * 6 * Math.min(n, TORCH_ROW), T * Math.ceil(n / TORCH_ROW), {
         type: half ? THREE.HalfFloatType : THREE.UnsignedByteType, generateMipmaps: false, minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter,
       });
       U.uTorchMap.value = this.torchRT.texture;
       U.uTorchTexel.value.set(1 / this.torchRT.width, 1 / this.torchRT.height);
+      U.uTorchTile.value.set(T / this.torchRT.width, T / this.torchRT.height);
     }
-    // redraw the new lights, and a couple of the others in turn (things move about in the light)
+    // redraw the new lights, and some of the others in turn (things move about in the light)
     const todo = this.slots.filter((s) => !s.ready);
-    for (let k = 0; k < Math.min(TORCH_BUDGET, this.slots.length) && todo.length < this.slots.length; k++) {
+    for (let k = 0; k < Math.min(this.opts.torchRate, this.slots.length) && todo.length < this.slots.length; k++) {
       const s = this.slots[(this.rr++) % this.slots.length];
       if (!todo.includes(s)) todo.push(s);
     }
@@ -456,7 +593,7 @@ export class Graphics {
               const [dx, dy, dz, ux, uy, uz] = FACES[f];
               cam.position.set(s.x, s.y, s.z); cam.up.set(ux, uy, uz); cam.lookAt(s.x + dx, s.y + dy, s.z + dz);
               cam.updateMatrixWorld(true);
-              rt.viewport.set(f * TORCH_TILE, s.row * TORCH_TILE, TORCH_TILE, TORCH_TILE);
+              rt.viewport.set(((s.row % TORCH_ROW) * 6 + f) * T, Math.floor(s.row / TORCH_ROW) * T, T, T);
               rt.scissor.copy(rt.viewport);
               r.setRenderTarget(rt); // (applies the new viewport)
               r.setClearColor(0xffffff, 1);
@@ -476,8 +613,7 @@ export class Graphics {
     let c = 0;
     for (const s of this.slots) {
       if (!s.ready || c >= MAX_TORCH_SHADOWS) continue;
-      U.uTorchL.value[c].set(s.x, s.y, s.z, s.r);
-      U.uTorchSlot.value[c] = s.row;
+      U.uTorchL.value[c].set(s.x, s.y, s.z, s.row * 32 + s.r);
       c++;
     }
     U.uTorchCount.value = c;
@@ -490,6 +626,52 @@ export class Graphics {
     this.torchRT.dispose();
     this.torchRT = null;
     gfxUniforms.uTorchMap.value = null;
+  }
+
+  // ---------- reflections ----------
+
+  renderReflection(scene, camera) {
+    const r = this.renderer, U = gfxUniforms, h = this.waterY;
+    r.getDrawingBufferSize(this.size);
+    const w = Math.max(1, this.size.x >> 1), ht = Math.max(1, this.size.y >> 1);
+    if (!this.reflRT || this.reflRT.width !== w || this.reflRT.height !== ht) {
+      this.freeReflections();
+      const half = r.extensions.has('EXT_color_buffer_half_float') || r.extensions.has('EXT_color_buffer_float');
+      this.reflRT = new THREE.WebGLRenderTarget(w, ht, { type: half ? THREE.HalfFloatType : THREE.UnsignedByteType, generateMipmaps: false });
+    }
+    // the camera's mirror image below the water, looking up at the mirrored view
+    const mc = this.mirrorCam;
+    mc.fov = camera.fov; mc.aspect = camera.aspect; mc.near = camera.near; mc.far = camera.far;
+    mc.updateProjectionMatrix();
+    const pos = camera.getWorldPosition(new THREE.Vector3());
+    const fwd = camera.getWorldDirection(new THREE.Vector3());
+    const up = new THREE.Vector3(0, 1, 0).applyQuaternion(camera.getWorldQuaternion(new THREE.Quaternion()));
+    const target = pos.clone().add(fwd);
+    pos.y = 2 * h - pos.y; target.y = 2 * h - target.y; up.y = -up.y;
+    mc.position.copy(pos); mc.up.copy(up); mc.lookAt(target);
+    mc.updateMatrixWorld(true);
+    U.uReflMat.value.copy(this.bias).multiply(mc.projectionMatrix).multiply(mc.matrixWorldInverse);
+    // draw only what is above the water (not the water itself, nor what is under it)
+    this.clipPlane.constant = -(h - 0.05);
+    const was = r.getRenderTarget(), planes = r.clippingPlanes;
+    r.clippingPlanes = [this.clipPlane];
+    try {
+      r.setRenderTarget(this.reflRT);
+      r.render(scene, mc);
+    } finally {
+      r.clippingPlanes = planes;
+      r.setRenderTarget(was);
+    }
+    U.uReflTex.value = this.reflRT.texture;
+    U.uReflH.value = h;
+    U.uReflect.value = 1;
+  }
+
+  freeReflections() {
+    gfxUniforms.uReflect.value = 0;
+    gfxUniforms.uReflTex.value = null;
+    this.reflRT?.dispose();
+    this.reflRT = null;
   }
 
   freeShadows() {
@@ -514,7 +696,9 @@ export class Graphics {
       type, depthBuffer: depth, generateMipmaps: false, minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter,
     });
     this.rtMain = mk(w, h, true);
+    this.rtMain.depthTexture = new THREE.DepthTexture(w, h); // (god rays look for open sky in it)
     this.rtRefr = mk(w, h, false);
+    this.god = mk(w >> 1, h >> 1, false);
     this.b1 = [mk(w >> 1, h >> 1, false), mk(w >> 1, h >> 1, false)];
     this.b2 = [mk(w >> 2, h >> 2, false), mk(w >> 2, h >> 2, false)];
     gfxUniforms.uResolution.value.set(w, h);
@@ -522,8 +706,9 @@ export class Graphics {
   }
 
   freeTargets() {
-    for (const t of [this.rtMain, this.rtRefr, ...(this.b1 ?? []), ...(this.b2 ?? [])]) t?.dispose();
-    this.rtMain = this.rtRefr = this.b1 = this.b2 = null;
+    this.rtMain?.depthTexture?.dispose();
+    for (const t of [this.rtMain, this.rtRefr, this.god, ...(this.b1 ?? []), ...(this.b2 ?? [])]) t?.dispose();
+    this.rtMain = this.rtRefr = this.god = this.b1 = this.b2 = null;
     gfxUniforms.uRefrTex.value = null;
   }
 
@@ -533,7 +718,7 @@ export class Graphics {
     this.renderer.render(this.quadScene, this.quadCam);
   }
 
-  renderPost(scene, camera) {
+  renderPost(scene, camera, godrays = 0) {
     const r = this.renderer, o = this.opts, U = gfxUniforms;
     this.ensureTargets();
     r.setRenderTarget(this.rtMain);
@@ -577,11 +762,21 @@ export class Graphics {
       blur(c1, c2, 2, 0); blur(c2, c1, 0, 2);
       bloom = 0.65;
     }
+    if (godrays > 0) {
+      const sp = this.sunDir.clone().multiplyScalar(100).add(camera.getWorldPosition(new THREE.Vector3())).project(camera);
+      this.godMat.uniforms.tDepth.value = this.rtMain.depthTexture;
+      this.godMat.uniforms.uSun.value.set(sp.x * 0.5 + 0.5, sp.y * 0.5 + 0.5);
+      this.godMat.uniforms.uAspect.value = this.rtMain.width / this.rtMain.height;
+      this.blit(this.godMat, this.god);
+    }
     const f = this.finalMat.uniforms;
     f.tSrc.value = this.rtMain.texture;
     f.tB1.value = this.b1[0].texture;
     f.tB2.value = this.b2[0].texture;
     f.uBloom.value = bloom;
+    f.tGod.value = this.god.texture;
+    f.uGod.value = godrays;
+    f.uRipple.value = o.ripple && this.underwater ? 1 : 0;
     this.blit(this.finalMat, null);
   }
 }

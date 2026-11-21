@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { Graphics, GFX_DEFAULTS, GFX_NAMES, MAX_TORCH_SHADOWS, gfxUniforms, GFX_FRAG_HEAD, GFX_SUN_TERM, GFX_WATER, WATER_LAYER, LATE_LAYER } from './graphics.js';
+import { Graphics, GFX_DEFAULTS, GFX_NAMES, GFX_TOGGLES, SHADOW_LEVELS, MAX_TORCH_SHADOWS, gfxUniforms, GFX_FRAG_HEAD, GFX_SUN_TERM, GFX_WATER, GFX_VERT_HEAD, GFX_VERT_DECODE, GFX_VERT_SWAY, WATER_LAYER, LATE_LAYER } from './graphics.js';
 import {
   BLOCKS, RECIPES, TABLE, AIR, WATER, TORCH, TORCH_WALL_W, WALL_TORCH_DIRS,
   GRASS, DIRT, SAND, CHURN, SUGAR_CANE, BREAD, ITEMS, BOW, ARROW, BUCKET,
@@ -76,7 +76,7 @@ import { Logic } from './logic.js';
 
 // v2 = the 16k x 16k streaming world (player state here, edited chunks in IndexedDB).
 // v1 = the old 128 x 128 world, migrated into the middle of the big world on first launch.
-const GAME_VERSION = '36'; // shown in the menu; bump with each release
+const GAME_VERSION = '37'; // shown in the menu; bump with each release
 const SAVE_KEY = 'minicraft-save-v2';
 const LEGACY_SAVE_KEY = 'minicraft-save-v1';
 const SETTINGS_KEY = 'minicraft-settings-v1';
@@ -104,6 +104,8 @@ const settings = (() => {
   if (!Array.isArray(s.pins)) s.pins = [];
   s.gfx = { ...GFX_DEFAULTS, ...(s.gfx && typeof s.gfx === 'object' ? s.gfx : {}) };
   s.gfx.torches = Math.max(0, Math.min(MAX_TORCH_SHADOWS, s.gfx.torches | 0));
+  s.gfx.torchRate = Math.max(1, Math.min(MAX_TORCH_SHADOWS, s.gfx.torchRate | 0 || 2));
+  s.gfx.shadows = s.gfx.shadows === true ? 2 : Math.max(0, Math.min(2, s.gfx.shadows | 0)); // (v36 saved on/off)
   return s;
 })();
 function saveSettings() {
@@ -146,8 +148,9 @@ function addTorchLight(mat, water = false) {
     Object.assign(shader.uniforms, lightUniforms);
     // torch light comes in as brightness + 2 x its colour (see TINTS): decoded here, per vertex
     // (and a portable lamp you carry lights what's within HAND_REACH of you: uHand is where it is, and how bright)
-    shader.vertexShader = `attribute float torch;\nattribute float sky;\nvarying vec3 vTorchC;\nvarying float vSky;\nvarying float vWet;\nvarying vec3 vWorldP;\nuniform vec3 uTints[${TINTS.length}];\n` + shader.vertexShader
-      .replace('#include <color_vertex>', '#include <color_vertex>\nfloat tintI = floor(torch * 0.5);\nvTorchC = (torch - tintI * 2.0) * uTints[int(tintI)];\nvWet = step(1.5, sky);\nvSky = sky - vWet * 2.0;\nvWorldP = (modelMatrix * vec4(position, 1.0)).xyz;');
+    shader.vertexShader = `attribute float torch;\nattribute float sky;\nvarying vec3 vTorchC;\nvarying float vSky;\nvarying vec3 vWorldP;\nuniform vec3 uTints[${TINTS.length}];\n` + GFX_VERT_HEAD + shader.vertexShader
+      .replace('#include <color_vertex>', '#include <color_vertex>\nfloat tintI = floor(torch * 0.5);\nvTorchC = (torch - tintI * 2.0) * uTints[int(tintI)];\n' + GFX_VERT_DECODE + 'vWorldP = (modelMatrix * vec4(position, 1.0)).xyz;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\n' + GFX_VERT_SWAY);
     shader.fragmentShader = 'uniform float uDay;\nuniform float uFlicker;\nuniform float uAmbient;\nuniform vec4 uHand;\nvarying vec3 vTorchC;\nvarying float vSky;\nvarying vec3 vWorldP;\n' + GFX_FRAG_HEAD + shader.fragmentShader
       .replace('#include <color_fragment>',
         '#include <color_fragment>\nfloat hl = uHand.w * pow(clamp(1.0 - distance(vWorldP, uHand.xyz) / 13.0, 0.0, 1.0), 1.4);\n' + GFX_SUN_TERM +
@@ -169,12 +172,12 @@ addTorchLight(waterMat, true);
 const materials = { solid: material, water: waterMat };
 // optional fancy graphics: shadows, bloom, water (see graphics.js)
 const gfx = new Graphics(renderer, settings.gfx);
-// torch shadows: the nearest lights (not lava, not ones out in the sun) within 16 blocks
+// torch shadows: the nearest lights (not lava, not ones out in the sun) within 16 blocks (24 for many lights)
 gfx.findLights = (n) => {
   if (!world || !player) return [];
   const px = Math.floor(player.pos.x), py = Math.floor(player.pos.y + 1), pz = Math.floor(player.pos.z);
-  const day = lightUniforms.uDay.value, found = [];
-  for (let y = py - 10; y <= py + 10; y++) for (let x = px - 16; x <= px + 16; x++) for (let z = pz - 16; z <= pz + 16; z++) {
+  const day = lightUniforms.uDay.value, found = [], R = n > 5 ? 24 : 16, V = n > 5 ? 12 : 10;
+  for (let y = py - V; y <= py + V; y++) for (let x = px - R; x <= px + R; x++) for (let z = pz - R; z <= pz + R; z++) {
     const id = world.get(x, y, z);
     if (id === AIR) continue;
     const def = BLOCKS[id];
@@ -185,7 +188,28 @@ gfx.findLights = (n) => {
   found.sort((a, b) => a.d - b.d);
   return found.slice(0, n);
 };
-gfx.onFail = (key) => { settings.gfx[key] = key === 'torches' ? 0 : false; saveSettings(); updateGfxLabels(); toast(`${GFX_NAMES[key]} doesn't work on this device — turned off`, 4000); };
+// water reflections: the height of the water surface around you (the most common nearby, weighted by
+// closeness), looked for twice a second
+let waterLookT = 0;
+function findWaterLevel(dt) {
+  if ((waterLookT -= dt) > 0) return;
+  waterLookT = 0.5;
+  if (!settings.gfx.reflections || !world || !player) { gfx.waterY = null; return; }
+  const ex = Math.floor(player.eye.x), ey = Math.floor(player.eye.y), ez = Math.floor(player.eye.z);
+  const votes = new Map();
+  for (let dx = -14; dx <= 14; dx += 2) for (let dz = -14; dz <= 14; dz += 2) {
+    for (let y = ey; y >= ey - 24; y--) {
+      const id = world.get(ex + dx, y, ez + dz);
+      if (id === AIR) continue;
+      if (id === WATER && world.get(ex + dx, y + 1, ez + dz) === AIR) votes.set(y, (votes.get(y) ?? 0) + 1 / (1 + Math.hypot(dx, dz)));
+      break;
+    }
+  }
+  let best = null, most = 0;
+  for (const [y, v] of votes) if (v > most) { most = v; best = y; }
+  gfx.waterY = best === null ? null : best + 0.875; // (the surface sits a little below the block top)
+}
+gfx.onFail = (key) => { settings.gfx[key] = key === 'torches' || key === 'shadows' ? 0 : false; saveSettings(); updateGfxLabels(); toast(`${GFX_NAMES[key]} doesn't work on this device — turned off`, 4000); };
 
 const sky = new Sky(scene);
 const sound = new Sound();
@@ -4778,13 +4802,19 @@ $('btn-break').addEventListener('click', () => { settings.doubleTap = !settings.
 function updateTipsLabel() { $('btn-tips').textContent = `Tooltips: ${settings.tips ? 'on' : 'off'}`; }
 updateTipsLabel();
 function updateGfxLabels() {
-  $('torch-shadows').value = settings.gfx.torches;
-  $('torch-shadows-label').textContent = `Torch shadows: ${settings.gfx.torches ? `nearest ${settings.gfx.torches}` : 'off'}`;
-  for (const key of Object.keys(GFX_DEFAULTS)) { const b = $(`btn-gfx-${key}`); if (b) b.textContent = `${GFX_NAMES[key]}: ${settings.gfx[key] ? 'on' : 'off'}`; }
+  const g = settings.gfx;
+  $('btn-gfx-shadows').textContent = `Sun shadows: ${SHADOW_LEVELS[g.shadows]}`;
+  $('torch-shadows').value = g.torches;
+  $('torch-shadows-label').textContent = `Torch shadows: ${g.torches ? `nearest ${g.torches}` : 'off'}`;
+  $('torch-rate').value = g.torchRate;
+  $('torch-rate-label').textContent = `Torch shadows redrawn per frame: ${g.torchRate}`;
+  for (const key of GFX_TOGGLES) { const b = $(`btn-gfx-${key}`); if (b) b.textContent = `${GFX_NAMES[key]}: ${g[key] ? 'on' : 'off'}`; }
 }
 updateGfxLabels();
 $('torch-shadows').addEventListener('input', (e) => { settings.gfx.torches = +e.target.value; gfx.set('torches', settings.gfx.torches); updateGfxLabels(); saveSettings(); });
-for (const key of Object.keys(GFX_DEFAULTS)) {
+$('torch-rate').addEventListener('input', (e) => { settings.gfx.torchRate = +e.target.value; gfx.set('torchRate', settings.gfx.torchRate); updateGfxLabels(); saveSettings(); });
+$('btn-gfx-shadows').addEventListener('click', () => { settings.gfx.shadows = (settings.gfx.shadows + 1) % 3; gfx.set('shadows', settings.gfx.shadows); updateGfxLabels(); saveSettings(); });
+for (const key of GFX_TOGGLES) {
   $(`btn-gfx-${key}`)?.addEventListener('click', () => { settings.gfx[key] = !settings.gfx[key]; gfx.set(key, settings.gfx[key]); updateGfxLabels(); saveSettings(); });
 }
 $('btn-tips').addEventListener('click', () => { settings.tips = !settings.tips; updateTipsLabel(); saveSettings(); if (!settings.tips) $('inv-tip').classList.remove('show'); });
@@ -6894,7 +6924,8 @@ function frame(now) {
     if (openStationAt && (stationRefresh -= dt) <= 0) { stationRefresh = 0.15; renderStation(); }
   } catch (err) { reportError(err); }
   try { world.update(player.pos.x, player.pos.z, scene, materials, 6, dt); } catch (err) { reportError(err); }
-  gfx.sunDir.copy(sky.sunDir); gfx.overcast = weather?.overcast ?? 0;
+  gfx.sunDir.copy(sky.sunDir); gfx.overcast = weather?.overcast ?? 0; gfx.underwater = !!player.eyeInWater;
+  try { findWaterLevel(dt); } catch (err) { reportError(err); }
   gfx.render(scene, camera);
   updatePerf(now);
 }
