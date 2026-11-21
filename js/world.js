@@ -427,6 +427,9 @@ export class World {
         if (hives.length && nearHive(x, y, z)) chance *= 1.25;
         chance *= tired; // worn-out soil (the same crop over and over) grows slowly
         if (this.sprinkled?.some(([sx, sy, sz]) => Math.abs(sx - x) <= 2 && Math.abs(sz - z) <= 2 && sy - y >= 0 && sy - y <= 2)) chance *= 1.5; // watered
+        // (v34) coffee and chillies grow only in warm land or under glass; rice only with water beside its ground
+        if (def.crop?.needs === 'warm' && !this.warmLand(x, z) && !this.underGlass(x, y, z)) continue;
+        if (def.crop?.needs === 'water' && ![[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dz]) => isWaterId(this.get(x + dx, y - 1, z + dz)))) continue;
         if (Math.random() >= Math.min(GROW_MAX_CHANCE, chance)) continue;
         if (def.grows === 'up') this.setBlock(x, y + 1, z, SUGAR_CANE);
         else if (def.grows === 'pumpkin') this.growPumpkin(x, y, z);
@@ -513,6 +516,8 @@ export class World {
 
   // (v33) Chocolate in a mould sets in two steps, about a minute each; twice as fast somewhere cold (snowy land,
   // winter, or ice or snow beside it), and half as fast beside something hot (lava or a fire).
+  // (v34) the deserts and the warm land by them
+  warmLand(x, z) { return this.generator?.biomeAt(x, z) === 'desert' || !!this.generator?.isCocoaLand(x, z); }
   mouldChill(x, y, z) {
     let k = 1;
     const near = [[1, 0, 0], [-1, 0, 0], [0, 0, 1], [0, 0, -1], [0, -1, 0]].map(([dx, dy, dz]) => BLOCKS[this.get(x + dx, y + dy, z + dz)]);

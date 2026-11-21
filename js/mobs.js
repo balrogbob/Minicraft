@@ -7,7 +7,7 @@
 // They aren't saved: they're spawned fresh around wherever you are.
 import * as THREE from 'three';
 import { AIR, WATER, LEAVES, isLeaves, LOG, GRASS, SAND, DIRT, WOOL, BUCKET, MILK_BUCKET, SLIME_BUCKET, FEATHER, COAL, COBBLE, ARROW, HIDE, SNOW_GRASS, SNOW, KING_CROWN, GOLD_INGOT, MOSSY_BRICKS, RAW_FISH, BAKED_FISH, WHEAT, SALMON, BAKED_SALMON, ICEFISH, BAKED_ICEFISH,
-  SUN_SCARAB, FROST_HEART, EMBER_CORE, SUN_MASK, FROST_CIRCLET, EMBER_CROWN, SILVER_INGOT, OBSIDIAN, STRING, BLOCKS, LAVA, SEEDS, BERRIES, EGG, TRUFFLE, SADDLE, APPLE, CARROT, SUGAR, STONE, GRAVEL, GLOW_SHELL, SADDLEBAGS, HORSE_ARMOUR } from './blocks.js';
+  SUN_SCARAB, FROST_HEART, EMBER_CORE, SUN_MASK, FROST_CIRCLET, EMBER_CROWN, SILVER_INGOT, OBSIDIAN, STRING, BLOCKS, LAVA, SEEDS, BERRIES, EGG, TRUFFLE, SADDLE, APPLE, CARROT, SUGAR, STONE, GRAVEL, GLOW_SHELL, SADDLEBAGS, HORSE_ARMOUR, RAW_PORK, RAW_CHICKEN } from './blocks.js';
 import { SEA_LEVEL, H } from './terrain.js';
 import { skyBrightness, lightBrightness } from './world.js';
 import { THORN_SPEED, THORN_GRAVITY } from './arrows.js';
@@ -606,6 +606,7 @@ const SPECIES = {
   chicken: {
     w: 0.4, h: 0.7, speed: 1.0, fleeSpeed: 3.6, sink: 0.2, stride: 12, legSwing: 0.7,
     group: [2, 4], cap: 7, avoidWater: true, grazes: true, lays: [EGG, 180, 360],
+    hp: 4, livestock: () => [[RAW_CHICKEN, 1 + (Math.random() < 0.4 ? 1 : 0)], [FEATHER, Math.floor(Math.random() * 3)]], // (v34)
     coats: [0xf4f0e6, 0xf4f0e6, 0xb06a32, 0x3a3230, 0xd8b070],
     build(b, root, opts = {}) {
       const coat = opts.coat ?? pick(this.coats), wing = new THREE.Color(coat).multiplyScalar(0.82).getHex();
@@ -633,6 +634,7 @@ const SPECIES = {
   pig: {
     w: 0.8, h: 0.85, speed: 1.0, fleeSpeed: 3.8, sink: 0.6, stride: 9, legSwing: 0.5,
     group: [2, 3], cap: 5, avoidWater: true, grazes: true, lays: [TRUFFLE, 300, 600],
+    hp: 10, livestock: () => [[RAW_PORK, 2 + Math.floor(Math.random() * 2)]], // (v34)
     coats: [0xeaa0a0, 0xeaa0a0, 0xd89070, 0x4a3a36, 0xe8d8d0],
     build(b, root, opts = {}) {
       const coat = opts.coat ?? pick(this.coats), dark = new THREE.Color(coat).multiplyScalar(0.8).getHex();
@@ -1803,6 +1805,20 @@ export class MobManager {
       return m.spec.drops();
     }
     return [];
+  }
+
+  // (v34) Butcher a farm animal (a pig or a chicken: see spec.livestock). Only grown, untamed ones; it runs off
+  // as if bumped until it falls. Returns { drops, why }: why is set (and nothing happens) if it can't be.
+  butcher(m, amount, from) {
+    if (m.dying || !m.spec.livestock) return { drops: [], why: 'only pigs and chickens are farmed for meat' };
+    if (m.baby > 0) return { drops: [], why: `this ${m.kind} is too young` };
+    if (m.tame) return { drops: [], why: `this ${m.kind} is a pet` };
+    m.hp -= amount;
+    this.bump(m, from);
+    if (m.hp > 0) return { drops: [] };
+    m.dying = 0.4;
+    this.sound?.poof();
+    return { drops: m.spec.livestock().filter(([, n]) => n > 0) };
   }
 
   // Knock an animal back: it flashes red, hops away and runs off for a few seconds.

@@ -75,7 +75,7 @@ import { Logic } from './logic.js';
 
 // v2 = the 16k x 16k streaming world (player state here, edited chunks in IndexedDB).
 // v1 = the old 128 x 128 world, migrated into the middle of the big world on first launch.
-const GAME_VERSION = '33'; // shown in the menu; bump with each release
+const GAME_VERSION = '34'; // shown in the menu; bump with each release
 const SAVE_KEY = 'minicraft-save-v2';
 const LEGACY_SAVE_KEY = 'minicraft-save-v1';
 const SETTINGS_KEY = 'minicraft-settings-v1';
@@ -1904,6 +1904,18 @@ function hitMob() {
     wearOutHeld(1);
     return;
   }
+  // (v34) a sword or an axe butchers a pig or a chicken; nothing harms the other animals
+  const heldTool = ITEMS[inventory.heldId()]?.tool?.type;
+  if (targetMob.mob.spec.livestock && (heldTool === 'sword' || heldTool === 'axe')) {
+    const now = performance.now();
+    if (now - lastSwing < (heldTool === 'sword' ? 300 : 450)) return;
+    lastSwing = now;
+    const r = mobs.butcher(targetMob.mob, ITEMS[inventory.heldId()].tool.damage ?? 4, player.pos);
+    if (r.why) { toast(r.why[0].toUpperCase() + r.why.slice(1), 1500); return; }
+    if (r.drops.length) { giveDrops(r.drops); achieve('butcher'); }
+    wearOutHeld(1);
+    return;
+  }
   const wasTame = targetMob.mob.tame;
   const r = mobs.interact(targetMob.mob, player.pos, inventory.heldId());
   if (!wasTame && targetMob.mob.tame) achieve('tame');
@@ -1950,6 +1962,7 @@ function eat(id) {
   if (hunger > MAX_HUNGER - 1) { toast('You\'re not hungry'); return; } // (hunger drains constantly, so never exactly full)
   hunger = Math.min(MAX_HUNGER, hunger + foodValue(id));
   inventory.consumeHeld();
+  if (ITEMS[id]?.risky && Math.random() < ITEMS[id].risky) { poisoned = Math.max(poisoned, 15); toast('Ugh! That wasn\'t cooked: you have food poisoning.', 2500); renderHealth(); } // (v34: raw chicken)
   if (foodValue(id) >= 6) {
     const was = effects.fed > 0;
     effects.fed = Math.max(effects.fed, foodValue(id) * 20); // a hearty meal keeps you going: the better the meal, the longer
@@ -1962,6 +1975,7 @@ function eat(id) {
     effects[meal[0]] = Math.max(effects[meal[0]], meal[1]);
     if (meal[0] === 'heal') { poisoned = 0; renderHealth(); }
     if (meal[0] === 'warm') ailments.chill = 0;
+    if (meal[0] === 'cool') ailments.heat = 0;
     toast(`${itemName(id)}: you ${ITEMS[id].about}`, 1800);
   }
   if (ITEMS[id]?.bottle && inventory.add(GLASS_BOTTLE, 1)) toast('Inventory full');
@@ -2620,8 +2634,8 @@ function useAnvil() {
 }
 
 // ---------- teas ----------
-const effects = { night: 0, haste: 0, fire: 0, heal: 0, warm: 0, fed: 0, swift: 0 }; // seconds left of each
-const EFFECT_ICONS = { night: '🌙', haste: '⛏', fire: '🔥', heal: '💚', warm: '🍯', fed: '🍗', swift: '🏃' };
+const effects = { night: 0, haste: 0, fire: 0, heal: 0, warm: 0, fed: 0, swift: 0, cool: 0 }; // seconds left of each
+const EFFECT_ICONS = { night: '🌙', haste: '⛏', fire: '🔥', heal: '💚', warm: '🍯', fed: '🍗', swift: '🏃', cool: '🍦' };
 function drinkTea(id) {
   const [kind, secs] = ITEMS[id].tea;
   effects[kind] = Math.max(effects[kind], secs);
@@ -2757,7 +2771,7 @@ function tickAilments(dt) {
   ailments.chill = Math.max(0, ailments.chill + (cold && !warm ? dt / 45 : hearths.size && hearthNear() ? -dt / 3 : -dt / 12));
   const sun = sky.light > 0.95 && sky.time > 0.15 && sky.time < 0.35;
   const hot = biome === 'desert' && outside && (sun || (weather.raining && weather.level > 0.5));
-  const shaded = armour[0] || effects.fire > 0 || guarded('heat');
+  const shaded = armour[0] || effects.fire > 0 || effects.cool > 0 || guarded('heat'); // (v34: ice cream cools you)
   ailments.heat = Math.max(0, ailments.heat + (hot && !shaded ? dt / 50 : -dt / 15));
   for (const k of ['chill', 'heat']) {
     if (ailments[k] < 1) { timers[k] = 0; if (ailments[k] < 0.5) warned[k] = false; continue; }
@@ -3804,7 +3818,7 @@ function placeInner() {
     if (BLOCKS[tid].bell) { ringBell(tx, tz, held); return; }
     if (tid === SLUICE_WHEEL) { workLock(tx, ty, tz); return; }
     if (tid === LOG && held?.id === TORCH && lightCharcoalPile(tx, ty, tz, [target.nx, target.ny, target.nz])) return;
-    if (tid >= CHOC_MOULD && tid < CHOC_MOULD + 4) { useMould(tx, ty, tz, tid, held); return; }
+    if (tid === CHOC_MOULD || mouldFill(tid)) { useMould(tx, ty, tz, tid, held); return; }
     if (tid >= CHOC_CAKE && tid < CHOC_CAKE + CAKE_SLICES && !(held && isBlock(held.id))) { eatCakeSlice(tx, ty, tz, tid); return; }
     if (BLOCKS[tid].fruit?.ripe) {
       // pick the fruit off a fruit tree's leaves
@@ -3948,7 +3962,7 @@ function placeInner() {
     notePlanting(target.x, target.y, target.z, GRAPE_VINE);
     sound.place('leaves'); inventory.consumeHeld(); return;
   }
-  const plantsCrop = held && isCrop(ITEMS[held.id]?.places) && target?.ny === 1 && [GRASS, DIRT].includes(target.id) && world.get(target.x, target.y + 1, target.z) === AIR;
+  const plantsCrop = held && isCrop(ITEMS[held.id]?.places) && target?.ny === 1 && ([GRASS, DIRT].includes(target.id) || (target.id === SAND && BLOCKS[ITEMS[held.id].places].crop.sandy)) && world.get(target.x, target.y + 1, target.z) === AIR;
   if (held && !plantsCrop && (foodValue(held.id) || ITEMS[held.id]?.drink)) { eat(held.id); return; }
   if (held && ITEMS[held.id]?.tea) { drinkTea(held.id); return; }
   if (held?.id === PORTABLE_LAMP) { switchHandLamp(held); return; }
@@ -5773,6 +5787,7 @@ function stallPrice(id) {
   if (isFine(id)) return [1, 4]; // (v28: the pick of the harvest)
   if (id === FINE_WINE || id === AGED_CHEESE || id === PEARL || id === VINTAGE_CIDER || id === FINE_BERRY_WINE) return [1, 6]; // the best things villagers can buy
   if (id === WINE || id === CHEESE || id === CIDER || id === BERRY_WINE) return [1, 3];
+  if (ITEMS[id]?.treat) return [1, 3]; // (v34) villagers love a treat
   const food = foodValue(id);
   if (food) return food >= 6 ? [1, 2] : food >= 3 ? [1, 1] : [2, 1];
   if (id === GOLD_INGOT || id === STARSTEEL_INGOT) return [1, 5];
@@ -5885,6 +5900,7 @@ function ringBell(x, z, held) {
   const g = villageEntry(v), [id, n, coins] = requestFor(v), fest = festivalToday(), tier = repTier(g.rep)[1];
   const head = `${v.name}${fest ? ` (the ${fest.name})` : ''}: you are a ${tier.toLowerCase()} here.`;
   if (fest && held && isFine(held.id)) { showProduce(v, g, held); return; }
+  if (fest && held && contestScore(held.id, seasonOf(day))) { foodContest(v, g, held, fest); return; }
   if (g.reqDay === day) { toast(`${head} You've done what they asked today: come back tomorrow`, 3000); return; }
   if (held?.id === id && inventory.count(id) >= n) {
     inventory.remove(id, n);
@@ -5896,7 +5912,7 @@ function ringBell(x, z, held) {
     addRep(v, 8);
     return;
   }
-  toast(`${head} Today they need ${n} × ${itemName(id)} (${coins * (fest ? 2 : 1)} coins): tap the bell holding them${fest ? '. Bring fine produce for the show!' : ''}`, 4000);
+  toast(`${head} Today they need ${n} × ${itemName(id)} (${coins * (fest ? 2 : 1)} coins): tap the bell holding them${fest ? '. Bring fine produce for the show, and a dish for the food contest!' : ''}`, 4000);
 }
 // Decorations round the well: flowers in spring, lanterns in summer, jack-o'-lanterns in autumn and snowmen in winter.
 // They go up on the morning of the festival and come down the next day (unless you've moved them).
@@ -6363,6 +6379,21 @@ function showProduce(v, g, held) {
   addRep(v, 4 * n);
   sound.ding(); setTimeout(() => sound.ding(0.7), 220); setTimeout(() => sound.ding(0.9), 440);
   toast(`Your ${itemName(id).toLowerCase()} win${n > 1 ? '' : 's'} ${place} prize at ${v.name}'s show! (${pay} coins)${n < 3 ? ' Show three for first prize' : ''}`, 3500);
+}
+// (v34) The food contest, on festival days too: one dish a day. First prize pays 16 coins (and a rosette in your
+// achievements), second 9, third 4.
+function foodContest(v, g, held, fest) {
+  if (g.contestDay === day) { toast(`You've already entered ${v.name}'s food contest today`, 2500); return; }
+  g.contestDay = day;
+  const id = held.id, score = contestScore(id, seasonOf(day)), fav = FESTIVAL_FAVOURITES[seasonOf(day)].includes(id);
+  takeFromHeld(1);
+  const n = score >= 15 ? 3 : score >= 9 ? 2 : 1, place = ['', 'third', 'second', 'first'][n], pay = [0, 4, 9, 16][n];
+  giveDrops([[COIN, pay]]);
+  addRep(v, 4 * n);
+  if (n === 3) achieve('contest');
+  sound.ding(); setTimeout(() => sound.ding(0.8), 220); if (n === 3) setTimeout(() => sound.ding(1), 440);
+  const tip = n < 3 ? (fav ? ' Try something more filling next time' : ` The judges at the ${fest.name} like ${FESTIVAL_FAVOURITES[seasonOf(day)].slice(0, 3).map((f) => itemName(f).toLowerCase()).join(', ')}`) : '';
+  toast(`Your ${itemName(id).toLowerCase()} takes ${place} prize in ${v.name}'s food contest! (${pay} coins)${tip}`, 4000);
 }
 // Friends of a village are offered something special by each of its trades, and its heroes something more.
 const SPECIAL_TRADES = {
@@ -6913,6 +6944,7 @@ function stepGame(now, dt) {
     eye.y > HAIL_HEIGHT, Math.cos(sky.time * Math.PI * 2), sky.light);
   sky.weather = { overcast: weather.overcast, level: weather.level, kind: weather.kind };
   world.raining = weather.raining && biome !== 'desert';
+  world.daylight = sky.light; // (v34: drying racks)
   sound.weather(paused ? 0 : weather.level, weather.kind);
   if (worldReady) music.update(dt, paused ? null : musicMood(dt));
   const before = sky.time;
@@ -6970,7 +7002,7 @@ window.minicraft = {
   arrows, fishing, kinetics, electric, lightUniforms, bees, catchAt, seasonOf, applySeason, set day(v) { day = v; applySeason(); }, frames, signalAt, setSwitch, logic, machines, carts, minimap, signs, armour, damage, placeRail, getInCart, getOutOfCart,
   get riding() { return riding; }, explode, lightFuse, fuses, clockTime, compassText, place, editSign, closeSign, openInventory, closeInventory, chestMove, lamps, tickLamps, sleepUntilMorning, stations, openStation, closeStation,
   get caneToday() { return caneToday; }, get creative() { return creative; }, set creative(v) { creative = v; applyCreative(); }, toggleFly, wand, useWand, get achieved() { return achieved; }, achieve, worldMap, openMap, closeMap, openGuide, switchSlot, store, saveGame, renderWorlds, openWorlds, exportSlot, get target() { return target; }, set target(v) { target = v; }, applyKeys, renderKeys, camera, get controls() { return controls; }, loose, throwHeld, get waypoints() { return waypoints; }, toggleWaypoint, sortSlots, quickStack, dropMeteor, get meteors() { return meteors; }, weather, openTrade, closeTrade, mountMob, dismount, get ridingMob() { return ridingMob; }, effects, armourWear, useAnvil, rollLoot, settings,
-  get bedSpawn() { return bedSpawn; }, fertilise, openJournal, closeJournal, get packs() { return packs; }, radiationAt, vehicles, boardVehicle, leaveVehicle, get boarded() { return boarded; }, get seated() { return seated; }, crows, onInvSlot, onStationSlot, quickMoveInv, quickMoveStation, usedIn, itemTipHTML, critters, tickPets, get catGiftDay() { return catGiftDay; }, get villageGrowth() { return villageGrowth; }, notePlanting, tickPuzzles, airPumpNear, useStable, stableNear, horseLabel, logistics, openLogistics, closeLogistics, placeOrder, get lpOpen() { return lpOpen; }, music, musicMood, get guideDone() { return guideDone; }, get guideClaimed() { return guideClaimed; }, tickGuidebook, openGuidebook, closeGuidebook, claimGoal, goalMet, fineChance, fineHarvest, showProduce, specialTrades, catchAt, stockStable, tickStables, mangers, openSaddlebags, honeyAt, apiculture, scoopHive, beeEnv, fitUpgrade, piles, lightCharcoalPile, tickPiles, searchChests, takeFromChest, markChest, get chestMark() { return chestMark; }, enterPhotoMode, exitPhotoMode, snapPhoto, get photoMode() { return photoMode; }, photoCam, get lastPhoto() { return lastPhoto; }, tickStalactites, loosenStalactite, fallingRocks, shaking, workLock, findLock, tickLocks, openGates, lockJobs, hangRopeLadder, layBridge, rollUpRope, fireworks, ringBell, requestFor, festivalToday, repOf, addRep, tradeCost, tickFestival, villageEntry, hearths, tickHearths, feedHearth, chimneyTop, smoke, renderPins, togglePin, lightning, igniteAt, fires, tickFires, tickStorm, growVillage, buildVillageHouse, stallPrice, tickStalls, tickVillages, set catGiftDay(v) { catGiftDay = v; }, get places() { return places; }, get treasures() { return treasures; }, readTreasureMap, tickTreasure, beams, tickBeams, beaconSpots: () => beaconSpots, mistNow, tickSnow, tickExplore, sitOn, standUp, useDisplay, zips, linkZip, startZip, get zipping() { return zipping; }, burnCoal, get health() { return health; }, set health(v) { health = v; }, paintings, placeSwitchRail, signalAt, ailments, armourEnch, openAltar, lairNear, useBed, eat, drinkTea,
+  get bedSpawn() { return bedSpawn; }, fertilise, openJournal, closeJournal, get packs() { return packs; }, radiationAt, vehicles, boardVehicle, leaveVehicle, get boarded() { return boarded; }, get seated() { return seated; }, crows, onInvSlot, onStationSlot, quickMoveInv, quickMoveStation, usedIn, itemTipHTML, critters, tickPets, get catGiftDay() { return catGiftDay; }, get villageGrowth() { return villageGrowth; }, notePlanting, tickPuzzles, airPumpNear, useStable, stableNear, horseLabel, logistics, openLogistics, closeLogistics, placeOrder, get lpOpen() { return lpOpen; }, music, musicMood, get guideDone() { return guideDone; }, get guideClaimed() { return guideClaimed; }, tickGuidebook, openGuidebook, closeGuidebook, claimGoal, goalMet, fineChance, fineHarvest, showProduce, foodContest, specialTrades, catchAt, stockStable, tickStables, mangers, openSaddlebags, honeyAt, apiculture, scoopHive, beeEnv, fitUpgrade, piles, lightCharcoalPile, tickPiles, searchChests, takeFromChest, markChest, get chestMark() { return chestMark; }, enterPhotoMode, exitPhotoMode, snapPhoto, get photoMode() { return photoMode; }, photoCam, get lastPhoto() { return lastPhoto; }, tickStalactites, loosenStalactite, fallingRocks, shaking, workLock, findLock, tickLocks, openGates, lockJobs, hangRopeLadder, layBridge, rollUpRope, fireworks, ringBell, requestFor, festivalToday, repOf, addRep, tradeCost, tickFestival, villageEntry, hearths, tickHearths, feedHearth, chimneyTop, smoke, renderPins, togglePin, lightning, igniteAt, fires, tickFires, tickStorm, growVillage, buildVillageHouse, stallPrice, tickStalls, tickVillages, set catGiftDay(v) { catGiftDay = v; }, get places() { return places; }, get treasures() { return treasures; }, readTreasureMap, tickTreasure, beams, tickBeams, beaconSpots: () => beaconSpots, mistNow, tickSnow, tickExplore, sitOn, standUp, useDisplay, zips, linkZip, startZip, get zipping() { return zipping; }, burnCoal, get health() { return health; }, set health(v) { health = v; }, paintings, placeSwitchRail, signalAt, ailments, armourEnch, openAltar, lairNear, useBed, eat, drinkTea,
 };
 
 // ---------- v31: catching bees ----------
@@ -6995,7 +7027,8 @@ apiculture.onYoung = (x, y, z, sp, mate, kids) => {
 };
 
 // ---------- v32: tree taps ----------
-import { CHOC_MOULD, CHOC_CAKE, CAKE_SLICES, MOULD_BARS, MELTED_CHOC, CHOC_BAR } from './blocks.js';
+import { CHOC_MOULD, CHOC_CAKE, CAKE_SLICES, MOULD_BARS, MELTED_CHOC, CHOC_BAR, MOULD_FILLS, mouldFill } from './blocks.js';
+import { FESTIVAL_FAVOURITES, contestScore } from './blocks.js';
 import { TREE_TAP, LATEX, MAX_LATEX, POLYMER_BOAT, DEMO_CHARGE, DETONATOR, DEMO_RADIUS, DETONATOR_LINKS, DETONATOR_RANGE } from './blocks.js';
 // Tapping a tree tap takes the latex in it.
 function useTap(x, y, z, tid) {
@@ -7043,22 +7076,23 @@ window.minicraft.useDetonator = useDetonator;
 // ---------- v33: the chocolate mould and chocolate cake ----------
 // Tap an empty mould holding melted chocolate to pour it in; tap it once it's set to knock out the bars.
 function useMould(x, y, z, tid, held) {
-  const k = tid - CHOC_MOULD;
-  if (k === 0) {
-    if (held?.id !== MELTED_CHOC) { toast('Pour melted chocolate into the mould (melt cocoa powder, sugar and butter in a cooking pot)', 2400); return; }
+  if (tid === CHOC_MOULD) {
+    const fill = MOULD_FILLS.find((f) => f.liquid === held?.id);
+    if (!fill) { toast('Pour melted chocolate, melted toffee or honey syrup into the mould (from a cooking pot)', 2400); return; }
     inventory.consumeHeld();
     if (inventory.add(GLASS_BOTTLE, 1)) toast('Inventory full');
-    world.setBlock(x, y, z, CHOC_MOULD + 1);
+    world.setBlock(x, y, z, fill.poured);
     sound.pour();
     const chill = world.mouldChill(x, y, z);
     toast(`Poured. Leave it to set${chill > 1 ? ': it\'s nice and cold here, so it won\'t be long' : chill < 1 ? ', though it\'s too warm here for it to set quickly' : ''}.`, 2200);
     return;
   }
-  if (k < 3) { toast(k === 1 ? 'The chocolate is still runny' : 'The chocolate is nearly set', 1500); return; }
+  const { fill, stage } = mouldFill(tid);
+  if (stage < 3) { toast(stage === 1 ? 'It\'s still runny' : 'It\'s nearly set', 1500); return; }
   world.setBlock(x, y, z, CHOC_MOULD);
   sound.click();
-  giveDrops([[CHOC_BAR, MOULD_BARS]]);
-  achieve('chocolate');
+  giveDrops([[fill.out, MOULD_BARS]]);
+  if (fill.out === CHOC_BAR) achieve('chocolate');
 }
 function eatCakeSlice(x, y, z, tid) {
   if (hunger > MAX_HUNGER - 1) { toast('You\'re not hungry'); return; }

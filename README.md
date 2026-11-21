@@ -315,6 +315,87 @@ cocoa sapling (from their leaves) to grow your own.
 - **Chocolate cake** is set down like a block: tap it to eat a slice (4 slices). Each slice fills you up a
   little and heals a heart.
 
+### Pork and chicken
+
+Pigs and chickens are farm animals. Hit a grown one with a sword or an axe to butcher it: a pig gives 2–3 raw
+pork, a chicken 1–2 raw chicken and some feathers. Babies and tame animals are safe, and every other animal
+is only ever bumped. Raw chicken can give you food poisoning, so cook it first.
+
+| Make | From | Where |
+| --- | --- | --- |
+| Roast pork (8 food) / roast chicken (7) | raw pork / raw chicken | oven |
+| Pork pie (14 food; keeps you full) | 2 raw pork + 2 flour + 1 butter | oven |
+| Chicken soup (10 food; heals, cures food poisoning) | raw chicken + carrot + onion + water bucket | cooking pot |
+| Pork and beans (12 food; warms you) | raw pork + 3 beans + tomato | cooking pot |
+
+### Dairy and preserving
+
+- **Cream.** Spin a milk bucket in the comb centrifuge for 2 cream. A cream churns into 2 butter.
+- **Ice cream and lollies.** The freezer makes **chocolate**, **cherry** and **honey ice cream** (cream with
+  sugar and cocoa powder, sugar and 2 cherries, or 2 honey drops) and **ice lollies** (any juice and a stick).
+  They cool you down: no heatstroke in the desert while it lasts.
+- **Vinegar.** Fruit juice left in an urn sours into vinegar after a day. Make **pickles** (3 onions, beans or
+  carrots, a vinegar and a bottle) and **fish and chips** (a fish, 2 potatoes and a vinegar, in the oven).
+- **Smoking.** Tap a chimney over a burning fireplace to hang food in it. Fish turns into **smoked fish** in a
+  minute, and pork and cheese into **smoked ham** and **smoked cheese** in two.
+- **Drying.** A **drying rack** (6 sticks, 2 string) out in the sun dries grapes into **raisins**, fruit and berries
+  into **dried fruit**, and pork into **jerky**. It dries twice as fast in the desert, and not at all at night,
+  in the rain or under a roof. Raisins, dried fruit, roasted cocoa and a honey drop make 2 **trail mix**, which
+  lets you run faster.
+
+### Oven dishes and sweets
+
+Fine crops work in these as well as plain ones.
+
+| Make | From | Where |
+| --- | --- | --- |
+| Pizza (14 food; keeps you full) | 2 flour + tomato + cheese + herbs | oven |
+| Carrot cake (12 food; see in the dark) | 2 carrots + 2 flour + sugar + egg | oven |
+| 2 Pumpkin bread (9 food) | pumpkin + 2 flour + sugar | oven |
+| Cheesy jacket potato (11 food; warms you) | potato + cheese + butter | oven |
+| 2 Melted toffee | 3 sugar + butter + 2 glass bottles | cooking pot |
+| 2 Honey syrup | 4 honey drops + 2 glass bottles | cooking pot |
+| 3 Candied peel | 2 oranges + 2 sugar | cooking pot |
+
+The chocolate mould takes melted toffee and honey syrup as well as chocolate. They set the same way into 4
+**toffees** (a burst of speed) or 4 **honey candies** (heal you a little).
+
+### Coffee, rice and chillies
+
+- **Coffee bushes** grow wild in the warm land by the deserts, where cocoa trees grow. **Chillies** grow wild in
+  the desert, and **rice** on temperate river banks and shores.
+- Plant coffee cherries or chillies only in that warm land or under glass: anywhere else they won't grow.
+  Chillies can go on sand as well as grass and dirt. Rice grows only with water right beside the block it's
+  planted on, and can go on sand too.
+
+| Make | From | Where |
+| --- | --- | --- |
+| Roasted coffee beans | coffee cherries | oven |
+| Ground coffee | 2 roasted coffee beans | mortar |
+| 3 Coffee (dig faster) | ground coffee + water bucket + 3 glass bottles | cooking pot |
+| 2 Mocha (dig faster, for longer) | coffee + chocolate milk | anywhere |
+| 2 Rice pudding (9 food; warms you) | 2 rice + milk bucket + sugar | cooking pot |
+| Fish and rice (11 food; run faster) | 2 rice + a fish + herbs | cooking pot |
+| 2 Hot sauce (warms you for a long time) | 3 chillies + vinegar + 2 glass bottles | cooking pot |
+| Chilli con carne (14 food; warms you for a long time) | raw pork + 2 beans + tomato + chilli | cooking pot |
+
+### Treats and the food contest
+
+- **Treats** (chocolate, ice cream, cakes, sweets, mocha, rice pudding and trail mix) sell for 3 coins each at a
+  market stall.
+- At every festival the village holds a **food contest** as well as its produce show. Tap the bell holding a
+  dish: a meal that does something for you, a treat, or one of the festival's favourites. You can enter once a
+  day, and it costs you one of the dish.
+- The judges like a filling dish, a treat more, and the festival's favourites most of all. First prize pays 16
+  coins, second 9 and third 4, and each earns standing in the village.
+
+| Festival | The judges' favourites |
+| --- | --- |
+| Blossom Fair (spring) | honey candy, candied peel, carrot cake, chocolate cherries, pickles |
+| Midsummer Feast | ice creams, ice lollies, pizza, fish and chips |
+| Harvest Festival | pumpkin bread, pork pie, roast pork, cheesy jacket potato, trail mix, smoked ham |
+| Frost Fair | hot chocolate, mocha, chilli con carne, chicken soup, rice pudding, toffee |
+
 ### Crops and crop rotation
 
 - **Carrots** and **potatoes** grow from themselves (village farms have rows of them). Bake a potato in the oven.
@@ -1490,6 +1571,10 @@ guide to how everything works.
 
 ## Version history
 
+- **Version 34**: pork and chicken from farmed pigs and chickens, cream, ice cream and ice lollies, vinegar and
+  pickles, smoking in the chimney, the drying rack, oven dishes (pizza, carrot cake, pumpkin bread, cheesy jacket
+  potato), toffee and honey candy in the mould, coffee, rice and chillies and their dishes, treats at the market
+  stall, and festival food contests.
 - **Version 33**: cocoa trees, cocoa beans and powder, chocolate milk and hot chocolate, melted chocolate and the
   chocolate mould, chocolate bars, chocolate cake (eaten a slice at a time), chocolate cookies and cherries.
 - **Version 32**: rubber and polymers (tree taps, latex, rubber, hide glue, the polymer press), insulated wire

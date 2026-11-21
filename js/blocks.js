@@ -141,7 +141,7 @@ export const T = {
   LEAD_CHEST_SIDE: 267, LEAD_CHEST_TOP: 268, LEAD_CHEST_FRONT: 269, CENTRIFUGE_SIDE: 270, CENTRIFUGE_TOP: 271, TESLA: 272, TESLA_TOP: 273,
   FENCE_POST: 274, FENCE_WIRE: 275, FREEZER_SIDE: 276, FREEZER_FRONT: 277, ARC_SIDE: 278, ARC_FRONT: 279, PACKED_ICE: 280, INVAR: 281, RAIL_STOP: 282, BASALT: 283, BASALT_TOP: 284, METEORITE: 285,
   IRON_BARS: 286, POT: 287, IVY: 288, BOX_FLOWERS: 289,
-  FRUIT_LEAVES: 290, FRUIT_RIPE: 293, FRUIT_SAPLING: 296, HAY: 299, SACK: 300, BEACON: 301, APIARY_SIDE: 302, APIARY_FRONT: 303, APIARY_FULL: 304, APIARY_TOP: 305, BELT_CROSS: 306, FARM_CTRL: 307, FARM_CTRL_ON: 308, TUBE: 309, TUBE_END: 310, AWNING: 311, FIRE: 312, CARROT_0: 313, POTATO_0: 317, STEM_0: 321, PUMPKIN_SIDE: 324, PUMPKIN_TOP: 325, JACK_FACE: 326, TRELLIS: 327, VINE_0: 328, BARREL_SIDE: 331, BARREL_TOP: 332, CHEESE: 333, SEA_BRICK: 334, SEA_LANTERN: 335, VAULT: 336, SKY_STONE: 337, AIR_PUMP: 338, RADIO: 339, RADIO_ON: 340, SORTBOX: 341, SORTBOX_TOP: 342, HEARTH: 343, HEARTH_LIT: 344, CHIMNEY_TOP: 345, STABLE_SIDE: 346, SNOWMAN_FRONT: 347, ONION_0: 348, BEAN_0: 352, TOMATO_0: 356, HERB_0: 360, KILN_SIDE: 364, KILN_TOP: 365, KILN_FRONT: 366, KILN_FRONT_LIT: 367, TERRACOTTA: 368, TERRA_COL: 369, GLAZED: 379, ROOF_TILES: 389, URN: 390, ROPE: 391, LOCK_GATE: 392, LOCK_GATE_TOP: 393, DRIPSTONE: 394, BEETLE_LAMP: 395, WASHER_SIDE: 396, WASHER_TOP: 397, WASHER_FRONT: 398, SIEVE: 399, SLAG_BRICKS: 400, CHARCOAL_HEAP: 401, LP_ARM: 402, LP_CORE: 403, LP_TABLE_TOP: 409, LP_TABLE_SIDE: 410, LP_JUNCTION: 411, LP_SENSOR_CORE: 412, LP_SENSOR_ON: 413, LP_FPROVIDER: 414, LP_FSUPPLIER: 415, DRONE_PAD_TOP: 416, DRONE_PAD_SIDE: 417, LP_FSINK: 418, BOTTLER_SIDE: 419, BOTTLER_TOP: 420, BEEHOUSE_SIDE: 421, BEEHOUSE_TOP: 422, BEEHOUSE_FRONT: 423, COMB_SPIN_SIDE: 424, COMB_SPIN_TOP: 425, TAP_SIDE: 426, TAP_LATEX: 427, PRESS_SIDE: 428, PRESS_TOP: 429, INSWIRE_OFF: 430, INSWIRE_ON: 431, BOUNCE_TOP: 432, BOUNCE_SIDE: 433, POLY_COL: 434, LUMEN: 444, DEMO_SIDE: 445, DEMO_TOP: 446, DEMO_ARMED: 447, DETONATOR_TILE: 448, COCOA_LEAVES: 449, COCOA_RIPE: 450, COCOA_SAPLING: 451, MOULD: 452, CHOC: 453, CHOC_LIQUID: 454, CAKE_TOP: 455, CAKE_SIDE: 456, // (434..443: polymer + colour) // (fruit tiles: apple, cherry, orange)
+  FRUIT_LEAVES: 290, FRUIT_RIPE: 293, FRUIT_SAPLING: 296, HAY: 299, SACK: 300, BEACON: 301, APIARY_SIDE: 302, APIARY_FRONT: 303, APIARY_FULL: 304, APIARY_TOP: 305, BELT_CROSS: 306, FARM_CTRL: 307, FARM_CTRL_ON: 308, TUBE: 309, TUBE_END: 310, AWNING: 311, FIRE: 312, CARROT_0: 313, POTATO_0: 317, STEM_0: 321, PUMPKIN_SIDE: 324, PUMPKIN_TOP: 325, JACK_FACE: 326, TRELLIS: 327, VINE_0: 328, BARREL_SIDE: 331, BARREL_TOP: 332, CHEESE: 333, SEA_BRICK: 334, SEA_LANTERN: 335, VAULT: 336, SKY_STONE: 337, AIR_PUMP: 338, RADIO: 339, RADIO_ON: 340, SORTBOX: 341, SORTBOX_TOP: 342, HEARTH: 343, HEARTH_LIT: 344, CHIMNEY_TOP: 345, STABLE_SIDE: 346, SNOWMAN_FRONT: 347, ONION_0: 348, BEAN_0: 352, TOMATO_0: 356, HERB_0: 360, KILN_SIDE: 364, KILN_TOP: 365, KILN_FRONT: 366, KILN_FRONT_LIT: 367, TERRACOTTA: 368, TERRA_COL: 369, GLAZED: 379, ROOF_TILES: 389, URN: 390, ROPE: 391, LOCK_GATE: 392, LOCK_GATE_TOP: 393, DRIPSTONE: 394, BEETLE_LAMP: 395, WASHER_SIDE: 396, WASHER_TOP: 397, WASHER_FRONT: 398, SIEVE: 399, SLAG_BRICKS: 400, CHARCOAL_HEAP: 401, LP_ARM: 402, LP_CORE: 403, LP_TABLE_TOP: 409, LP_TABLE_SIDE: 410, LP_JUNCTION: 411, LP_SENSOR_CORE: 412, LP_SENSOR_ON: 413, LP_FPROVIDER: 414, LP_FSUPPLIER: 415, DRONE_PAD_TOP: 416, DRONE_PAD_SIDE: 417, LP_FSINK: 418, BOTTLER_SIDE: 419, BOTTLER_TOP: 420, BEEHOUSE_SIDE: 421, BEEHOUSE_TOP: 422, BEEHOUSE_FRONT: 423, COMB_SPIN_SIDE: 424, COMB_SPIN_TOP: 425, TAP_SIDE: 426, TAP_LATEX: 427, PRESS_SIDE: 428, PRESS_TOP: 429, INSWIRE_OFF: 430, INSWIRE_ON: 431, BOUNCE_TOP: 432, BOUNCE_SIDE: 433, POLY_COL: 434, LUMEN: 444, DEMO_SIDE: 445, DEMO_TOP: 446, DEMO_ARMED: 447, DETONATOR_TILE: 448, COCOA_LEAVES: 449, COCOA_RIPE: 450, COCOA_SAPLING: 451, MOULD: 452, CHOC: 453, CHOC_LIQUID: 454, CAKE_TOP: 455, CAKE_SIDE: 456, RACK: 457, TOFFEE: 458, TOFFEE_LIQ: 459, CANDY: 460, CANDY_LIQ: 461, COFFEE_0: 462, RICE_0: 466, CHILLI_0: 470, // (434..443: polymer + colour) // (fruit tiles: apple, cherry, orange)
 };
 
 // Ores, deepest-reaching last. tier: the pickaxe tier needed to mine it (see TOOL_TIERS);
@@ -3181,3 +3181,147 @@ RECIPES.push(
   { out: [CHOC_CHERRIES, 2], in: [[CHERRIES, 4], [CHOC_BAR, 1]] },
   { out: [CHOC_CAKE, 1], in: [[CHOC_BAR, 2], [CHOC_MILK, 1], [FLOUR, 2], [EGG, 1], [SUGAR, 1]], also: [[GLASS_BOTTLE, 1]], table: true },
 );
+
+// ---------- v34 A: pork and chicken ----------
+// Pigs and chickens are farm animals: a grown one can be butchered with a sword or an axe (see mobs.butcher).
+// Every other animal is only ever bumped. Raw chicken can give you food poisoning; cook it first.
+export const RAW_PORK = 3193, ROAST_PORK = 3194, RAW_CHICKEN = 3195, ROAST_CHICKEN = 3196, CHICKEN_SOUP = 3197, PORK_PIE = 3198, PORK_AND_BEANS = 3199;
+ITEMS[RAW_PORK] = { name: 'Raw Pork', food: 3, meat: true };
+ITEMS[ROAST_PORK] = { name: 'Roast Pork', food: 8, meat: true };
+ITEMS[RAW_CHICKEN] = { name: 'Raw Chicken', food: 2, meat: true, risky: 0.5, about: 'cook it first, or risk food poisoning' };
+ITEMS[ROAST_CHICKEN] = { name: 'Roast Chicken', food: 7, meat: true };
+ITEMS[CHICKEN_SOUP] = { name: 'Chicken Soup', food: 10, meal: ['heal', 6], about: 'heals you and cures food poisoning' };
+ITEMS[PORK_PIE] = { name: 'Pork Pie', food: 14, meal: ['fed', 600], about: 'keeps you full for a long time' };
+ITEMS[PORK_AND_BEANS] = { name: 'Pork and Beans', food: 12, meal: ['warm', 300], about: 'warms you through' };
+
+// ---------- v34 B: dairy and preserving ----------
+// Spin milk in the comb centrifuge for cream (it churns into twice the butter). The freezer makes ice cream and
+// ice lollies, which cool you down in the desert. Juice left in an urn sours into vinegar, for pickles and fish
+// and chips. A chimney over a burning fireplace smokes fish, ham and cheese hung in it; a drying rack out in the
+// sun dries fruit, grapes and pork (twice as fast in the desert, and not at all in the rain or at night).
+export const DRYING_RACK = 1510;
+export const CREAM = 3200, CHOC_ICE_CREAM = 3201, CHERRY_ICE_CREAM = 3202, HONEY_ICE_CREAM = 3203, ICE_LOLLY = 3204, VINEGAR = 3205,
+  PICKLES = 3206, FISH_AND_CHIPS = 3207, SMOKED_FISH = 3208, SMOKED_HAM = 3209, SMOKED_CHEESE = 3210, RAISINS = 3211, DRIED_FRUIT = 3212,
+  JERKY = 3213, TRAIL_MIX = 3214;
+// (seconds for each to turn into the next)
+export const URN_AGING = { [GRAPE_JUICE]: [VINEGAR, 1], [APPLE_JUICE]: [VINEGAR, 1], [BERRY_JUICE]: [VINEGAR, 1] }; // (game days)
+export const SMOKING = { [RAW_FISH]: [SMOKED_FISH, 60], [SALMON]: [SMOKED_FISH, 60], [ICEFISH]: [SMOKED_FISH, 60], [RAW_PORK]: [SMOKED_HAM, 120], [CHEESE]: [SMOKED_CHEESE, 120] };
+export const DRYING = { [GRAPES]: [RAISINS, 90], [APPLE]: [DRIED_FRUIT, 90], [CHERRIES]: [DRIED_FRUIT, 90], [ORANGE_FRUIT]: [DRIED_FRUIT, 90], [BERRIES]: [DRIED_FRUIT, 90], [RAW_PORK]: [JERKY, 150] };
+BLOCKS[CHIMNEY].station = 'smokehouse';
+const RACK_MODEL = [
+  [1, 0, 7, 2, 14, 9, wood], [14, 0, 7, 15, 14, 9, wood], // the posts
+  [1, 13, 7.5, 15, 14, 8.5, wood], [1, 9, 7.5, 15, 10, 8.5, wood], [1, 5, 7.5, 15, 6, 8.5, wood], // the rails
+  [2, 6, 7.2, 14, 13, 7.6, T.RACK], // the netting
+];
+block(DRYING_RACK, { ...furniture, name: 'Drying Rack', station: 'dryrack', model: RACK_MODEL, boxes: [[1, 0, 7, 15, 14, 9]] });
+ITEMS[DRYING_RACK] = { name: 'Drying Rack', about: 'out in the sun it dries fruit, grapes and pork (fastest in the desert)' };
+ITEMS[CREAM] = { name: 'Cream', about: 'churn it for butter, or freeze it into ice cream' };
+ITEMS[CHOC_ICE_CREAM] = { name: 'Chocolate Ice Cream', food: 6, meal: ['cool', 300], about: 'cools you down in the heat' };
+ITEMS[CHERRY_ICE_CREAM] = { name: 'Cherry Ice Cream', food: 6, meal: ['cool', 300], about: 'cools you down in the heat' };
+ITEMS[HONEY_ICE_CREAM] = { name: 'Honey Ice Cream', food: 6, meal: ['cool', 300], about: 'cools you down in the heat' };
+ITEMS[ICE_LOLLY] = { name: 'Ice Lolly', food: 3, meal: ['cool', 180], about: 'cools you down in the heat' };
+ITEMS[VINEGAR] = { name: 'Vinegar', stack: 8, about: 'for pickles, and fish and chips' };
+ITEMS[PICKLES] = { name: 'Pickles', stack: 8, food: 6, meal: ['fed', 400], bottle: true, about: 'keep you going for a long time' };
+ITEMS[FISH_AND_CHIPS] = { name: 'Fish and Chips', food: 14, meal: ['fed', 400], about: 'keeps you full for a long time' };
+ITEMS[SMOKED_FISH] = { name: 'Smoked Fish', food: 8, meal: ['fed', 300], about: 'keeps you full for longer', fish: true };
+ITEMS[SMOKED_HAM] = { name: 'Smoked Ham', food: 10, meal: ['fed', 400], about: 'keeps you full for a long time', meat: true };
+ITEMS[SMOKED_CHEESE] = { name: 'Smoked Cheese', food: 9, meal: ['warm', 300], about: 'warms you through' };
+ITEMS[RAISINS] = { name: 'Raisins', food: 3 };
+ITEMS[DRIED_FRUIT] = { name: 'Dried Fruit', food: 4 };
+ITEMS[JERKY] = { name: 'Jerky', food: 6, meat: true };
+ITEMS[TRAIL_MIX] = { name: 'Trail Mix', food: 8, meal: ['swift', 150], about: 'run faster' };
+RECIPES.push(
+  { out: [DRYING_RACK, 1], in: [[STICK, 6], [STRING, 2]], table: true },
+  { out: [BUTTER, 2], in: [[CREAM, 1]], churn: true },
+  { out: [PICKLES, 1], in: [[[ONION, BEANS, CARROT], 3], [VINEGAR, 1], [GLASS_BOTTLE, 1]] },
+  { out: [TRAIL_MIX, 2], in: [[RAISINS, 1], [DRIED_FRUIT, 1], [ROASTED_COCOA, 1], [HONEY_DROP, 1]] },
+);
+
+// ---------- v34 C: oven dishes and moulded sweets ----------
+// Fine crops work in these recipes as well as plain ones. The chocolate mould also takes melted toffee and honey
+// syrup (from the cooking pot), each setting into its own sweets; each filling has its own three block states
+// (poured, setting, set) after the chocolate ones, so a mould needs no saved contents.
+export const PIZZA = 3215, CARROT_CAKE = 3216, PUMPKIN_BREAD = 3217, CHEESY_POTATO = 3218, TOFFEE = 3219, HONEY_CANDY = 3220,
+  CANDIED_PEEL = 3221, MELTED_TOFFEE = 3222, HONEY_SYRUP = 3223;
+export const MOULD_TOFFEE = 1511, MOULD_HONEY = 1514; // + 0 poured, 1 setting, 2 set
+export const orFine = (id) => (FINE_CROPS[id] ? [id, FINE_CROPS[id]] : id);
+// what each filling is, where its poured state starts, and what it sets into
+export const MOULD_FILLS = [
+  { liquid: MELTED_CHOC, poured: CHOC_MOULD + 1, out: CHOC_BAR, set: [T.CHOC_LIQUID, T.CHOC] },
+  { liquid: MELTED_TOFFEE, poured: MOULD_TOFFEE, out: TOFFEE, set: [T.TOFFEE_LIQ, T.TOFFEE] },
+  { liquid: HONEY_SYRUP, poured: MOULD_HONEY, out: HONEY_CANDY, set: [T.CANDY_LIQ, T.CANDY] },
+];
+// (fill, stage 1..3) for a mould id, or null if it isn't a filled mould
+export const mouldFill = (id) => {
+  for (const f of MOULD_FILLS) if (id >= f.poured && id < f.poured + 3) return { fill: f, stage: id - f.poured + 1 };
+  return null;
+};
+for (const f of MOULD_FILLS.slice(1)) {
+  for (let k = 1; k <= 3; k++) {
+    const model = MOULD_MODEL(0).concat([[3, 1, 3, 13, k === 1 ? 2.6 : 2.2, 13, k === 1 ? f.set[0] : f.set[1]]]);
+    block(f.poured + k - 1, {
+      name: 'Chocolate Mould', sound: 'stone', transparent: true, solid: false, hardness: 0.5, model, boxes: [[2, 0, 2, 14, 3, 14]],
+      variantOf: CHOC_MOULD, drop: () => [[CHOC_MOULD, 1], ...(k === 3 ? [[f.out, MOULD_BARS]] : [])], grows: k < 3 ? 'setting' : null,
+    });
+  }
+}
+ITEMS[PIZZA] = { name: 'Pizza', food: 14, meal: ['fed', 400], about: 'keeps you full for a long time' };
+ITEMS[CARROT_CAKE] = { name: 'Carrot Cake', food: 12, meal: ['night', 180], about: 'see in the dark' };
+ITEMS[PUMPKIN_BREAD] = { name: 'Pumpkin Bread', food: 9 };
+ITEMS[CHEESY_POTATO] = { name: 'Cheesy Jacket Potato', food: 11, meal: ['warm', 300], about: 'warms you through' };
+ITEMS[TOFFEE] = { name: 'Toffee', food: 4, meal: ['swift', 60], about: 'get a burst of energy' };
+ITEMS[HONEY_CANDY] = { name: 'Honey Candy', food: 3, meal: ['heal', 3], about: 'soothes and heals you' };
+ITEMS[CANDIED_PEEL] = { name: 'Candied Peel', food: 3 };
+ITEMS[MELTED_TOFFEE] = { name: 'Melted Toffee', stack: 8, bottle: true, about: 'pour it into a mould' };
+ITEMS[HONEY_SYRUP] = { name: 'Honey Syrup', stack: 8, bottle: true, about: 'pour it into a mould' };
+
+// ---------- v34 D: coffee, rice and chillies ----------
+// Coffee bushes grow wild in the warm land by the deserts, chillies in the desert itself, and rice on river
+// banks. Coffee and chillies only grow in warm land (or in a greenhouse anywhere); rice needs water right beside
+// the ground it's planted in. Chillies and rice can be planted on sand as well as grass and dirt.
+export const COFFEE_CROP = 1517, RICE_CROP = 1521, CHILLI_CROP = 1525; // 4 stages each (3 is ripe)
+export const COFFEE_CHERRIES = 3224, RICE = 3225, CHILLI = 3226, ROASTED_COFFEE = 3227, GROUND_COFFEE = 3228, COFFEE = 3229, MOCHA = 3230,
+  RICE_PUDDING = 3231, FISH_RICE = 3232, HOT_SAUCE = 3233, CHILLI_CON_CARNE = 3234;
+for (const [base, kind, seed, tex, name, n, needs] of [[COFFEE_CROP, 'coffee', COFFEE_CHERRIES, T.COFFEE_0, 'Coffee Bush', 2, 'warm'],
+  [RICE_CROP, 'rice', RICE, T.RICE_0, 'Rice', 3, 'water'], [CHILLI_CROP, 'chilli', CHILLI, T.CHILLI_0, 'Chilli Plant', 2, 'warm']]) {
+  for (let k = 0; k < 4; k++) {
+    block(base + k, {
+      ...plant, name, tex: tex + k, variantOf: seed, grows: k < 3 ? base + k + 1 : null,
+      crop: { kind, stage: k, ripe: k === 3, seed, first: base, needs, sandy: kind !== 'coffee' },
+      drop: k < 3 ? () => [[seed, 1]] : () => [[seed, n + Math.floor(Math.random() * 2)]],
+    });
+  }
+}
+ITEMS[COFFEE_CHERRIES] = { name: 'Coffee Cherries', places: COFFEE_CROP, about: 'roast them in an oven; plant them in warm land (or a greenhouse)' };
+ITEMS[RICE] = { name: 'Rice', places: RICE_CROP, about: 'plant it right beside water (sand or soil)' };
+ITEMS[CHILLI] = { name: 'Chilli', food: 1, places: CHILLI_CROP, about: 'plant it in warm land (or a greenhouse), even on sand' };
+ITEMS[ROASTED_COFFEE] = { name: 'Roasted Coffee Beans', about: 'grind them with the mortar' };
+ITEMS[GROUND_COFFEE] = { name: 'Ground Coffee', about: 'brew it in the cooking pot' };
+ITEMS[COFFEE] = { name: 'Coffee', stack: 8, food: 2, meal: ['haste', 240], bottle: true, about: 'dig half as fast again' };
+ITEMS[MOCHA] = { name: 'Mocha', stack: 8, food: 5, meal: ['haste', 360], bottle: true, about: 'dig half as fast again, for longer' };
+ITEMS[RICE_PUDDING] = { name: 'Rice Pudding', food: 9, meal: ['warm', 300], about: 'warms you through' };
+ITEMS[FISH_RICE] = { name: 'Fish and Rice', food: 11, meal: ['swift', 180], about: 'run faster' };
+ITEMS[HOT_SAUCE] = { name: 'Hot Sauce', stack: 8, food: 1, meal: ['warm', 480], bottle: true, about: 'warms you right through' };
+ITEMS[CHILLI_CON_CARNE] = { name: 'Chilli con Carne', food: 14, meal: ['warm', 600], about: 'warms you right through for a long time' };
+RECIPES.push(
+  { out: [GROUND_COFFEE, 1], in: [[ROASTED_COFFEE, 2]], tools: [MORTAR] },
+  { out: [MOCHA, 2], in: [[COFFEE, 1], [CHOC_MILK, 1]] },
+);
+
+// ---------- v34 E: treats, and the festival food contest ----------
+// Villagers pay well for treats at a stall. At every festival the village holds a food contest: tap its bell
+// holding a dish (anything that does you good when you eat it, a treat, or one of the festival's favourites) to enter. The judges like a filling dish, a treat
+// more, and each festival's favourites most of all.
+for (const id of [CHOC_BAR, CHOC_COOKIE, CHOC_CHERRIES, HOT_CHOC, CHOC_ICE_CREAM, CHERRY_ICE_CREAM, HONEY_ICE_CREAM, ICE_LOLLY,
+  CARROT_CAKE, PUMPKIN_BREAD, TOFFEE, HONEY_CANDY, CANDIED_PEEL, MOCHA, RICE_PUDDING, TRAIL_MIX]) ITEMS[id].treat = true;
+export const FESTIVAL_FAVOURITES = [ // by season: Blossom Fair, Midsummer Feast, Harvest Festival, Frost Fair
+  [HONEY_CANDY, CANDIED_PEEL, CARROT_CAKE, CHOC_CHERRIES, PICKLES],
+  [CHOC_ICE_CREAM, CHERRY_ICE_CREAM, HONEY_ICE_CREAM, ICE_LOLLY, PIZZA, FISH_AND_CHIPS],
+  [PUMPKIN_BREAD, PORK_PIE, ROAST_PORK, CHEESY_POTATO, TRAIL_MIX, SMOKED_HAM],
+  [HOT_CHOC, MOCHA, CHILLI_CON_CARNE, CHICKEN_SOUP, RICE_PUDDING, TOFFEE],
+];
+export function contestScore(id, season) {
+  const it = ITEMS[id], fav = FESTIVAL_FAVOURITES[season]?.includes(id);
+  if (!it?.meal && !it?.treat && !fav) return 0;
+  return (it.food ?? 0) + (it.treat ? 3 : 0) + (fav ? 8 : 0);
+}

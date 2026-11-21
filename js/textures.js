@@ -3274,3 +3274,174 @@ ITEM_PAINTERS[CHOC_CHERRIES] = (ctx) => {
   }
   for (let k = 0; k < 6; k++) { px(ctx, 5 + (k >> 1), 6 - k, [70, 90, 30]); px(ctx, 11 - (k >> 1), 6 - k, [70, 90, 30]); }
 };
+
+// ---------- v34 A: pork and chicken ----------
+import { RAW_PORK, ROAST_PORK, RAW_CHICKEN, ROAST_CHICKEN, CHICKEN_SOUP, PORK_PIE, PORK_AND_BEANS } from './blocks.js';
+const chop = (meat, fat, bone) => (ctx) => {
+  for (let y = 3; y < 14; y++) for (let x = 2; x < 13; x++) {
+    const d = Math.hypot((x - 7) / 5, (y - 8) / 4.6);
+    if (d >= 1) continue;
+    px(ctx, x, y, d > 0.8 ? fat : (x + y) % 5 === 0 ? shade(meat, 0.85) : meat);
+  }
+  rect(ctx, 12, 6, 3, 2, bone); px(ctx, 14, 5, bone); px(ctx, 14, 8, bone);
+};
+ITEM_PAINTERS[RAW_PORK] = chop([232, 140, 140], [250, 226, 220], [240, 236, 224]);
+ITEM_PAINTERS[ROAST_PORK] = chop([176, 104, 60], [224, 176, 110], [236, 226, 206]);
+const drumstick = (meat, hi) => (ctx) => {
+  for (let y = 2; y < 12; y++) for (let x = 2; x < 12; x++) {
+    if (Math.hypot(x - 6.5, y - 6.5) >= 4.8) continue;
+    px(ctx, x, y, x + y < 11 ? hi : meat);
+  }
+  for (let k = 0; k < 4; k++) px(ctx, 10 + k, 10 + k, [240, 236, 224]);
+  rect(ctx, 13, 12, 2, 2, [250, 248, 240]);
+};
+ITEM_PAINTERS[RAW_CHICKEN] = drumstick([236, 190, 170], [248, 214, 198]);
+ITEM_PAINTERS[ROAST_CHICKEN] = drumstick([196, 120, 50], [228, 160, 80]);
+const bowl = (soup, bits) => (ctx) => {
+  for (let x = 1; x < 15; x++) px(ctx, x, 7, shade(soup, 1.1));
+  for (let y = 7; y < 14; y++) for (let x = 1; x < 15; x++) if (Math.abs(x - 7.5) < 7 - (y - 7) * 0.7) px(ctx, x, y, y === 7 ? soup : [150, 106, 64]);
+  for (const [x, c] of bits) px(ctx, x, 7, c);
+};
+ITEM_PAINTERS[CHICKEN_SOUP] = bowl([232, 200, 110], [[4, [236, 130, 40]], [7, [240, 230, 200]], [10, [120, 160, 60]]]);
+ITEM_PAINTERS[PORK_AND_BEANS] = bowl([196, 70, 40], [[4, [176, 104, 60]], [6, [230, 120, 80]], [9, [176, 104, 60]], [11, [230, 120, 80]]]);
+ITEM_PAINTERS[PORK_PIE] = (ctx) => {
+  for (let y = 4; y < 14; y++) for (let x = 2; x < 14; x++) px(ctx, x, y, y < 6 ? [226, 170, 90] : y === 13 ? [150, 96, 44] : (x + y) % 4 === 0 ? [200, 140, 70] : [214, 156, 80]);
+  for (let x = 3; x < 13; x += 2) px(ctx, x, 4, [240, 200, 120]);
+};
+
+// ---------- v34 B: dairy and preserving ----------
+import { CREAM, CHOC_ICE_CREAM, CHERRY_ICE_CREAM, HONEY_ICE_CREAM, ICE_LOLLY, VINEGAR, PICKLES, FISH_AND_CHIPS, SMOKED_FISH, SMOKED_HAM, SMOKED_CHEESE, RAISINS, DRIED_FRUIT, JERKY, TRAIL_MIX } from './blocks.js';
+// a drying rack's netting: loose string mesh (mostly see-through)
+P[T.RACK] = (t) => { for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) { if (x % 3 === 0 || y % 3 === 0) t.set(x, y, t.vary([226, 214, 180], 0.05)); else t.set(x, y, [0, 0, 0], 0); } };
+ITEM_PAINTERS[CREAM] = (ctx) => {
+  for (let y = 6; y < 14; y++) for (let x = 2; x < 14; x++) if (Math.abs(x - 7.5) < 6 - (y - 6) * 0.4) px(ctx, x, y, y < 8 ? [252, 248, 236] : [150, 106, 64]);
+  for (let y = 3; y < 7; y++) for (let x = 5; x < 11; x++) if (Math.hypot(x - 7.5, y - 6) < 3) px(ctx, x, y, x < 7 ? [255, 255, 250] : [244, 238, 220]);
+};
+const cone = (scoop, hi) => (ctx) => {
+  for (let y = 8; y < 16; y++) for (let x = 4; x < 12; x++) if (Math.abs(x - 7.5) < (16 - y) * 0.5) px(ctx, x, y, (x + y) % 3 ? [214, 164, 90] : [180, 126, 60]);
+  for (let y = 1; y < 9; y++) for (let x = 3; x < 13; x++) if (Math.hypot(x - 7.5, y - 5) < 4.3) px(ctx, x, y, x < 6 && y < 5 ? hi : scoop);
+};
+ITEM_PAINTERS[CHOC_ICE_CREAM] = cone([110, 66, 40], [150, 100, 66]);
+ITEM_PAINTERS[CHERRY_ICE_CREAM] = cone([240, 150, 170], [255, 200, 210]);
+ITEM_PAINTERS[HONEY_ICE_CREAM] = cone([246, 214, 120], [255, 240, 180]);
+ITEM_PAINTERS[ICE_LOLLY] = (ctx) => {
+  for (let y = 1; y < 11; y++) for (let x = 4; x < 12; x++) px(ctx, x, y, y < 4 ? [250, 150, 60] : y < 7 ? [250, 220, 80] : [230, 80, 90]);
+  for (let y = 11; y < 16; y++) { px(ctx, 7, y, [214, 180, 120]); px(ctx, 8, y, [190, 156, 100]); }
+};
+const jar = (c, lid, bits) => (ctx) => {
+  rect(ctx, 4, 2, 8, 2, lid);
+  for (let y = 4; y < 15; y++) for (let x = 3; x < 13; x++) px(ctx, x, y, x === 3 || x === 12 || y === 14 ? [200, 220, 232] : c);
+  for (const [x, y, cc] of bits) px(ctx, x, y, cc);
+};
+ITEM_PAINTERS[VINEGAR] = jar([196, 150, 110], [120, 90, 60], []);
+ITEM_PAINTERS[PICKLES] = jar([200, 210, 150], [200, 60, 50], [[5, 6, [110, 150, 50]], [9, 8, [240, 230, 210]], [6, 11, [110, 150, 50]], [10, 12, [240, 150, 60]], [7, 9, [110, 150, 50]]]);
+ITEM_PAINTERS[FISH_AND_CHIPS] = (ctx) => {
+  for (let y = 5; y < 15; y++) for (let x = 1; x < 15; x++) if (Math.abs(x - 7.5) < 7 - (14 - y) * 0.3) px(ctx, x, y, [236, 236, 228]);
+  for (let y = 5; y < 10; y++) for (let x = 2; x < 9; x++) if (Math.hypot((x - 5.5) / 3.5, (y - 7.5) / 2.5) < 1) px(ctx, x, y, (x + y) % 3 ? [220, 160, 60] : [190, 124, 40]);
+  for (const x of [9, 11, 13]) for (let y = 3; y < 10; y++) px(ctx, x + (y & 1 ? 0 : 0), y, [250, 214, 110]);
+};
+const fishShape = (c, d) => (ctx) => {
+  for (let y = 4; y < 12; y++) for (let x = 2; x < 12; x++) if (Math.hypot((x - 7) / 5, (y - 8) / 3.5) < 1) px(ctx, x, y, (x + y) % 4 === 0 ? d : c);
+  for (let k = 0; k < 4; k++) { px(ctx, 12 + (k >> 1), 6 + k, c); px(ctx, 13, 5 + k * 2, d); }
+  px(ctx, 4, 7, [20, 20, 20]);
+};
+ITEM_PAINTERS[SMOKED_FISH] = fishShape([180, 110, 50], [130, 74, 34]);
+ITEM_PAINTERS[SMOKED_HAM] = (ctx) => {
+  for (let y = 2; y < 14; y++) for (let x = 2; x < 13; x++) { const d = Math.hypot((x - 7) / 5, (y - 8) / 5.5); if (d < 1) px(ctx, x, y, d > 0.82 ? [120, 60, 30] : (x * y) % 7 === 0 ? [240, 190, 180] : [190, 80, 70]); }
+  rect(ctx, 11, 1, 2, 3, [240, 236, 224]); rect(ctx, 6, 0, 1, 3, [214, 196, 140]);
+};
+ITEM_PAINTERS[SMOKED_CHEESE] = (ctx) => {
+  for (let y = 5; y < 13; y++) for (let x = 2; x < 14; x++) if (x - 2 > (12 - y) * 0.6) px(ctx, x, y, y === 5 || x === 13 ? [150, 96, 40] : (x * 3 + y) % 9 === 0 ? [176, 120, 50] : [214, 160, 70]);
+};
+const scatter = (c, d, n) => (ctx) => {
+  const spots = [[4, 4], [9, 3], [12, 7], [6, 8], [3, 11], [9, 11], [12, 12], [7, 13]].slice(0, n);
+  for (const [cx, cy] of spots) { px(ctx, cx, cy, c); px(ctx, cx + 1, cy, d); px(ctx, cx, cy + 1, d); px(ctx, cx + 1, cy + 1, c); }
+};
+ITEM_PAINTERS[RAISINS] = scatter([80, 40, 60], [50, 24, 40], 8);
+ITEM_PAINTERS[DRIED_FRUIT] = (ctx) => {
+  for (const [cx, cy, c] of [[5, 5, [200, 120, 50]], [10, 6, [170, 40, 50]], [7, 11, [230, 160, 70]]]) for (let y = cy - 2; y <= cy + 2; y++) for (let x = cx - 3; x <= cx + 2; x++) if (Math.hypot((x - cx + 0.5) / 3, (y - cy) / 2) < 1) px(ctx, x, y, (x + y) % 3 ? c : shade(c, 0.75));
+};
+ITEM_PAINTERS[JERKY] = (ctx) => { for (let k = 0; k < 12; k++) for (let w = 0; w < 3; w++) px(ctx, 2 + k, 12 - k + w - (k >> 2), (k + w) % 4 ? [120, 50, 30] : [80, 30, 20]); };
+ITEM_PAINTERS[TRAIL_MIX] = (ctx) => {
+  for (let y = 7; y < 15; y++) for (let x = 2; x < 14; x++) if (Math.abs(x - 7.5) < 6 - (y - 7) * 0.5) px(ctx, x, y, [150, 106, 64]);
+  const bits = [[80, 40, 60], [200, 120, 50], [84, 48, 28], [230, 200, 120]];
+  for (let k = 0; k < 14; k++) px(ctx, 3 + (k * 5) % 10, 5 + (k * 3) % 4, bits[k % 4]);
+};
+
+// ---------- v34 C: oven dishes and moulded sweets ----------
+import { PIZZA, CARROT_CAKE, PUMPKIN_BREAD, CHEESY_POTATO, TOFFEE, HONEY_CANDY, CANDIED_PEEL, MELTED_TOFFEE, HONEY_SYRUP } from './blocks.js';
+const TOF = [196, 130, 56], TOF_HI = [236, 180, 90], AMBER = [236, 160, 30], AMBER_HI = [255, 214, 110];
+P[T.TOFFEE] = (t) => { for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) t.set(x, y, x % 4 === 0 || y % 4 === 0 ? shade(TOF, 0.8) : (x + y) % 7 === 1 ? TOF_HI : t.vary(TOF, 0.03)); };
+P[T.TOFFEE_LIQ] = (t) => { for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) t.set(x, y, t.vary(Math.sin(x * 0.7 + y * 0.3) > 0.7 ? TOF_HI : [214, 150, 70], 0.03)); };
+P[T.CANDY] = (t) => { for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) t.set(x, y, x % 4 === 0 || y % 4 === 0 ? shade(AMBER, 0.75) : (x + y) % 5 === 1 ? AMBER_HI : t.vary(AMBER, 0.03)); };
+P[T.CANDY_LIQ] = (t) => { for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) t.set(x, y, t.vary(Math.sin(x * 0.6 + y * 0.4) > 0.7 ? AMBER_HI : [244, 180, 50], 0.03)); };
+ITEM_PAINTERS[PIZZA] = (ctx) => {
+  for (let y = 1; y < 15; y++) for (let x = 1; x < 15; x++) { const d = Math.hypot(x - 7.5, y - 7.5); if (d < 7) px(ctx, x, y, d > 5.8 ? [214, 160, 80] : [210, 70, 40]); }
+  for (const [x, y] of [[5, 5], [9, 4], [10, 9], [5, 10], [8, 7]]) { px(ctx, x, y, [250, 230, 150]); px(ctx, x + 1, y, [250, 230, 150]); }
+  for (const [x, y] of [[7, 4], [4, 8], [11, 6], [8, 11]]) px(ctx, x, y, [60, 130, 40]);
+};
+const loaf = (c, top, bits) => (ctx) => {
+  for (let y = 5; y < 14; y++) for (let x = 2; x < 14; x++) px(ctx, x, y, y < 7 ? top : y === 13 ? shade(c, 0.75) : c);
+  for (const [x, y, cc] of bits) px(ctx, x, y, cc);
+};
+ITEM_PAINTERS[CARROT_CAKE] = loaf([200, 130, 70], [250, 246, 236], [[4, 5, [236, 120, 30]], [8, 5, [236, 120, 30]], [11, 5, [236, 120, 30]], [5, 9, [236, 130, 40]], [10, 11, [236, 130, 40]]]);
+ITEM_PAINTERS[PUMPKIN_BREAD] = loaf([214, 140, 60], [170, 100, 40], [[5, 9, [236, 170, 80]], [9, 10, [236, 170, 80]]]);
+ITEM_PAINTERS[CHEESY_POTATO] = (ctx) => {
+  for (let y = 4; y < 14; y++) for (let x = 2; x < 14; x++) if (Math.hypot((x - 7.5) / 6, (y - 9) / 4.5) < 1) px(ctx, x, y, [150, 100, 50]);
+  for (let y = 5; y < 10; y++) for (let x = 4; x < 12; x++) if (Math.hypot((x - 7.5) / 3.6, (y - 7.5) / 2.2) < 1) px(ctx, x, y, y < 7 ? [250, 210, 90] : [240, 230, 190]);
+};
+const sweets = (c, hi, wrap) => (ctx) => {
+  for (const [cx, cy] of [[5, 6], [10, 9]]) {
+    rect(ctx, cx - 2, cy - 2, 5, 4, c); px(ctx, cx - 1, cy - 1, hi);
+    if (wrap) { px(ctx, cx - 3, cy - 2, wrap); px(ctx, cx - 3, cy + 1, wrap); px(ctx, cx + 3, cy - 2, wrap); px(ctx, cx + 3, cy + 1, wrap); }
+  }
+};
+ITEM_PAINTERS[TOFFEE] = sweets(TOF, TOF_HI, [230, 220, 200]);
+ITEM_PAINTERS[HONEY_CANDY] = sweets(AMBER, AMBER_HI, null);
+ITEM_PAINTERS[CANDIED_PEEL] = (ctx) => { for (const [ox, oy] of [[2, 3], [7, 7], [3, 10]]) for (let k = 0; k < 7; k++) { px(ctx, ox + k, oy + (k > 3 ? 1 : 0), [250, 150, 40]); px(ctx, ox + k, oy + 1 + (k > 3 ? 1 : 0), [255, 230, 180]); } };
+ITEM_PAINTERS[MELTED_TOFFEE] = bottleOf([200, 130, 56], false);
+ITEM_PAINTERS[HONEY_SYRUP] = bottleOf([240, 170, 40], false);
+
+// ---------- v34 D: coffee, rice and chillies ----------
+import { COFFEE_CHERRIES, RICE, CHILLI, ROASTED_COFFEE, GROUND_COFFEE, COFFEE, MOCHA, RICE_PUDDING, FISH_RICE, HOT_SAUCE, CHILLI_CON_CARNE } from './blocks.js';
+for (let k = 0; k < 4; k++) {
+  P[T.COFFEE_0 + k] = (t) => { // a glossy dark bush, red cherries when ripe
+    const h = [4, 7, 10, 12][k];
+    for (let y = 16 - h; y < 16; y++) for (let x = 2; x < 14; x++) {
+      if (Math.abs(x - 7.5) > 1 + (y - (16 - h)) * 0.9 || t.r() < 0.25) continue;
+      t.set(x, y, t.vary(y === 15 ? [90, 60, 36] : [34, 100, 40], 0.14));
+    }
+    if (k === 3) for (const [x, y] of [[5, 9], [9, 7], [10, 11], [6, 13], [8, 10]]) { t.set(x, y, [200, 30, 30]); t.set(x + 1, y, [160, 20, 24]); }
+  };
+  P[T.RICE_0 + k] = (t) => { // slim stalks that droop golden heads when ripe
+    const h = [4, 7, 10, 12][k];
+    for (const x of [2, 4, 6, 8, 10, 12, 14]) {
+      const hh = h - 1 + Math.floor(t.r() * 3);
+      for (let y = 0; y < hh; y++) t.set(x + (y > hh - 3 && k === 3 ? 1 : 0), 15 - y, t.vary(k === 3 && y > hh - 4 ? [220, 196, 110] : [96, 170, 70], 0.1));
+    }
+  };
+  P[T.CHILLI_0 + k] = (t) => {
+    leafyCrop(t, k, null);
+    if (k === 3) for (const [x, y] of [[4, 8], [9, 7], [12, 10], [7, 11]]) for (let d = 0; d < 3; d++) t.set(x, y + d, d === 2 ? [180, 20, 20] : [226, 40, 30]);
+  };
+}
+const cherries = (c, d) => (ctx) => { for (const [x, y] of [[5, 6], [10, 5], [8, 10], [4, 11], [11, 11]]) blob(ctx, x, y, 2, 2, c, d); };
+ITEM_PAINTERS[COFFEE_CHERRIES] = cherries([210, 40, 36], [150, 20, 24]);
+ITEM_PAINTERS[ROASTED_COFFEE] = beans([60, 36, 22], [100, 64, 40]);
+ITEM_PAINTERS[GROUND_COFFEE] = (ctx) => {
+  for (let y = 6; y < 14; y++) for (let x = 2; x < 14; x++) {
+    if (Math.abs(x - 7.5) > (y - 5) * 0.9) continue;
+    px(ctx, x, y, (x * 5 + y * 3) % 7 === 0 ? [90, 56, 34] : [56, 34, 20]);
+  }
+};
+ITEM_PAINTERS[RICE] = scatter([244, 240, 226], [210, 200, 170], 14);
+ITEM_PAINTERS[CHILLI] = (ctx) => {
+  for (let k = 0; k < 10; k++) { const x = 4 + k, y = 5 + Math.round(k * 0.6 + Math.sin(k * 0.5) * 1.5); rect(ctx, x, y, 1, k < 8 ? 3 : 2, k % 3 ? [220, 36, 28] : [250, 90, 70]); }
+  rect(ctx, 2, 4, 3, 2, [60, 130, 40]);
+};
+ITEM_PAINTERS[COFFEE] = bottleOf([60, 34, 18], true);
+ITEM_PAINTERS[MOCHA] = bottleOf([130, 80, 50], true);
+ITEM_PAINTERS[HOT_SAUCE] = bottleOf([200, 30, 20], false);
+ITEM_PAINTERS[RICE_PUDDING] = bowl([246, 236, 210], [[5, [240, 210, 160]], [10, [200, 120, 60]]]);
+ITEM_PAINTERS[FISH_RICE] = bowl([244, 240, 226], [[4, [240, 150, 110]], [7, [240, 150, 110]], [10, [80, 150, 60]]]);
+ITEM_PAINTERS[CHILLI_CON_CARNE] = bowl([170, 50, 30], [[3, [120, 60, 40]], [6, [230, 60, 40]], [9, [120, 60, 40]], [12, [60, 130, 40]]]);
