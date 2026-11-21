@@ -632,6 +632,22 @@ STATION_KINDS.cookpot.recipes.push(
   { out: [CHILLI_CON_CARNE, 1], in: [[RAW_PORK, 1], [BEANS, 2], [orFine(TOMATO), 1], [CHILLI, 1]], time: 10 },
 );
 
+// v35: the carpenter (turned by a shaft) and the distillery (burns fuel)
+import { CRATE, CRATED, NEW_SPIRIT, RUBBING_ALCOHOL, BIOFUEL_BUCKET, PLANT_MATTER } from './blocks.js';
+STATION_KINDS.carpenter = { name: 'Carpenter', verb: 'Working', inputs: 3, powered: true, sides: 1, recipes: [
+  { out: [CRATE, 2], in: [[PLANKS, 4], [STICK, 2]], time: 3 },
+  ...Object.entries(CRATED).map(([cid, id]) => ({ out: [+cid, 1], in: [[id, 9], [CRATE, 1]], time: 1.5 })),
+  ...Object.entries(CRATED).map(([cid, id]) => ({ out: [id, 9], in: [[+cid, 1]], side: [[CRATE, 1, 1]], time: 1.5 })),
+] };
+STATION_KINDS.distillery = { name: 'Distillery', verb: 'Distilling', inputs: 4, sides: 1, noLit: true, recipes: [
+  { out: [NEW_SPIRIT, 2], in: [[WHEAT, 6], [WATER_BUCKET, 1], [GLASS_BOTTLE, 2]], side: [[BUCKET, 1, 1]], time: 10 },
+  { out: [NEW_SPIRIT, 2], in: [[RICE, 4], [WATER_BUCKET, 1], [GLASS_BOTTLE, 2]], side: [[BUCKET, 1, 1]], time: 10 },
+  { out: [BIOFUEL_BUCKET, 1], in: [[PLANT_MATTER, 8], [BUCKET, 1]], time: 12 },
+  { out: [RUBBING_ALCOHOL, 1], in: [[NEW_SPIRIT, 2]], leaves: GLASS_BOTTLE, time: 8 },
+] };
+FUEL_ITEMS[BIOFUEL_BUCKET] = 60;
+FUEL_LEAVES[BIOFUEL_BUCKET] = BUCKET;
+
 // (v34) The oven and the pot make the first recipe whose ingredients are all there, so the dishes that use
 // more ingredients go first: otherwise an egg in with the flour, carrots and sugar would just be fried.
 for (const kind of ['oven', 'cookpot']) STATION_KINDS[kind].recipes.sort((a, b) => b.in.length - a.in.length);

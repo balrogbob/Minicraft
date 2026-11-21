@@ -56,6 +56,7 @@ const CHAPTERS = [
     ['mill', 'Millstone', has(B.MILLSTONE), 'Grinds wheat into flour and more.', [B.WHEAT, 8]],
     ['saw', 'Sawmill', has(B.SAW), 'A powered saw gets more planks from each log.', [B.LOG, 8]],
     ['belt', 'On the Move', has(B.BELT), 'Belts carry things along. Hoppers drop them into machines.', [B.HOPPER, 2]],
+    ['crate', 'Packed Tight', has(Object.keys(B.CRATED).map(Number)), 'A carpenter turned by a shaft packs 9 of a thing into a crate: 64 crates fit in a slot.', [B.PLANKS, 16]],
   ]],
   ['steam', 'Steam and Steel', 4, [
     ['steel', 'Steel', has(B.STEEL_INGOT), 'Iron and coal in a blast smelter make steel.', [B.STEEL_INGOT, 2]],
@@ -134,6 +135,7 @@ const CHAPTERS = [
     ['smoke', 'Smokehouse', has([B.SMOKED_FISH, B.SMOKED_HAM, B.SMOKED_CHEESE]), 'Hang fish, pork or cheese in a chimney over a burning fireplace.', [B.COAL, 8]],
     ['coffee', 'Morning Coffee', has(B.COFFEE), 'Coffee bushes grow by the deserts. Roast the cherries, grind them and brew them in the cooking pot.', [B.GLASS_BOTTLE, 3]],
     ['chilli', 'Some Like It Hot', has(B.CHILLI_CON_CARNE), 'Chillies grow in the desert. Cook them with pork, beans and a tomato.', [B.BEANS, 4]],
+    ['whisky', 'Distiller', has([B.WHISKY, B.OLD_WHISKY]), 'Distil grain mash in a distillery, then lay the new spirit down in an oak barrel.', [B.GLASS_BOTTLE, 4]],
     ['contest', 'Blue Ribbon', ach('contest'), 'Win first prize in a festival food contest: the judges love their festival favourites.', [B.COIN, 8]],
   ]],
   ['master', 'Mastery', 7, [

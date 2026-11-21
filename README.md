@@ -413,6 +413,25 @@ The chocolate mould takes melted toffee and honey syrup as well as chocolate. Th
   after three more; curds become **cheese**, and cheese becomes **aged cheese**. Tap a barrel to see how they're
   coming on. Aged things sell for more.
 
+### The distillery
+
+A **distillery** (6 copper ingots, 3 bricks, a glass bottle) is a copper still over a firebox. It burns fuel
+like an oven.
+
+| Make | From |
+| --- | --- |
+| 2 New spirit | 6 wheat or 4 rice + a water bucket + 2 glass bottles (the empty bucket goes in its tray) |
+| Rubbing alcohol | 2 new spirit (you get a bottle back) |
+| Biofuel bucket | 8 plant matter + an empty bucket |
+
+- **Whisky.** New spirit laid down in an oak barrel becomes **whisky** after two days, and **old whisky** after four
+  more. Both warm you through, and old whisky sells for 7 coins at a stall.
+- **Rubbing alcohol.** Craft it with a wool into 3 **bandages**. Tap with one in hand to heal 4 hearts and cure
+  food poisoning.
+- **Biofuel.** Plant matter is seeds, saplings, leaves, sugar cane, cactus, flowers, vegetables, fruit, cocoa
+  pods, coffee cherries or sawdust. A biofuel bucket burns six times as long as coal in a stove, an oven or a
+  steam engine, and you keep the bucket.
+
 ### New crops, cider and berry wine, cellars
 
 - **Onions**, **beans**, **tomatoes** and **herbs** grow from themselves (village farms grow them, and farmers sell
@@ -613,6 +632,17 @@ Place a charge and tap it to light the fuse: 3 seconds later it blows a round ho
 Three quarters of what it breaks comes to you (as if dug with an iron pickaxe) if you're within 24 blocks.
 Charges in the blast go off too. Chests, machines, furniture, obsidian and bedrock are blast-proof. Stand
 well back: the blast hurts anyone within about 5 blocks.
+
+### The carpenter and crates
+
+A **carpenter** (4 planks, 2 logs, 2 iron, a gear) is turned by a shaft, like the other machines.
+- It makes 2 empty **crates** from 4 planks and 2 sticks.
+- It packs 9 of a thing and an empty crate into a **crated** item ("Crated Cobblestone", "Crated Wheat", ...).
+  Crated items stack to 64, so one slot holds 9 stacks.
+- Put a crated item in to unpack it: you get the 9 back, and the empty crate goes in its tray.
+- Most bulk things can be crated: stone, dirt, sand and gravel, logs and planks, ores, ingots and dusts, coal, crops,
+  fruit, flour and sugar, sticks, string, wool and so on. A hopper or a logistics pipe can feed a carpenter, so
+  it can pack a farm's harvest as it comes in.
 
 ### Rubber and polymers
 
@@ -1578,9 +1608,10 @@ guide to how everything works.
 
 ## Version history
 
-- **Version 35**: things that don't fit in a full inventory drop at your feet instead of vanishing, bats can be
-  swatted, bat guano (fuel, saltpetre, fertiliser), tooltips in crafting lists and machine windows, and a fix for
-  the view sometimes spinning round when you move the mouse.
+- **Version 35**: the carpenter and crates (9 of a thing to a crate, 64 crates to a slot), the distillery (whisky,
+  rubbing alcohol and bandages, biofuel), things that don't fit in a full inventory drop at your feet instead of
+  vanishing, bats can be swatted, bat guano (fuel, saltpetre, fertiliser), tooltips in crafting lists and machine
+  windows, and a fix for the view sometimes spinning round when you move the mouse.
 - **Version 34**: pork and chicken from farmed pigs and chickens, cream, ice cream and ice lollies, vinegar and
   pickles, smoking in the chimney, the drying rack, oven dishes (pizza, carrot cake, pumpkin bread, cheesy jacket
   potato), toffee and honey candy in the mould, coffee, rice and chillies and their dishes, treats at the market

@@ -1985,6 +1985,16 @@ function eatCane() {
   renderHealth();
 }
 
+// (v35) A bandage heals 4 hearts and cures food poisoning.
+function useBandage() {
+  if (health >= MAX_HEALTH && !poisoned) { toast('You don\'t need a bandage', 1500); return; }
+  inventory.consumeHeld();
+  health = Math.min(MAX_HEALTH, health + 8);
+  poisoned = 0;
+  sound.pop();
+  toast('You bandage yourself up', 1500);
+  renderHealth();
+}
 function eat(id) {
   if (ITEMS[id]?.drink === 'poison') {
     // drinking slime: you keep the bucket, and get food poisoning
@@ -4001,6 +4011,7 @@ function placeInner() {
     sound.place('leaves'); inventory.consumeHeld(); return;
   }
   const plantsCrop = held && isCrop(ITEMS[held.id]?.places) && target?.ny === 1 && ([GRASS, DIRT].includes(target.id) || (target.id === SAND && BLOCKS[ITEMS[held.id].places].crop.sandy)) && world.get(target.x, target.y + 1, target.z) === AIR;
+  if (held?.id === BANDAGE) { useBandage(); return; }
   if (held && !plantsCrop && (foodValue(held.id) || ITEMS[held.id]?.drink)) { eat(held.id); return; }
   if (held && ITEMS[held.id]?.tea) { drinkTea(held.id); return; }
   if (held?.id === PORTABLE_LAMP) { switchHandLamp(held); return; }
@@ -5823,7 +5834,9 @@ function placeHouse({ x, y, z, door }) {
 // building stuff cheaply.
 function stallPrice(id) {
   if (isFine(id)) return [1, 4]; // (v28: the pick of the harvest)
-  if (id === FINE_WINE || id === AGED_CHEESE || id === PEARL || id === VINTAGE_CIDER || id === FINE_BERRY_WINE) return [1, 6]; // the best things villagers can buy
+  if (id === FINE_WINE || id === AGED_CHEESE || id === PEARL || id === VINTAGE_CIDER || id === FINE_BERRY_WINE) return [1, 6];
+  if (id === OLD_WHISKY) return [1, 7]; // (v35)
+  if (id === WHISKY) return [1, 4]; // the best things villagers can buy
   if (id === WINE || id === CHEESE || id === CIDER || id === BERRY_WINE) return [1, 3];
   if (ITEMS[id]?.treat) return [1, 3]; // (v34) villagers love a treat
   const food = foodValue(id);
@@ -7066,7 +7079,7 @@ apiculture.onYoung = (x, y, z, sp, mate, kids) => {
 
 // ---------- v32: tree taps ----------
 import { CHOC_MOULD, CHOC_CAKE, CAKE_SLICES, MOULD_BARS, MELTED_CHOC, CHOC_BAR, MOULD_FILLS, mouldFill } from './blocks.js';
-import { FESTIVAL_FAVOURITES, contestScore, GUANO } from './blocks.js';
+import { FESTIVAL_FAVOURITES, contestScore, GUANO, BANDAGE, WHISKY, OLD_WHISKY } from './blocks.js';
 import { TREE_TAP, LATEX, MAX_LATEX, POLYMER_BOAT, DEMO_CHARGE, DETONATOR, DEMO_RADIUS, DETONATOR_LINKS, DETONATOR_RANGE } from './blocks.js';
 // Tapping a tree tap takes the latex in it.
 function useTap(x, y, z, tid) {

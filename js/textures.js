@@ -2600,7 +2600,7 @@ function drawIsoModel(ctx, atlas, model) {
 
 // Returns { id: dataURL } for every block and item.
 export function createIcons(atlas) {
-  const icons = {};
+  const icons = {}, canvases = {};
   for (const def of BLOCKS) {
     if (!def || !isBlock(def.id) || def.shape === 'torch' || def.shape === 'kinetic' || def.shape === 'pipe' || def.shape === 'lpipe') continue; // (those have painted icons)
     if (def.model && ITEM_PAINTERS[def.id]) continue;
@@ -2617,6 +2617,7 @@ export function createIcons(atlas) {
       drawIsoBlock(ctx, atlas, def);
     }
     icons[def.id] = c.toDataURL();
+    canvases[def.id] = c;
   }
   for (const [id, paint] of Object.entries(ITEM_PAINTERS)) {
     const small = document.createElement('canvas');
@@ -2628,6 +2629,20 @@ export function createIcons(atlas) {
     ctx.imageSmoothingEnabled = false;
     ctx.drawImage(small, 0, 0, 64, 64);
     icons[id] = c.toDataURL();
+    canvases[id] = c;
+  }
+  // (v35) crated items: a crate with what's inside drawn on its front
+  for (const [cid, inner] of Object.entries(CRATED)) {
+    const small = document.createElement('canvas');
+    small.width = small.height = 16;
+    paintCrateBox(small.getContext('2d'));
+    const c = document.createElement('canvas');
+    c.width = c.height = 64;
+    const ctx = c.getContext('2d');
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(small, 0, 0, 64, 64);
+    if (canvases[inner]) ctx.drawImage(canvases[inner], 14, 16, 36, 36);
+    icons[cid] = c.toDataURL();
   }
   return icons;
 }
@@ -3451,4 +3466,35 @@ import { GUANO } from './blocks.js';
 ITEM_PAINTERS[GUANO] = (ctx) => {
   for (const [cx, cy, r] of [[6, 10, 3.2], [10, 11, 2.6], [8, 7, 2.4]]) blob(ctx, cx, cy, r, r * 0.8, [92, 80, 62], [64, 54, 42]);
   for (const [x, y] of [[5, 9], [9, 6], [11, 10]]) px(ctx, x, y, [210, 204, 186]);
+};
+
+// ---------- v35: the carpenter, crates and the distillery ----------
+import { CRATED, CRATE, NEW_SPIRIT, WHISKY, OLD_WHISKY, RUBBING_ALCOHOL, BIOFUEL_BUCKET, BANDAGE } from './blocks.js';
+P[T.CARP_SIDE] = (t) => { // a timber frame with a saw blade showing
+  for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+    const frame = x < 2 || x > 13 || y < 2 || y > 13, d = Math.hypot(x - 7.5, y - 8.5);
+    t.set(x, y, frame ? t.vary([110, 74, 40], 0.06) : d < 1.2 ? [60, 60, 66] : d < 4.5 ? ((Math.atan2(y - 8.5, x - 7.5) * 4 / Math.PI) & 1 ? [200, 204, 210] : [160, 164, 172]) : t.vary([176, 132, 80], 0.05));
+  }
+};
+P[T.CARP_TOP] = (t) => {
+  for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) t.set(x, y, y === 7 || y === 8 ? (x > 2 && x < 13 ? [190, 194, 200] : [80, 56, 30]) : t.vary(y % 4 === 0 ? [140, 100, 58] : [176, 132, 80], 0.05));
+};
+P[T.STILL_COPPER] = (t) => { for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) t.set(x, y, t.vary((x + y * 3) % 11 === 0 ? [240, 170, 110] : y % 5 === 0 ? [170, 90, 50] : [206, 120, 70], 0.05)); };
+const crateBox = (ctx) => {
+  for (let y = 2; y < 15; y++) for (let x = 1; x < 15; x++) {
+    const edge = x < 3 || x > 12 || y < 4 || y > 12, slat = y === 8;
+    px(ctx, x, y, edge ? [120, 82, 44] : slat ? [150, 106, 60] : (x + y) % 5 === 0 ? [170, 122, 70] : [190, 140, 84]);
+  }
+  for (const [x, y] of [[2, 3], [13, 3], [2, 13], [13, 13]]) px(ctx, x, y, [80, 80, 86]); // nails
+};
+ITEM_PAINTERS[CRATE] = crateBox;
+export const paintCrateBox = crateBox; // (the crated items: see createIcons)
+ITEM_PAINTERS[NEW_SPIRIT] = bottleOf([226, 232, 240], false);
+ITEM_PAINTERS[WHISKY] = bottleOf([200, 130, 50], false);
+ITEM_PAINTERS[OLD_WHISKY] = bottleOf([150, 80, 30], false);
+ITEM_PAINTERS[RUBBING_ALCOHOL] = (ctx) => { bottleOf([150, 210, 240], false)(ctx); rect(ctx, 6, 9, 4, 2, [240, 60, 50]); px(ctx, 7, 8, [240, 60, 50]); px(ctx, 7, 11, [240, 60, 50]); };
+ITEM_PAINTERS[BIOFUEL_BUCKET] = bucketPainter([140, 190, 60]);
+ITEM_PAINTERS[BANDAGE] = (ctx) => {
+  for (let y = 4; y < 12; y++) for (let x = 2; x < 14; x++) px(ctx, x, y, (x + y) % 3 === 0 ? [226, 222, 210] : [246, 244, 236]);
+  rect(ctx, 6, 6, 4, 4, [230, 60, 50]); rect(ctx, 7, 5, 2, 6, [230, 60, 50]); rect(ctx, 5, 7, 6, 2, [230, 60, 50]);
 };
