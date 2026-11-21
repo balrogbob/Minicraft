@@ -640,6 +640,7 @@ A **carpenter** (4 planks, 2 logs, 2 iron, a gear) is turned by a shaft, like th
 - It packs 9 of a thing and an empty crate into a **crated** item ("Crated Cobblestone", "Crated Wheat", ...).
   Crated items stack to 64, so one slot holds 9 stacks.
 - Put a crated item in to unpack it: you get the 9 back, and the empty crate goes in its tray.
+- You can also unpack a crated item by hand at the crafting grid, but the crate breaks.
 - Most bulk things can be crated: stone, dirt, sand and gravel, logs and planks, ores, ingots and dusts, coal, crops,
   fruit, flour and sugar, sticks, string, wool and so on. A hopper or a logistics pipe can feed a carpenter, so
   it can pack a farm's harvest as it comes in.

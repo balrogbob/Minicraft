@@ -3339,7 +3339,7 @@ RECIPES.push(
 // ---------- v35: the carpenter and crates ----------
 // The carpenter is turned by a shaft. It makes empty crates from planks and sticks, packs 9 of a bulk item and an
 // empty crate into a crated item (which stacks to 64, so a slot holds 9 stacks), and unpacks a crated item again,
-// giving the empty crate back in its tray. Every bulk thing has its own crated item, listed in CRATED (id -> what's
+// giving the empty crate back in its tray. You can also unpack one by hand, but the crate breaks. Every bulk thing has its own crated item, listed in CRATED (id -> what's
 // inside); their icons are a crate with the item on it (see createIcons).
 export const CARPENTER = 1529, CRATE = 3236, CRATED_BASE = 3300;
 block(CARPENTER, { ...machine, sound: 'wood', tool: 'axe', name: 'Carpenter', station: 'carpenter', side: T.CARP_SIDE, top: T.CARP_TOP, bottom: T.PLANKS, stationBase: CARPENTER, machine: { load: 2 } });
@@ -3357,7 +3357,9 @@ let crateN = 0;
 for (const id of new Set(CRATEABLE.filter((i) => i && (ITEMS[i] || BLOCKS[i]) && maxStack(i) === 64))) {
   const cid = CRATED_BASE + crateN++;
   CRATED[cid] = id; CRATE_OF[id] = cid;
-  ITEMS[cid] = { name: `Crated ${itemName(id)}`, crated: id, about: `9 × ${itemName(id)}: unpack it in a carpenter` };
+  ITEMS[cid] = { name: `Crated ${itemName(id)}`, crated: id, about: `9 × ${itemName(id)}: a carpenter unpacks it and keeps the crate; by hand the crate breaks` };
+  // unpacking by hand breaks the crate (only listed once you have one of these: see `metal` in the recipe list)
+  RECIPES.push({ out: [id, 9], in: [[cid, 1]], metal: cid });
 }
 
 // ---------- v35: the distillery ----------
