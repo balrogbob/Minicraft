@@ -238,6 +238,8 @@ scene.add(avatar.root);
 // v38: multiplayer (see net.js, and server/server.js)
 const net = new Net({ scene, atlas, icons: icons.canvases, ITEMS, on: {
   welcome: (m) => mpWelcome(m), block: (x, y, z, id) => mpBlock(x, y, z, id), chat: (name, text, mine) => addChat(name, text, mine),
+  host: (me, name) => { if (me && weather.timer > 1e6) weather.timer = 120 + Math.random() * 300; addChat(null, me ? 'You are now the host: your game keeps the time, weather and creatures for everyone' : `${name ?? 'Someone'} is now the host`); clockTimer = 0; },
+  clock: (c) => applyClock(c),
   join: (name) => addChat(null, `${name} joined`), leave: (name) => addChat(null, `${name} left`), status: (st, why) => mpStatus(st, why),
 } });
 let viewMode = 0; // 0 first person, 1 behind you, 2 facing you
@@ -2268,6 +2270,7 @@ async function napThroughStorm() {
   const skip = Math.min(0.12, 0.46 - sky.time);
   sky.time += skip;
   weather.set(false);
+  if (net.isHost) sendClock('slept');
   const secs = skip * DAY_LENGTH;
   stations.tick(secs, world, setStationLit, powerAt, boostAt, crafterRecipe);
   apiculture.tick(secs, stations, world, beeEnv);
@@ -2290,6 +2293,7 @@ async function sleepUntilMorning() {
   sky.time = 0.001;
   day++;
   caneToday = 0;
+  if (net.isHost) sendClock('slept');
   stations.tick(skipped, world, setStationLit, powerAt, boostAt, crafterRecipe);
   apiculture.tick(skipped, stations, world, nightEnv); // (night bees work while you sleep)
   tickLamps(skipped);
@@ -4987,6 +4991,8 @@ async function mpWelcome(m) {
   $('mp').classList.add('hidden'); $('menu').classList.add('hidden');
   await startWorld(save);
   applyPending(true);
+  if (m.clock && !net.isHost) applyClock({ ...m.clock, why: 'join' });
+  if (net.isHost && m.clock) { sky.time = m.clock.time; day = Math.max(1, m.clock.day | 0); weather.set(m.clock.raining, Math.max(10, m.clock.timer || 60), m.clock.storm); applySeason(); }
   toast(`Joined the server${net.remotes.size ? ` (${net.remotes.size} other${net.remotes.size === 1 ? '' : 's'} here)` : ''}. Press ${keyLabel(controls.binds.chat)} to chat.`, 3500);
   renderMp();
 }
@@ -5022,7 +5028,37 @@ function applyPending(now = false) {
     pendingEdits.delete(k);
   }
 }
+// The host's game keeps the clock and the weather and sends them every couple of seconds (and at once when
+// something changes); everyone else follows. (Each game still moves its own sun smoothly in between.)
+let clockTimer = 0, lastClock = '';
+function sendClock(why = '') {
+  net.send({ t: 'clock', time: sky.time, day, raining: weather.raining, storm: !!weather.storm, timer: weather.timer, why });
+  lastClock = `${day},${weather.raining},${!!weather.storm}`;
+  clockTimer = 2;
+}
+function applyClock(c) {
+  if (activeSlot !== MP_SLOT || !worldReady || net.isHost) return;
+  const ahead = c.at ? Math.min(5, Math.max(0, (Date.now() - c.at) / 1000)) / DAY_LENGTH : 0; // (time on its way)
+  const t = (c.time + ahead) % 1;
+  let dt = t - sky.time; if (dt > 0.5) dt -= 1; if (dt < -0.5) dt += 1;
+  if (Math.abs(dt) > 0.002 || c.why) sky.time = t;
+  if (c.day !== day) {
+    const was = day;
+    day = Math.max(1, c.day | 0); caneToday = 0;
+    if (day > was) { const turned = seasonOf(day) !== seasonOf(was); toast(turned ? `Day ${day}: ${SEASONS[seasonOf(day)].arrives}` : `Day ${day}`, turned ? 4000 : 2500); }
+    applySeason();
+  }
+  if (c.raining !== weather.raining || !!c.storm !== !!weather.storm) weather.set(c.raining, 1e9, c.storm);
+  else weather.timer = 1e9; // (only the host's weather changes by itself)
+  if (c.why === 'slept') toast('The night was slept through', 2000);
+}
+function tickClock(dt) {
+  if (!net.isHost || activeSlot !== MP_SLOT || !worldReady) return;
+  const now = `${day},${weather.raining},${!!weather.storm}`;
+  if ((clockTimer -= dt) <= 0 || now !== lastClock) sendClock();
+}
 function tickNet(dt) {
+  tickClock(dt);
   if ((pendingTimer -= dt) <= 0) { pendingTimer = 0.4; applyPending(); }
   const p = player.pos;
   net.update(dt, net.live && activeSlot === MP_SLOT && !dead ? {

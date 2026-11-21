@@ -33,6 +33,7 @@ export class Net {
     this.live = false; // connected and welcomed
     this.id = 0;
     this.worldId = null;
+    this.host = 0; // the player whose game runs the clock, the weather, growth and creatures
     this.url = '';
     this.remotes = new Map(); // id -> { name, look, avatar, tag, pos, target, yaw, pitch, held, sw, sp, g }
     this.capture = 0; // > 0 while you're placing or breaking: the blocks that change are sent on
@@ -60,22 +61,26 @@ export class Net {
 
   leave(quiet = false) {
     const ws = this.ws;
-    this.ws = null; this.live = false; this.id = 0;
+    this.ws = null; this.live = false; this.id = 0; this.host = 0;
     if (ws) { try { ws.close(); } catch { /* already gone */ } }
     this.clearRemotes();
     if (!quiet) this.d.on.status?.('left');
   }
+
+  get isHost() { return this.live && this.host === this.id; }
 
   send(obj) { if (this.ws?.readyState === 1) this.ws.send(JSON.stringify(obj)); }
 
   handle(m) {
     switch (m.t) {
       case 'welcome':
-        this.live = true; this.id = m.id; this.worldId = m.world;
+        this.live = true; this.id = m.id; this.worldId = m.world; this.host = m.host;
         for (const p of m.players ?? []) this.addRemote(p.id, p.name, p.look, p.state);
         this.d.on.welcome?.(m);
         this.d.on.status?.('open');
         break;
+      case 'host': this.host = m.id; this.d.on.host?.(m.id === this.id, this.remotes.get(m.id)?.name); break;
+      case 'clock': this.d.on.clock?.(m); break;
       case 'full': this.d.on.status?.('full'); break;
       case 'join': this.addRemote(m.id, m.name, m.look); this.d.on.join?.(m.name); break;
       case 'leave': { const r = this.remotes.get(m.id); if (r) { this.d.on.leave?.(r.name); this.removeRemote(m.id); } break; }

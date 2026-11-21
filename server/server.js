@@ -28,7 +28,7 @@ const WORLD_H = 256; // (above the game's world height; the game ignores anythin
 let world = { seed: Number.isFinite(+process.env.SEED) && process.env.SEED !== undefined ? +process.env.SEED | 0 : (Math.random() * 2 ** 31) | 0, id: crypto.randomBytes(6).toString('hex'), edits: {} };
 try {
   const saved = JSON.parse(fs.readFileSync(DATA, 'utf8'));
-  if (Number.isFinite(saved.seed) && saved.edits && typeof saved.edits === 'object') world = { seed: saved.seed, id: saved.id || world.id, edits: saved.edits };
+  if (Number.isFinite(saved.seed) && saved.edits && typeof saved.edits === 'object') world = { ...saved, seed: saved.seed, id: saved.id || world.id, edits: saved.edits };
   console.log(`Loaded ${DATA}: seed ${world.seed}, ${Object.keys(world.edits).length} changed blocks`);
 } catch { console.log(`New world, seed ${world.seed} (it will be saved to ${DATA})`); }
 let editCount = Object.keys(world.edits).length, dirty = false;
@@ -118,6 +118,17 @@ const num = (v, lo, hi) => (Number.isFinite(v) ? Math.max(lo, Math.min(hi, v)) :
 const LOOK_KEYS = ['skin', 'hair', 'shirt', 'trousers'];
 const cleanLook = (l) => Object.fromEntries(LOOK_KEYS.map((k) => [k, Math.max(0, Math.min(31, (l?.[k] | 0)))]));
 function others(id, msg) { for (const [pid, p] of players) if (pid !== id && p.hello) p.ws.send(msg); }
+function everyone(msg) { for (const p of players.values()) if (p.hello) p.ws.send(msg); }
+// The host is whoever has been here longest: their game runs the clock, the weather, things growing and the
+// creatures, and tells everyone else. When they leave, the next longest takes over.
+let hostId = 0;
+function electHost() {
+  const ids = [...players].filter(([, p]) => p.hello).map(([id]) => id).sort((a, b) => a - b);
+  const next = ids[0] ?? 0;
+  if (next === hostId) return;
+  hostId = next;
+  if (hostId) { everyone({ t: 'host', id: hostId }); console.log(`${players.get(hostId).name} is now the host`); }
+}
 
 function join(ws) {
   if (players.size >= MAX_PLAYERS) { ws.send({ t: 'full' }); ws.close(1013); return; }
@@ -135,6 +146,7 @@ function join(ws) {
   ws.onclose = () => {
     players.delete(id);
     if (me.hello) { others(id, { t: 'leave', id }); console.log(`${me.name} left (${players.size} playing)`); }
+    if (id === hostId) { hostId = 0; electHost(); }
   };
 }
 
@@ -146,7 +158,8 @@ function handle(id, me, m) {
       me.name = clean(m.name, 20) || me.name;
       me.look = cleanLook(m.look);
       const edits = Object.entries(world.edits).map(([k, v]) => { const [x, y, z] = k.split(',').map(Number); return [x, y, z, v]; });
-      me.ws.send({ t: 'welcome', id, seed: world.seed, world: world.id, edits, players: [...players].filter(([pid, p]) => pid !== id && p.hello).map(([pid, p]) => ({ id: pid, name: p.name, look: p.look, state: p.state })) });
+      if (!hostId) hostId = id;
+      me.ws.send({ t: 'welcome', id, host: hostId, clock: world.clock ?? null, seed: world.seed, world: world.id, edits, players: [...players].filter(([pid, p]) => pid !== id && p.hello).map(([pid, p]) => ({ id: pid, name: p.name, look: p.look, state: p.state })) });
       others(id, { t: 'join', id, name: me.name, look: me.look });
       console.log(`${me.name} joined (${players.size} playing)`);
       break;
@@ -175,6 +188,13 @@ function handle(id, me, m) {
       if (!text) return;
       console.log(`<${me.name}> ${text}`);
       for (const p of players.values()) if (p.hello) p.ws.send({ t: 'chat', id, name: me.name, text });
+      break;
+    }
+    case 'clock': { // (from the host only) the time of day, the day, the weather
+      if (id !== hostId) return;
+      const c = { time: num(m.time, 0, 1) ?? 0, day: Math.max(1, m.day | 0), raining: !!m.raining, storm: !!m.storm, timer: num(m.timer, 0, 1e5) ?? 60, at: Date.now() };
+      world.clock = c; dirty = true;
+      others(id, { t: 'clock', ...c, why: clean(m.why, 12) });
       break;
     }
     case 'swing': if (me.hello) others(id, { t: 'swing', id }); break;
