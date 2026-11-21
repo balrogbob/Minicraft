@@ -2644,6 +2644,7 @@ export function createIcons(atlas) {
     if (canvases[inner]) ctx.drawImage(canvases[inner], 14, 16, 36, 36);
     icons[cid] = c.toDataURL();
   }
+  Object.defineProperty(icons, 'canvases', { value: canvases }); // (v38: held items are modelled from these)
   return icons;
 }
 

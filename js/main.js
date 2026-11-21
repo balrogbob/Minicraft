@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { Viewmodel, Avatar, LOOKS, randomLook } from './held.js';
 import { Graphics, GFX_DEFAULTS, GFX_NAMES, GFX_TOGGLES, SHADOW_LEVELS, MAX_TORCH_SHADOWS, gfxUniforms, GFX_FRAG_HEAD, GFX_SUN_TERM, GFX_WATER, GFX_VERT_HEAD, GFX_VERT_DECODE, GFX_VERT_SWAY, WATER_LAYER, LATE_LAYER } from './graphics.js';
 import {
   BLOCKS, RECIPES, TABLE, AIR, WATER, TORCH, TORCH_WALL_W, WALL_TORCH_DIRS,
@@ -38,7 +39,7 @@ import {
 import { Smoke } from './smoke.js';
 import { Fireworks } from './fireworks.js';
 import { createAtlas, createIcons, createCrackCanvases, createWaterCanvas, createHudIcons, paintSeason } from './textures.js';
-import { World, CHUNK, WORLD_SIZE, chunkKey } from './world.js';
+import { World, CHUNK, WORLD_SIZE, chunkKey, skyBrightness, lightBrightness } from './world.js';
 import { localIndex, CHUNK_VOLUME, H, SEA_LEVEL } from './terrain.js';
 import { ChunkStore } from './store.js';
 import { buildLegacyWorld, LEGACY_W } from './legacy.js';
@@ -102,6 +103,7 @@ const settings = (() => {
   s.fov = Math.max(50, Math.min(110, +s.fov || 72));
   if (!s.keys || typeof s.keys !== 'object') s.keys = {};
   if (!Array.isArray(s.pins)) s.pins = [];
+  if (!s.look || typeof s.look !== 'object') s.look = randomLook(); // (v38: how your character looks)
   s.gfx = { ...GFX_DEFAULTS, ...(s.gfx && typeof s.gfx === 'object' ? s.gfx : {}) };
   s.gfx.torches = Math.max(0, Math.min(MAX_TORCH_SHADOWS, s.gfx.torches | 0));
   s.gfx.torchRate = Math.max(1, Math.min(MAX_TORCH_SHADOWS, s.gfx.torchRate | 0 || 2));
@@ -222,6 +224,47 @@ for (const ev of ['touchstart', 'pointerdown', 'keydown']) {
 }
 
 const icons = createIcons(atlasCanvas);
+// (v38) what's in your hand, and you yourself (photo mode, third-person view)
+const viewmodel = new Viewmodel(atlas, icons.canvases, ITEMS);
+viewmodel.setLook(settings.look);
+const avatar = new Avatar(settings.look, atlas, icons.canvases, ITEMS);
+avatar.root.visible = false;
+scene.add(avatar.root);
+let viewMode = 0; // 0 first person, 1 behind you, 2 facing you
+const VIEW_NAMES = ['First person', 'Third person (behind)', 'Third person (front)'];
+function swingArm() { viewmodel.swing(); avatar.swing(); }
+// how bright it is where you stand (for your arm, what you hold, and your character)
+function lightHere() {
+  const x = Math.floor(player.pos.x), y = Math.min(H - 1, Math.floor(player.pos.y + 1.2)), z = Math.floor(player.pos.z);
+  return {
+    sun: lightUniforms.uDay.value * skyBrightness(world.skyAt(x, y, z)),
+    torch: Math.max(lightBrightness(world.lightAt(x, y, z)) * lightUniforms.uFlicker.value, lightUniforms.uHand.value.w * 0.9),
+    ambient: lightUniforms.uAmbient.value,
+  };
+}
+// place the camera behind (or in front of) you, pulled in where a wall is in the way
+function thirdPersonCamera(eye) {
+  const d = player.lookDir();
+  const back = viewMode === 1 ? d.clone().negate() : d.clone();
+  let dist = 4;
+  for (let t = 0.3; t <= 4; t += 0.1) {
+    const p = eye.clone().addScaledVector(back, t);
+    if (world.isSolid(Math.floor(p.x), Math.floor(p.y), Math.floor(p.z))) { dist = Math.max(0.3, t - 0.3); break; }
+  }
+  camera.position.copy(eye).addScaledVector(back, dist);
+  camera.lookAt(eye);
+}
+function updateMe(dt) {
+  const held = inventory.heldId();
+  viewmodel.setItem(held);
+  avatar.setHeld(held);
+  const light = lightHere();
+  const speed = Math.hypot(player.vel.x, player.vel.z);
+  const swimming = player.inWater && !player.onGround && !riding && !ridingMob;
+  avatar.root.visible = !dead && (photoMode || viewMode > 0);
+  if (avatar.root.visible) avatar.update(dt, { pos: player.pos, yaw: player.yaw, pitch: player.pitch, speed, swimming, onGround: player.onGround, light });
+  viewmodel.update(dt, { moving: Math.min(1, speed / 4.3), onGround: player.onGround, swimming, aspect: camera.aspect, light });
+}
 const mobs = new MobManager(scene, sound);
 const arrows = new ArrowManager(scene, sound);
 const fishing = new Fishing(scene, sound);
@@ -1983,6 +2026,7 @@ function hitMob() {
     const now = performance.now();
     if (now - lastSwing < (isSword(inventory.heldId()) ? 300 : 450)) return; // swords swing quicker
     lastSwing = now;
+    swingArm();
     const held = inventory.held(), m = targetMob.mob;
     const dmg = (WEAPON_DAMAGE[inventory.heldId()] ?? ITEMS[inventory.heldId()]?.tool?.damage ?? 2) + (hasEnch(held, 'keen') ? 3 : 0);
     if (hasEnch(held, 'flame') && !m.spec.burns) m.burning = 4;
@@ -2045,6 +2089,7 @@ function useBandage() {
   renderHealth();
 }
 function eat(id) {
+  viewmodel.eat();
   if (ITEMS[id]?.drink === 'poison') {
     // drinking slime: you keep the bucket, and get food poisoning
     inventory.consumeHeld();
@@ -4550,7 +4595,7 @@ function updateBreaking(dt) {
   if (creative) breakState.progress += dt / 0.12; // creative: everything breaks at once (one block every so often)
   else breakState.progress += dt * (effects.haste > 0 ? 1.5 : 1) * (hasEnch(inventory.held(), 'swift') ? 1.4 : 1) / Math.max(t, 0.05);
   breakState.tick = (breakState.tick || 0) - dt;
-  if (breakState.tick <= 0) { sound.dig(BLOCKS[target.id].sound); breakState.tick = 0.24; }
+  if (breakState.tick <= 0) { sound.dig(BLOCKS[target.id].sound); breakState.tick = 0.24; swingArm(); }
   if (breakState.progress >= 1) {
     const hit = target;
     breakBlock(target.x, target.y, target.z);
@@ -4801,6 +4846,22 @@ updateBreakLabel();
 $('btn-break').addEventListener('click', () => { settings.doubleTap = !settings.doubleTap; controls.doubleTapBreak = settings.doubleTap; updateBreakLabel(); saveSettings(); });
 function updateTipsLabel() { $('btn-tips').textContent = `Tooltips: ${settings.tips ? 'on' : 'off'}`; }
 updateTipsLabel();
+// (v38) your character's colours: each button steps through its part's colours
+function updateLookButtons() {
+  for (const part of Object.keys(LOOKS)) {
+    const b = $(`btn-look-${part}`);
+    const c = LOOKS[part][settings.look[part] % LOOKS[part].length];
+    if (b) b.style.boxShadow = `inset 0 -6px 0 #${c.toString(16).padStart(6, '0')}`;
+  }
+}
+for (const part of Object.keys(LOOKS)) {
+  $(`btn-look-${part}`)?.addEventListener('click', () => {
+    settings.look[part] = ((settings.look[part] ?? 0) + 1) % LOOKS[part].length;
+    avatar.setLook(settings.look); viewmodel.setLook(settings.look);
+    updateLookButtons(); saveSettings();
+  });
+}
+updateLookButtons();
 function updateGfxLabels() {
   const g = settings.gfx;
   $('btn-gfx-shadows').textContent = `Sun shadows: ${SHADOW_LEVELS[g.shadows]}`;
@@ -4892,7 +4953,8 @@ controls = null;
   // Player must exist before Controls; startWorld gives it the real world.
   player = new Player(null);
   controls = new Controls($('touch-layer'), player, {
-    place,
+    place: () => { swingArm(); return place(); },
+    toggleView: () => { if (photoMode || dead) return; viewMode = (viewMode + 1) % 3; toast(VIEW_NAMES[viewMode], 1000); },
     selectSlot,
     scrollSlot: (d) => selectSlot((inventory.selected + d + 9) % 9),
     toggleInventory,
@@ -6927,6 +6989,7 @@ function frame(now) {
   gfx.sunDir.copy(sky.sunDir); gfx.overcast = weather?.overcast ?? 0; gfx.underwater = !!player.eyeInWater;
   try { findWaterLevel(dt); } catch (err) { reportError(err); }
   gfx.render(scene, camera);
+  if (viewMode === 0 && !photoMode && !dead) viewmodel.render(renderer);
   updatePerf(now);
 }
 
@@ -7055,6 +7118,8 @@ function stepGame(now, dt) {
   const eye = player.eye;
   camera.position.copy(photoMode ? photoCam : eye);
   camera.rotation.set(player.pitch, player.yaw, 0);
+  if (!photoMode && viewMode > 0) thirdPersonCamera(eye);
+  try { updateMe(paused ? 0 : dt); } catch (err) { reportError(err); }
 
   const biome = world.generator.biomeAt(Math.floor(player.pos.x), Math.floor(player.pos.z));
   // in winter it snows rather than rains in temperate land
@@ -7111,7 +7176,7 @@ if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').ca
 
 // expose for debugging in the console
 window.minicraft = {
-  gfx,
+  gfx, viewmodel, avatar, swingArm, get viewMode() { return viewMode; },
   get world() { return world; }, player, inventory, saveGame, sky, sound, breakBlock, mobs,
   get hunger() { return hunger; }, set hunger(v) { hunger = v; renderHunger(); },
   get day() { return day; },
