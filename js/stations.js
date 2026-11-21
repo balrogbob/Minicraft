@@ -269,6 +269,7 @@ const key = (x, y, z) => `${x},${y},${z}`;
 export class Stations {
   constructor() {
     this.map = new Map(); // "x,y,z" -> station state
+    this.owns = null; // (x, z) -> does this game run the station there (v39: multiplayer)
     this.chosen = new Map(); // auto-crafter "x,y,z" -> the recipe its frame shows (worked out each tick)
   }
 
@@ -375,6 +376,7 @@ export class Stations {
     for (const [k, st] of this.map) {
       const [x, y, z] = k.split(',').map(Number);
       if (!world.chunkAt(x, z)) continue;
+      if (this.owns && !this.owns(x, z)) continue; // (v39: in multiplayer, the nearest player's game runs it)
       const id = world.get(x, y, z);
       if (stationKind(id) !== st.kind) { this.map.delete(k); continue; }
       const K = STATION_KINDS[st.kind];
@@ -445,8 +447,15 @@ export class Stations {
 
   load(list) {
     this.map.clear();
-    for (const [k, st] of list ?? []) {
-      if (typeof k !== 'string' || !STATION_KINDS[st?.kind]) continue;
+    for (const [k, st] of list ?? []) this.setOne(k, st);
+  }
+
+  // v39: one station's contents, as saved or as another player's game sent them (null: it's gone).
+  setOne(k, st) {
+    if (typeof k !== 'string') return;
+    if (st === null) { this.map.delete(k); return; }
+    {
+      if (!STATION_KINDS[st?.kind]) return;
       const clean = (s) => (s && s.id && s.count > 0 ? { id: s.id, count: s.count, ...(s.wear > 0 ? { wear: s.wear } : {}), ...(Array.isArray(s.ench) && s.ench.length ? { ench: s.ench } : {}), ...(s.on === true ? { on: true } : {}), ...(s.pack > 0 ? { pack: Math.floor(s.pack) } : {}) } : null);
       const n = STATION_KINDS[st.kind].inputs;
       this.map.set(k, {

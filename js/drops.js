@@ -20,7 +20,17 @@ export class ItemDrops {
   constructor(scene, makeSprite) {
     this.scene = scene;
     this.makeSprite = makeSprite;
-    this.items = []; // { stack: { id, count, wear?, ench? }, pos, vel, age, delay, catchT, spin, sprite, ground }
+    this.items = []; // { stack: { id, count, wear?, ench? }, pos, vel, age, delay, catchT, spin, sprite, ground, uid? }
+    // v39 multiplayer: an item with a uid is shared. Picking one up (or a belt or hopper taking it) first asks
+    // the server, and only the first to ask gets it: share() says whether that applies now, onTake(it) asks,
+    // and owns(x, z) says whether this game runs the machines there.
+    this.share = null; this.onTake = null; this.owns = null;
+  }
+
+  ask(it, to = null) {
+    it.asked = performance.now() + 5000; it.to = to;
+    it.sprite.visible = false;
+    this.onTake?.(it);
   }
 
   // Put a stack into the world at pos (a Vector3 or {x, y, z}) moving at vel; nobody can pick it up for `delay` s.
@@ -76,7 +86,9 @@ export class ItemDrops {
   //          light: { day, flicker, ambient } }
   update(dt, world, hooks) {
     const time = performance.now() / 1000;
+    const shared = !!this.share?.();
     for (const it of [...this.items]) {
+      if (it.asked) { if (performance.now() < it.asked) continue; it.asked = 0; it.sprite.visible = true; } // (no answer: try again)
       it.age += dt;
       if (it.age > LIFETIME) { this.remove(it); continue; }
       const p = it.pos, v = it.vel;
@@ -106,20 +118,25 @@ export class ItemDrops {
         for (const by of [Math.floor(p.y + 0.01), Math.floor(p.y - 0.05)]) {
           const def = BLOCKS[world.get(bx, by, bz)];
           if (!def?.belt && !def?.hopper && !def?.elevator) continue;
+          if (shared && it.uid) { if (this.owns?.(bx, bz)) this.ask(it, [bx, by, bz, def.belt ? 1 : it.stack.count]); break; }
           const took = hooks.insert(bx, by, bz, it.stack, def.belt ? 1 : it.stack.count); // (with its wear and charge)
           if (took > 0) it.stack.count -= took;
           break;
         }
         if (it.stack.count <= 0) { this.remove(it); continue; }
+        if (it.asked) continue;
       }
 
       // walk over it to pick it up
       const pl = hooks.player.pos;
       if (it.age >= it.delay && Math.hypot(pl.x - p.x, pl.z - p.z) < PICKUP_REACH && p.y > pl.y - 0.8 && p.y < pl.y + 1.9) {
+        if (shared && it.uid) { if (hooks.canTake?.(it.stack) !== false) { this.ask(it); continue; } }
+        else {
         const took = hooks.pickup(it.stack);
         if (took > 0) {
           it.stack.count -= took;
           if (it.stack.count <= 0) { this.remove(it); continue; }
+        }
         }
       }
 

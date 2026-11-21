@@ -79,7 +79,7 @@ import { Logic } from './logic.js';
 
 // v2 = the 16k x 16k streaming world (player state here, edited chunks in IndexedDB).
 // v1 = the old 128 x 128 world, migrated into the middle of the big world on first launch.
-const GAME_VERSION = '38'; // shown in the menu; bump with each release
+const GAME_VERSION = '39'; // shown in the menu; bump with each release
 const SAVE_KEY = 'minicraft-save-v2';
 const LEGACY_SAVE_KEY = 'minicraft-save-v1';
 const SETTINGS_KEY = 'minicraft-settings-v1';
@@ -238,6 +238,11 @@ scene.add(avatar.root);
 // v38: multiplayer (see net.js, and server/server.js)
 const net = new Net({ scene, atlas, icons: icons.canvases, ITEMS, on: {
   welcome: (m) => mpWelcome(m), block: (x, y, z, id) => mpBlock(x, y, z, id), chat: (name, text, mine) => addChat(name, text, mine),
+  host: (me, name) => { if (me && weather.timer > 1e6) weather.timer = 120 + Math.random() * 300; addChat(null, me ? 'You are now the host: your game keeps the time and weather for everyone' : `${name ?? 'Someone'} is now the host`); clockTimer = 0; },
+  clock: (c) => applyClock(c),
+  kv: (ch, k, v) => applyKv(ch, k, v),
+  mobs: (from, l, g) => { if (worldReady && activeSlot === MP_SLOT) mobs.netIn(from, l, g); },
+  drop: (m) => netDrop(m), got: (u) => netGot(u), gone: (u) => netGone(u), beds: (n, of, go) => netBeds(n, of, go),
   join: (name) => addChat(null, `${name} joined`), leave: (name) => addChat(null, `${name} left`), status: (st, why) => mpStatus(st, why),
 } });
 let viewMode = 0; // 0 first person, 1 behind you, 2 facing you
@@ -470,8 +475,43 @@ const gondola = (() => {
 })();
 machines.frames = frames; machines.carts = carts; machines.loose = loose;
 machines.throwItem = (stack, pos, vel) => loose.spawn(stack, pos, vel, 0.5);
+// v39: in multiplayer, things on the ground are shared. Something this game puts down (you threw it, or it
+// happened in the part of the world your game runs) is sent to the others; what happens by itself in someone
+// else's part (a machine spitting something out) comes from their game instead. Picking one up asks the server
+// first, so only one of you gets it.
+const looseSpawn = loose.spawn.bind(loose);
+let dropN = 0;
+function shareDrop(it) {
+  if (!it) return it;
+  it.uid = `${net.id}-${++dropN}`;
+  net.send({ t: 'drop', u: it.uid, s: it.stack, p: [+it.pos.x.toFixed(2), +it.pos.y.toFixed(2), +it.pos.z.toFixed(2)], v: [+it.vel.x.toFixed(2), +it.vel.y.toFixed(2), +it.vel.z.toFixed(2)], d: it.delay });
+  return it;
+}
+loose.spawn = (stack, pos, vel, delay) => {
+  if (!mpOn() || !worldReady) return looseSpawn(stack, pos, vel, delay);
+  if (!(net.capture > 0) && !ownsSpot(pos.x, pos.z)) return null;
+  return shareDrop(looseSpawn(stack, pos, vel, delay));
+};
+loose.share = () => mpOn();
+loose.owns = (x, z) => ownsSpot(x, z);
+loose.onTake = (it) => net.send({ t: 'take', u: it.uid });
+function netDrop(m) {
+  if (!worldReady || activeSlot !== MP_SLOT || loose.items.some((it) => it.uid === m.u)) return;
+  const p = m.p, v = m.v ?? [0, 0, 0];
+  const it = looseSpawn(m.s, { x: p[0], y: p[1], z: p[2] }, { x: v[0], y: v[1], z: v[2] }, m.d ?? 0);
+  if (it) it.uid = m.u;
+}
+function netGot(u) {
+  const it = loose.items.find((o) => o.uid === u);
+  if (!it) return;
+  loose.remove(it);
+  const s = it.stack;
+  const took = it.to ? machines.insert(world, stations, it.to[0], it.to[1], it.to[2], s, it.to[3], false) : pickUpLoose(s);
+  if (s.count - took > 0) shareDrop(looseSpawn({ ...s, count: s.count - took }, it.pos, { x: 0, y: 0, z: 0 }, it.to ? 0.3 : 1));
+}
+function netGone(u) { const it = loose.items.find((o) => o.uid === u); if (it) loose.remove(it); }
 // Whatever doesn't fit in the inventory drops at your feet, to pick up once you've made room.
-inventory.overflow = (stack) => player && loose.spawn(stack, { x: player.pos.x, y: player.pos.y + 0.6, z: player.pos.z }, { x: 0, y: 1, z: 0 }, 1);
+inventory.overflow = (stack) => { if (!player) return; net.capture++; try { loose.spawn(stack, { x: player.pos.x, y: player.pos.y + 0.6, z: player.pos.z }, { x: 0, y: 1, z: 0 }, 1); } finally { net.capture--; } };
 // An auto-crafter makes what the item frame on it shows: the first recipe for that thing.
 const crafterRecipe = (x, y, z) => {
   const piped = logistics.crafterRecipe(x, y, z); // (a crafting pipe on it says what to make)
@@ -872,7 +912,9 @@ function throwHeld(all) {
   const dir = player.lookDir();
   const from = player.eye.clone().addScaledVector(dir, 0.4);
   from.y -= 0.35;
-  const it = loose.spawn({ ...s, count: n }, from, { x: dir.x * 5.5 + player.vel.x * 0.5, y: dir.y * 5.5 + 2, z: dir.z * 5.5 + player.vel.z * 0.5 }, 1.5);
+  net.capture++;
+  let it;
+  try { it = loose.spawn({ ...s, count: n }, from, { x: dir.x * 5.5 + player.vel.x * 0.5, y: dir.y * 5.5 + 2, z: dir.z * 5.5 + player.vel.z * 0.5 }, 1.5); } finally { net.capture--; }
   if (it && s.id === STICK) it.thrown = true; // a tame wolf will fetch it
   takeFromHeld(n);
   sound.click?.() ?? sound.pop();
@@ -2255,9 +2297,38 @@ function useBed(x, y, z) {
   const lurking = mobs.mobs.some((m) => m.spec.hostile && !m.dying &&
     Math.hypot(m.pos.x - player.pos.x, m.pos.z - player.pos.z) < 12 && Math.abs(m.pos.y - player.pos.y) < 6);
   if (lurking) { toast('You can\'t sleep now: something is lurking nearby', 2500); return; }
+  if (mpOn() && net.remotes.size) { // (v39: playing together, the night passes when everyone's in bed)
+    inBed = { x: player.pos.x, z: player.pos.z };
+    net.send({ t: 'bed', on: true });
+    toast('You lie down. The night passes when everyone is in bed (move to get up).', 3000);
+    return;
+  }
+  goToSleep();
+}
+function goToSleep() {
   if (sky.time <= 0.46) { napThroughStorm(); return; }
   if (weather.raining) weather.set(false); // the storm blows over in the night
   sleepUntilMorning();
+}
+// v39: lying in bed waiting for the others. Getting up (moving away) or the evening passing tells the server.
+let inBed = null, sleptAt = 0;
+function netBeds(n, of, go) {
+  if (go) {
+    if (!inBed) return;
+    inBed = null; sleptAt = performance.now();
+    goToSleep();
+    return;
+  }
+  if (inBed && n < of) toast(`In bed: ${n} of ${of} sleeping`, 1800);
+  else if (!inBed && n > 0) addChat(null, `${n} of ${of} in bed: sleep to pass the night`);
+}
+function tickBed() {
+  if (!inBed) return;
+  if (!net.live || Math.hypot(player.pos.x - inBed.x, player.pos.z - inBed.z) > 1.5 || !canSleepNow()) {
+    inBed = null;
+    if (net.live) net.send({ t: 'bed', on: false });
+    toast('You get up', 1200);
+  }
 }
 // Sleeping through a storm in the daytime: you nap a few hours and wake to clear skies.
 async function napThroughStorm() {
@@ -2268,6 +2339,7 @@ async function napThroughStorm() {
   const skip = Math.min(0.12, 0.46 - sky.time);
   sky.time += skip;
   weather.set(false);
+  if (net.isHost) sendClock('slept');
   const secs = skip * DAY_LENGTH;
   stations.tick(secs, world, setStationLit, powerAt, boostAt, crafterRecipe);
   apiculture.tick(secs, stations, world, beeEnv);
@@ -2287,9 +2359,10 @@ async function sleepUntilMorning() {
   $('sleep').classList.add('show');
   await new Promise((r) => setTimeout(r, 1300));
   const skipped = (1 - sky.time) * DAY_LENGTH; // seconds of night slept through
-  sky.time = 0.001;
-  day++;
+  const together = mpOn() && !net.isHost; // (playing together, the host's game moves the clock on for everyone)
+  if (!together) { sky.time = 0.001; day++; }
   caneToday = 0;
+  if (net.isHost) sendClock('slept');
   stations.tick(skipped, world, setStationLit, powerAt, boostAt, crafterRecipe);
   apiculture.tick(skipped, stations, world, nightEnv); // (night bees work while you sleep)
   tickLamps(skipped);
@@ -2302,7 +2375,7 @@ async function sleepUntilMorning() {
   await new Promise((r) => setTimeout(r, 400));
   $('sleep').classList.remove('show');
   sound.wake();
-  toast(`Good morning! Day ${day}`, 2500);
+  toast(together ? 'Good morning!' : `Good morning! Day ${day}`, 2500);
   paused = false;
 }
 
@@ -2954,7 +3027,7 @@ const bolts = []; // { line, t }
 function teslaTarget(n) {
   let best = null, bd = TESLA_REACH;
   for (const m of mobs.mobs) {
-    if (!isHostile(m)) continue;
+    if (!isHostile(m) || m.puppet) continue;
     const d = Math.hypot(m.pos.x - n.x - 0.5, m.pos.y + 0.8 - n.y - 1, m.pos.z - n.z - 0.5);
     if (d < bd) { bd = d; best = m; }
   }
@@ -2993,7 +3066,7 @@ function tickZaps(dt) {
     return null;
   };
   for (const m of mobs.mobs) {
-    if (m.dying || m.tame || (m.shock = (m.shock ?? 0) - dt) > 0 || m.pos.distanceTo(player.pos) > 48) continue;
+    if (m.dying || m.tame || m.puppet || (m.shock = (m.shock ?? 0) - dt) > 0 || m.pos.distanceTo(player.pos) > 48) continue;
     const at = touching(m.pos, m.spec.w / 2, m.spec.h);
     if (!at) continue;
     m.shock = 1;
@@ -3152,7 +3225,7 @@ function tickHazards(dt) {
     for (const m of mobs.mobs) {
       if (m.dying) continue;
       if (m.spec.burns && m.pos.distanceTo(player.pos) < 2.6 && !(effects.fire > 0) && !guarded('fire')) damage(armoured(2), 'The Ember Lord burned you to a crisp.');
-      if (m.burning > 0) {
+      if (m.burning > 0 && !m.puppet) {
         m.burning -= 1;
         if (m.spec.hostile) giveDrops(mobs.hurt(m, 2, m.pos.clone().add(new THREE.Vector3(0, 0, 0.01))));
         else m.burning = 0;
@@ -3317,7 +3390,7 @@ function stableHorse(m, [x, y, z]) {
 // Tap a stable: your horses (tame ones anywhere in the loaded world) come home to it, and it tells you about them.
 function useStable(x, y, z) {
   const key = `${x},${y},${z}`;
-  const mine = mobs.mobs.filter((m) => m.spec.horse && m.tame && !m.dying && m !== ridingMob);
+  const mine = mobs.mobs.filter((m) => m.spec.horse && m.tame && !m.puppet && !m.dying && m !== ridingMob);
   let called = 0;
   for (const m of mine) {
     if (m.stable === key && Math.hypot(m.pos.x - x, m.pos.z - z) < 4) continue;
@@ -4514,7 +4587,9 @@ const blastable = (def) => def && !def.blastproof && !def.liquid && !def.station
 // (v32: a demolition charge, linked to a detonator, blows a bigger hole)
 const chargeRadius = (id) => (id === BLAST_CHARGE ? BLAST_RADIUS : id === DEMO_CHARGE || id === DEMO_CHARGE + 1 ? DEMO_RADIUS : 0);
 // gather: a charge's blast throws you what it breaks (a meltdown or a meteorite just destroys)
-function explode(x, y, z, R = BLAST_RADIUS, cause = 'You stood too close to a blasting charge.', gather = false) {
+// (v39: in multiplayer an explosion is sent on by whoever's game it went off in)
+function explode(...args) { net.capture++; try { return explodeHere(...args); } finally { net.capture--; } }
+function explodeHere(x, y, z, R = BLAST_RADIUS, cause = 'You stood too close to a blasting charge.', gather = false) {
   world.setBlock(x, y, z, AIR);
   const gathered = new Map(), span = Math.ceil(R);
   const near = gather && (x + 0.5 - player.pos.x) ** 2 + (y + 0.5 - player.pos.y) ** 2 + (z + 0.5 - player.pos.z) ** 2 < 24 * 24; // (a meltdown just destroys)
@@ -4575,7 +4650,7 @@ function tickMeteors(dt) {
     meteors.splice(i, 1);
     landMeteor(m.to.x, m.to.y, m.to.z);
   }
-  if (paused || dead || !sky.isNight || meteorNight === day || weather.raining) return;
+  if (paused || dead || !sky.isNight || meteorNight === day || weather.raining || (mpOn() && !net.isHost)) return; // (v39: in multiplayer the host's sky has the meteors)
   if (Math.random() < dt / 600) { meteorNight = day; dropMeteor(); }
 }
 // Drop a meteorite (at (x, z), or somewhere 30-70 blocks away); returns where it'll land, or null.
@@ -4917,15 +4992,22 @@ function dropUnsupported(x, y, z) {
 // ---------- multiplayer (v38) ----------
 // Joining a server plays its world in a slot of its own (your worlds are left alone). The server gives the
 // seed and every block players have changed; the rest the game builds itself, as usual. Blocks you place or
-// break go to the server and on to everyone else. (Stage 1: what's inside chests and machines, creatures,
-// and water and plants growing are each player's own.)
+// break go to the server and on to everyone else. (v39: so do the clock, chests and machines, creatures and
+// things on the ground; each part of the world is run by the nearest player's game. Water flows on every game.)
 const pendingEdits = new Map(); // chunk key -> [[x, y, z, id]] for parts of the world not loaded yet
 let pendingTimer = 0, netApplying = false;
 {
   const set = World.prototype.setBlock;
+  // v39: in multiplayer, a change your game makes by itself (a crop growing, a leaf falling, a machine at work,
+  // a fire spreading) only happens where your game runs that part of the world, and then goes to everyone;
+  // elsewhere it comes from the game that does run it. What you do yourself always happens and goes to
+  // everyone. Running water is left to each game: from the same blocks it flows the same way everywhere.
   World.prototype.setBlock = function (x, y, z, id) {
+    if (this !== world || netApplying || !worldReady || !mpOn() || this.flowing) { set.call(this, x, y, z, id); return; }
+    const mine = net.capture > 0;
+    if (!mine && !ownsSpot(x, z)) return;
     set.call(this, x, y, z, id);
-    if (net.capture > 0 && !netApplying && net.live && this === world) net.send({ t: 'block', x, y, z, id: this.get(x, y, z) });
+    net.send({ t: 'block', x, y, z, id: this.get(x, y, z) });
   };
 }
 function mpDefaultUrl() {
@@ -4987,6 +5069,10 @@ async function mpWelcome(m) {
   $('mp').classList.add('hidden'); $('menu').classList.add('hidden');
   await startWorld(save);
   applyPending(true);
+  applyKvAll(m.kv);
+  loose.clear(); for (const d of m.drops ?? []) netDrop(d); // (what's lying about comes from the server)
+  if (m.clock && !net.isHost) applyClock({ ...m.clock, why: 'join' });
+  if (net.isHost && m.clock) { sky.time = m.clock.time; day = Math.max(1, m.clock.day | 0); weather.set(m.clock.raining, Math.max(10, m.clock.timer || 60), m.clock.storm); applySeason(); }
   toast(`Joined the server${net.remotes.size ? ` (${net.remotes.size} other${net.remotes.size === 1 ? '' : 's'} here)` : ''}. Press ${keyLabel(controls.binds.chat)} to chat.`, 3500);
   renderMp();
 }
@@ -5022,7 +5108,131 @@ function applyPending(now = false) {
     pendingEdits.delete(k);
   }
 }
+// v39: who runs what. Each part of the world is run by the game of the player nearest it (by chunk; on a tie,
+// whoever joined first): its machines cook, its plants grow and its creatures roam there, and it tells the
+// others. So a base far from everyone else still works while its builder is there.
+const mpOn = () => net.live && activeSlot === MP_SLOT;
+function ownsSpot(x, z) {
+  if (!mpOn()) return true;
+  const cx = Math.floor(x / CHUNK) * CHUNK + 8, cz = Math.floor(z / CHUNK) * CHUNK + 8;
+  const mine = (player.pos.x - cx) ** 2 + (player.pos.z - cz) ** 2;
+  for (const [id, r] of net.remotes) {
+    if (!r.pos) continue;
+    const d = (r.target.x - cx) ** 2 + (r.target.z - cz) ** 2;
+    if (d < mine - 4 || (Math.abs(d - mine) <= 4 && id < net.id)) return false;
+  }
+  return true;
+}
+stations.owns = (x, z) => ownsSpot(x, z);
+mobs.owns = (x, z) => ownsSpot(x, z);
+// v39: creatures. Each game runs the ones in its part of the world and, ten times a second, tells the others
+// where those are (when they're anywhere near one of them); the others draw them as puppets.
+let mobsTimer = 0;
+function tickMobsNet() {
+  mobs.netTakeOver();
+  const now = performance.now();
+  if (now < mobsTimer || !mpOn() || !net.remotes.size) return;
+  mobsTimer = now + 100;
+  mobs.netId = net.id;
+  const near = (x, z) => { for (const r of net.remotes.values()) if (r.pos && Math.abs(r.target.x - x) < 112 && Math.abs(r.target.z - z) < 112) return true; return false; };
+  const { l, g } = mobs.netOut(near);
+  if (l.length || g.length) net.send({ t: 'mobs', l, g });
+}
+
+// v39: what's in chests and machines, the writing on signs and what's in item frames is shared. Every half
+// second each game looks for any that changed since it last sent or heard of them, and sends those.
+const kvKnown = { st: new Map(), sign: new Map(), frame: new Map() };
+const KV = {
+  st: {
+    entries: () => stations.map,
+    apply: (k, v) => { stations.setOne(k, v); return stations.map.get(k); },
+  },
+  sign: {
+    entries: () => new Map([...signs.texts].map(([k, t]) => [k, [t, signs.colors.get(k) ?? null]])),
+    apply: (k, v) => {
+      const [x, y, z] = k.split(',').map(Number);
+      if (!v) { signs.remove(x, y, z); return undefined; }
+      signs.set(x, y, z, String(v[0] ?? ''));
+      if (Number.isInteger(v[1])) signs.colors.set(k, v[1]); else signs.colors.delete(k);
+      return [signs.texts.get(k), signs.colors.get(k) ?? null];
+    },
+  },
+  frame: {
+    entries: () => frames.items,
+    apply: (k, v) => { if (Number.isInteger(v) && v > 0) frames.items.set(k, v); else frames.items.delete(k); return frames.items.get(k); },
+  },
+};
+const kvKey = (v) => (v === undefined || v === null ? '' : JSON.stringify(v));
+function applyKv(ch, k, v) {
+  if (!KV[ch] || activeSlot !== MP_SLOT) return;
+  const got = KV[ch].apply(k, v);
+  if (got === undefined || got === null) kvKnown[ch].delete(k); else kvKnown[ch].set(k, kvKey(got));
+  if (ch === 'st' && openStationAt && !openStationAt.cart && `${openStationAt.x},${openStationAt.y},${openStationAt.z}` === k) {
+    if (v) renderStation(); else closeStation();
+  }
+}
+function applyKvAll(all) {
+  for (const ch of Object.keys(kvKnown)) {
+    kvKnown[ch].clear();
+    for (const [k, v] of Object.entries(all?.[ch] ?? {})) applyKv(ch, k, v);
+  }
+}
+let kvTimer = 0;
+function tickKv(dt) {
+  const t = performance.now(); // (real time, so a slow frame rate doesn't hold things up)
+  if (!mpOn() || !worldReady || t < kvTimer) return;
+  kvTimer = t + 500;
+  for (const ch of Object.keys(KV)) {
+    const known = kvKnown[ch], now = KV[ch].entries();
+    for (const [k, v] of now) {
+      const s = kvKey(v);
+      if (known.get(k) === s) continue;
+      known.set(k, s);
+      net.send({ t: 'kv', ch, k, v });
+    }
+    for (const k of [...known.keys()]) {
+      if (now.has(k)) continue;
+      const [x, , z] = k.split(',').map(Number);
+      if (!world.chunkAt(x, z)) continue; // (not gone: just not loaded here)
+      known.delete(k);
+      net.send({ t: 'kv', ch, k, v: null });
+    }
+  }
+}
+
+// The host's game keeps the clock and the weather and sends them every couple of seconds (and at once when
+// something changes); everyone else follows. (Each game still moves its own sun smoothly in between.)
+let clockTimer = 0, lastClock = '';
+function sendClock(why = '') {
+  net.send({ t: 'clock', time: sky.time, day, raining: weather.raining, storm: !!weather.storm, timer: weather.timer, why });
+  lastClock = `${day},${weather.raining},${!!weather.storm}`;
+  clockTimer = performance.now() + 2000;
+}
+function applyClock(c) {
+  if (activeSlot !== MP_SLOT || !worldReady || net.isHost) return;
+  const ahead = c.at ? Math.min(5, Math.max(0, (Date.now() - c.at) / 1000)) / DAY_LENGTH : 0; // (time on its way)
+  const t = (c.time + ahead) % 1;
+  let dt = t - sky.time; if (dt > 0.5) dt -= 1; if (dt < -0.5) dt += 1;
+  if (Math.abs(dt) > 0.002 || c.why) sky.time = t;
+  if (c.day !== day) {
+    const was = day;
+    day = Math.max(1, c.day | 0); caneToday = 0;
+    if (day > was) { const turned = seasonOf(day) !== seasonOf(was); toast(turned ? `Day ${day}: ${SEASONS[seasonOf(day)].arrives}` : `Day ${day}`, turned ? 4000 : 2500); }
+    applySeason();
+  }
+  if (c.raining !== weather.raining || !!c.storm !== !!weather.storm) weather.set(c.raining, 1e9, c.storm);
+  else weather.timer = 1e9; // (only the host's weather changes by itself)
+  if (c.why === 'slept' && performance.now() - sleptAt > 6000) toast('The night was slept through', 2000);
+}
+function tickClock(dt) {
+  if (!net.isHost || activeSlot !== MP_SLOT || !worldReady) return;
+  const now = `${day},${weather.raining},${!!weather.storm}`;
+  if (performance.now() > clockTimer || now !== lastClock) sendClock();
+}
 function tickNet(dt) {
+  tickClock(dt);
+  tickKv(dt);
+  if (worldReady) { tickMobsNet(); tickBed(); }
   if ((pendingTimer -= dt) <= 0) { pendingTimer = 0.4; applyPending(); }
   const p = player.pos;
   net.update(dt, net.live && activeSlot === MP_SLOT && !dead ? {
@@ -6155,7 +6365,7 @@ let catGiftDay = -1;
 const CAT_GIFTS = [[FEATHER, 1, 2], [STRING, 1, 2], [RAW_FISH, 1, 1], [SEEDS, 2, 4], [BERRIES, 1, 3], [OLD_BOOT, 1, 1], [CARROT, 1, 2], [POTATO, 1, 2]];
 function tickPets(dt) {
   for (const m of mobs.mobs) {
-    if (m.kind !== 'wolf' || !m.tame) continue;
+    if (m.kind !== 'wolf' || !m.tame || m.puppet) continue;
     if (m.sitting || m.dying) { if (m.fetch) { m.fetch = null; m.goal = null; } continue; }
     if (m.carrying) {
       // bring it back and drop it at your feet
@@ -6185,7 +6395,7 @@ function tickPets(dt) {
   // a cat's morning present
   const hours = (sky.time * 24 + 6) % 24;
   if (catGiftDay !== day && hours > 6.2 && hours < 10) {
-    const cat = mobs.mobs.find((m) => m.kind === 'cat' && m.tame && !m.dying && Math.hypot(m.pos.x - player.pos.x, m.pos.z - player.pos.z) < 32);
+    const cat = mobs.mobs.find((m) => m.kind === 'cat' && m.tame && !m.puppet && !m.dying && Math.hypot(m.pos.x - player.pos.x, m.pos.z - player.pos.z) < 32);
     if (cat) {
       catGiftDay = day;
       if (Math.random() < 0.6) {
@@ -6932,7 +7142,7 @@ function tickStables(dt) {
   if ((stableTimer -= dt) > 0) return;
   stableTimer = 2;
   for (const m of mobs.mobs) {
-    if (!m.spec.horse || !m.tame || !m.stable || m.ridden || m.dying || (m.rested ?? 0) > RESTED_TIME * 0.5) continue;
+    if (!m.spec.horse || !m.tame || m.puppet || !m.stable || m.ridden || m.dying || (m.rested ?? 0) > RESTED_TIME * 0.5) continue;
     const feed = mangers.get(m.stable) ?? 0;
     if (!feed) continue;
     const [x, , z] = m.stable.split(',').map(Number);
@@ -7428,7 +7638,7 @@ function stepGame(now, dt) {
     machines.tick(paused ? 0 : dt, world, kinetics, stations, { day: lightUniforms.uDay.value, flicker: lightUniforms.uFlicker.value, ambient: lightUniforms.uAmbient.value });
     electric.update(paused ? 0 : dt, world, kinetics, stations, electricHooks);
     loose.update(paused || dead ? 0 : dt, world, {
-      player, pickup: pickUpLoose, insert: (x, y, z, item, n) => machines.insert(world, stations, x, y, z, item, n, false),
+      player, pickup: pickUpLoose, canTake: (st) => (st.wear || st.ench?.length || st.pack ? inventory.slots.some((x) => !x) : inventory.room(st.id) > 0), insert: (x, y, z, item, n) => machines.insert(world, stations, x, y, z, item, n, false),
       light: { day: lightUniforms.uDay.value, flicker: lightUniforms.uFlicker.value, ambient: lightUniforms.uAmbient.value },
     });
   } catch (err) { reportError(err); }
@@ -7505,7 +7715,7 @@ if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').ca
 
 // expose for debugging in the console
 window.minicraft = {
-  gfx, viewmodel, avatar, swingArm, ripples, waterSurfaceAt, net, get activeSlot() { return activeSlot; }, mpLeave, pendingEdits, get viewMode() { return viewMode; },
+  gfx, viewmodel, avatar, swingArm, ripples, waterSurfaceAt, net, ownsSpot, get activeSlot() { return activeSlot; }, mpLeave, pendingEdits, get viewMode() { return viewMode; },
   get world() { return world; }, player, inventory, saveGame, sky, sound, breakBlock, mobs,
   get hunger() { return hunger; }, set hunger(v) { hunger = v; renderHunger(); },
   get day() { return day; },

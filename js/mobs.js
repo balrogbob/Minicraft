@@ -914,6 +914,13 @@ export class MobManager {
     this.hostileTimer = 0;
     this.onHurtPlayer = null; // (amount, cause, fromPos) when a creature hits the player
     this.onShoot = null; // (origin, dir, damage) when a thornspitter spits
+    // v39 multiplayer: owns(x, z) says whether this game runs that part of the world (null playing alone).
+    // Creatures elsewhere are puppets: drawn where the game that runs them says they are, with no mind of their own.
+    this.owns = null;
+    this.netId = 0; // your player number (who wins when two games both claim a creature)
+    this.uidTag = Math.random().toString(36).slice(2, 7);
+    this.uidN = 0;
+    this.sentUids = new Set();
   }
 
   get animals() { return this.mobs.filter((m) => !m.spec.hostile).length; }
@@ -998,7 +1005,7 @@ export class MobManager {
     const far = Math.max(SPAWN_MIN_DIST + 8, w.renderDistance * 16 - 8);
     const a = rand(0, Math.PI * 2), d = rand(SPAWN_MIN_DIST, far);
     const x = Math.floor(player.pos.x + Math.cos(a) * d), z = Math.floor(player.pos.z + Math.sin(a) * d);
-    if (!w.chunkAt(x, z)) return;
+    if (!w.chunkAt(x, z) || (this.owns && !this.owns(x, z))) return;
     const hab = this.habitat(x, z);
     if (!hab) return;
     const kind = pick(hab.kinds);
@@ -1011,9 +1018,7 @@ export class MobManager {
       const h = i ? this.habitat(gx, gz) : hab;
       const at = h && h.kinds.includes(kind) && this.fit(kind, gx, h.y, gz);
       if (!at) continue;
-      const m = new Mob(kind, at[0], h.y, at[1]);
-      this.mobs.push(m);
-      this.scene.add(m.root);
+      this.spawn(kind, at[0], h.y, at[1]);
     }
   }
 
@@ -1022,7 +1027,7 @@ export class MobManager {
     if (this.animals >= ANIMAL_CAP) return;
     const w = this.world, a = rand(0, Math.PI * 2), d = rand(8, 30);
     const x = Math.floor(player.pos.x + Math.cos(a) * d), z = Math.floor(player.pos.z + Math.sin(a) * d);
-    if (!w.chunkAt(x, z)) return;
+    if (!w.chunkAt(x, z) || (this.owns && !this.owns(x, z))) return;
     const s = this.surface(x, z), y0 = Math.floor(player.pos.y);
     for (let y = Math.min(y0 + 8, (s ? s.y : H) - 4); y > Math.max(2, y0 - 16); y--) {
       const floor = w.get(x, y - 1, z);
@@ -1039,7 +1044,7 @@ export class MobManager {
     for (let k = 0; k < 12; k++) {
       const a = rand(0, Math.PI * 2), d = rand(10, 18);
       const x = Math.floor(player.pos.x + Math.cos(a) * d), z = Math.floor(player.pos.z + Math.sin(a) * d);
-      if (!w.chunkAt(x, z)) continue;
+      if (!w.chunkAt(x, z) || (this.owns && !this.owns(x, z))) continue;
       const s = this.surface(x, z);
       if (!s || s.id === WATER || w.isWater(x, s.y, z) || !this.hasRoom('trader', x + 0.5, s.y + 1, z + 0.5)) continue;
       const m = this.spawn('trader', x + 0.5, s.y + 1, z + 0.5);
@@ -1055,6 +1060,7 @@ export class MobManager {
     const w = this.world;
     const v = w.generator.nearestVillage(player.pos.x, player.pos.z, 1);
     if (!v || Math.hypot(v.x - player.pos.x, v.z - player.pos.z) > 80) return;
+    if (this.owns && !this.owns(v.x, v.z)) return; // (the game nearest the village looks after its villagers)
     const here = this.mobs.filter((m) => m.home === v).length;
     if (here >= Math.min(5 + Math.max(0, v.houses.length - 5), v.houses.length + 1) || this.villagerNight()) return;
     const hs = pick(v.houses);
@@ -1100,6 +1106,7 @@ export class MobManager {
   // Put a specific animal at (x, y, z), feet at y. Handy for testing from the console.
   spawn(kind, x, y, z, opts) {
     const m = new Mob(kind, x, y, z, opts);
+    m.uid = `${this.uidTag}${++this.uidN}`;
     this.mobs.push(m);
     this.scene.add(m.root);
     return m;
@@ -1143,7 +1150,7 @@ export class MobManager {
     const far = Math.max(diff.minDist + 8, w.renderDistance * 16 - 8);
     const a = rand(0, Math.PI * 2), d = rand(diff.minDist, far);
     const x = Math.floor(player.pos.x + Math.cos(a) * d), z = Math.floor(player.pos.z + Math.sin(a) * d);
-    if (!w.chunkAt(x, z)) return;
+    if (!w.chunkAt(x, z) || (this.owns && !this.owns(x, z))) return;
     const s = this.surface(x, z);
     let y = -1, surface = false;
     if (s && s.id !== WATER && Math.random() < 0.5) {
@@ -1191,11 +1198,16 @@ export class MobManager {
       this.hostileTimer = 0.5;
       if (ctx.difficulty) this.trySpawnHostile(player, ctx);
     }
-    const despawn = w.renderDistance * 16 + 24;
+    const despawn = w.renderDistance * 16 + 24, now = performance.now();
     for (let i = this.mobs.length - 1; i >= 0; i--) {
       const m = this.mobs[i];
       const dx = m.pos.x - player.pos.x, dz = m.pos.z - player.pos.z;
       const dist = Math.hypot(dx, dz);
+      if (m.puppet && !m.dying) {
+        if (now - m.seen > 3000 || m.gone) { m.dispose(this.scene); this.mobs.splice(i, 1); continue; }
+        this.puppet(m, dt, light);
+        continue;
+      }
       if (m.tame) {
         // a pet: waits where it is while its part of the world is unloaded; one following you that's
         // been left far behind catches up
@@ -1571,6 +1583,173 @@ export class MobManager {
     m.material.color.setRGB(r, g, b);
   }
 
+  // ---------- v39: sharing creatures between players ----------
+
+  // A creature someone else's game runs: glide to where it was last said to be, and look the part.
+  puppet(m, dt, light) {
+    const k = 1 - Math.exp(-10 * dt), t = m.target;
+    if (!t) return;
+    if (m.pos.distanceToSquared(t) > 64) m.pos.copy(t);
+    m.vel.set((t.x - m.pos.x) * 8, (t.y - m.pos.y) * 8, (t.z - m.pos.z) * 8);
+    m.pos.lerp(t, k);
+    let dy = m.tyaw - m.yaw; dy = Math.atan2(Math.sin(dy), Math.cos(dy));
+    m.yaw += dy * k;
+    const f = m.flags | 0;
+    m.moving = !!(f & 1); m.state = f & 2 ? 'graze' : f & 4 ? 'flee' : m.moving ? 'walk' : 'idle';
+    m.hunting = !!(f & 8); m.inWater = !!(f & 32); m.onGround = !!(f & 128);
+    if (f & 16 && !(m.swingT > 0)) m.swingT = 0.3;
+    if (m.swingT > 0) m.swingT -= dt;
+    if (f & 64 && !(m.flash > 0)) m.flash = 0.25;
+    if (!m.spec.hostile) this.tickBreeding(m, dt);
+    this.animate(m, dt);
+    this.light(m, light, dt);
+  }
+
+  // Is this creature yours for keeps (a pet you tamed, a horse that trusts you)?
+  isPet(m) { return !m.puppet && !!(m.tame || (m.trusted && m.spec.horse)); }
+
+  // Before you do anything to a creature: if another game runs it, yours takes it over for a while (so what
+  // you do sticks, and the others see it). false (do nothing) if it's someone else's pet or someone else is
+  // busy with it. A creature of your own just has its claim renewed.
+  take(m) {
+    if (!this.owns) return true;
+    const now = performance.now();
+    if (m.puppet) {
+      if (m.claimed) return false;
+      m.puppet = false;
+      if (m.target) m.pos.copy(m.target);
+      m.vel.set(0, 0, 0); m.timer = 1;
+    }
+    m.claimUntil = now + 8000;
+    return true;
+  }
+
+  // Everything about a creature that someone else's copy needs (and needs to take it over).
+  lookOf(m) {
+    const o = { k: m.kind }, n = (v) => Math.round(v);
+    if (m.coat != null) o.coat = m.coat;
+    if (m.profession) o.prof = m.profession;
+    if (m.spec.horse) { o.gait = +m.gait.toFixed(2); o.leap = +m.leap.toFixed(2); }
+    if (m.tame) o.tame = 1;
+    if (m.sitting) o.sit = 1;
+    if (m.trusted) o.trust = 1;
+    if (m.baby > 0) o.baby = n(m.baby);
+    if (m.shornFor > 0) o.shorn = n(m.shornFor);
+    if (m.featherFor > 0) o.fe = n(m.featherFor);
+    if (m.hideFor > 0) o.hi = n(m.hideFor);
+    if (m.slimeFor > 0) o.sl = n(m.slimeFor);
+    if (m.love > 0) o.love = n(m.love);
+    if (m.breedFor > 0) o.bf = n(m.breedFor);
+    if (m.bags) o.bags = m.bags;
+    if (m.armoured) o.arm = 1;
+    if (m.spec.hostile) o.hp = m.hp;
+    if (m.angry > 0) o.ang = n(m.angry);
+    if (m.indoors) o.ind = 1;
+    if (m.ridden) o.rid = 1;
+    if (m.shed) o.shed = 1;
+    if (m.home) o.home = [m.home.x, m.home.z, m.home.houses.indexOf(m.house)];
+    if (m.trades) o.trades = m.trades;
+    if (m.leaveIn != null) o.leave = n(m.leaveIn);
+    if (m.stable) o.stable = m.stable;
+    if (m.rested > 0) o.rested = n(m.rested);
+    if (m.dying) o.dy = 1;
+    return o;
+  }
+
+  applyLook(m, o) {
+    if (!!o.tame !== !!m.tame) { m.tame = !!o.tame; m.parts.tame?.(m.tame); }
+    m.sitting = !!o.sit; m.trusted = !!o.trust;
+    const baby = o.baby ?? 0;
+    if (baby > 0 || m.baby > 0) { m.baby = baby; m.root.scale.setScalar(m.baseScale * (1 - 0.5 * baby / GROW_TIME)); }
+    const shorn = (o.shorn ?? 0) > 0;
+    if (shorn !== m.shornFor > 0) m.parts.shear?.(shorn);
+    m.shornFor = o.shorn ?? 0; m.featherFor = o.fe ?? 0; m.hideFor = o.hi ?? 0; m.slimeFor = o.sl ?? 0;
+    m.love = o.love ?? 0; m.breedFor = o.bf ?? 0;
+    if (!!o.bags !== !!m.bags || !!o.arm !== !!m.armoured) { m.bags = o.bags ?? null; m.armoured = !!o.arm; m.parts.gear?.(m.bags, m.armoured); }
+    else if (o.bags) m.bags = o.bags;
+    if (o.hp != null) m.hp = o.hp;
+    m.angry = o.ang ?? 0;
+    if (!!o.ind !== !!m.indoors) { m.indoors = !!o.ind; m.root.visible = !m.indoors; }
+    m.ridden = !!o.rid; m.shed = !!o.shed;
+    if (o.home && !m.home) {
+      const v = this.world?.generator.nearestVillage(o.home[0], o.home[1], 1);
+      if (v && v.x === o.home[0] && v.z === o.home[1]) { m.home = v; m.house = v.houses[o.home[2]] ?? v.houses[0]; }
+    }
+    if (o.trades) m.trades = o.trades;
+    if (o.leave != null) m.leaveIn = o.leave;
+    m.stable = o.stable ?? m.stable ?? null; m.rested = o.rested ?? 0;
+    if (o.dy && !m.dying) { m.dying = 0.4; this.sound?.poof(); }
+  }
+
+  // What to send the others (about ten times a second): the creatures this game runs that are near one of
+  // them (near(x, z)), each as [uid, x, y, z, yaw, flags, look?] (look when it changed, or every few seconds),
+  // and the uids of ones that are gone. flags: 1 moving, 2 grazing, 4 fleeing, 8 hunting, 16 striking,
+  // 32 in water, 64 hurt, 128 on the ground, 256 not to be taken over (a pet, or someone's busy with it).
+  netOut(near) {
+    const now = performance.now(), l = [], seen = new Set();
+    for (const m of this.mobs) {
+      if (m.puppet || !m.uid || !near(m.pos.x, m.pos.z)) continue;
+      if (m.ridden) m.claimUntil = now + 8000;
+      seen.add(m.uid);
+      const f = (m.moving ? 1 : 0) | (m.state === 'graze' ? 2 : 0) | (m.state === 'flee' ? 4 : 0) | (m.hunting ? 8 : 0) | (m.swingT > 0 ? 16 : 0) |
+        (m.inWater ? 32 : 0) | (m.flash > 0 ? 64 : 0) | (m.onGround ? 128 : 0) | (this.isPet(m) || m.claimUntil > now ? 256 : 0);
+      const e = [m.uid, +m.pos.x.toFixed(2), +m.pos.y.toFixed(2), +m.pos.z.toFixed(2), +m.yaw.toFixed(2), f];
+      const look = JSON.stringify(this.lookOf(m));
+      if (look !== m.sentLook || now > (m.lookAt ?? 0)) { m.sentLook = look; m.lookAt = now + 2500; e.push(JSON.parse(look)); }
+      l.push(e);
+    }
+    const g = [...this.sentUids].filter((u) => !seen.has(u) && !this.mobs.some((m) => m.uid === u && m.puppet)); // (one another game took over isn't gone)
+    this.sentUids = seen;
+    return { l, g };
+  }
+
+  // What another game (player `from`) says about the creatures it runs.
+  netIn(from, l = [], g = []) {
+    const now = performance.now(), byUid = new Map();
+    for (const m of this.mobs) if (m.uid) byUid.set(m.uid, m);
+    for (const e of l) {
+      if (!Array.isArray(e) || typeof e[0] !== 'string') continue;
+      const [uid, x, y, z, yaw, f, look] = e;
+      let m = byUid.get(uid);
+      if (m && !m.puppet && !m.dying) {
+        // this game runs it too: who keeps it? (a pet or a claim beats where it is; between two claims, the
+        // lower player number)
+        const theirs = (f & 256) !== 0, mine = this.isPet(m) || m.claimUntil > now;
+        if (theirs ? mine && this.netId < from : mine || this.owns?.(m.pos.x, m.pos.z)) continue;
+        m.puppet = true;
+      }
+      if (!m) {
+        if (!look || !SPECIES[look.k] || look.dy) continue;
+        m = this.spawn(look.k, x, y, z, { coat: look.coat, profession: look.prof, gait: look.gait, leap: look.leap });
+        m.uid = uid; m.puppet = true; m.yaw = yaw;
+        byUid.set(uid, m);
+      }
+      if (!m.puppet) continue;
+      m.from = from; m.seen = now; m.claimed = (f & 256) !== 0;
+      (m.target ??= new THREE.Vector3()).set(x, y, z);
+      m.tyaw = yaw; m.flags = f;
+      if (look) this.applyLook(m, look);
+    }
+    for (const uid of g) { const m = byUid.get(uid); if (m?.puppet && m.from === from && !m.dying) m.gone = true; }
+  }
+
+  // Each frame: take over puppets that have wandered into the part of the world this game runs (unless
+  // someone's pet or busy with them), or whose game has gone quiet while they're here.
+  netTakeOver() {
+    if (!this.owns) return;
+    for (const m of this.mobs) {
+      if (!m.puppet || m.dying || m.claimed || !m.target) continue;
+      if (!this.owns(m.target.x, m.target.z)) continue;
+      m.puppet = false; m.pos.copy(m.target); m.vel.set(0, 0, 0); m.state = 'idle'; m.timer = rand(0.5, 2);
+    }
+  }
+
+  // Leaving a multiplayer world: everything is yours again (puppets vanish).
+  netClear() {
+    for (let i = this.mobs.length - 1; i >= 0; i--) if (this.mobs[i].puppet) { this.mobs[i].dispose(this.scene); this.mobs.splice(i, 1); }
+    this.sentUids.clear();
+  }
+
   // ---------- interaction ----------
 
   // Nearest animal hit by a ray: { mob, t } or null.
@@ -1606,6 +1785,7 @@ export class MobManager {
   //   anything else just bumps the animal, which hops away and runs off
   interact(m, from, held) {
     const give = [], take = [];
+    if (!this.take(m)) return { give, take, said: m.tame || m.trusted ? `That ${m.kind} belongs to someone else` : `Someone else is busy with that ${m.kind}`, theirs: true };
     if (held === BUCKET && m.spec.milk) {
       take.push([BUCKET, 1]); give.push([MILK_BUCKET, 1]);
       this.sound?.mob(m.kind, 0.8);
@@ -1779,7 +1959,7 @@ export class MobManager {
 
   // Pets to save: [kind, x, y, z, sitting, coat].
   pets() {
-    return this.mobs.filter((m) => (m.tame || (m.trusted && m.spec.horse)) && !m.dying).map((m) => [m.kind, +m.pos.x.toFixed(2), +m.pos.y.toFixed(2), +m.pos.z.toFixed(2), !!m.sitting, m.coat ?? null,
+    return this.mobs.filter((m) => !m.puppet && (m.tame || (m.trusted && m.spec.horse)) && !m.dying).map((m) => [m.kind, +m.pos.x.toFixed(2), +m.pos.y.toFixed(2), +m.pos.z.toFixed(2), !!m.sitting, m.coat ?? null,
       m.spec.horse ? { gait: +m.gait.toFixed(2), leap: +m.leap.toFixed(2), tame: !!m.tame, stable: m.stable ?? null, baby: Math.max(0, Math.round(m.baby ?? 0)),
         ...(m.bags ? { bags: m.bags.map((s) => (s ? { ...s } : null)) } : {}), ...(m.armoured ? { armoured: true } : {}), ...(m.rested > 0 ? { rested: Math.round(m.rested) } : {}) } : null]);
   }
@@ -1787,7 +1967,7 @@ export class MobManager {
   // The player hits a night creature for `amount`. It gets knocked back, flashes, and hunts the
   // player for a while (even on Peaceful). Returns its drops if that hit defeated it.
   hurt(m, amount, from) {
-    if (m.dying || !m.spec.hostile) return [];
+    if (m.dying || !m.spec.hostile || !this.take(m)) return [];
     m.hp -= amount;
     m.angry = 30;
     m.seeTimer = 0;
@@ -1811,6 +1991,7 @@ export class MobManager {
   // as if bumped until it falls. Returns { drops, why }: why is set (and nothing happens) if it can't be.
   butcher(m, amount, from) {
     if (m.dying || !m.spec.livestock) return { drops: [], why: 'only pigs and chickens are farmed for meat' };
+    if (!this.take(m)) return { drops: [], why: `someone else is busy with this ${m.kind}` };
     if (m.baby > 0) return { drops: [], why: `this ${m.kind} is too young` };
     if (m.tame) return { drops: [], why: `this ${m.kind} is a pet` };
     m.hp -= amount;
@@ -1823,6 +2004,7 @@ export class MobManager {
 
   // Knock an animal back: it flashes red, hops away and runs off for a few seconds.
   bump(m, from) {
+    if (!this.take(m)) return;
     let dx = m.pos.x - from.x, dz = m.pos.z - from.z;
     const len = Math.hypot(dx, dz) || 1;
     dx /= len; dz /= len;

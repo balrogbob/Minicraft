@@ -653,13 +653,16 @@ export class World {
     const batch = this.flow;
     this.flow = [];
     const seen = new Set();
-    for (const [x, y, z] of batch) {
-      if (y < 0 || y >= H) continue;
-      const k = pack(x, y, z);
-      if (seen.has(k) || !this.chunkAt(x, z)) continue;
-      seen.add(k);
-      this.updateWater(x, y, z);
-    }
+    this.flowing = true; // (v39: multiplayer games each run their own water)
+    try {
+      for (const [x, y, z] of batch) {
+        if (y < 0 || y >= H) continue;
+        const k = pack(x, y, z);
+        if (seen.has(k) || !this.chunkAt(x, z)) continue;
+        seen.add(k);
+        this.updateWater(x, y, z);
+      }
+    } finally { this.flowing = false; }
   }
 
   updateWater(x, y, z) {

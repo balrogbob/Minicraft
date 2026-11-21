@@ -33,6 +33,7 @@ export class Net {
     this.live = false; // connected and welcomed
     this.id = 0;
     this.worldId = null;
+    this.host = 0; // the player whose game runs the clock, the weather, growth and creatures
     this.url = '';
     this.remotes = new Map(); // id -> { name, look, avatar, tag, pos, target, yaw, pitch, held, sw, sp, g }
     this.capture = 0; // > 0 while you're placing or breaking: the blocks that change are sent on
@@ -60,22 +61,32 @@ export class Net {
 
   leave(quiet = false) {
     const ws = this.ws;
-    this.ws = null; this.live = false; this.id = 0;
+    this.ws = null; this.live = false; this.id = 0; this.host = 0;
     if (ws) { try { ws.close(); } catch { /* already gone */ } }
     this.clearRemotes();
     if (!quiet) this.d.on.status?.('left');
   }
+
+  get isHost() { return this.live && this.host === this.id; }
 
   send(obj) { if (this.ws?.readyState === 1) this.ws.send(JSON.stringify(obj)); }
 
   handle(m) {
     switch (m.t) {
       case 'welcome':
-        this.live = true; this.id = m.id; this.worldId = m.world;
+        this.live = true; this.id = m.id; this.worldId = m.world; this.host = m.host;
         for (const p of m.players ?? []) this.addRemote(p.id, p.name, p.look, p.state);
         this.d.on.welcome?.(m);
         this.d.on.status?.('open');
         break;
+      case 'host': this.host = m.id; this.d.on.host?.(m.id === this.id, this.remotes.get(m.id)?.name); break;
+      case 'clock': this.d.on.clock?.(m); break;
+      case 'kv': this.d.on.kv?.(m.ch, m.k, m.v); break;
+      case 'mobs': this.d.on.mobs?.(m.id, m.l, m.g); break;
+      case 'drop': this.d.on.drop?.(m); break;
+      case 'got': this.d.on.got?.(m.u); break;
+      case 'gone': this.d.on.gone?.(m.u); break;
+      case 'beds': this.d.on.beds?.(m.n, m.of, m.go); break;
       case 'full': this.d.on.status?.('full'); break;
       case 'join': this.addRemote(m.id, m.name, m.look); this.d.on.join?.(m.name); break;
       case 'leave': { const r = this.remotes.get(m.id); if (r) { this.d.on.leave?.(r.name); this.removeRemote(m.id); } break; }
@@ -131,8 +142,9 @@ export class Net {
       r.avatar.update(dt, { pos: r.pos, yaw: r.yaw, pitch: r.pitch, speed: r.sp, swimming: r.sw, onGround: r.g, light: lightAt(r.pos) });
     }
     if (!this.live || !me) return;
-    if ((this.sendTimer -= dt) > 0) return;
-    this.sendTimer = 0.1;
+    const now = performance.now(); // (real time: ten a second however slowly the game runs)
+    if (now < this.sendTimer) return;
+    this.sendTimer = now + 100;
     const msg = { t: 'move', p: [+me.pos.x.toFixed(2), +me.pos.y.toFixed(2), +me.pos.z.toFixed(2)], yaw: +me.yaw.toFixed(3), pitch: +me.pitch.toFixed(3), held: me.held, sw: me.swimming, sp: +me.speed.toFixed(1), g: me.onGround };
     const s = JSON.stringify(msg);
     if (s === this.lastSent && (this.quiet = (this.quiet ?? 0) + 1) % 10) return; // (standing still: once a second)
