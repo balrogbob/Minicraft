@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { Viewmodel, Avatar, LOOKS, randomLook } from './held.js';
+import { Ripples } from './ripples.js';
 import { Graphics, GFX_DEFAULTS, GFX_NAMES, GFX_TOGGLES, SHADOW_LEVELS, GFX_PRESETS, PRESET_ORDER, PRESET_NAMES, MAX_TORCH_SHADOWS, gfxUniforms, GFX_FRAG_HEAD, GFX_SUN_TERM, GFX_WATER, GFX_VERT_HEAD, GFX_VERT_DECODE, GFX_VERT_SWAY, WATER_LAYER, LATE_LAYER } from './graphics.js';
 import {
   BLOCKS, RECIPES, TABLE, AIR, WATER, TORCH, TORCH_WALL_W, WALL_TORCH_DIRS,
@@ -420,6 +421,7 @@ carts.onLoco = (c, what) => {
   else if (what === 'tender' && riding === c) toast(`The locomotive takes on coal from its tender (${c.loco.coal})`, 1500);
 };
 const vehicles = new Vehicles(scene); // boats and balloons
+const ripples = new Ripples(scene); // (v38: rings, wakes and spray on the water)
 const crows = new Crows(scene); // after ripe wheat (see birds.js)
 const critters = new Critters(scene, sound); // owls, bats and fireflies
 let riding = null; // the minecart you're sitting in
@@ -2466,6 +2468,69 @@ function tickMachineSounds(dt) {
     }
     if (best < R) { sound.pipe((1 - best / R) ** 1.5); pipeNext = now + 0.5 + Math.random() * 0.8; }
   }
+}
+
+// v38: the water surface (y) at or just around (x, y, z), or null if there's no water there.
+function waterSurfaceAt(x, y, z) {
+  const fx = Math.floor(x), fz = Math.floor(z), by = Math.floor(y);
+  for (const dy of [0, -1, 1]) {
+    let wy = by + dy;
+    if (!world.isWater(fx, wy, fz)) continue;
+    for (let i = 0; i < 6 && world.isWater(fx, wy + 1, fz); i++) wy++;
+    return wy + 0.875;
+  }
+  return null;
+}
+// v38: rings on the water around anything swimming or floating near you, wakes behind boats, and now and
+// then a duck has a splash about.
+const rippleTimers = new WeakMap();
+function tickRipples(dt) {
+  if (paused) return;
+  const p = player.pos, R = 40;
+  const due = (o, every) => {
+    const t = (rippleTimers.get(o) ?? Math.random() * every) - dt;
+    if (t > 0) { rippleTimers.set(o, t); return false; }
+    rippleTimers.set(o, every * (0.8 + Math.random() * 0.4));
+    return true;
+  };
+  for (const m of mobs.mobs) {
+    if (!m.inWater || m.dead || Math.abs(m.pos.x - p.x) > R || Math.abs(m.pos.z - p.z) > R) continue;
+    const sy = waterSurfaceAt(m.pos.x, m.pos.y + 0.3, m.pos.z);
+    if (sy === null) continue;
+    const speed = Math.hypot(m.vel.x, m.vel.z), small = m.kind === 'duck' || m.kind === 'newt';
+    const size = small ? 0.55 : 1.1;
+    if (due(m, speed > 0.3 ? 0.35 : 1.8)) {
+      ripples.ring(m.pos.x, sy, m.pos.z, size * (speed > 0.3 ? 1 : 0.7), speed > 0.3 ? 0.7 : 0.4, speed > 0.3 ? 1.4 : 2);
+      // a little V behind a duck paddling along
+      if (speed > 0.3) { const a = Math.atan2(m.vel.x, m.vel.z); ripples.ring(m.pos.x - Math.sin(a) * 0.3, sy, m.pos.z - Math.cos(a) * 0.3, size * 0.8, 0.5, 1.2, 1.8, a); }
+    }
+    if (m.kind === 'duck' && Math.random() < dt / 14) {
+      ripples.splash(m.pos.x, sy, m.pos.z, 12, 0.55);
+      if (Math.hypot(m.pos.x - p.x, m.pos.z - p.z) < 14) sound.splash(false);
+    }
+  }
+  for (const v of vehicles.list) {
+    if (v.kind !== 'boat' || Math.abs(v.pos.x - p.x) > R || Math.abs(v.pos.z - p.z) > R) continue;
+    const sy = waterSurfaceAt(v.pos.x, v.pos.y, v.pos.z);
+    if (sy === null) continue;
+    const sp = Math.abs(v.speed ?? 0);
+    if (sp > 0.6) {
+      if (!due(v, Math.max(0.07, 0.3 - sp * 0.03))) continue;
+      const fx = -Math.sin(v.yaw), fz = -Math.cos(v.yaw), sx = -fz, sz = fx, back = Math.sign(v.speed || 1);
+      for (const side of [-1, 1]) {
+        ripples.ring(v.pos.x - fx * 0.9 * back + sx * 0.45 * side, sy, v.pos.z - fz * 0.9 * back + sz * 0.45 * side, 0.7 + sp * 0.05, Math.min(0.9, 0.4 + sp * 0.06), 1.8, 1.6, v.yaw);
+      }
+      if (sp > 4 && Math.random() < 0.4) ripples.splash(v.pos.x + fx * 1.0 * back, sy, v.pos.z + fz * 1.0 * back, 3, 0.4);
+    } else if (due(v, 2.2)) ripples.ring(v.pos.x, sy, v.pos.z, 1.3, 0.35, 2.2);
+  }
+  if (player.inWater && !boarded && !dead) {
+    const sy = waterSurfaceAt(p.x, p.y + 0.5, p.z);
+    if (sy !== null && sy - p.y < 1.9 && sy - p.y > 0) {
+      const speed = Math.hypot(player.vel.x, player.vel.z);
+      if (due(player, speed > 0.5 ? 0.3 : 1.5)) ripples.ring(p.x, sy, p.z, speed > 0.5 ? 1 : 0.8, speed > 0.5 ? 0.7 : 0.45, 1.6);
+    }
+  }
+  ripples.update(dt, camera.position);
 }
 
 // A wireless charger tops up what you carry (things in your inventory first, then what you're wearing) while
@@ -5734,10 +5799,18 @@ function groundSound() {
 }
 function playMovementSounds(dt, wasGround, wasWater, fallSpeed) {
   const speed = Math.hypot(player.vel.x, player.vel.z);
-  if (!wasWater && player.inWater) sound.splash(fallSpeed > 5);
+  if (!wasWater && player.inWater) {
+    sound.splash(fallSpeed > 5);
+    const sy = waterSurfaceAt(player.pos.x, player.pos.y + 0.5, player.pos.z);
+    if (sy !== null) ripples.splash(player.pos.x, sy, player.pos.z, Math.round(10 + Math.min(30, fallSpeed * 3)), Math.min(1.8, 0.6 + fallSpeed * 0.08));
+  }
   if (player.inWater) {
     moveSnd.swim -= dt;
-    if ((speed > 0.5 || controls.jump) && moveSnd.swim <= 0) { sound.splash(false); moveSnd.swim = 0.7; }
+    if ((speed > 0.5 || controls.jump) && moveSnd.swim <= 0) {
+      sound.splash(false); moveSnd.swim = 0.7;
+      const sy = waterSurfaceAt(player.pos.x, player.pos.y + 0.5, player.pos.z);
+      if (sy !== null && sy - player.pos.y < 1.9) ripples.splash(player.pos.x + Math.sin(-player.yaw) * -0.4, sy, player.pos.z - Math.cos(player.yaw) * 0.4, 6, 0.45);
+    }
     return;
   }
   if (!wasGround && player.onGround && fallSpeed > 4) sound.step(groundSound());
@@ -7153,6 +7226,7 @@ function stepGame(now, dt) {
     tickHum(dt);
     tickMachineSounds(dt);
     tickAutoGfx(dt);
+    try { tickRipples(dt); } catch (err) { reportError(err); }
     renderBossBar();
     updateHunger(dt);
     updateHealth(dt, wasGround, prevY);
@@ -7268,7 +7342,7 @@ if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').ca
 
 // expose for debugging in the console
 window.minicraft = {
-  gfx, viewmodel, avatar, swingArm, get viewMode() { return viewMode; },
+  gfx, viewmodel, avatar, swingArm, ripples, waterSurfaceAt, get viewMode() { return viewMode; },
   get world() { return world; }, player, inventory, saveGame, sky, sound, breakBlock, mobs,
   get hunger() { return hunger; }, set hunger(v) { hunger = v; renderHunger(); },
   get day() { return day; },

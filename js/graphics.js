@@ -458,7 +458,7 @@ export class Graphics {
       try { this.renderTorches(scene); } catch (err) { this.fail(err, 'torches'); this.freeTorches(); }
     }
     U.uReflect.value = 0;
-    if (o.reflections && this.waterY !== null && !this.underwater && camera.position.y > this.waterY + 0.05) {
+    if (o.reflections && this.waterY !== null && !this.underwater && camera.position.y > this.waterY + 0.3) { // (v38: not with your eye at the surface: the mirror view went wrong there)
       try { this.renderReflection(scene, camera); } catch (err) { this.fail(err, 'reflections'); this.freeReflections(); }
     }
     U.uRefract.value = 0;
