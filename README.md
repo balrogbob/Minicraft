@@ -10,7 +10,7 @@ image or audio files.
 
 ## Contents
 
-- [Running it](#running-it) ([fancy graphics](#fancy-graphics))
+- [Running it](#running-it) ([fancy graphics](#fancy-graphics), [playing together](#playing-together))
 - [Controls](#controls)
 - [Getting started](#getting-started)
 - [Basics](#basics)
@@ -85,6 +85,53 @@ turn any off again if the game gets slow (☰ → Performance info shows the fra
 
 If an effect doesn't work on your device it is switched off by itself, with a message.
 
+**Graphics preset** at the top sets them all at once: **Off**, **Low** (water and swaying only), **Medium**
+(low-cost sun shadows, 3 torch shadows, bloom, caustics), **High** (everything, 8 torch shadows) or **Ultra**
+(24 torch shadows, more redrawn each frame). **Auto** starts at Medium and steps down a level when the game
+drops below 40 frames a second, or up when it stays smooth (and won't climb back to a level that was too
+slow). Changing any one effect yourself makes it **Custom**.
+
+Whatever the settings, the water shows rings spreading round ducks, newts and anything else swimming,
+round you as you swim, and round boats sitting still; boats leave a wake when they move; jumping in throws up
+spray (more the further you fall), and now and then a duck has a splash about.
+
+### Your character and what you hold
+
+You see your arm and whatever you hold in it: blocks as little cubes, tools, food and everything else as
+solid shapes. The arm swings as you dig, place and fight, bobs as you walk, and raises food to your mouth as
+you eat. Press **V** (or the gamepad's right-stick click) to see yourself from behind or in front; your character
+walks, swims and swings, and holds what you hold. ☰ → **Your character** changes skin, hair, shirt and trousers.
+
+
+### Playing together
+
+The game comes with a small server for playing in one world with friends. It needs [Node.js](https://nodejs.org)
+18 or newer and nothing else (no packages to install):
+
+```sh
+node server/server.js
+# Minicraft server running. Open http://localhost:8080 (or, on your network, http://192.168.1.20:8080)
+```
+
+Everyone opens that address in their browser, then ☰ → **Multiplayer…** → **Join** (the server box is
+already filled in when the game comes from the server; otherwise type the server's address). You play the
+server's world in a place of its own: your own worlds are left as they are, and **Leave** takes you back.
+Everyone sees everyone else's character, with their name above it, walking, swimming and holding what they
+hold, and every block anyone places or breaks. Press **T** (or 💬) to chat.
+
+Options: `PORT=9000` (the port), `SEED=1234` (the world's seed, for a new world), `DATA=path/world.json`
+(where the world is kept; `server/world.json` by default), `MAX_PLAYERS=16`. The server saves every half
+minute and when you stop it (Ctrl+C). This is the first stage of multiplayer: the world's blocks, the players
+and chat are shared; what is inside chests and machines, animals and creatures, the time of day and things
+growing are still each player's own.
+
+### Gamepad
+
+A gamepad works too (any with the standard layout, in browsers that support them): left stick to walk,
+right stick to look, **RT** break, **LT** place or use, **A** jump, **B** crouch (and closes windows),
+**X** throw, **Y** inventory, **LB / RB** or the d-pad change the hotbar slot, **Back** the map, **Start** the
+menu, right-stick click the view, d-pad up the guidebook, d-pad down fly (creative).
+
 ## Controls
 
 | Action | Touch | Keyboard / mouse |
@@ -119,6 +166,8 @@ If an effect doesn't work on your device it is switched off by itself, with a me
 | Jump / swim up | ⤒ button (auto-jump also steps up 1-block ledges) | Space |
 | Select item | Tap a hotbar slot | 1–9 / mouse wheel |
 | Inventory & crafting | 🎒 button | E |
+| First / third person view | — | V |
+| Chat (multiplayer) | 💬 button | T |
 | Throw an item (one / the whole stack) | Hold its hotbar slot (keeps throwing while held) | Q / Shift + Q |
 | Put an item on a belt or into a hopper | Tap it with the item in hand | Right click |
 | World map | ☰ → World map, or tap the corner map | M |
@@ -1640,6 +1689,9 @@ guide to how everything works.
 
 ## Version history
 
+- **Version 38**: you see what you hold (and your arm), your own character in a third-person view (V) with
+  a choice of looks, working sounds for every machine, graphics presets with an Auto setting, gamepad support,
+  ripples, wakes and splashes on the water, and playing together through the new Node.js server.
 - **Version 37**: more fancy graphics: a low-cost setting for sun shadows, torch shadows for up to 50 lights
   with a redraw-rate slider, god rays, swaying leaves and plants, water reflections and an underwater ripple.
 - **Version 36**: optional fancy graphics in the ☰ menu, all off by default: sun shadows, shadows from the
@@ -1689,6 +1741,10 @@ guide to how everything works.
 | `js/world.js` | Chunk streaming, sunlight and torch light propagation across chunks, chunk meshing (face culling + AO + smooth light, separate water mesh), water flow, raycasting |
 | `js/store.js` | Saving edited chunks to IndexedDB, per world slot (16 bits per block; older one-byte chunks are widened as they load) |
 | `js/legacy.js` | The old 128 × 128 generator, used once to migrate old saves |
+| `js/held.js` | What you hold: blocks and items as solid shapes, your arm (first person) and your character (third person, and other players) |
+| `js/ripples.js` | Rings, wakes and spray on the water |
+| `js/net.js` | Multiplayer: talking to the server and showing the other players |
+| `server/server.js` | The multiplayer server (Node.js, no packages): serves the game and keeps the shared world |
 | `js/player.js` | Player physics, collision (with half-height blocks and stepping up stairs) and swimming |
 | `js/mobs.js` | Animals, pets, the trader, night creatures and the Mossback King: box models, behaviour and hunting, physics, spawning, difficulty |
 | `js/arrows.js` | Arrows and thorns: flight, hits, sticking in blocks, pick-up |

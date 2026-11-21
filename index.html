@@ -31,6 +31,7 @@
     <div id="top-left">
       <button class="btn small" id="btn-fullscreen" title="Fullscreen">⛶</button>
       <button class="btn small" id="btn-menu" title="Menu">☰</button>
+      <button class="btn small hidden" id="btn-chat" title="Chat">💬</button>
     </div>
     <div id="coords"></div>
     <div id="pins"></div>
@@ -38,6 +39,8 @@
     <canvas id="map" class="hidden"></canvas>
     <div id="perf" class="hidden"></div>
     <div id="toast"></div>
+    <div id="chat-log"></div>
+    <input id="chat-input" class="hidden" maxlength="200" placeholder="Say something… (Enter to send, Esc to close)" autocomplete="off" />
     <div id="photo-bar" class="hidden">
       <button class="btn" id="photo-up" title="Rise">▲</button>
       <button class="btn" id="photo-down" title="Sink">▼</button>
@@ -181,6 +184,7 @@
         </div>
         <div class="menu-items">
           <button class="btn wide" id="btn-worlds">Worlds…</button>
+          <button class="btn wide" id="btn-mp">Multiplayer…</button>
           <button class="btn wide" id="btn-open-map">World map</button>
           <button class="btn wide" id="btn-guide">Guide &amp; achievements</button>
           <button class="btn wide" id="btn-photo">📷 Photo mode</button>
@@ -197,7 +201,15 @@
           <label class="slider">Music <input type="range" id="music" min="0" max="100" step="5" value="50" /></label>
           <button class="btn wide" id="btn-break">Touch breaking: double-tap &amp; hold</button>
           <button class="btn wide" id="btn-tips">Tooltips: on</button>
+          <p class="hint"><b>Your character</b> — see yourself with the view key (V), or in photo mode.</p>
+          <div class="look-row">
+            <button class="btn small" id="btn-look-skin">Skin</button>
+            <button class="btn small" id="btn-look-hair">Hair</button>
+            <button class="btn small" id="btn-look-shirt">Shirt</button>
+            <button class="btn small" id="btn-look-trousers">Trousers</button>
+          </div>
           <p class="hint"><b>Fancy graphics</b> — for strong computers; turn off any that make the game slow.</p>
+          <button class="btn wide" id="btn-gfx-preset">Graphics preset: Custom</button>
           <button class="btn wide" id="btn-gfx-shadows">Sun shadows: off</button>
           <label class="slider"><span id="torch-shadows-label">Torch shadows: off</span> <input type="range" id="torch-shadows" min="0" max="50" step="1" value="0" /></label>
           <label class="slider"><span id="torch-rate-label">Torch shadows redrawn per frame: 2</span> <input type="range" id="torch-rate" min="1" max="50" step="1" value="2" /></label>
@@ -219,6 +231,24 @@
             <b>Keyboard:</b> WASD, Space, mouse, E = inventory, M = map (change them under Keyboard keys).
           </p>
           <p class="hint" id="version"></p>
+        </div>
+      </div>
+    </div>
+
+    <div id="mp" class="overlay hidden">
+      <div class="panel menu-panel">
+        <div class="panel-head">
+          <h2>Multiplayer</h2>
+          <button class="btn small" id="btn-close-mp">✕</button>
+        </div>
+        <div class="menu-items">
+          <p class="hint">Play together in a world kept on a Minicraft server. To run one, start <b>node server/server.js</b> in the game's folder; friends open the address it shows. Your own worlds stay as they are.</p>
+          <label class="field"><span>Server</span> <input id="mp-url" type="text" autocomplete="off" spellcheck="false" /></label>
+          <label class="field"><span>Your name</span> <input id="mp-name" type="text" maxlength="20" autocomplete="off" /></label>
+          <button class="btn wide" id="btn-mp-join">Join</button>
+          <button class="btn wide hidden" id="btn-mp-leave">Leave (back to your own world)</button>
+          <p class="hint" id="mp-status">Not connected</p>
+          <p class="hint" id="mp-players"></p>
         </div>
       </div>
     </div>

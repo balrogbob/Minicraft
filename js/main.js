@@ -1,5 +1,8 @@
 import * as THREE from 'three';
-import { Graphics, GFX_DEFAULTS, GFX_NAMES, GFX_TOGGLES, SHADOW_LEVELS, MAX_TORCH_SHADOWS, gfxUniforms, GFX_FRAG_HEAD, GFX_SUN_TERM, GFX_WATER, GFX_VERT_HEAD, GFX_VERT_DECODE, GFX_VERT_SWAY, WATER_LAYER, LATE_LAYER } from './graphics.js';
+import { Viewmodel, Avatar, LOOKS, randomLook } from './held.js';
+import { Ripples } from './ripples.js';
+import { Net } from './net.js';
+import { Graphics, GFX_DEFAULTS, GFX_NAMES, GFX_TOGGLES, SHADOW_LEVELS, GFX_PRESETS, PRESET_ORDER, PRESET_NAMES, MAX_TORCH_SHADOWS, gfxUniforms, GFX_FRAG_HEAD, GFX_SUN_TERM, GFX_WATER, GFX_VERT_HEAD, GFX_VERT_DECODE, GFX_VERT_SWAY, WATER_LAYER, LATE_LAYER } from './graphics.js';
 import {
   BLOCKS, RECIPES, TABLE, AIR, WATER, TORCH, TORCH_WALL_W, WALL_TORCH_DIRS,
   GRASS, DIRT, SAND, CHURN, SUGAR_CANE, BREAD, ITEMS, BOW, ARROW, BUCKET,
@@ -38,7 +41,7 @@ import {
 import { Smoke } from './smoke.js';
 import { Fireworks } from './fireworks.js';
 import { createAtlas, createIcons, createCrackCanvases, createWaterCanvas, createHudIcons, paintSeason } from './textures.js';
-import { World, CHUNK, WORLD_SIZE, chunkKey } from './world.js';
+import { World, CHUNK, WORLD_SIZE, chunkKey, skyBrightness, lightBrightness } from './world.js';
 import { localIndex, CHUNK_VOLUME, H, SEA_LEVEL } from './terrain.js';
 import { ChunkStore } from './store.js';
 import { buildLegacyWorld, LEGACY_W } from './legacy.js';
@@ -76,7 +79,7 @@ import { Logic } from './logic.js';
 
 // v2 = the 16k x 16k streaming world (player state here, edited chunks in IndexedDB).
 // v1 = the old 128 x 128 world, migrated into the middle of the big world on first launch.
-const GAME_VERSION = '37'; // shown in the menu; bump with each release
+const GAME_VERSION = '38'; // shown in the menu; bump with each release
 const SAVE_KEY = 'minicraft-save-v2';
 const LEGACY_SAVE_KEY = 'minicraft-save-v1';
 const SETTINGS_KEY = 'minicraft-settings-v1';
@@ -86,28 +89,32 @@ const $ = (id) => document.getElementById(id);
 // ---------- storage (never trusted to exist) ----------
 // Save slots: slot 0 is the original save (so worlds from before there were slots carry on as world 1).
 const SLOT_COUNT = 3;
+const MP_SLOT = 9; // (v38: a multiplayer world's local copy lives here, apart from your own worlds)
+let activeSlot = 0; // the slot being played: settings.slot, or MP_SLOT while on a server
 const saveKeyOf = (n) => (n ? `${SAVE_KEY}-s${n}` : SAVE_KEY);
-function loadSave(key = saveKeyOf(settings.slot)) {
+function loadSave(key = saveKeyOf(activeSlot)) {
   try { return JSON.parse(localStorage.getItem(key)); } catch { return null; }
 }
-function writeSave(obj, slot = settings.slot) {
+function writeSave(obj, slot = activeSlot) {
   try { localStorage.setItem(saveKeyOf(slot), JSON.stringify(obj)); return true; } catch { return false; }
 }
 // Settings live apart from the world so they survive "New world".
 const settings = (() => {
-  const defaults = { sens: 6, volume: 70, music: 50, viewDistance: 6, perf: false, difficulty: 'worrying', wear: true, favs: [], pins: [], slot: 0, fov: 72, keys: {}, tips: true, doubleTap: true, gfx: {} };
+  const defaults = { gfxPreset: 'custom', sens: 6, volume: 70, music: 50, viewDistance: 6, perf: false, difficulty: 'worrying', wear: true, favs: [], pins: [], slot: 0, fov: 72, keys: {}, tips: true, doubleTap: true, gfx: {} };
   let s;
   try { s = { ...defaults, ...JSON.parse(localStorage.getItem(SETTINGS_KEY)) }; } catch { s = { ...defaults }; }
   s.slot = Math.max(0, Math.min(SLOT_COUNT - 1, s.slot | 0));
   s.fov = Math.max(50, Math.min(110, +s.fov || 72));
   if (!s.keys || typeof s.keys !== 'object') s.keys = {};
   if (!Array.isArray(s.pins)) s.pins = [];
+  if (!s.look || typeof s.look !== 'object') s.look = randomLook(); // (v38: how your character looks)
   s.gfx = { ...GFX_DEFAULTS, ...(s.gfx && typeof s.gfx === 'object' ? s.gfx : {}) };
   s.gfx.torches = Math.max(0, Math.min(MAX_TORCH_SHADOWS, s.gfx.torches | 0));
   s.gfx.torchRate = Math.max(1, Math.min(MAX_TORCH_SHADOWS, s.gfx.torchRate | 0 || 2));
   s.gfx.shadows = s.gfx.shadows === true ? 2 : Math.max(0, Math.min(2, s.gfx.shadows | 0)); // (v36 saved on/off)
   return s;
 })();
+activeSlot = settings.slot;
 function saveSettings() {
   try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch { /* storage unavailable */ }
 }
@@ -209,7 +216,7 @@ function findWaterLevel(dt) {
   for (const [y, v] of votes) if (v > most) { most = v; best = y; }
   gfx.waterY = best === null ? null : best + 0.875; // (the surface sits a little below the block top)
 }
-gfx.onFail = (key) => { settings.gfx[key] = key === 'torches' || key === 'shadows' ? 0 : false; saveSettings(); updateGfxLabels(); toast(`${GFX_NAMES[key]} doesn't work on this device — turned off`, 4000); };
+gfx.onFail = (key) => { goCustom(); settings.gfx[key] = key === 'torches' || key === 'shadows' ? 0 : false; saveSettings(); updateGfxLabels(); toast(`${GFX_NAMES[key]} doesn't work on this device — turned off`, 4000); };
 
 const sky = new Sky(scene);
 const sound = new Sound();
@@ -222,6 +229,52 @@ for (const ev of ['touchstart', 'pointerdown', 'keydown']) {
 }
 
 const icons = createIcons(atlasCanvas);
+// (v38) what's in your hand, and you yourself (photo mode, third-person view)
+const viewmodel = new Viewmodel(atlas, icons.canvases, ITEMS);
+viewmodel.setLook(settings.look);
+const avatar = new Avatar(settings.look, atlas, icons.canvases, ITEMS);
+avatar.root.visible = false;
+scene.add(avatar.root);
+// v38: multiplayer (see net.js, and server/server.js)
+const net = new Net({ scene, atlas, icons: icons.canvases, ITEMS, on: {
+  welcome: (m) => mpWelcome(m), block: (x, y, z, id) => mpBlock(x, y, z, id), chat: (name, text, mine) => addChat(name, text, mine),
+  join: (name) => addChat(null, `${name} joined`), leave: (name) => addChat(null, `${name} left`), status: (st, why) => mpStatus(st, why),
+} });
+let viewMode = 0; // 0 first person, 1 behind you, 2 facing you
+const VIEW_NAMES = ['First person', 'Third person (behind)', 'Third person (front)'];
+function swingArm() { viewmodel.swing(); avatar.swing(); if (net.live) { const now = performance.now(); if (now - (swingArm.sent ?? 0) > 250) { swingArm.sent = now; net.send({ t: 'swing' }); } } }
+// how bright it is where you stand (for your arm, what you hold, and your character)
+function lightHere() {
+  const x = Math.floor(player.pos.x), y = Math.min(H - 1, Math.floor(player.pos.y + 1.2)), z = Math.floor(player.pos.z);
+  return {
+    sun: lightUniforms.uDay.value * skyBrightness(world.skyAt(x, y, z)),
+    torch: Math.max(lightBrightness(world.lightAt(x, y, z)) * lightUniforms.uFlicker.value, lightUniforms.uHand.value.w * 0.9),
+    ambient: lightUniforms.uAmbient.value,
+  };
+}
+// place the camera behind (or in front of) you, pulled in where a wall is in the way
+function thirdPersonCamera(eye) {
+  const d = player.lookDir();
+  const back = viewMode === 1 ? d.clone().negate() : d.clone();
+  let dist = 4;
+  for (let t = 0.3; t <= 4; t += 0.1) {
+    const p = eye.clone().addScaledVector(back, t);
+    if (world.isSolid(Math.floor(p.x), Math.floor(p.y), Math.floor(p.z))) { dist = Math.max(0.3, t - 0.3); break; }
+  }
+  camera.position.copy(eye).addScaledVector(back, dist);
+  camera.lookAt(eye);
+}
+function updateMe(dt) {
+  const held = inventory.heldId();
+  viewmodel.setItem(held);
+  avatar.setHeld(held);
+  const light = lightHere();
+  const speed = Math.hypot(player.vel.x, player.vel.z);
+  const swimming = player.inWater && !player.onGround && !riding && !ridingMob;
+  avatar.root.visible = !dead && (photoMode || viewMode > 0);
+  if (avatar.root.visible) avatar.update(dt, { pos: player.pos, yaw: player.yaw, pitch: player.pitch, speed, swimming, onGround: player.onGround, light });
+  viewmodel.update(dt, { moving: Math.min(1, speed / 4.3), onGround: player.onGround, swimming, aspect: camera.aspect, light });
+}
 const mobs = new MobManager(scene, sound);
 const arrows = new ArrowManager(scene, sound);
 const fishing = new Fishing(scene, sound);
@@ -377,6 +430,7 @@ carts.onLoco = (c, what) => {
   else if (what === 'tender' && riding === c) toast(`The locomotive takes on coal from its tender (${c.loco.coal})`, 1500);
 };
 const vehicles = new Vehicles(scene); // boats and balloons
+const ripples = new Ripples(scene); // (v38: rings, wakes and spray on the water)
 const crows = new Crows(scene); // after ripe wheat (see birds.js)
 const critters = new Critters(scene, sound); // owls, bats and fireflies
 let riding = null; // the minecart you're sitting in
@@ -691,6 +745,7 @@ function saveGame() {
   world.saveChunks();
   return writeSave({
     seed: world.seed,
+    ...(activeSlot === MP_SLOT ? { mpWorld: net.worldId } : {}),
     inv: inventory.serialize(),
     player: { x: player.pos.x, y: player.pos.y, z: player.pos.z, yaw: player.yaw, pitch: player.pitch },
     autoJump: player.autoJump,
@@ -1983,6 +2038,7 @@ function hitMob() {
     const now = performance.now();
     if (now - lastSwing < (isSword(inventory.heldId()) ? 300 : 450)) return; // swords swing quicker
     lastSwing = now;
+    swingArm();
     const held = inventory.held(), m = targetMob.mob;
     const dmg = (WEAPON_DAMAGE[inventory.heldId()] ?? ITEMS[inventory.heldId()]?.tool?.damage ?? 2) + (hasEnch(held, 'keen') ? 3 : 0);
     if (hasEnch(held, 'flame') && !m.spec.burns) m.burning = 4;
@@ -2045,6 +2101,7 @@ function useBandage() {
   renderHealth();
 }
 function eat(id) {
+  viewmodel.eat();
   if (ITEMS[id]?.drink === 'poison') {
     // drinking slime: you keep the bucket, and get food poisoning
     inventory.consumeHeld();
@@ -2386,6 +2443,104 @@ function tickHum(dt) {
     else if (n.role === 'use' && n.want && electric.nets[n.net]?.share > 0) elec += 1;
   }
   sound.hum(paused || dead ? 0 : Math.min(1, mech / 8), paused || dead ? 0 : Math.min(1, elec / 6));
+}
+
+// v38: each working machine near you makes its own sound now and then (a saw rasps, a cauldron bubbles, an
+// auto-crafter clacks), and items whoosh along logistics pipes.
+const machineNext = new Map();
+let machineTimer = 0, pipeNext = 0;
+function tickMachineSounds(dt) {
+  if ((machineTimer -= dt) > 0 || paused || dead) return;
+  machineTimer = 0.25;
+  const p = player.pos, R = 12, now = performance.now() / 1000;
+  const heard = [];
+  for (const [k, st] of stations.map) {
+    const [x, y, z] = k.split(',').map(Number);
+    const d = Math.hypot(x + 0.5 - p.x, y + 0.5 - p.y, z + 0.5 - p.z);
+    if (d > R) continue;
+    const K = STATION_KINDS[st.kind];
+    if (!K || !(st.progress > 0)) continue;
+    const working = K.powered ? (K.passive || st.speed > 0) : K.crafter || st.cooking || K.nofuel;
+    if (working) heard.push([k, st.kind, d]);
+  }
+  heard.sort((a, b) => a[2] - b[2]);
+  for (const [k, kind, d] of heard.slice(0, 4)) {
+    if ((machineNext.get(k) ?? 0) > now) continue;
+    machineNext.set(k, now + 0.8 + Math.random() * 1.4);
+    sound.machine(kind, (1 - d / R) ** 1.5);
+  }
+  if (machineNext.size > 200) for (const [k, t] of machineNext) if (t < now) machineNext.delete(k);
+  if (now > pipeNext) {
+    let best = R;
+    for (const t of logistics.transits) {
+      const a = t.path?.[t.j ?? 0];
+      if (a) best = Math.min(best, Math.hypot(a[0] + 0.5 - p.x, a[1] + 0.5 - p.y, a[2] + 0.5 - p.z));
+    }
+    if (best < R) { sound.pipe((1 - best / R) ** 1.5); pipeNext = now + 0.5 + Math.random() * 0.8; }
+  }
+}
+
+// v38: the water surface (y) at or just around (x, y, z), or null if there's no water there.
+function waterSurfaceAt(x, y, z) {
+  const fx = Math.floor(x), fz = Math.floor(z), by = Math.floor(y);
+  for (const dy of [0, -1, 1]) {
+    let wy = by + dy;
+    if (!world.isWater(fx, wy, fz)) continue;
+    for (let i = 0; i < 6 && world.isWater(fx, wy + 1, fz); i++) wy++;
+    return wy + 0.875;
+  }
+  return null;
+}
+// v38: rings on the water around anything swimming or floating near you, wakes behind boats, and now and
+// then a duck has a splash about.
+const rippleTimers = new WeakMap();
+function tickRipples(dt) {
+  if (paused) return;
+  const p = player.pos, R = 40;
+  const due = (o, every) => {
+    const t = (rippleTimers.get(o) ?? Math.random() * every) - dt;
+    if (t > 0) { rippleTimers.set(o, t); return false; }
+    rippleTimers.set(o, every * (0.8 + Math.random() * 0.4));
+    return true;
+  };
+  for (const m of mobs.mobs) {
+    if (!m.inWater || m.dead || Math.abs(m.pos.x - p.x) > R || Math.abs(m.pos.z - p.z) > R) continue;
+    const sy = waterSurfaceAt(m.pos.x, m.pos.y + 0.3, m.pos.z);
+    if (sy === null) continue;
+    const speed = Math.hypot(m.vel.x, m.vel.z), small = m.kind === 'duck' || m.kind === 'newt';
+    const size = small ? 0.55 : 1.1;
+    if (due(m, speed > 0.3 ? 0.35 : 1.8)) {
+      ripples.ring(m.pos.x, sy, m.pos.z, size * (speed > 0.3 ? 1 : 0.7), speed > 0.3 ? 0.7 : 0.4, speed > 0.3 ? 1.4 : 2);
+      // a little V behind a duck paddling along
+      if (speed > 0.3) { const a = Math.atan2(m.vel.x, m.vel.z); ripples.ring(m.pos.x - Math.sin(a) * 0.3, sy, m.pos.z - Math.cos(a) * 0.3, size * 0.8, 0.5, 1.2, 1.8, a); }
+    }
+    if (m.kind === 'duck' && Math.random() < dt / 14) {
+      ripples.splash(m.pos.x, sy, m.pos.z, 12, 0.55);
+      if (Math.hypot(m.pos.x - p.x, m.pos.z - p.z) < 14) sound.splash(false);
+    }
+  }
+  for (const v of vehicles.list) {
+    if (v.kind !== 'boat' || Math.abs(v.pos.x - p.x) > R || Math.abs(v.pos.z - p.z) > R) continue;
+    const sy = waterSurfaceAt(v.pos.x, v.pos.y, v.pos.z);
+    if (sy === null) continue;
+    const sp = Math.abs(v.speed ?? 0);
+    if (sp > 0.6) {
+      if (!due(v, Math.max(0.07, 0.3 - sp * 0.03))) continue;
+      const fx = -Math.sin(v.yaw), fz = -Math.cos(v.yaw), sx = -fz, sz = fx, back = Math.sign(v.speed || 1);
+      for (const side of [-1, 1]) {
+        ripples.ring(v.pos.x - fx * 0.9 * back + sx * 0.45 * side, sy, v.pos.z - fz * 0.9 * back + sz * 0.45 * side, 0.7 + sp * 0.05, Math.min(0.9, 0.4 + sp * 0.06), 1.8, 1.6, v.yaw);
+      }
+      if (sp > 4 && Math.random() < 0.4) ripples.splash(v.pos.x + fx * 1.0 * back, sy, v.pos.z + fz * 1.0 * back, 3, 0.4);
+    } else if (due(v, 2.2)) ripples.ring(v.pos.x, sy, v.pos.z, 1.3, 0.35, 2.2);
+  }
+  if (player.inWater && !boarded && !dead) {
+    const sy = waterSurfaceAt(p.x, p.y + 0.5, p.z);
+    if (sy !== null && sy - p.y < 1.9 && sy - p.y > 0) {
+      const speed = Math.hypot(player.vel.x, player.vel.z);
+      if (due(player, speed > 0.5 ? 0.3 : 1.5)) ripples.ring(p.x, sy, p.z, speed > 0.5 ? 1 : 0.8, speed > 0.5 ? 0.7 : 0.45, 1.6);
+    }
+  }
+  ripples.update(dt, camera.position);
 }
 
 // A wireless charger tops up what you carry (things in your inventory first, then what you're wearing) while
@@ -4550,11 +4705,14 @@ function updateBreaking(dt) {
   if (creative) breakState.progress += dt / 0.12; // creative: everything breaks at once (one block every so often)
   else breakState.progress += dt * (effects.haste > 0 ? 1.5 : 1) * (hasEnch(inventory.held(), 'swift') ? 1.4 : 1) / Math.max(t, 0.05);
   breakState.tick = (breakState.tick || 0) - dt;
-  if (breakState.tick <= 0) { sound.dig(BLOCKS[target.id].sound); breakState.tick = 0.24; }
+  if (breakState.tick <= 0) { sound.dig(BLOCKS[target.id].sound); breakState.tick = 0.24; swingArm(); }
   if (breakState.progress >= 1) {
     const hit = target;
-    breakBlock(target.x, target.y, target.z);
-    if (held === ELECTRIC_DRILL) drillAround(hit);
+    net.capture++;
+    try {
+      breakBlock(target.x, target.y, target.z);
+      if (held === ELECTRIC_DRILL) drillAround(hit);
+    } finally { net.capture--; }
     breakState.key = ''; breakState.progress = 0;
     crack.visible = false;
     target = null;
@@ -4756,6 +4914,153 @@ function dropUnsupported(x, y, z) {
   }
 }
 
+// ---------- multiplayer (v38) ----------
+// Joining a server plays its world in a slot of its own (your worlds are left alone). The server gives the
+// seed and every block players have changed; the rest the game builds itself, as usual. Blocks you place or
+// break go to the server and on to everyone else. (Stage 1: what's inside chests and machines, creatures,
+// and water and plants growing are each player's own.)
+const pendingEdits = new Map(); // chunk key -> [[x, y, z, id]] for parts of the world not loaded yet
+let pendingTimer = 0, netApplying = false;
+{
+  const set = World.prototype.setBlock;
+  World.prototype.setBlock = function (x, y, z, id) {
+    set.call(this, x, y, z, id);
+    if (net.capture > 0 && !netApplying && net.live && this === world) net.send({ t: 'block', x, y, z, id: this.get(x, y, z) });
+  };
+}
+function mpDefaultUrl() {
+  if (!/^https?:$/.test(location.protocol)) return 'ws://localhost:8080/mc';
+  return `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/mc`;
+}
+function mpUrl(text) {
+  let u = String(text || '').trim() || mpDefaultUrl();
+  if (/^https?:\/\//i.test(u)) u = u.replace(/^http/i, 'ws');
+  if (!/^wss?:\/\//i.test(u)) u = `ws://${u}`;
+  if (!/\/mc\/?$/.test(new URL(u).pathname)) u = u.replace(/\/?$/, '/mc');
+  return u;
+}
+function openMp() {
+  $('menu').classList.add('hidden');
+  $('mp').classList.remove('hidden');
+  paused = true; controls.reset(); document.exitPointerLock?.();
+  $('mp-url').value = settings.mpUrl || mpDefaultUrl();
+  $('mp-name').value = settings.mpName || '';
+  renderMp();
+}
+function closeMp() { $('mp').classList.add('hidden'); paused = false; }
+function renderMp() {
+  const on = activeSlot === MP_SLOT;
+  $('btn-mp-join').classList.toggle('hidden', net.live);
+  $('btn-mp-leave').classList.toggle('hidden', !on);
+  $('btn-chat').classList.toggle('hidden', !net.live);
+  const names = [...net.remotes.values()].map((r) => r.name);
+  $('mp-players').textContent = net.live ? (names.length ? `Also here: ${names.join(', ')}` : 'Nobody else is here yet') : '';
+}
+function mpStatus(st, why) {
+  const text = { connecting: 'Connecting…', open: `Connected to ${net.url}`, failed: 'Could not reach the server (is it running, and is the address right?)', lost: 'Lost the connection to the server: you\'re playing on your own copy now. Join again to carry on together.', left: 'Not connected', full: 'The server is full', error: `That address doesn't work${why ? ` (${why})` : ''}` }[st] ?? st;
+  $('mp-status').textContent = text;
+  if (st === 'lost' || st === 'failed' || st === 'full') toast(text, 4000);
+  renderMp();
+}
+$('btn-mp').addEventListener('click', openMp);
+$('btn-close-mp').addEventListener('click', closeMp);
+$('btn-mp-join').addEventListener('click', () => {
+  let url;
+  try { url = mpUrl($('mp-url').value); } catch { mpStatus('error'); return; }
+  settings.mpUrl = $('mp-url').value.trim(); settings.mpName = $('mp-name').value.trim().slice(0, 20); saveSettings();
+  net.connect(url, settings.mpName || 'Player', settings.look);
+});
+$('btn-mp-leave').addEventListener('click', () => mpLeave());
+async function mpWelcome(m) {
+  saveGame(); await world?.saveChunks();
+  const key = saveKeyOf(MP_SLOT);
+  let save = loadSave(key);
+  if (!save || save.seed !== m.seed || save.mpWorld !== m.world) {
+    try { localStorage.removeItem(key); } catch { /* storage unavailable */ }
+    await store.clear(MP_SLOT);
+    save = { seed: m.seed, mpWorld: m.world };
+  }
+  worldReady = false;
+  activeSlot = MP_SLOT; store.setSlot(MP_SLOT);
+  pendingEdits.clear();
+  for (const [x, y, z, id] of m.edits ?? []) queueEdit(x, y, z, id);
+  $('mp').classList.add('hidden'); $('menu').classList.add('hidden');
+  await startWorld(save);
+  applyPending(true);
+  toast(`Joined the server${net.remotes.size ? ` (${net.remotes.size} other${net.remotes.size === 1 ? '' : 's'} here)` : ''}. Press ${keyLabel(controls.binds.chat)} to chat.`, 3500);
+  renderMp();
+}
+async function mpLeave() {
+  net.leave();
+  pendingEdits.clear();
+  closeMp();
+  if (activeSlot === MP_SLOT) await switchSlot(settings.slot, loadSave(saveKeyOf(settings.slot)));
+  renderMp();
+}
+function queueEdit(x, y, z, id) {
+  const k = chunkKey(Math.floor(x / CHUNK), Math.floor(z / CHUNK));
+  let list = pendingEdits.get(k);
+  if (!list) pendingEdits.set(k, (list = []));
+  list.push([x, y, z, id]);
+}
+function applyEdit(x, y, z, id) {
+  if (world.get(x, y, z) === id) return;
+  netApplying = true;
+  try { world.setBlock(x, y, z, id); } finally { netApplying = false; }
+}
+function mpBlock(x, y, z, id) {
+  if (activeSlot !== MP_SLOT || !worldReady) { queueEdit(x, y, z, id); return; }
+  if (world.chunkAt(x, z)) applyEdit(x, y, z, id); else queueEdit(x, y, z, id);
+}
+// edits waiting for their part of the world to load
+function applyPending(now = false) {
+  if (!pendingEdits.size || activeSlot !== MP_SLOT || !world) return;
+  for (const [k, list] of pendingEdits) {
+    const [x, , z] = list[0];
+    if (!world.chunkAt(x, z)) continue;
+    for (const [ex, ey, ez, id] of list) applyEdit(ex, ey, ez, id);
+    pendingEdits.delete(k);
+  }
+}
+function tickNet(dt) {
+  if ((pendingTimer -= dt) <= 0) { pendingTimer = 0.4; applyPending(); }
+  const p = player.pos;
+  net.update(dt, net.live && activeSlot === MP_SLOT && !dead ? {
+    pos: p, yaw: player.yaw, pitch: player.pitch, held: inventory.heldId(), speed: Math.hypot(player.vel.x, player.vel.z),
+    swimming: player.inWater && !player.onGround, onGround: player.onGround,
+  } : null, (pos) => {
+    const x = Math.floor(pos.x), y = Math.min(H - 1, Math.max(0, Math.floor(pos.y + 1.2))), z = Math.floor(pos.z);
+    return { sun: lightUniforms.uDay.value * skyBrightness(world.skyAt(x, y, z)), torch: lightBrightness(world.lightAt(x, y, z)) * lightUniforms.uFlicker.value, ambient: lightUniforms.uAmbient.value };
+  });
+}
+// chat: T (or the 💬 button) opens a line to type in; the last few messages show for a while
+function addChat(name, text, mine = false) {
+  const log = $('chat-log'), d = document.createElement('div');
+  if (name) { const b = document.createElement('b'); b.textContent = `${name}${mine ? ' (you)' : ''}: `; d.append(b); }
+  d.append(document.createTextNode(text));
+  if (!name) d.style.fontStyle = 'italic';
+  log.append(d);
+  while (log.children.length > 8) log.firstChild.remove();
+  setTimeout(() => d.classList.add('fade'), 10000);
+  setTimeout(() => d.remove(), 11200);
+  renderMp();
+}
+function openChat() {
+  if (!net.live) { toast('Chat is for multiplayer: Menu → Multiplayer'); return; }
+  const inp = $('chat-input');
+  inp.classList.remove('hidden');
+  controls.reset();
+  setTimeout(() => inp.focus(), 0);
+}
+function closeChat() { const inp = $('chat-input'); inp.value = ''; inp.classList.add('hidden'); inp.blur(); }
+$('chat-input').addEventListener('keydown', (e) => {
+  e.stopPropagation();
+  if (e.key === 'Enter') { const t = e.target.value.trim(); if (t) net.send({ t: 'chat', text: t }); closeChat(); }
+  else if (e.key === 'Escape') closeChat();
+});
+$('chat-input').addEventListener('blur', () => setTimeout(closeChat, 150));
+$('btn-chat').addEventListener('click', openChat);
+
 // ---------- menu ----------
 function updateAutoJumpLabel() { $('btn-autojump').textContent = `Auto-jump: ${player?.autoJump ? 'on' : 'off'}`; }
 $('btn-respawn').addEventListener('click', respawnPlayer);
@@ -4801,6 +5106,22 @@ updateBreakLabel();
 $('btn-break').addEventListener('click', () => { settings.doubleTap = !settings.doubleTap; controls.doubleTapBreak = settings.doubleTap; updateBreakLabel(); saveSettings(); });
 function updateTipsLabel() { $('btn-tips').textContent = `Tooltips: ${settings.tips ? 'on' : 'off'}`; }
 updateTipsLabel();
+// (v38) your character's colours: each button steps through its part's colours
+function updateLookButtons() {
+  for (const part of Object.keys(LOOKS)) {
+    const b = $(`btn-look-${part}`);
+    const c = LOOKS[part][settings.look[part] % LOOKS[part].length];
+    if (b) b.style.boxShadow = `inset 0 -6px 0 #${c.toString(16).padStart(6, '0')}`;
+  }
+}
+for (const part of Object.keys(LOOKS)) {
+  $(`btn-look-${part}`)?.addEventListener('click', () => {
+    settings.look[part] = ((settings.look[part] ?? 0) + 1) % LOOKS[part].length;
+    avatar.setLook(settings.look); viewmodel.setLook(settings.look);
+    updateLookButtons(); saveSettings();
+  });
+}
+updateLookButtons();
 function updateGfxLabels() {
   const g = settings.gfx;
   $('btn-gfx-shadows').textContent = `Sun shadows: ${SHADOW_LEVELS[g.shadows]}`;
@@ -4811,11 +5132,55 @@ function updateGfxLabels() {
   for (const key of GFX_TOGGLES) { const b = $(`btn-gfx-${key}`); if (b) b.textContent = `${GFX_NAMES[key]}: ${g[key] ? 'on' : 'off'}`; }
 }
 updateGfxLabels();
-$('torch-shadows').addEventListener('input', (e) => { settings.gfx.torches = +e.target.value; gfx.set('torches', settings.gfx.torches); updateGfxLabels(); saveSettings(); });
-$('torch-rate').addEventListener('input', (e) => { settings.gfx.torchRate = +e.target.value; gfx.set('torchRate', settings.gfx.torchRate); updateGfxLabels(); saveSettings(); });
-$('btn-gfx-shadows').addEventListener('click', () => { settings.gfx.shadows = (settings.gfx.shadows + 1) % 3; gfx.set('shadows', settings.gfx.shadows); updateGfxLabels(); saveSettings(); });
+// v38: presets. Picking one sets everything below; touching any one setting makes it Custom. Auto keeps
+// stepping up or down a level to hold a smooth frame rate.
+const PRESET_CYCLE = ['auto', ...PRESET_ORDER, 'custom'];
+const autoGfx = { level: 2, ceiling: 4, timer: 8, fps: [], good: 0 };
+function applyPreset(name, quiet = false) {
+  const g = GFX_PRESETS[name === 'auto' ? PRESET_ORDER[autoGfx.level] : name];
+  if (g) for (const [k, v] of Object.entries(g)) { settings.gfx[k] = v; gfx.set(k, v); }
+  updateGfxLabels(); saveSettings();
+  if (!quiet && name === 'auto') toast(`Graphics: Auto (${PRESET_NAMES[PRESET_ORDER[autoGfx.level]]} for now)`, 2000);
+}
+function updatePresetLabel() {
+  const p = settings.gfxPreset;
+  $('btn-gfx-preset').textContent = `Graphics preset: ${PRESET_NAMES[p] ?? 'Custom'}${p === 'auto' ? ` (${PRESET_NAMES[PRESET_ORDER[autoGfx.level]]})` : ''}`;
+}
+function goCustom() { if (settings.gfxPreset !== 'custom') { settings.gfxPreset = 'custom'; updatePresetLabel(); } }
+$('btn-gfx-preset').addEventListener('click', () => {
+  const i = PRESET_CYCLE.indexOf(settings.gfxPreset);
+  let next = PRESET_CYCLE[(i + 1) % PRESET_CYCLE.length];
+  if (next === 'custom') next = PRESET_CYCLE[0];
+  settings.gfxPreset = next;
+  if (next === 'auto') { autoGfx.level = 2; autoGfx.ceiling = 4; autoGfx.timer = 6; autoGfx.fps = []; autoGfx.good = 0; }
+  applyPreset(next); updatePresetLabel();
+});
+// Auto: watch the frame rate while playing; below 40 fps step down a level (and don't climb back above
+// it), comfortably above 57 for a while step up.
+function tickAutoGfx(dt) {
+  if (settings.gfxPreset !== 'auto' || paused || dead || document.hidden) return;
+  if (perf.fps) autoGfx.fps.push(perf.fps);
+  if ((autoGfx.timer -= dt) > 0) return;
+  autoGfx.timer = 5;
+  const f = autoGfx.fps.sort((a, b) => a - b), med = f[f.length >> 1] ?? 60;
+  autoGfx.fps = [];
+  if (f.length < 4) return;
+  let to = autoGfx.level;
+  if (med < 40 && to > 0) { to--; autoGfx.ceiling = to; autoGfx.good = 0; }
+  else if (med > 57 && to < autoGfx.ceiling) { if (++autoGfx.good >= 2) { to++; autoGfx.good = 0; } }
+  else autoGfx.good = 0;
+  if (to !== autoGfx.level) {
+    autoGfx.level = to; applyPreset('auto', true); updatePresetLabel();
+    toast(`Graphics: ${PRESET_NAMES[PRESET_ORDER[to]]} (auto, ${med} fps)`, 1800);
+  }
+}
+updatePresetLabel();
+if (settings.gfxPreset === 'auto') applyPreset('auto', true);
+$('torch-shadows').addEventListener('input', (e) => { goCustom(); settings.gfx.torches = +e.target.value; gfx.set('torches', settings.gfx.torches); updateGfxLabels(); saveSettings(); });
+$('torch-rate').addEventListener('input', (e) => { goCustom(); settings.gfx.torchRate = +e.target.value; gfx.set('torchRate', settings.gfx.torchRate); updateGfxLabels(); saveSettings(); });
+$('btn-gfx-shadows').addEventListener('click', () => { goCustom(); settings.gfx.shadows = (settings.gfx.shadows + 1) % 3; gfx.set('shadows', settings.gfx.shadows); updateGfxLabels(); saveSettings(); });
 for (const key of GFX_TOGGLES) {
-  $(`btn-gfx-${key}`)?.addEventListener('click', () => { settings.gfx[key] = !settings.gfx[key]; gfx.set(key, settings.gfx[key]); updateGfxLabels(); saveSettings(); });
+  $(`btn-gfx-${key}`)?.addEventListener('click', () => { goCustom(); settings.gfx[key] = !settings.gfx[key]; gfx.set(key, settings.gfx[key]); updateGfxLabels(); saveSettings(); });
 }
 $('btn-tips').addEventListener('click', () => { settings.tips = !settings.tips; updateTipsLabel(); saveSettings(); if (!settings.tips) $('inv-tip').classList.remove('show'); });
 function updatePerfLabel() { $('btn-perf').textContent = `Performance info: ${settings.perf ? 'on' : 'off'}`; }
@@ -4892,7 +5257,9 @@ controls = null;
   // Player must exist before Controls; startWorld gives it the real world.
   player = new Player(null);
   controls = new Controls($('touch-layer'), player, {
-    place,
+    place: () => { swingArm(); net.capture++; try { return place(); } finally { net.capture--; } },
+    openChat,
+    toggleView: () => { if (photoMode || dead) return; viewMode = (viewMode + 1) % 3; toast(VIEW_NAMES[viewMode], 1000); },
     selectSlot,
     scrollSlot: (d) => selectSlot((inventory.selected + d + 9) % 9),
     toggleInventory,
@@ -4902,7 +5269,17 @@ controls = null;
     throwItem: (all) => !photoMode && throwHeld(all),
     quickHold: () => inventory.heldId() === BOW,
     isPaused: () => paused,
+    toggleMenu: () => { if ($('menu').classList.contains('hidden')) { if (!paused) $('btn-menu').click(); } else $('btn-close-menu').click(); },
+    back: () => {
+      const shown = (id) => !$(id).classList.contains('hidden');
+      if (!$('menu').classList.contains('hidden')) $('btn-close-menu').click();
+      else if (shown('station')) closeStation();
+      else if (worldMap.open) closeMap();
+      else if (shown('guidebook')) closeGuidebook();
+      else if (shown('inventory')) toggleInventory();
+    },
   });
+  window.addEventListener('gamepadconnected', (e) => { if (e.gamepad.mapping === 'standard') toast('Gamepad connected: left stick walks, right stick looks, RT breaks, LT places', 3500); });
   controls.lookSens = settings.sens / 1000;
   controls.doubleTapBreak = settings.doubleTap;
   applyKeys();
@@ -5500,12 +5877,13 @@ function renderWorlds() {
   }
 }
 async function switchSlot(n, save, opts) {
+  if (activeSlot === MP_SLOT && net.ws) net.leave(true);
   saveGame();
   await world?.saveChunks();
   worldReady = false;
   settings.slot = n;
   saveSettings();
-  store.setSlot(n);
+  store.setSlot(n); activeSlot = n;
   $('worlds').classList.add('hidden');
   $('menu').classList.add('hidden');
   await startWorld(save, opts);
@@ -5583,10 +5961,18 @@ function groundSound() {
 }
 function playMovementSounds(dt, wasGround, wasWater, fallSpeed) {
   const speed = Math.hypot(player.vel.x, player.vel.z);
-  if (!wasWater && player.inWater) sound.splash(fallSpeed > 5);
+  if (!wasWater && player.inWater) {
+    sound.splash(fallSpeed > 5);
+    const sy = waterSurfaceAt(player.pos.x, player.pos.y + 0.5, player.pos.z);
+    if (sy !== null) ripples.splash(player.pos.x, sy, player.pos.z, Math.round(10 + Math.min(30, fallSpeed * 3)), Math.min(1.8, 0.6 + fallSpeed * 0.08));
+  }
   if (player.inWater) {
     moveSnd.swim -= dt;
-    if ((speed > 0.5 || controls.jump) && moveSnd.swim <= 0) { sound.splash(false); moveSnd.swim = 0.7; }
+    if ((speed > 0.5 || controls.jump) && moveSnd.swim <= 0) {
+      sound.splash(false); moveSnd.swim = 0.7;
+      const sy = waterSurfaceAt(player.pos.x, player.pos.y + 0.5, player.pos.z);
+      if (sy !== null && sy - player.pos.y < 1.9) ripples.splash(player.pos.x + Math.sin(-player.yaw) * -0.4, sy, player.pos.z - Math.cos(player.yaw) * 0.4, 6, 0.45);
+    }
     return;
   }
   if (!wasGround && player.onGround && fallSpeed > 4) sound.step(groundSound());
@@ -6927,6 +7313,7 @@ function frame(now) {
   gfx.sunDir.copy(sky.sunDir); gfx.overcast = weather?.overcast ?? 0; gfx.underwater = !!player.eyeInWater;
   try { findWaterLevel(dt); } catch (err) { reportError(err); }
   gfx.render(scene, camera);
+  if (viewMode === 0 && !photoMode && !dead) viewmodel.render(renderer);
   updatePerf(now);
 }
 
@@ -6948,6 +7335,7 @@ function updatePerf(now) {
 function stepGame(now, dt) {
   // the player waits (frozen) until the chunk they're standing in has loaded
   const here = world.chunkAt(Math.floor(player.pos.x), Math.floor(player.pos.z));
+  if (paused || !here) controls.pollPad(); // (a gamepad can still open and close menus)
   if (photoMode) {
     controls.update();
     movePhotoCam(dt);
@@ -6998,6 +7386,10 @@ function stepGame(now, dt) {
     tickBatteryGear(dt);
     tickPads(dt);
     tickHum(dt);
+    tickMachineSounds(dt);
+    tickAutoGfx(dt);
+    try { tickRipples(dt); } catch (err) { reportError(err); }
+    try { tickNet(dt); } catch (err) { reportError(err); }
     renderBossBar();
     updateHunger(dt);
     updateHealth(dt, wasGround, prevY);
@@ -7055,6 +7447,8 @@ function stepGame(now, dt) {
   const eye = player.eye;
   camera.position.copy(photoMode ? photoCam : eye);
   camera.rotation.set(player.pitch, player.yaw, 0);
+  if (!photoMode && viewMode > 0) thirdPersonCamera(eye);
+  try { updateMe(paused ? 0 : dt); } catch (err) { reportError(err); }
 
   const biome = world.generator.biomeAt(Math.floor(player.pos.x), Math.floor(player.pos.z));
   // in winter it snows rather than rains in temperate land
@@ -7111,7 +7505,7 @@ if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').ca
 
 // expose for debugging in the console
 window.minicraft = {
-  gfx,
+  gfx, viewmodel, avatar, swingArm, ripples, waterSurfaceAt, net, get activeSlot() { return activeSlot; }, mpLeave, pendingEdits, get viewMode() { return viewMode; },
   get world() { return world; }, player, inventory, saveGame, sky, sound, breakBlock, mobs,
   get hunger() { return hunger; }, set hunger(v) { hunger = v; renderHunger(); },
   get day() { return day; },

@@ -265,6 +265,8 @@ html, body {
 }
 .menu-panel { width: min(420px, 100%); }
 .menu-items { display: flex; flex-direction: column; gap: 10px; padding: 0 14px 14px; overflow: auto; }
+.look-row { display: flex; gap: 8px; }
+.look-row .btn { flex: 1; }
 #difficulty-about { margin: -4px 0 0; }
 .slider { display: flex; align-items: center; gap: 12px; font-size: 16px; }
 .slider input { flex: 1; height: 36px; }
@@ -495,3 +497,15 @@ body.photo.snapping #photo-bar { display: none; }
 .lp-sense { display: flex; gap: 10px; align-items: center; margin: 8px 0; font-size: 14px; line-height: 2; }
 .lp-sense .lp-ghost { width: 44px; height: 44px; flex-shrink: 0; }
 #lp-body .btn.small.on { background: #3d6b3a; color: #fff; }
+
+/* v38: multiplayer */
+.field { display: flex; align-items: center; gap: 8px; }
+.field span { min-width: 84px; }
+.field input { flex: 1; min-width: 0; padding: 8px 10px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.25); background: rgba(0,0,0,0.35); color: #fff; font: inherit; }
+#chat-log { position: fixed; left: 12px; bottom: 150px; max-width: min(60vw, 520px); pointer-events: none; z-index: 6; display: flex; flex-direction: column; gap: 3px; }
+#chat-log div { background: rgba(0,0,0,0.45); color: #fff; padding: 3px 8px; border-radius: 6px; font-size: 14px; transition: opacity 1s; overflow-wrap: anywhere; }
+#chat-log div.fade { opacity: 0; }
+#chat-log b { color: #ffe08a; }
+#chat-input { position: fixed; left: 12px; bottom: 112px; width: min(70vw, 520px); z-index: 7; padding: 8px 10px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.35); background: rgba(0,0,0,0.6); color: #fff; font-size: 15px; }
+
+#chat-input.hidden, .btn.hidden { display: none; }
