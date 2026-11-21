@@ -13,6 +13,14 @@ const PROFILES = {
   wool: { type: 'lowpass', freq: 700, q: 0.5, dur: 0.12, vol: 0.45 },
 };
 
+// v38: which sound each kind of station makes while it works.
+const MACHINE_VOICE = {
+  saw: 'saw', carpenter: 'saw', crusher: 'grind', mill: 'grind', pulverizer: 'grind', hammer: 'thump', polypress: 'thump',
+  cheesepress: 'creak', winepress: 'creak', compost: 'creak', cauldron: 'bubble', cookpot: 'bubble', distillery: 'bubble', bottler: 'bubble',
+  centrifuge: 'whirr', combspin: 'whirr', oven: 'fire', smelter: 'fire', blast: 'fire', kiln: 'fire', freezer: 'hiss',
+  washer: 'slosh', sieve: 'slosh', crafter: 'clack', pcrafter: 'clack', esmelter: 'buzz', arc: 'buzz',
+};
+
 export class Sound {
   constructor() {
     this.ctx = null;
@@ -147,6 +155,61 @@ export class Sound {
   saw() {
     if (!this.ready) return;
     this.voice({ type: 'sawtooth', from: 140, to: 110, dur: 0.22, vol: 0.12, freq: 1800, q: 2 });
+  }
+
+  // v38: what a working machine sounds like, every second or so while it works (gain falls off with distance).
+  machine(kind, gain = 1) {
+    if (!this.ready || gain < 0.02) return;
+    const r = Math.random(), g = gain;
+    switch (MACHINE_VOICE[kind]) {
+      case 'saw': // a blade biting into wood
+        this.voice({ type: 'sawtooth', from: 170 + r * 30, to: 120, dur: 0.3, vol: 0.07 * g, freq: 1500, q: 2 });
+        this.noiseBurst({ type: 'bandpass', freq: 3200, q: 1.2, dur: 0.25, vol: 0.12 }, g, 1);
+        break;
+      case 'grind': // stone between millstones
+        this.noiseBurst({ type: 'lowpass', freq: 380 + r * 120, q: 1.5, dur: 0.45, vol: 0.3 }, g, 0.8);
+        break;
+      case 'thump': // a hammer or press coming down
+        this.voice({ type: 'sine', from: 110, to: 45, dur: 0.18, vol: 0.22 * g, freq: 400 });
+        this.noiseBurst({ type: 'lowpass', freq: 900, q: 0.7, dur: 0.08, vol: 0.25 }, g, 1);
+        break;
+      case 'bubble': // something simmering
+        for (let i = 0; i < 3; i++) {
+          const f = 300 + Math.random() * 500;
+          this.voice({ type: 'sine', from: f, to: f * 1.8, dur: 0.07, vol: 0.06 * g, freq: 3000, delay: i * 0.09 + Math.random() * 0.05 });
+        }
+        break;
+      case 'whirr': // a spinning drum
+        this.voice({ type: 'triangle', from: 260, to: 420 + r * 60, dur: 0.6, vol: 0.05 * g, freq: 1800, vibrato: 6 });
+        break;
+      case 'fire': // a fire in a furnace
+        this.noiseBurst({ type: 'lowpass', freq: 600, q: 0.5, dur: 0.5, vol: 0.12 }, g, 1);
+        if (r < 0.6) this.crackle(g * 0.7);
+        break;
+      case 'hiss': // cold air or steam
+        this.noiseBurst({ type: 'highpass', freq: 3000 + r * 1500, q: 0.5, dur: 0.6, vol: 0.08 }, g, 1);
+        break;
+      case 'slosh': // water through a washer or sieve
+        this.noiseBurst({ type: 'bandpass', freq: 900 + r * 400, q: 1, dur: 0.35, vol: 0.18 }, g, 1);
+        break;
+      case 'clack': // an auto-crafter's arms
+        this.tone(420 + r * 120, 0.04, 0.08 * g, 'square');
+        setTimeout(() => this.tone(300 + r * 80, 0.04, 0.07 * g, 'square'), 110);
+        break;
+      case 'buzz': // electric smelting
+        this.voice({ type: 'square', from: 120, to: 120, dur: 0.5, vol: 0.035 * g, freq: 700, vibrato: 3 });
+        break;
+      case 'creak': // a slow wooden press
+        this.voice({ type: 'sawtooth', from: 80 + r * 20, to: 60, dur: 0.5, vol: 0.05 * g, freq: 500, q: 4 });
+        break;
+      default: break;
+    }
+  }
+
+  // An item whooshing along a logistics pipe.
+  pipe(gain = 1) {
+    if (!this.ready || gain < 0.02) return;
+    this.noiseBurst({ type: 'bandpass', freq: 1800 + Math.random() * 600, q: 3, dur: 0.12, vol: 0.08 }, gain, 1.2);
   }
 
   pop() { if (this.ready) this.tone(520 + Math.random() * 80, 0.09, 0.2, 'square', 900); }

@@ -2433,6 +2433,41 @@ function tickHum(dt) {
   sound.hum(paused || dead ? 0 : Math.min(1, mech / 8), paused || dead ? 0 : Math.min(1, elec / 6));
 }
 
+// v38: each working machine near you makes its own sound now and then (a saw rasps, a cauldron bubbles, an
+// auto-crafter clacks), and items whoosh along logistics pipes.
+const machineNext = new Map();
+let machineTimer = 0, pipeNext = 0;
+function tickMachineSounds(dt) {
+  if ((machineTimer -= dt) > 0 || paused || dead) return;
+  machineTimer = 0.25;
+  const p = player.pos, R = 12, now = performance.now() / 1000;
+  const heard = [];
+  for (const [k, st] of stations.map) {
+    const [x, y, z] = k.split(',').map(Number);
+    const d = Math.hypot(x + 0.5 - p.x, y + 0.5 - p.y, z + 0.5 - p.z);
+    if (d > R) continue;
+    const K = STATION_KINDS[st.kind];
+    if (!K || !(st.progress > 0)) continue;
+    const working = K.powered ? (K.passive || st.speed > 0) : K.crafter || st.cooking || K.nofuel;
+    if (working) heard.push([k, st.kind, d]);
+  }
+  heard.sort((a, b) => a[2] - b[2]);
+  for (const [k, kind, d] of heard.slice(0, 4)) {
+    if ((machineNext.get(k) ?? 0) > now) continue;
+    machineNext.set(k, now + 0.8 + Math.random() * 1.4);
+    sound.machine(kind, (1 - d / R) ** 1.5);
+  }
+  if (machineNext.size > 200) for (const [k, t] of machineNext) if (t < now) machineNext.delete(k);
+  if (now > pipeNext) {
+    let best = R;
+    for (const t of logistics.transits) {
+      const a = t.path?.[t.j ?? 0];
+      if (a) best = Math.min(best, Math.hypot(a[0] + 0.5 - p.x, a[1] + 0.5 - p.y, a[2] + 0.5 - p.z));
+    }
+    if (best < R) { sound.pipe((1 - best / R) ** 1.5); pipeNext = now + 0.5 + Math.random() * 0.8; }
+  }
+}
+
 // A wireless charger tops up what you carry (things in your inventory first, then what you're wearing) while
 // you're within WIRELESS_REACH of it. Returns whether anything needed charge; with amount 0 it only looks.
 function wirelessCharge(n, amount) {
@@ -7061,6 +7096,7 @@ function stepGame(now, dt) {
     tickBatteryGear(dt);
     tickPads(dt);
     tickHum(dt);
+    tickMachineSounds(dt);
     renderBossBar();
     updateHunger(dt);
     updateHealth(dt, wasGround, prevY);
