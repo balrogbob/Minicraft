@@ -56,23 +56,32 @@ The version number is shown at the bottom of the ☰ menu; bump `GAME_VERSION` i
 
 ### Fancy graphics
 
-The ☰ menu has five extra effects for computers with a strong graphics card. They are all **off** to start
+The ☰ menu has extra effects for computers with a strong graphics card. They are all **off** to start
 with, each has its own switch, and they are remembered between games. Turn on the ones you like, and
 turn any off again if the game gets slow (☰ → Performance info shows the frame rate).
 
-- **Sun shadows**: the sun casts soft shadows from blocks, trees, animals and machines within about 44
+- **Sun shadows** (off / low / high): the sun casts soft shadows from blocks, trees, animals and machines within about 44
   blocks of you. They lengthen towards evening, fade under clouds and go at night. (Torch and lamp light
-  doesn't need these: it spreads block by block, so it already stops at walls.)
-- **Torch shadows** (a slider, off or 1 to 5): the nearest few torches, lanterns, lamps and other lights
+  doesn't need these: it spreads block by block, so it already stops at walls.) **Low** is for mid-range
+  machines: a smaller shadow picture over about 32 blocks, harder edges, redrawn every other frame.
+- **Torch shadows** (a slider, off or 1 to 50): the nearest few torches, lanterns, lamps and other lights
   cast shadows of their own: pillars, furniture, machines and animals standing in the light throw sharp
   shadows across the floor and walls. Lights out in the daytime sun are skipped (the sun drowns them out),
-  so in the day this mostly matters indoors and underground; at night every light counts. Each light
-  costs about as much to draw as the sun's shadows, so fewer is faster.
+  so in the day this mostly matters indoors and underground; at night every light counts. With more than
+  5 lights it looks 24 blocks around you instead of 16. **Torch shadows redrawn per frame** (1 to 50)
+  sets how many lights get their shadows redrawn each frame, in turn (new lights are drawn at once):
+  higher keeps shadows of moving animals smooth, lower is faster.
 - **Bloom**: bright things glow a little past their edges: lava, lamps, the sky behind trees, sun glints.
+- **God rays**: when you look towards the sun, shafts of light stream out around whatever hides it
+  (trees, hills, gaps in a wall); strongest near sunrise and sunset.
+- **Swaying leaves and plants**: leaves stir and flowers, grass and crops bend in the wind.
 - **Fancy water**: moving waves, reflections of the sky that get stronger as you look across the water, and
   glints of sunlight.
+- **Water reflections**: the water mirrors the hills, trees and buildings above it (the world is drawn a
+  second time, upside down, at half size). Works on the water around you at the height most of it is.
 - **Water refraction**: you see the bottom through the water, bent by the waves.
 - **Water caustics**: rippling lines of light on blocks under sunlit water.
+- **Underwater ripple**: the view wobbles gently while your head is under water.
 
 If an effect doesn't work on your device it is switched off by itself, with a message.
 
@@ -1631,6 +1640,8 @@ guide to how everything works.
 
 ## Version history
 
+- **Version 37**: more fancy graphics: a low-cost setting for sun shadows, torch shadows for up to 50 lights
+  with a redraw-rate slider, god rays, swaying leaves and plants, water reflections and an underwater ripple.
 - **Version 36**: optional fancy graphics in the ☰ menu, all off by default: sun shadows, shadows from the
   nearest 1 to 5 torches and lamps, bloom, a water
   surface with waves, reflections and sun glints, water refraction, and caustics under sunlit water.

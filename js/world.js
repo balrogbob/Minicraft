@@ -1237,6 +1237,7 @@ export class World {
         const tvTop = 1 - Math.floor(tile / ATLAS_COLS) * tileUV;
         const ao = [0, 0, 0, 0];
         const wet = isWaterId(nid);
+        const leafSway = isLeaves(id) ? 4 : 0;
         for (let k = 0; k < 4; k++) {
           const cr = f.corners[k];
           pos.push(lx + cr.o[0], y + cr.o[1], lz + cr.o[2]);
@@ -1257,7 +1258,7 @@ export class World {
           if (!s2) { sum += this.lightAt(x + cr.b[0], y + cr.b[1], z + cr.b[2]); sun += this.skyAt(x + cr.b[0], y + cr.b[1], z + cr.b[2]); n++; }
           if (!cc && !(s1 && s2)) { sum += this.lightAt(x + cr.c[0], y + cr.c[1], z + cr.c[2]); sun += this.skyAt(x + cr.c[0], y + cr.c[1], z + cr.c[2]); n++; }
           tl.push(lightBrightness(sum / n) + 2 * this.tintAt(nx, ny, nz));
-          sl.push(skyBrightness(sun / n) + (wet ? 2 : 0)); // (+2: faces under water, for caustics)
+          sl.push(skyBrightness(sun / n) + (wet ? 2 : 0) + leafSway); // (+2: faces under water, for caustics; +4: leaves sway)
         }
         // flip the quad diagonal so AO interpolates without artifacts
         if (ao[0] + ao[2] < ao[1] + ao[3]) {
@@ -1340,6 +1341,7 @@ export class World {
     const tv0 = 1 - Math.floor(def.side / ATLAS_COLS) * tileUV - tileUV;
     const a = 0.12, b = 0.88; // inset from the block corners
     const b2 = toLinear(0.88);
+    const sway = def.sound === 'leaves' && !def.light; // plants, not fire or crystals
     for (const [x1, z1, x2, z2] of [[a, a, b, b], [b, a, a, b]]) {
       const corners = [[x1, 0, z1, 0, 0], [x2, 0, z2, 1, 0], [x2, 1, z2, 1, 1], [x1, 1, z1, 0, 1]];
       for (const [cx, cy, cz, u, v] of corners) {
@@ -1347,7 +1349,7 @@ export class World {
         uv.push(tu + u * tileUV, tv0 + v * tileUV);
         col.push(b2, b2, b2);
         tl.push(torch);
-        sl.push(sky);
+        sl.push(sky + (sway && cy ? 8 : 0)); // (+8: the top of a plant, which sways: see graphics.js)
       }
       // both windings, so the sprite shows from either side
       index.push(vcount, vcount + 1, vcount + 2, vcount, vcount + 2, vcount + 3);
