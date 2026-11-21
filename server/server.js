@@ -138,12 +138,13 @@ function electHost() {
 
 function join(ws) {
   if (players.size >= MAX_PLAYERS) { ws.send({ t: 'full' }); ws.close(1013); return; }
-  const id = nextId++, me = { ws, name: `Player ${id}`, look: cleanLook({}), state: null, hello: false, budget: 60, last: Date.now() };
+  const id = nextId++, me = { ws, name: `Player ${id}`, look: cleanLook({}), state: null, hello: false, budget: 1500, last: Date.now() };
   players.set(id, me);
   ws.onmessage = (raw) => {
-    // a simple flood limit: about 40 messages a second on average
+    // a simple flood limit: about 300 messages a second on average, in bursts of up to 1500 (a busy farm
+    // or quarry sends a lot of block changes)
     const now = Date.now();
-    me.budget = Math.min(80, me.budget + (now - me.last) * 0.04); me.last = now;
+    me.budget = Math.min(1500, me.budget + (now - me.last) * 0.3); me.last = now;
     if ((me.budget -= 1) < 0) return;
     let m; try { m = JSON.parse(raw); } catch { return; }
     if (!m || typeof m !== 'object') return;

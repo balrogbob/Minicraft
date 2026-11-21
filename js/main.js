@@ -4519,7 +4519,9 @@ const blastable = (def) => def && !def.blastproof && !def.liquid && !def.station
 // (v32: a demolition charge, linked to a detonator, blows a bigger hole)
 const chargeRadius = (id) => (id === BLAST_CHARGE ? BLAST_RADIUS : id === DEMO_CHARGE || id === DEMO_CHARGE + 1 ? DEMO_RADIUS : 0);
 // gather: a charge's blast throws you what it breaks (a meltdown or a meteorite just destroys)
-function explode(x, y, z, R = BLAST_RADIUS, cause = 'You stood too close to a blasting charge.', gather = false) {
+// (v39: in multiplayer an explosion is sent on by whoever's game it went off in)
+function explode(...args) { net.capture++; try { return explodeHere(...args); } finally { net.capture--; } }
+function explodeHere(x, y, z, R = BLAST_RADIUS, cause = 'You stood too close to a blasting charge.', gather = false) {
   world.setBlock(x, y, z, AIR);
   const gathered = new Map(), span = Math.ceil(R);
   const near = gather && (x + 0.5 - player.pos.x) ** 2 + (y + 0.5 - player.pos.y) ** 2 + (z + 0.5 - player.pos.z) ** 2 < 24 * 24; // (a meltdown just destroys)
@@ -4580,7 +4582,7 @@ function tickMeteors(dt) {
     meteors.splice(i, 1);
     landMeteor(m.to.x, m.to.y, m.to.z);
   }
-  if (paused || dead || !sky.isNight || meteorNight === day || weather.raining) return;
+  if (paused || dead || !sky.isNight || meteorNight === day || weather.raining || (mpOn() && !net.isHost)) return; // (v39: in multiplayer the host's sky has the meteors)
   if (Math.random() < dt / 600) { meteorNight = day; dropMeteor(); }
 }
 // Drop a meteorite (at (x, z), or somewhere 30-70 blocks away); returns where it'll land, or null.
@@ -4928,9 +4930,16 @@ const pendingEdits = new Map(); // chunk key -> [[x, y, z, id]] for parts of the
 let pendingTimer = 0, netApplying = false;
 {
   const set = World.prototype.setBlock;
+  // v39: in multiplayer, a change your game makes by itself (a crop growing, a leaf falling, a machine at work,
+  // a fire spreading) only happens where your game runs that part of the world, and then goes to everyone;
+  // elsewhere it comes from the game that does run it. What you do yourself always happens and goes to
+  // everyone. Running water is left to each game: from the same blocks it flows the same way everywhere.
   World.prototype.setBlock = function (x, y, z, id) {
+    if (this !== world || netApplying || !worldReady || !mpOn() || this.flowing) { set.call(this, x, y, z, id); return; }
+    const mine = net.capture > 0;
+    if (!mine && !ownsSpot(x, z)) return;
     set.call(this, x, y, z, id);
-    if (net.capture > 0 && !netApplying && net.live && this === world) net.send({ t: 'block', x, y, z, id: this.get(x, y, z) });
+    net.send({ t: 'block', x, y, z, id: this.get(x, y, z) });
   };
 }
 function mpDefaultUrl() {
