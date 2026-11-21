@@ -82,6 +82,7 @@ export class Net {
       case 'host': this.host = m.id; this.d.on.host?.(m.id === this.id, this.remotes.get(m.id)?.name); break;
       case 'clock': this.d.on.clock?.(m); break;
       case 'kv': this.d.on.kv?.(m.ch, m.k, m.v); break;
+      case 'mobs': this.d.on.mobs?.(m.id, m.l, m.g); break;
       case 'full': this.d.on.status?.('full'); break;
       case 'join': this.addRemote(m.id, m.name, m.look); this.d.on.join?.(m.name); break;
       case 'leave': { const r = this.remotes.get(m.id); if (r) { this.d.on.leave?.(r.name); this.removeRemote(m.id); } break; }

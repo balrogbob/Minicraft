@@ -241,6 +241,7 @@ const net = new Net({ scene, atlas, icons: icons.canvases, ITEMS, on: {
   host: (me, name) => { if (me && weather.timer > 1e6) weather.timer = 120 + Math.random() * 300; addChat(null, me ? 'You are now the host: your game keeps the time, weather and creatures for everyone' : `${name ?? 'Someone'} is now the host`); clockTimer = 0; },
   clock: (c) => applyClock(c),
   kv: (ch, k, v) => applyKv(ch, k, v),
+  mobs: (from, l, g) => { if (worldReady && activeSlot === MP_SLOT) mobs.netIn(from, l, g); },
   join: (name) => addChat(null, `${name} joined`), leave: (name) => addChat(null, `${name} left`), status: (st, why) => mpStatus(st, why),
 } });
 let viewMode = 0; // 0 first person, 1 behind you, 2 facing you
@@ -2959,7 +2960,7 @@ const bolts = []; // { line, t }
 function teslaTarget(n) {
   let best = null, bd = TESLA_REACH;
   for (const m of mobs.mobs) {
-    if (!isHostile(m)) continue;
+    if (!isHostile(m) || m.puppet) continue;
     const d = Math.hypot(m.pos.x - n.x - 0.5, m.pos.y + 0.8 - n.y - 1, m.pos.z - n.z - 0.5);
     if (d < bd) { bd = d; best = m; }
   }
@@ -2998,7 +2999,7 @@ function tickZaps(dt) {
     return null;
   };
   for (const m of mobs.mobs) {
-    if (m.dying || m.tame || (m.shock = (m.shock ?? 0) - dt) > 0 || m.pos.distanceTo(player.pos) > 48) continue;
+    if (m.dying || m.tame || m.puppet || (m.shock = (m.shock ?? 0) - dt) > 0 || m.pos.distanceTo(player.pos) > 48) continue;
     const at = touching(m.pos, m.spec.w / 2, m.spec.h);
     if (!at) continue;
     m.shock = 1;
@@ -3157,7 +3158,7 @@ function tickHazards(dt) {
     for (const m of mobs.mobs) {
       if (m.dying) continue;
       if (m.spec.burns && m.pos.distanceTo(player.pos) < 2.6 && !(effects.fire > 0) && !guarded('fire')) damage(armoured(2), 'The Ember Lord burned you to a crisp.');
-      if (m.burning > 0) {
+      if (m.burning > 0 && !m.puppet) {
         m.burning -= 1;
         if (m.spec.hostile) giveDrops(mobs.hurt(m, 2, m.pos.clone().add(new THREE.Vector3(0, 0, 0.01))));
         else m.burning = 0;
@@ -3322,7 +3323,7 @@ function stableHorse(m, [x, y, z]) {
 // Tap a stable: your horses (tame ones anywhere in the loaded world) come home to it, and it tells you about them.
 function useStable(x, y, z) {
   const key = `${x},${y},${z}`;
-  const mine = mobs.mobs.filter((m) => m.spec.horse && m.tame && !m.dying && m !== ridingMob);
+  const mine = mobs.mobs.filter((m) => m.spec.horse && m.tame && !m.puppet && !m.dying && m !== ridingMob);
   let called = 0;
   for (const m of mine) {
     if (m.stable === key && Math.hypot(m.pos.x - x, m.pos.z - z) < 4) continue;
@@ -5055,6 +5056,20 @@ function ownsSpot(x, z) {
   return true;
 }
 stations.owns = (x, z) => ownsSpot(x, z);
+mobs.owns = (x, z) => ownsSpot(x, z);
+// v39: creatures. Each game runs the ones in its part of the world and, ten times a second, tells the others
+// where those are (when they're anywhere near one of them); the others draw them as puppets.
+let mobsTimer = 0;
+function tickMobsNet() {
+  mobs.netTakeOver();
+  const now = performance.now();
+  if (now < mobsTimer || !mpOn() || !net.remotes.size) return;
+  mobsTimer = now + 100;
+  mobs.netId = net.id;
+  const near = (x, z) => { for (const r of net.remotes.values()) if (r.pos && Math.abs(r.target.x - x) < 112 && Math.abs(r.target.z - z) < 112) return true; return false; };
+  const { l, g } = mobs.netOut(near);
+  if (l.length || g.length) net.send({ t: 'mobs', l, g });
+}
 
 // v39: what's in chests and machines, the writing on signs and what's in item frames is shared. Every half
 // second each game looks for any that changed since it last sent or heard of them, and sends those.
@@ -5149,6 +5164,7 @@ function tickClock(dt) {
 function tickNet(dt) {
   tickClock(dt);
   tickKv(dt);
+  if (worldReady) tickMobsNet();
   if ((pendingTimer -= dt) <= 0) { pendingTimer = 0.4; applyPending(); }
   const p = player.pos;
   net.update(dt, net.live && activeSlot === MP_SLOT && !dead ? {
@@ -6281,7 +6297,7 @@ let catGiftDay = -1;
 const CAT_GIFTS = [[FEATHER, 1, 2], [STRING, 1, 2], [RAW_FISH, 1, 1], [SEEDS, 2, 4], [BERRIES, 1, 3], [OLD_BOOT, 1, 1], [CARROT, 1, 2], [POTATO, 1, 2]];
 function tickPets(dt) {
   for (const m of mobs.mobs) {
-    if (m.kind !== 'wolf' || !m.tame) continue;
+    if (m.kind !== 'wolf' || !m.tame || m.puppet) continue;
     if (m.sitting || m.dying) { if (m.fetch) { m.fetch = null; m.goal = null; } continue; }
     if (m.carrying) {
       // bring it back and drop it at your feet
@@ -6311,7 +6327,7 @@ function tickPets(dt) {
   // a cat's morning present
   const hours = (sky.time * 24 + 6) % 24;
   if (catGiftDay !== day && hours > 6.2 && hours < 10) {
-    const cat = mobs.mobs.find((m) => m.kind === 'cat' && m.tame && !m.dying && Math.hypot(m.pos.x - player.pos.x, m.pos.z - player.pos.z) < 32);
+    const cat = mobs.mobs.find((m) => m.kind === 'cat' && m.tame && !m.puppet && !m.dying && Math.hypot(m.pos.x - player.pos.x, m.pos.z - player.pos.z) < 32);
     if (cat) {
       catGiftDay = day;
       if (Math.random() < 0.6) {
@@ -7058,7 +7074,7 @@ function tickStables(dt) {
   if ((stableTimer -= dt) > 0) return;
   stableTimer = 2;
   for (const m of mobs.mobs) {
-    if (!m.spec.horse || !m.tame || !m.stable || m.ridden || m.dying || (m.rested ?? 0) > RESTED_TIME * 0.5) continue;
+    if (!m.spec.horse || !m.tame || m.puppet || !m.stable || m.ridden || m.dying || (m.rested ?? 0) > RESTED_TIME * 0.5) continue;
     const feed = mangers.get(m.stable) ?? 0;
     if (!feed) continue;
     const [x, , z] = m.stable.split(',').map(Number);

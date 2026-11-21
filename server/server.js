@@ -217,6 +217,11 @@ function handle(id, me, m) {
       others(id, { t: 'kv', ch: m.ch, k: m.k, v: m.v ?? null });
       break;
     }
+    case 'mobs': { // (the creatures a player's game runs, for the others to draw: passed on, not kept)
+      if (!me.hello || !Array.isArray(m.l) || m.l.length > 400 || (m.g != null && (!Array.isArray(m.g) || m.g.length > 400))) return;
+      others(id, { t: 'mobs', id, l: m.l, g: m.g ?? [] });
+      break;
+    }
     case 'swing': if (me.hello) others(id, { t: 'swing', id }); break;
     case 'look': if (me.hello) { me.look = cleanLook(m.look); others(id, { t: 'look', id, look: me.look }); } break;
     default: break;
