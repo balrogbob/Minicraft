@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { Viewmodel, Avatar, LOOKS, randomLook } from './held.js';
 import { Ripples } from './ripples.js';
+import { Net } from './net.js';
 import { Graphics, GFX_DEFAULTS, GFX_NAMES, GFX_TOGGLES, SHADOW_LEVELS, GFX_PRESETS, PRESET_ORDER, PRESET_NAMES, MAX_TORCH_SHADOWS, gfxUniforms, GFX_FRAG_HEAD, GFX_SUN_TERM, GFX_WATER, GFX_VERT_HEAD, GFX_VERT_DECODE, GFX_VERT_SWAY, WATER_LAYER, LATE_LAYER } from './graphics.js';
 import {
   BLOCKS, RECIPES, TABLE, AIR, WATER, TORCH, TORCH_WALL_W, WALL_TORCH_DIRS,
@@ -78,7 +79,7 @@ import { Logic } from './logic.js';
 
 // v2 = the 16k x 16k streaming world (player state here, edited chunks in IndexedDB).
 // v1 = the old 128 x 128 world, migrated into the middle of the big world on first launch.
-const GAME_VERSION = '37'; // shown in the menu; bump with each release
+const GAME_VERSION = '38'; // shown in the menu; bump with each release
 const SAVE_KEY = 'minicraft-save-v2';
 const LEGACY_SAVE_KEY = 'minicraft-save-v1';
 const SETTINGS_KEY = 'minicraft-settings-v1';
@@ -88,11 +89,13 @@ const $ = (id) => document.getElementById(id);
 // ---------- storage (never trusted to exist) ----------
 // Save slots: slot 0 is the original save (so worlds from before there were slots carry on as world 1).
 const SLOT_COUNT = 3;
+const MP_SLOT = 9; // (v38: a multiplayer world's local copy lives here, apart from your own worlds)
+let activeSlot = 0; // the slot being played: settings.slot, or MP_SLOT while on a server
 const saveKeyOf = (n) => (n ? `${SAVE_KEY}-s${n}` : SAVE_KEY);
-function loadSave(key = saveKeyOf(settings.slot)) {
+function loadSave(key = saveKeyOf(activeSlot)) {
   try { return JSON.parse(localStorage.getItem(key)); } catch { return null; }
 }
-function writeSave(obj, slot = settings.slot) {
+function writeSave(obj, slot = activeSlot) {
   try { localStorage.setItem(saveKeyOf(slot), JSON.stringify(obj)); return true; } catch { return false; }
 }
 // Settings live apart from the world so they survive "New world".
@@ -111,6 +114,7 @@ const settings = (() => {
   s.gfx.shadows = s.gfx.shadows === true ? 2 : Math.max(0, Math.min(2, s.gfx.shadows | 0)); // (v36 saved on/off)
   return s;
 })();
+activeSlot = settings.slot;
 function saveSettings() {
   try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch { /* storage unavailable */ }
 }
@@ -231,9 +235,14 @@ viewmodel.setLook(settings.look);
 const avatar = new Avatar(settings.look, atlas, icons.canvases, ITEMS);
 avatar.root.visible = false;
 scene.add(avatar.root);
+// v38: multiplayer (see net.js, and server/server.js)
+const net = new Net({ scene, atlas, icons: icons.canvases, ITEMS, on: {
+  welcome: (m) => mpWelcome(m), block: (x, y, z, id) => mpBlock(x, y, z, id), chat: (name, text, mine) => addChat(name, text, mine),
+  join: (name) => addChat(null, `${name} joined`), leave: (name) => addChat(null, `${name} left`), status: (st, why) => mpStatus(st, why),
+} });
 let viewMode = 0; // 0 first person, 1 behind you, 2 facing you
 const VIEW_NAMES = ['First person', 'Third person (behind)', 'Third person (front)'];
-function swingArm() { viewmodel.swing(); avatar.swing(); }
+function swingArm() { viewmodel.swing(); avatar.swing(); if (net.live) { const now = performance.now(); if (now - (swingArm.sent ?? 0) > 250) { swingArm.sent = now; net.send({ t: 'swing' }); } } }
 // how bright it is where you stand (for your arm, what you hold, and your character)
 function lightHere() {
   const x = Math.floor(player.pos.x), y = Math.min(H - 1, Math.floor(player.pos.y + 1.2)), z = Math.floor(player.pos.z);
@@ -736,6 +745,7 @@ function saveGame() {
   world.saveChunks();
   return writeSave({
     seed: world.seed,
+    ...(activeSlot === MP_SLOT ? { mpWorld: net.worldId } : {}),
     inv: inventory.serialize(),
     player: { x: player.pos.x, y: player.pos.y, z: player.pos.z, yaw: player.yaw, pitch: player.pitch },
     autoJump: player.autoJump,
@@ -4698,8 +4708,11 @@ function updateBreaking(dt) {
   if (breakState.tick <= 0) { sound.dig(BLOCKS[target.id].sound); breakState.tick = 0.24; swingArm(); }
   if (breakState.progress >= 1) {
     const hit = target;
-    breakBlock(target.x, target.y, target.z);
-    if (held === ELECTRIC_DRILL) drillAround(hit);
+    net.capture++;
+    try {
+      breakBlock(target.x, target.y, target.z);
+      if (held === ELECTRIC_DRILL) drillAround(hit);
+    } finally { net.capture--; }
     breakState.key = ''; breakState.progress = 0;
     crack.visible = false;
     target = null;
@@ -4901,6 +4914,153 @@ function dropUnsupported(x, y, z) {
   }
 }
 
+// ---------- multiplayer (v38) ----------
+// Joining a server plays its world in a slot of its own (your worlds are left alone). The server gives the
+// seed and every block players have changed; the rest the game builds itself, as usual. Blocks you place or
+// break go to the server and on to everyone else. (Stage 1: what's inside chests and machines, creatures,
+// and water and plants growing are each player's own.)
+const pendingEdits = new Map(); // chunk key -> [[x, y, z, id]] for parts of the world not loaded yet
+let pendingTimer = 0, netApplying = false;
+{
+  const set = World.prototype.setBlock;
+  World.prototype.setBlock = function (x, y, z, id) {
+    set.call(this, x, y, z, id);
+    if (net.capture > 0 && !netApplying && net.live && this === world) net.send({ t: 'block', x, y, z, id: this.get(x, y, z) });
+  };
+}
+function mpDefaultUrl() {
+  if (!/^https?:$/.test(location.protocol)) return 'ws://localhost:8080/mc';
+  return `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/mc`;
+}
+function mpUrl(text) {
+  let u = String(text || '').trim() || mpDefaultUrl();
+  if (/^https?:\/\//i.test(u)) u = u.replace(/^http/i, 'ws');
+  if (!/^wss?:\/\//i.test(u)) u = `ws://${u}`;
+  if (!/\/mc\/?$/.test(new URL(u).pathname)) u = u.replace(/\/?$/, '/mc');
+  return u;
+}
+function openMp() {
+  $('menu').classList.add('hidden');
+  $('mp').classList.remove('hidden');
+  paused = true; controls.reset(); document.exitPointerLock?.();
+  $('mp-url').value = settings.mpUrl || mpDefaultUrl();
+  $('mp-name').value = settings.mpName || '';
+  renderMp();
+}
+function closeMp() { $('mp').classList.add('hidden'); paused = false; }
+function renderMp() {
+  const on = activeSlot === MP_SLOT;
+  $('btn-mp-join').classList.toggle('hidden', net.live);
+  $('btn-mp-leave').classList.toggle('hidden', !on);
+  $('btn-chat').classList.toggle('hidden', !net.live);
+  const names = [...net.remotes.values()].map((r) => r.name);
+  $('mp-players').textContent = net.live ? (names.length ? `Also here: ${names.join(', ')}` : 'Nobody else is here yet') : '';
+}
+function mpStatus(st, why) {
+  const text = { connecting: 'Connecting…', open: `Connected to ${net.url}`, failed: 'Could not reach the server (is it running, and is the address right?)', lost: 'Lost the connection to the server: you\'re playing on your own copy now. Join again to carry on together.', left: 'Not connected', full: 'The server is full', error: `That address doesn't work${why ? ` (${why})` : ''}` }[st] ?? st;
+  $('mp-status').textContent = text;
+  if (st === 'lost' || st === 'failed' || st === 'full') toast(text, 4000);
+  renderMp();
+}
+$('btn-mp').addEventListener('click', openMp);
+$('btn-close-mp').addEventListener('click', closeMp);
+$('btn-mp-join').addEventListener('click', () => {
+  let url;
+  try { url = mpUrl($('mp-url').value); } catch { mpStatus('error'); return; }
+  settings.mpUrl = $('mp-url').value.trim(); settings.mpName = $('mp-name').value.trim().slice(0, 20); saveSettings();
+  net.connect(url, settings.mpName || 'Player', settings.look);
+});
+$('btn-mp-leave').addEventListener('click', () => mpLeave());
+async function mpWelcome(m) {
+  saveGame(); await world?.saveChunks();
+  const key = saveKeyOf(MP_SLOT);
+  let save = loadSave(key);
+  if (!save || save.seed !== m.seed || save.mpWorld !== m.world) {
+    try { localStorage.removeItem(key); } catch { /* storage unavailable */ }
+    await store.clear(MP_SLOT);
+    save = { seed: m.seed, mpWorld: m.world };
+  }
+  worldReady = false;
+  activeSlot = MP_SLOT; store.setSlot(MP_SLOT);
+  pendingEdits.clear();
+  for (const [x, y, z, id] of m.edits ?? []) queueEdit(x, y, z, id);
+  $('mp').classList.add('hidden'); $('menu').classList.add('hidden');
+  await startWorld(save);
+  applyPending(true);
+  toast(`Joined the server${net.remotes.size ? ` (${net.remotes.size} other${net.remotes.size === 1 ? '' : 's'} here)` : ''}. Press ${keyLabel(controls.binds.chat)} to chat.`, 3500);
+  renderMp();
+}
+async function mpLeave() {
+  net.leave();
+  pendingEdits.clear();
+  closeMp();
+  if (activeSlot === MP_SLOT) await switchSlot(settings.slot, loadSave(saveKeyOf(settings.slot)));
+  renderMp();
+}
+function queueEdit(x, y, z, id) {
+  const k = chunkKey(Math.floor(x / CHUNK), Math.floor(z / CHUNK));
+  let list = pendingEdits.get(k);
+  if (!list) pendingEdits.set(k, (list = []));
+  list.push([x, y, z, id]);
+}
+function applyEdit(x, y, z, id) {
+  if (world.get(x, y, z) === id) return;
+  netApplying = true;
+  try { world.setBlock(x, y, z, id); } finally { netApplying = false; }
+}
+function mpBlock(x, y, z, id) {
+  if (activeSlot !== MP_SLOT || !worldReady) { queueEdit(x, y, z, id); return; }
+  if (world.chunkAt(x, z)) applyEdit(x, y, z, id); else queueEdit(x, y, z, id);
+}
+// edits waiting for their part of the world to load
+function applyPending(now = false) {
+  if (!pendingEdits.size || activeSlot !== MP_SLOT || !world) return;
+  for (const [k, list] of pendingEdits) {
+    const [x, , z] = list[0];
+    if (!world.chunkAt(x, z)) continue;
+    for (const [ex, ey, ez, id] of list) applyEdit(ex, ey, ez, id);
+    pendingEdits.delete(k);
+  }
+}
+function tickNet(dt) {
+  if ((pendingTimer -= dt) <= 0) { pendingTimer = 0.4; applyPending(); }
+  const p = player.pos;
+  net.update(dt, net.live && activeSlot === MP_SLOT && !dead ? {
+    pos: p, yaw: player.yaw, pitch: player.pitch, held: inventory.heldId(), speed: Math.hypot(player.vel.x, player.vel.z),
+    swimming: player.inWater && !player.onGround, onGround: player.onGround,
+  } : null, (pos) => {
+    const x = Math.floor(pos.x), y = Math.min(H - 1, Math.max(0, Math.floor(pos.y + 1.2))), z = Math.floor(pos.z);
+    return { sun: lightUniforms.uDay.value * skyBrightness(world.skyAt(x, y, z)), torch: lightBrightness(world.lightAt(x, y, z)) * lightUniforms.uFlicker.value, ambient: lightUniforms.uAmbient.value };
+  });
+}
+// chat: T (or the 💬 button) opens a line to type in; the last few messages show for a while
+function addChat(name, text, mine = false) {
+  const log = $('chat-log'), d = document.createElement('div');
+  if (name) { const b = document.createElement('b'); b.textContent = `${name}${mine ? ' (you)' : ''}: `; d.append(b); }
+  d.append(document.createTextNode(text));
+  if (!name) d.style.fontStyle = 'italic';
+  log.append(d);
+  while (log.children.length > 8) log.firstChild.remove();
+  setTimeout(() => d.classList.add('fade'), 10000);
+  setTimeout(() => d.remove(), 11200);
+  renderMp();
+}
+function openChat() {
+  if (!net.live) { toast('Chat is for multiplayer: Menu → Multiplayer'); return; }
+  const inp = $('chat-input');
+  inp.classList.remove('hidden');
+  controls.reset();
+  setTimeout(() => inp.focus(), 0);
+}
+function closeChat() { const inp = $('chat-input'); inp.value = ''; inp.classList.add('hidden'); inp.blur(); }
+$('chat-input').addEventListener('keydown', (e) => {
+  e.stopPropagation();
+  if (e.key === 'Enter') { const t = e.target.value.trim(); if (t) net.send({ t: 'chat', text: t }); closeChat(); }
+  else if (e.key === 'Escape') closeChat();
+});
+$('chat-input').addEventListener('blur', () => setTimeout(closeChat, 150));
+$('btn-chat').addEventListener('click', openChat);
+
 // ---------- menu ----------
 function updateAutoJumpLabel() { $('btn-autojump').textContent = `Auto-jump: ${player?.autoJump ? 'on' : 'off'}`; }
 $('btn-respawn').addEventListener('click', respawnPlayer);
@@ -5097,7 +5257,8 @@ controls = null;
   // Player must exist before Controls; startWorld gives it the real world.
   player = new Player(null);
   controls = new Controls($('touch-layer'), player, {
-    place: () => { swingArm(); return place(); },
+    place: () => { swingArm(); net.capture++; try { return place(); } finally { net.capture--; } },
+    openChat,
     toggleView: () => { if (photoMode || dead) return; viewMode = (viewMode + 1) % 3; toast(VIEW_NAMES[viewMode], 1000); },
     selectSlot,
     scrollSlot: (d) => selectSlot((inventory.selected + d + 9) % 9),
@@ -5716,12 +5877,13 @@ function renderWorlds() {
   }
 }
 async function switchSlot(n, save, opts) {
+  if (activeSlot === MP_SLOT && net.ws) net.leave(true);
   saveGame();
   await world?.saveChunks();
   worldReady = false;
   settings.slot = n;
   saveSettings();
-  store.setSlot(n);
+  store.setSlot(n); activeSlot = n;
   $('worlds').classList.add('hidden');
   $('menu').classList.add('hidden');
   await startWorld(save, opts);
@@ -7227,6 +7389,7 @@ function stepGame(now, dt) {
     tickMachineSounds(dt);
     tickAutoGfx(dt);
     try { tickRipples(dt); } catch (err) { reportError(err); }
+    try { tickNet(dt); } catch (err) { reportError(err); }
     renderBossBar();
     updateHunger(dt);
     updateHealth(dt, wasGround, prevY);
@@ -7342,7 +7505,7 @@ if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').ca
 
 // expose for debugging in the console
 window.minicraft = {
-  gfx, viewmodel, avatar, swingArm, ripples, waterSurfaceAt, get viewMode() { return viewMode; },
+  gfx, viewmodel, avatar, swingArm, ripples, waterSurfaceAt, net, get activeSlot() { return activeSlot; }, mpLeave, pendingEdits, get viewMode() { return viewMode; },
   get world() { return world; }, player, inventory, saveGame, sky, sound, breakBlock, mobs,
   get hunger() { return hunger; }, set hunger(v) { hunger = v; renderHunger(); },
   get day() { return day; },
