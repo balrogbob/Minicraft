@@ -46,6 +46,7 @@ export class Sky {
     this.fogNear = 38; // set from the view distance
     this.fogFar = 80;
     this.skyColor = new THREE.Color();
+    this.sunDir = new THREE.Vector3(0, 1, 0); // towards the sun (for shadows and water glints)
 
     const sunTex = discTexture((g) => {
       g.fillStyle = 'rgba(255,240,170,0.35)'; g.fillRect(0, 0, 32, 32);
@@ -127,7 +128,7 @@ export class Sky {
 
     // sun rises in +x, sets in -x; the moon is opposite
     const a = this.time * Math.PI * 2;
-    const dir = new THREE.Vector3(Math.cos(a), Math.sin(a), 0.25).normalize();
+    const dir = this.sunDir.set(Math.cos(a), Math.sin(a), 0.25).normalize();
     this.sun.position.copy(camPos).addScaledVector(dir, 120);
     this.sun.lookAt(camPos);
     this.moon.position.copy(camPos).addScaledVector(dir, -120);

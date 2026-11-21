@@ -10,7 +10,7 @@ image or audio files.
 
 ## Contents
 
-- [Running it](#running-it)
+- [Running it](#running-it) ([fancy graphics](#fancy-graphics))
 - [Controls](#controls)
 - [Getting started](#getting-started)
 - [Basics](#basics)
@@ -53,6 +53,23 @@ When hosted over https, a small service worker (`sw.js`) makes the browser fetch
 every time you're online (so updates aren't hidden by the browser cache) and lets the game load offline.
 The version number is shown at the bottom of the ☰ menu; bump `GAME_VERSION` in `js/main.js` with each release.
 ☰ → **Performance info** shows FPS and how many chunks are loaded, drawn and waiting to be drawn.
+
+### Fancy graphics
+
+The ☰ menu has five extra effects for computers with a strong graphics card. They are all **off** to start
+with, each has its own switch, and they are remembered between games. Turn on the ones you like, and
+turn any off again if the game gets slow (☰ → Performance info shows the frame rate).
+
+- **Sun shadows**: the sun casts soft shadows from blocks, trees, animals and machines within about 44
+  blocks of you. They lengthen towards evening, fade under clouds and go at night. (Torch and lamp light
+  doesn't need shadows: it spreads block by block, so it already stops at walls.)
+- **Bloom**: bright things glow a little past their edges: lava, lamps, the sky behind trees, sun glints.
+- **Fancy water**: moving waves, reflections of the sky that get stronger as you look across the water, and
+  glints of sunlight.
+- **Water refraction**: you see the bottom through the water, bent by the waves.
+- **Water caustics**: rippling lines of light on blocks under sunlit water.
+
+If an effect doesn't work on your device it is switched off by itself, with a message.
 
 ## Controls
 
@@ -1609,6 +1626,8 @@ guide to how everything works.
 
 ## Version history
 
+- **Version 36**: optional fancy graphics in the ☰ menu, all off by default: sun shadows, bloom, a water
+  surface with waves, reflections and sun glints, water refraction, and caustics under sunlit water.
 - **Version 35**: the carpenter and crates (9 of a thing to a crate, 64 crates to a slot), the distillery (whisky,
   rubbing alcohol and bandages, biofuel), things that don't fit in a full inventory drop at your feet instead of
   vanishing, bats can be swatted, bat guano (fuel, saltpetre, fertiliser), tooltips in crafting lists and machine
