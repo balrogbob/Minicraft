@@ -189,7 +189,11 @@ export class Controls {
     L.addEventListener('mousedown', (e) => {
       if (this.hooks.isPaused()) return;
       if (document.pointerLockElement !== L) {
-        L.requestPointerLock?.();
+        // raw mouse movement where the browser has it (no OS acceleration, and none of the jumps some give)
+        try {
+          const p = L.requestPointerLock?.({ unadjustedMovement: true });
+          p?.catch?.(() => L.requestPointerLock?.());
+        } catch { L.requestPointerLock?.(); }
         return;
       }
       if (e.button === 0) this.mouseBreak = true;
@@ -202,8 +206,18 @@ export class Controls {
     document.addEventListener('contextmenu', (e) => {
       if (!e.target.closest?.('input, textarea, [contenteditable="true"]')) e.preventDefault();
     });
+    // Some browsers now and then report one wild jump in mouse movement while the pointer is locked (most just after
+    // locking, or when the window loses and regains focus), which spun you right round. Skip the first moves
+    // after locking, and any move far bigger than the ones around it.
+    let lockedAt = 0, recent = 20;
+    document.addEventListener('pointerlockchange', () => { lockedAt = performance.now(); recent = 20; });
     document.addEventListener('mousemove', (e) => {
-      if (document.pointerLockElement === L) this.rotate(e.movementX, e.movementY, MOUSE_SENS);
+      if (document.pointerLockElement !== L) return;
+      const dx = e.movementX, dy = e.movementY, size = Math.hypot(dx, dy);
+      if (performance.now() - lockedAt < 120) return;
+      const glitch = size > 250 && size > recent * 8; // a lone spike, not a flick of the wrist (that builds up)
+      recent = recent * 0.8 + Math.min(Math.max(size, 20), recent * 3) * 0.2;
+      if (!glitch) this.rotate(dx, dy, MOUSE_SENS);
     });
     L.addEventListener('wheel', (e) => {
       if (document.pointerLockElement === L) this.hooks.scrollSlot(Math.sign(e.deltaY));

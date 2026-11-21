@@ -35,6 +35,8 @@ const idsOf = (spec) => (Array.isArray(spec) ? spec : [spec]);
 // Slime fuel burns out of its bucket and leaves the empty bucket in the fuel slot.
 // A lava bucket burns for 100 and leaves its lead bucket behind.
 export const FUEL_ITEMS = { [LOG]: 1, [PLANKS]: 1, [STICK]: 0.5, [COAL]: 10, [CHARCOAL]: 10, [SLIME_FUEL]: 40, [LAVA_BUCKET]: 100 };
+import { GUANO } from './blocks.js';
+FUEL_ITEMS[GUANO] = 4; // (v35)
 const FUEL_LEAVES = { [SLIME_FUEL]: BUCKET, [LAVA_BUCKET]: LEAD_BUCKET };
 export const isFuel = (id) => id in FUEL_ITEMS;
 

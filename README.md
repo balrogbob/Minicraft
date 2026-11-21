@@ -1366,6 +1366,9 @@ breed when there are 12 or more about.
 - At night **owls** come to sit in the treetops and hoot, turning their heads to watch you; they fly off if you get
   close. **Bats** flit about in caves and out over the land at dusk. On warm (spring and summer) nights
   **fireflies** blink over the grass.
+- Swat a bat out of the air by hitting it, and no more come for half a minute. Bats leave **bat guano** now and
+  then as they fly about under ground, and a swatted one drops some. Guano burns as fuel (a little under half as
+  long as coal). Grind 3 with the mortar into saltpetre for gunpowder, or craft 1 into 2 fertiliser.
 - An **apiary** (8 planks, 3 honeycomb, a glass) is a bee box that holds more honey than a wild hive (5 levels). When
   it's full, tap it to take 3 honeycomb and 2 **beeswax** (or, holding a bottle, a bottle of honey, 2 honeycomb and
   2 beeswax). Any honeycomb can be made into beeswax too. 2 beeswax and a string make 3 **beeswax candles**.
@@ -1507,8 +1510,12 @@ one that lands on a **hopper** drops in (sorting hoppers still only take what ma
 also tap a belt or hopper holding an item to put it straight in. Breaking a chest, oven or machine **spills**
 what was inside onto the ground, with enchantments and wear kept.
 
-Tooltips (on by default, ☰ → Tooltips) name what the crosshair is on, and in 🎒 show the name and details of
-the item under the mouse or the one you tap.
+Tooltips (on by default, ☰ → Tooltips) name what the crosshair is on. In 🎒 they show the name and details of
+the item under the mouse or the one you tap. Hover over a crafting recipe's ingredients or result, or a slot in
+a chest or machine window, to see the same details.
+
+If something you pick up won't fit in your inventory, it drops at your feet instead of being lost: make room
+and walk over it to pick it up (loose items vanish after five minutes).
 
 Holding the map, tap a sign to mark it on the map (named by its first line), or a bed. Tap it again
 to take the mark off. Marks off the edge of the map show as arrows pointing toward them.
@@ -1571,6 +1578,9 @@ guide to how everything works.
 
 ## Version history
 
+- **Version 35**: things that don't fit in a full inventory drop at your feet instead of vanishing, bats can be
+  swatted, bat guano (fuel, saltpetre, fertiliser), tooltips in crafting lists and machine windows, and a fix for
+  the view sometimes spinning round when you move the mouse.
 - **Version 34**: pork and chicken from farmed pigs and chickens, cream, ice cream and ice lollies, vinegar and
   pickles, smoking in the chimney, the drying rack, oven dishes (pizza, carrot cake, pumpkin bread, cheesy jacket
   potato), toffee and honey candy in the mould, coffee, rice and chillies and their dishes, treats at the market

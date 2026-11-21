@@ -3445,3 +3445,10 @@ ITEM_PAINTERS[HOT_SAUCE] = bottleOf([200, 30, 20], false);
 ITEM_PAINTERS[RICE_PUDDING] = bowl([246, 236, 210], [[5, [240, 210, 160]], [10, [200, 120, 60]]]);
 ITEM_PAINTERS[FISH_RICE] = bowl([244, 240, 226], [[4, [240, 150, 110]], [7, [240, 150, 110]], [10, [80, 150, 60]]]);
 ITEM_PAINTERS[CHILLI_CON_CARNE] = bowl([170, 50, 30], [[3, [120, 60, 40]], [6, [230, 60, 40]], [9, [120, 60, 40]], [12, [60, 130, 40]]]);
+
+// ---------- v35: bat guano ----------
+import { GUANO } from './blocks.js';
+ITEM_PAINTERS[GUANO] = (ctx) => {
+  for (const [cx, cy, r] of [[6, 10, 3.2], [10, 11, 2.6], [8, 7, 2.4]]) blob(ctx, cx, cy, r, r * 0.8, [92, 80, 62], [64, 54, 42]);
+  for (const [x, y] of [[5, 9], [9, 6], [11, 10]]) px(ctx, x, y, [210, 204, 186]);
+};

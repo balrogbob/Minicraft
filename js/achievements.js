@@ -38,6 +38,7 @@ export const ACHIEVEMENTS = [
   { id: 'mutation', icon: '👑', name: 'Queen of Bees', about: 'Breed a new species of bee in a bee house.' },
   { id: 'latex', icon: '🌳', name: 'Sticky Fingers', about: 'Collect latex from a tree tap.' },
   { id: 'contest', icon: '🏅', name: 'Blue Ribbon', about: 'Win first prize in a festival food contest.' },
+  { id: 'bat', icon: '🦇', name: 'Bat Swatter', about: 'Swat a bat out of the air.' },
   { id: 'butcher', icon: '🍖', name: 'Farm to Table', about: 'Butcher a pig or a chicken you raised.' },
   { id: 'chocolate', icon: '🍫', name: 'Chocolatier', about: 'Knock chocolate bars out of a mould.' },
   { id: 'demolition', icon: '💥', name: 'Controlled Demolition', about: 'Set off demolition charges with a detonator.' },

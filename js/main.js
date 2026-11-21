@@ -75,7 +75,7 @@ import { Logic } from './logic.js';
 
 // v2 = the 16k x 16k streaming world (player state here, edited chunks in IndexedDB).
 // v1 = the old 128 x 128 world, migrated into the middle of the big world on first launch.
-const GAME_VERSION = '34'; // shown in the menu; bump with each release
+const GAME_VERSION = '35'; // shown in the menu; bump with each release
 const SAVE_KEY = 'minicraft-save-v2';
 const LEGACY_SAVE_KEY = 'minicraft-save-v1';
 const SETTINGS_KEY = 'minicraft-settings-v1';
@@ -201,7 +201,7 @@ mobs.onShoot = (origin, dir, dmg, kind) => { const a = arrows.shootThorn(origin,
 
 function giveDrops(drops) {
   for (const [id, n] of drops) {
-    if (inventory.add(id, n) > 0) toast('Inventory full');
+    if (inventory.add(id, n) > 0) toast('Inventory full: dropped at your feet');
     else { toast(`+${n} ${itemName(id)}`, 1200); sound.pop(); }
   }
 }
@@ -367,6 +367,8 @@ const gondola = (() => {
 })();
 machines.frames = frames; machines.carts = carts; machines.loose = loose;
 machines.throwItem = (stack, pos, vel) => loose.spawn(stack, pos, vel, 0.5);
+// Whatever doesn't fit in the inventory drops at your feet, to pick up once you've made room.
+inventory.overflow = (stack) => player && loose.spawn(stack, { x: player.pos.x, y: player.pos.y + 0.6, z: player.pos.z }, { x: 0, y: 1, z: 0 }, 1);
 // An auto-crafter makes what the item frame on it shows: the first recipe for that thing.
 const crafterRecipe = (x, y, z) => {
   const piped = logistics.crafterRecipe(x, y, z); // (a crafting pipe on it says what to make)
@@ -776,7 +778,7 @@ function throwHeld(all) {
 // Walking over a loose item picks it up: returns how many you took.
 let pickToastAt = 0;
 function pickUpLoose(s) {
-  const left = s.wear || s.ench?.length ? inventory.addItem(s) : inventory.add(s.id, s.count);
+  const left = s.wear || s.ench?.length || s.pack ? inventory.fitItem(s) : inventory.fit(s.id, s.count);
   const took = s.count - left;
   if (took > 0) {
     sound.pop();
@@ -1011,7 +1013,7 @@ function useRod(id) {
   const at = fishing.state?.pos?.clone(), baited = fishing.baited;
   if (!fishing.reel()) return;
   const [what, n, msg] = catchAt(at ?? player.pos, baited);
-  if (inventory.add(what, n) > 0) { toast('Inventory full: it got away'); return; }
+  if (inventory.add(what, n) > 0) { toast('Inventory full: your catch dropped at your feet'); return; }
   toast(msg, 1800);
   achieve('fish');
   sound.pop();
@@ -1102,6 +1104,30 @@ function showSlotTip(i) {
   tip.style.left = Math.max(4, Math.min(window.innerWidth - w - 4, r.left + r.width / 2 - w / 2)) + 'px';
   tip.style.top = (r.top - h - 6 < 4 ? r.bottom + 6 : r.top - h - 6) + 'px';
 }
+// (v35) The same tooltips in crafting lists and machine windows: anything with data-tip="id" (and data-tip-or,
+// a line naming the alternatives), and the slots of whatever station is open. Shown on hover.
+function placeTip(tip, el) {
+  const r = el.getBoundingClientRect(), w = tip.offsetWidth, h = tip.offsetHeight;
+  tip.style.left = Math.max(4, Math.min(window.innerWidth - w - 4, r.left + r.width / 2 - w / 2)) + 'px';
+  tip.style.top = (r.top - h - 6 < 4 ? r.bottom + 6 : r.top - h - 6) + 'px';
+}
+let hoverTipEl = null;
+document.addEventListener('mouseover', (e) => {
+  const el = e.target.closest?.('[data-tip], #station .slot[data-area]');
+  if (el === hoverTipEl) return;
+  const tip = $('inv-tip');
+  if (hoverTipEl && tipSlot < 0) tip.classList.remove('show');
+  hoverTipEl = el;
+  if (!el || !settings.tips) return;
+  let s;
+  if (el.dataset.tip) s = { id: +el.dataset.tip, count: 1 };
+  else { try { s = stationSlot(el.dataset.area, +el.dataset.i).get(); } catch { s = null; } }
+  if (!s) return;
+  tipSlot = -1;
+  tip.innerHTML = itemTipHTML(s) + (el.dataset.tipOr ? `<span class="ench">${el.dataset.tipOr}</span>` : '');
+  tip.classList.add('show');
+  placeTip(tip, el);
+});
 const capital = (t) => t.charAt(0).toUpperCase() + t.slice(1);
 function lookName() {
   if (targetCart) {
@@ -1236,16 +1262,16 @@ function renderInventory() {
     const ings = r.in.map(([id, n]) => {
       const miss = countOf(id) < n ? ' missing' : '';
       const first = idsOf(id)[0];
-      return `<span class="ing${miss}" title="${idsOf(id).map(itemName).join(' or ')}"><img src="${icons[first]}" alt="">${n}</span>`;
+      return `<span class="ing${miss}" data-tip="${first}" data-tip-or="${idsOf(id).length > 1 ? idsOf(id).map(itemName).join(' or ') : ''}"><img src="${icons[first]}" alt="">${n}</span>`;
     }).join('');
     // tools are needed but not used up
     const tools = (r.tools ?? []).map((id) => {
       const miss = inventory.count(id) > 0 ? '' : ' missing';
-      return `<span class="ing tool${miss}" title="${itemName(id)} (not used up)"><img src="${icons[id]}" alt="">kept</span>`;
+      return `<span class="ing tool${miss}" data-tip="${id}" data-tip-or="${itemName(id)} (not used up)"><img src="${icons[id]}" alt="">kept</span>`;
     }).join('');
     const also = (r.also ?? []).map(([id]) => ` + ${itemName(id)} back`).join('');
     const where = r.churn ? ' (churn)' : r.table ? ' 🛠' : '';
-    row.innerHTML = `${ings}${tools}<span class="arrow">→</span><img class="outimg" src="${icons[r.out[0]]}" alt="">` +
+    row.innerHTML = `${ings}${tools}<span class="arrow">→</span><img class="outimg" src="${icons[r.out[0]]}" alt="" data-tip="${r.out[0]}">` +
       `<span class="name">${r.out[1] > 1 ? r.out[1] + ' × ' : ''}${itemName(r.out[0])}${also}${where}</span>`;
     const star = document.createElement('button');
     star.className = 'fav' + (fav ? ' on' : '');
@@ -1278,7 +1304,7 @@ function renderInventory() {
       const cap = chargeCap(r.out[0]);
       let lost = cap ? inventory.addItem({ id: r.out[0], count: 1, ...(charge < cap ? { wear: cap - charge } : {}) }) : inventory.add(r.out[0], r.out[1]);
       for (const [id, n] of r.also ?? []) lost += inventory.add(id, n);
-      if (lost) toast('Inventory full');
+      if (lost) toast('Inventory full: dropped at your feet');
       sound.pop();
     });
     row.appendChild(btn);
@@ -1460,7 +1486,7 @@ function openStation(x, y, z, cart = null) {
     const ing = r.in.map(([id, n]) => `<span class="ing" title="${idsOf(id).map(itemName).join(' or ')}"><img src="${icons[idsOf(id)[0]]}" alt="">${n}</span>`).join('');
     const tools = (r.tools ?? []).map((id) => `<span class="ing tool" title="${itemName(id)} (not used up)"><img src="${icons[id]}" alt="">kept</span>`).join('');
     const side = (r.side ?? []).map(([id, p]) => `<span class="ing side" title="${itemName(id)}: ${Math.round(p * 100)}% of the time"><img src="${icons[id]}" alt="">${Math.round(p * 100)}%</span>`).join('');
-    return `<div class="recipe">${ing}${tools}<span class="arrow">→</span>` + (r.out ? `<img class="outimg" src="${icons[r.out[0]]}" alt="">` +
+    return `<div class="recipe">${ing}${tools}<span class="arrow">→</span>` + (r.out ? `<img class="outimg" src="${icons[r.out[0]]}" alt="" data-tip="${r.out[0]}">` +
       `<span class="name">${r.out[1] > 1 ? r.out[1] + ' × ' : ''}${itemName(r.out[0])}</span>` : '') + (side ? `<span class="sides">${r.out ? '+ ' : ''}${side}</span>` : '') + '</div>';
   }).join('') + (kind === 'charger' ? '<p class="hint">Put in a battery, or anything that runs on one (a portable lamp, jackhammer, jetpack, drill, chainsaw, hover boots, goggles or magnet ring): ' +
     'it charges while it has electricity. Join it to a generator with electrum wire, or set it right beside one.</p>'
@@ -1688,7 +1714,7 @@ function onStationSlot(area, i) {
     if (got) {
       const left = inventory.addItem(got);
       slot.set(left ? { id: got.id, count: left } : null);
-      if (left) toast('Inventory full'); else sound.pop();
+      if (left) toast('Inventory full: dropped at your feet'); else sound.pop();
     }
     renderStation();
     return;
@@ -1787,7 +1813,7 @@ function quickMoveStation(area, i) {
     const left = inventory.addItem(a);
     moved = a.count - left;
     slot.set(left ? { ...a, count: left } : null);
-    if (left) toast('Inventory full');
+    if (left) toast('Inventory full: dropped at your feet');
   }
   if (moved) sound.pop();
   inventory.onChange();
@@ -1888,6 +1914,17 @@ $('btn-split-cancel').addEventListener('click', closeSplit);
 document.addEventListener('pointerdown', (e) => { if (splitting && !e.target.closest('#split-menu')) closeSplit(); }, true);
 
 // ---------- actions ----------
+// (v35) Swat a bat flitting in front of you (nearer than whatever block you're looking at).
+function swatBat() {
+  if (!critters.bats.length) return false;
+  const reach = Math.min(REACH, target?.t ?? REACH, targetMob?.t ?? REACH);
+  if (!critters.swatBat(player.eye, player.lookDir(), reach)) return false;
+  sound.mob?.('bat', 1);
+  achieve('bat');
+  return true;
+}
+// Guano falls where a bat was (a swatted bat drops a bit more).
+critters.onGuano = (pos, swatted) => loose.spawn({ id: GUANO, count: swatted ? 1 + Math.floor(Math.random() * 2) : 1 }, pos, { x: 0, y: swatted ? 1 : 0, z: 0 }, swatted ? 0.3 : 0);
 // Tap the animal under the crosshair with whatever is in hand: milk a yak, pluck a duck,
 // shear an alpaca, fill a bucket with newt slime, or just bump it.
 function hitMob() {
@@ -1923,7 +1960,7 @@ function hitMob() {
   if (r.ride) { mountMob(targetMob.mob); return; }
   for (const [id, n] of r.take) inventory.remove(id, n);
   for (const [id, n] of r.give) {
-    if (inventory.add(id, n) > 0) toast('Inventory full');
+    if (inventory.add(id, n) > 0) toast('Inventory full: dropped at your feet');
     else { toast(`+${n} ${itemName(id)}`, 1200); sound.pop(); }
   }
   if (r.said) toast(r.said);
@@ -1978,7 +2015,7 @@ function eat(id) {
     if (meal[0] === 'cool') ailments.heat = 0;
     toast(`${itemName(id)}: you ${ITEMS[id].about}`, 1800);
   }
-  if (ITEMS[id]?.bottle && inventory.add(GLASS_BOTTLE, 1)) toast('Inventory full');
+  if (ITEMS[id]?.bottle && inventory.add(GLASS_BOTTLE, 1)) toast('Inventory full: dropped at your feet');
   if (ITEMS[id]?.honey) { inventory.add(GLASS_BOTTLE, 1); health = Math.min(MAX_HEALTH, health + 2); renderHealth(); }
   if (id === PUFFERFISH) { poisoned = Math.max(poisoned, 15); toast('Ugh! The pufferfish was poisonous.', 2500); renderHealth(); }
   sound.eat();
@@ -2642,7 +2679,7 @@ function drinkTea(id) {
   if (kind === 'heal') { poisoned = 0; ailments.chill = 0; ailments.heat = 0; renderHealth(); } // a healing tea cures what ails you
   if (kind === 'warm') ailments.chill = 0;
   inventory.consumeHeld();
-  if (inventory.add(GLASS_BOTTLE, 1)) toast('Inventory full');
+  if (inventory.add(GLASS_BOTTLE, 1)) toast('Inventory full: dropped at your feet');
   sound.gulp();
   toast(`${itemName(id)}: you ${ITEMS[id].about}`, 2000);
 }
@@ -3723,6 +3760,7 @@ function placeInner() {
   if (held?.id === ZIP_LINE && target?.id === ZIP_POST) { linkZip(target.x, target.y, target.z); return; }
   if (held?.id === GRAPPLE && target?.id === ZIP_POST) { startZip(target.x, target.y, target.z); return; }
   if (held?.id === CABLE_CAR && target?.id === ZIP_POST) { startZip(target.x, target.y, target.z, true); return; }
+  if (swatBat()) return;
   if (targetMob) { hitMob(); return; }
   if (held?.id === LOCOMOTIVE && target && isRail(target.id)) {
     if (carts.add(world, target.x, target.y, target.z, player.lookDir(), false, true)) {
@@ -3874,7 +3912,7 @@ function placeInner() {
       const pour = { [WATER_BUCKET]: [WATER, 1, BUCKET], [BUCKET]: [WATER, -1, WATER_BUCKET], [LAVA_BUCKET]: [LAVA, 1, LEAD_BUCKET], [LEAD_BUCKET]: [LAVA, -1, LAVA_BUCKET] }[held?.id];
       if (pour) {
         if (machines.pourTank(world, tx, ty, tz, pour[0], pour[1])) {
-          if (held.count > 1) { inventory.consumeHeld(); if (inventory.add(pour[2], 1)) toast('Inventory full'); }
+          if (held.count > 1) { inventory.consumeHeld(); if (inventory.add(pour[2], 1)) toast('Inventory full: dropped at your feet'); }
           else { inventory.slots[inventory.selected] = { id: pour[2], count: 1 }; inventory.onChange(); }
           sound.splash(false);
         } else toast(pour[1] > 0 ? 'The tank is full, or holds the other liquid' : 'There\'s not a bucketful of that in the tank', 2000);
@@ -4186,7 +4224,7 @@ function useBucket(id) {
     if (!hit || hit.id !== WATER) { toast('Tap still water to fill the bucket'); return; }
     world.setBlock(hit.x, hit.y, hit.z, AIR);
     inventory.consumeHeld();
-    if (inventory.add(WATER_BUCKET, 1)) toast('Inventory full');
+    if (inventory.add(WATER_BUCKET, 1)) toast('Inventory full: dropped at your feet');
     sound.splash(false);
     return;
   }
@@ -4208,7 +4246,7 @@ function useLeadBucket(id) {
     if (!hit || hit.id !== LAVA) { toast(hit?.id === WATER ? 'Use a wooden bucket for water' : 'Tap lava to fill the lead bucket'); return; }
     world.setBlock(hit.x, hit.y, hit.z, AIR);
     inventory.consumeHeld();
-    if (inventory.add(LAVA_BUCKET, 1)) toast('Inventory full');
+    if (inventory.add(LAVA_BUCKET, 1)) toast('Inventory full: dropped at your feet');
     sound.pour();
     return;
   }
@@ -4283,7 +4321,7 @@ function explode(x, y, z, R = BLAST_RADIUS, cause = 'You stood too close to a bl
   if (gathered.size) {
     let lost = 0;
     for (const [d, n] of gathered) lost += inventory.add(d, n);
-    toast(`Boom! ${[...gathered].map(([d, n]) => `+${n} ${itemName(d)}`).slice(0, 4).join(', ')}${lost ? ' (inventory full)' : ''}`, 2200);
+    toast(`Boom! ${[...gathered].map(([d, n]) => `+${n} ${itemName(d)}`).slice(0, 4).join(', ')}${lost ? ' (inventory full: the rest dropped at your feet)' : ''}`, 2200);
   }
   // the blast: a flash, a bang and a shove
   const dist = Math.hypot(x + 0.5 - player.pos.x, y + 0.5 - (player.pos.y + 0.9), z + 0.5 - player.pos.z);
@@ -4425,6 +4463,7 @@ function updateBreaking(dt) {
   breakState.cart = 0;
   if (!controls.breaking) breakState.mobCooldown = 0.5;
   breakState.mobCooldown = Math.max(0, breakState.mobCooldown - dt);
+  if (controls.breaking && !breakState.mobCooldown && swatBat()) { breakState.mobCooldown = 0.5; breakState.key = ''; breakState.progress = 0; crack.visible = false; return; }
   if (controls.breaking && targetMob) {
     if (!breakState.mobCooldown) { hitMob(); breakState.mobCooldown = 0.5; }
     breakState.key = ''; breakState.progress = 0;
@@ -4560,8 +4599,7 @@ function breakBlock(x, y, z) {
   } else if (drops.length) {
     let lost = 0;
     for (const [d, n] of drops) lost += spannerPack > 0 && d === drops[0][0] && n === 1 ? inventory.addItem({ id: d, count: 1, pack: spannerPack }) : inventory.add(d, n);
-    if (lost && spannerPack > 0) { loose.spill([{ id: drops[0][0], count: 1, pack: spannerPack }], x, y, z); lost--; }
-    if (lost) toast('Inventory full');
+    if (lost) toast('Inventory full: dropped at your feet');
   } else if (def.needsTool) {
     const kind = def.tool === 'pick' ? 'pickaxe' : def.tool;
     if (def.tier > 1) {
@@ -4845,7 +4883,7 @@ function renderPalette() {
       const img = document.createElement('img');
       img.src = icons[id]; img.alt = ''; img.title = itemName(id); img.dataset.name = itemName(id).toLowerCase();
       img.addEventListener('click', () => {
-        if (inventory.add(id, maxStack(id)) > 0) { toast('Inventory full'); return; }
+        if (inventory.fit(id, maxStack(id)) > 0) { toast('Inventory full'); return; }
         toast(`+${maxStack(id)} ${itemName(id)}`, 1000);
         sound.pop();
       });
@@ -5140,7 +5178,7 @@ function renderOrders(body) {
   body.querySelector('#lp-qty').addEventListener('change', (e) => { lpOpen.qty = Math.max(1, Math.min(999, Math.floor(+e.target.value) || 1)); renderLogistics(); });
   body.querySelector('#lp-request').addEventListener('click', () => placeOrder());
   body.querySelector('#lp-take').addEventListener('click', () => {
-    for (let i = 0; i < st.inputs.length; i++) { const s = st.inputs[i]; if (!s) continue; const left = inventory.add(s.id, s.count, s); st.inputs[i] = left > 0 ? { ...s, count: left } : null; }
+    for (let i = 0; i < st.inputs.length; i++) { const s = st.inputs[i]; if (!s) continue; const left = inventory.fitItem(s); st.inputs[i] = left > 0 ? { ...s, count: left } : null; }
     sound.pop(); renderLogistics();
   });
   body.querySelector('#lp-open').addEventListener('click', () => { const { x: tx, y: ty, z: tz } = lpOpen; closeLogistics(); openStation(tx, ty, tz); });
@@ -6211,7 +6249,7 @@ function takeFromChest(x, y, z, q) {
     st.inputs[i] = left ? { ...s, count: left } : null;
   });
   inventory.onChange();
-  if (moved) sound.pop(); else toast('Inventory full');
+  if (moved) sound.pop(); else toast('Inventory full: dropped at your feet');
   return moved;
 }
 let chestMark = null; // { group, until }
@@ -7028,7 +7066,7 @@ apiculture.onYoung = (x, y, z, sp, mate, kids) => {
 
 // ---------- v32: tree taps ----------
 import { CHOC_MOULD, CHOC_CAKE, CAKE_SLICES, MOULD_BARS, MELTED_CHOC, CHOC_BAR, MOULD_FILLS, mouldFill } from './blocks.js';
-import { FESTIVAL_FAVOURITES, contestScore } from './blocks.js';
+import { FESTIVAL_FAVOURITES, contestScore, GUANO } from './blocks.js';
 import { TREE_TAP, LATEX, MAX_LATEX, POLYMER_BOAT, DEMO_CHARGE, DETONATOR, DEMO_RADIUS, DETONATOR_LINKS, DETONATOR_RANGE } from './blocks.js';
 // Tapping a tree tap takes the latex in it.
 function useTap(x, y, z, tid) {
@@ -7080,7 +7118,7 @@ function useMould(x, y, z, tid, held) {
     const fill = MOULD_FILLS.find((f) => f.liquid === held?.id);
     if (!fill) { toast('Pour melted chocolate, melted toffee or honey syrup into the mould (from a cooking pot)', 2400); return; }
     inventory.consumeHeld();
-    if (inventory.add(GLASS_BOTTLE, 1)) toast('Inventory full');
+    if (inventory.add(GLASS_BOTTLE, 1)) toast('Inventory full: dropped at your feet');
     world.setBlock(x, y, z, fill.poured);
     sound.pour();
     const chill = world.mouldChill(x, y, z);

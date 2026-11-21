@@ -3325,3 +3325,13 @@ export function contestScore(id, season) {
   if (!it?.meal && !it?.treat && !fav) return 0;
   return (it.food ?? 0) + (it.treat ? 3 : 0) + (fav ? 8 : 0);
 }
+
+// ---------- v35: bat guano ----------
+// Bats leave guano now and then as they flit about under ground, and drop some when you swat one. It burns (a
+// little under half as long as coal), grinds into saltpetre for gunpowder, and makes good fertiliser.
+export const GUANO = 3235;
+ITEMS[GUANO] = { name: 'Bat Guano', about: 'burns as fuel, grinds into saltpetre, or makes fertiliser' };
+RECIPES.push(
+  { out: [SALTPETRE, 1], in: [[GUANO, 3]], tools: [MORTAR] },
+  { out: [FERTILISER, 2], in: [[GUANO, 1]] },
+);
