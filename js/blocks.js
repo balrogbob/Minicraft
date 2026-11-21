@@ -141,7 +141,7 @@ export const T = {
   LEAD_CHEST_SIDE: 267, LEAD_CHEST_TOP: 268, LEAD_CHEST_FRONT: 269, CENTRIFUGE_SIDE: 270, CENTRIFUGE_TOP: 271, TESLA: 272, TESLA_TOP: 273,
   FENCE_POST: 274, FENCE_WIRE: 275, FREEZER_SIDE: 276, FREEZER_FRONT: 277, ARC_SIDE: 278, ARC_FRONT: 279, PACKED_ICE: 280, INVAR: 281, RAIL_STOP: 282, BASALT: 283, BASALT_TOP: 284, METEORITE: 285,
   IRON_BARS: 286, POT: 287, IVY: 288, BOX_FLOWERS: 289,
-  FRUIT_LEAVES: 290, FRUIT_RIPE: 293, FRUIT_SAPLING: 296, HAY: 299, SACK: 300, BEACON: 301, APIARY_SIDE: 302, APIARY_FRONT: 303, APIARY_FULL: 304, APIARY_TOP: 305, BELT_CROSS: 306, FARM_CTRL: 307, FARM_CTRL_ON: 308, TUBE: 309, TUBE_END: 310, AWNING: 311, FIRE: 312, CARROT_0: 313, POTATO_0: 317, STEM_0: 321, PUMPKIN_SIDE: 324, PUMPKIN_TOP: 325, JACK_FACE: 326, TRELLIS: 327, VINE_0: 328, BARREL_SIDE: 331, BARREL_TOP: 332, CHEESE: 333, SEA_BRICK: 334, SEA_LANTERN: 335, VAULT: 336, SKY_STONE: 337, AIR_PUMP: 338, RADIO: 339, RADIO_ON: 340, SORTBOX: 341, SORTBOX_TOP: 342, HEARTH: 343, HEARTH_LIT: 344, CHIMNEY_TOP: 345, STABLE_SIDE: 346, SNOWMAN_FRONT: 347, ONION_0: 348, BEAN_0: 352, TOMATO_0: 356, HERB_0: 360, KILN_SIDE: 364, KILN_TOP: 365, KILN_FRONT: 366, KILN_FRONT_LIT: 367, TERRACOTTA: 368, TERRA_COL: 369, GLAZED: 379, ROOF_TILES: 389, URN: 390, ROPE: 391, LOCK_GATE: 392, LOCK_GATE_TOP: 393, DRIPSTONE: 394, BEETLE_LAMP: 395, WASHER_SIDE: 396, WASHER_TOP: 397, WASHER_FRONT: 398, SIEVE: 399, SLAG_BRICKS: 400, CHARCOAL_HEAP: 401, LP_ARM: 402, LP_CORE: 403, LP_TABLE_TOP: 409, LP_TABLE_SIDE: 410, LP_JUNCTION: 411, LP_SENSOR_CORE: 412, LP_SENSOR_ON: 413, LP_FPROVIDER: 414, LP_FSUPPLIER: 415, DRONE_PAD_TOP: 416, DRONE_PAD_SIDE: 417, LP_FSINK: 418, BOTTLER_SIDE: 419, BOTTLER_TOP: 420, BEEHOUSE_SIDE: 421, BEEHOUSE_TOP: 422, BEEHOUSE_FRONT: 423, COMB_SPIN_SIDE: 424, COMB_SPIN_TOP: 425, TAP_SIDE: 426, TAP_LATEX: 427, PRESS_SIDE: 428, PRESS_TOP: 429, INSWIRE_OFF: 430, INSWIRE_ON: 431, BOUNCE_TOP: 432, BOUNCE_SIDE: 433, POLY_COL: 434, LUMEN: 444, DEMO_SIDE: 445, DEMO_TOP: 446, DEMO_ARMED: 447, DETONATOR_TILE: 448, COCOA_LEAVES: 449, COCOA_RIPE: 450, COCOA_SAPLING: 451, MOULD: 452, CHOC: 453, CHOC_LIQUID: 454, CAKE_TOP: 455, CAKE_SIDE: 456, RACK: 457, // (434..443: polymer + colour) // (fruit tiles: apple, cherry, orange)
+  FRUIT_LEAVES: 290, FRUIT_RIPE: 293, FRUIT_SAPLING: 296, HAY: 299, SACK: 300, BEACON: 301, APIARY_SIDE: 302, APIARY_FRONT: 303, APIARY_FULL: 304, APIARY_TOP: 305, BELT_CROSS: 306, FARM_CTRL: 307, FARM_CTRL_ON: 308, TUBE: 309, TUBE_END: 310, AWNING: 311, FIRE: 312, CARROT_0: 313, POTATO_0: 317, STEM_0: 321, PUMPKIN_SIDE: 324, PUMPKIN_TOP: 325, JACK_FACE: 326, TRELLIS: 327, VINE_0: 328, BARREL_SIDE: 331, BARREL_TOP: 332, CHEESE: 333, SEA_BRICK: 334, SEA_LANTERN: 335, VAULT: 336, SKY_STONE: 337, AIR_PUMP: 338, RADIO: 339, RADIO_ON: 340, SORTBOX: 341, SORTBOX_TOP: 342, HEARTH: 343, HEARTH_LIT: 344, CHIMNEY_TOP: 345, STABLE_SIDE: 346, SNOWMAN_FRONT: 347, ONION_0: 348, BEAN_0: 352, TOMATO_0: 356, HERB_0: 360, KILN_SIDE: 364, KILN_TOP: 365, KILN_FRONT: 366, KILN_FRONT_LIT: 367, TERRACOTTA: 368, TERRA_COL: 369, GLAZED: 379, ROOF_TILES: 389, URN: 390, ROPE: 391, LOCK_GATE: 392, LOCK_GATE_TOP: 393, DRIPSTONE: 394, BEETLE_LAMP: 395, WASHER_SIDE: 396, WASHER_TOP: 397, WASHER_FRONT: 398, SIEVE: 399, SLAG_BRICKS: 400, CHARCOAL_HEAP: 401, LP_ARM: 402, LP_CORE: 403, LP_TABLE_TOP: 409, LP_TABLE_SIDE: 410, LP_JUNCTION: 411, LP_SENSOR_CORE: 412, LP_SENSOR_ON: 413, LP_FPROVIDER: 414, LP_FSUPPLIER: 415, DRONE_PAD_TOP: 416, DRONE_PAD_SIDE: 417, LP_FSINK: 418, BOTTLER_SIDE: 419, BOTTLER_TOP: 420, BEEHOUSE_SIDE: 421, BEEHOUSE_TOP: 422, BEEHOUSE_FRONT: 423, COMB_SPIN_SIDE: 424, COMB_SPIN_TOP: 425, TAP_SIDE: 426, TAP_LATEX: 427, PRESS_SIDE: 428, PRESS_TOP: 429, INSWIRE_OFF: 430, INSWIRE_ON: 431, BOUNCE_TOP: 432, BOUNCE_SIDE: 433, POLY_COL: 434, LUMEN: 444, DEMO_SIDE: 445, DEMO_TOP: 446, DEMO_ARMED: 447, DETONATOR_TILE: 448, COCOA_LEAVES: 449, COCOA_RIPE: 450, COCOA_SAPLING: 451, MOULD: 452, CHOC: 453, CHOC_LIQUID: 454, CAKE_TOP: 455, CAKE_SIDE: 456, RACK: 457, TOFFEE: 458, TOFFEE_LIQ: 459, CANDY: 460, CANDY_LIQ: 461, // (434..443: polymer + colour) // (fruit tiles: apple, cherry, orange)
 };
 
 // Ores, deepest-reaching last. tier: the pickaxe tier needed to mine it (see TOOL_TIERS);
@@ -3236,3 +3236,41 @@ RECIPES.push(
   { out: [PICKLES, 1], in: [[[ONION, BEANS, CARROT], 3], [VINEGAR, 1], [GLASS_BOTTLE, 1]] },
   { out: [TRAIL_MIX, 2], in: [[RAISINS, 1], [DRIED_FRUIT, 1], [ROASTED_COCOA, 1], [HONEY_DROP, 1]] },
 );
+
+// ---------- v34 C: oven dishes and moulded sweets ----------
+// Fine crops work in these recipes as well as plain ones. The chocolate mould also takes melted toffee and honey
+// syrup (from the cooking pot), each setting into its own sweets; each filling has its own three block states
+// (poured, setting, set) after the chocolate ones, so a mould needs no saved contents.
+export const PIZZA = 3215, CARROT_CAKE = 3216, PUMPKIN_BREAD = 3217, CHEESY_POTATO = 3218, TOFFEE = 3219, HONEY_CANDY = 3220,
+  CANDIED_PEEL = 3221, MELTED_TOFFEE = 3222, HONEY_SYRUP = 3223;
+export const MOULD_TOFFEE = 1511, MOULD_HONEY = 1514; // + 0 poured, 1 setting, 2 set
+export const orFine = (id) => (FINE_CROPS[id] ? [id, FINE_CROPS[id]] : id);
+// what each filling is, where its poured state starts, and what it sets into
+export const MOULD_FILLS = [
+  { liquid: MELTED_CHOC, poured: CHOC_MOULD + 1, out: CHOC_BAR, set: [T.CHOC_LIQUID, T.CHOC] },
+  { liquid: MELTED_TOFFEE, poured: MOULD_TOFFEE, out: TOFFEE, set: [T.TOFFEE_LIQ, T.TOFFEE] },
+  { liquid: HONEY_SYRUP, poured: MOULD_HONEY, out: HONEY_CANDY, set: [T.CANDY_LIQ, T.CANDY] },
+];
+// (fill, stage 1..3) for a mould id, or null if it isn't a filled mould
+export const mouldFill = (id) => {
+  for (const f of MOULD_FILLS) if (id >= f.poured && id < f.poured + 3) return { fill: f, stage: id - f.poured + 1 };
+  return null;
+};
+for (const f of MOULD_FILLS.slice(1)) {
+  for (let k = 1; k <= 3; k++) {
+    const model = MOULD_MODEL(0).concat([[3, 1, 3, 13, k === 1 ? 2.6 : 2.2, 13, k === 1 ? f.set[0] : f.set[1]]]);
+    block(f.poured + k - 1, {
+      name: 'Chocolate Mould', sound: 'stone', transparent: true, solid: false, hardness: 0.5, model, boxes: [[2, 0, 2, 14, 3, 14]],
+      variantOf: CHOC_MOULD, drop: () => [[CHOC_MOULD, 1], ...(k === 3 ? [[f.out, MOULD_BARS]] : [])], grows: k < 3 ? 'setting' : null,
+    });
+  }
+}
+ITEMS[PIZZA] = { name: 'Pizza', food: 14, meal: ['fed', 400], about: 'keeps you full for a long time' };
+ITEMS[CARROT_CAKE] = { name: 'Carrot Cake', food: 12, meal: ['night', 180], about: 'see in the dark' };
+ITEMS[PUMPKIN_BREAD] = { name: 'Pumpkin Bread', food: 9 };
+ITEMS[CHEESY_POTATO] = { name: 'Cheesy Jacket Potato', food: 11, meal: ['warm', 300], about: 'warms you through' };
+ITEMS[TOFFEE] = { name: 'Toffee', food: 4, meal: ['swift', 60], about: 'get a burst of energy' };
+ITEMS[HONEY_CANDY] = { name: 'Honey Candy', food: 3, meal: ['heal', 3], about: 'soothes and heals you' };
+ITEMS[CANDIED_PEEL] = { name: 'Candied Peel', food: 3 };
+ITEMS[MELTED_TOFFEE] = { name: 'Melted Toffee', stack: 8, bottle: true, about: 'pour it into a mould' };
+ITEMS[HONEY_SYRUP] = { name: 'Honey Syrup', stack: 8, bottle: true, about: 'pour it into a mould' };

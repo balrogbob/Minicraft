@@ -3367,3 +3367,37 @@ ITEM_PAINTERS[TRAIL_MIX] = (ctx) => {
   const bits = [[80, 40, 60], [200, 120, 50], [84, 48, 28], [230, 200, 120]];
   for (let k = 0; k < 14; k++) px(ctx, 3 + (k * 5) % 10, 5 + (k * 3) % 4, bits[k % 4]);
 };
+
+// ---------- v34 C: oven dishes and moulded sweets ----------
+import { PIZZA, CARROT_CAKE, PUMPKIN_BREAD, CHEESY_POTATO, TOFFEE, HONEY_CANDY, CANDIED_PEEL, MELTED_TOFFEE, HONEY_SYRUP } from './blocks.js';
+const TOF = [196, 130, 56], TOF_HI = [236, 180, 90], AMBER = [236, 160, 30], AMBER_HI = [255, 214, 110];
+P[T.TOFFEE] = (t) => { for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) t.set(x, y, x % 4 === 0 || y % 4 === 0 ? shade(TOF, 0.8) : (x + y) % 7 === 1 ? TOF_HI : t.vary(TOF, 0.03)); };
+P[T.TOFFEE_LIQ] = (t) => { for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) t.set(x, y, t.vary(Math.sin(x * 0.7 + y * 0.3) > 0.7 ? TOF_HI : [214, 150, 70], 0.03)); };
+P[T.CANDY] = (t) => { for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) t.set(x, y, x % 4 === 0 || y % 4 === 0 ? shade(AMBER, 0.75) : (x + y) % 5 === 1 ? AMBER_HI : t.vary(AMBER, 0.03)); };
+P[T.CANDY_LIQ] = (t) => { for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) t.set(x, y, t.vary(Math.sin(x * 0.6 + y * 0.4) > 0.7 ? AMBER_HI : [244, 180, 50], 0.03)); };
+ITEM_PAINTERS[PIZZA] = (ctx) => {
+  for (let y = 1; y < 15; y++) for (let x = 1; x < 15; x++) { const d = Math.hypot(x - 7.5, y - 7.5); if (d < 7) px(ctx, x, y, d > 5.8 ? [214, 160, 80] : [210, 70, 40]); }
+  for (const [x, y] of [[5, 5], [9, 4], [10, 9], [5, 10], [8, 7]]) { px(ctx, x, y, [250, 230, 150]); px(ctx, x + 1, y, [250, 230, 150]); }
+  for (const [x, y] of [[7, 4], [4, 8], [11, 6], [8, 11]]) px(ctx, x, y, [60, 130, 40]);
+};
+const loaf = (c, top, bits) => (ctx) => {
+  for (let y = 5; y < 14; y++) for (let x = 2; x < 14; x++) px(ctx, x, y, y < 7 ? top : y === 13 ? shade(c, 0.75) : c);
+  for (const [x, y, cc] of bits) px(ctx, x, y, cc);
+};
+ITEM_PAINTERS[CARROT_CAKE] = loaf([200, 130, 70], [250, 246, 236], [[4, 5, [236, 120, 30]], [8, 5, [236, 120, 30]], [11, 5, [236, 120, 30]], [5, 9, [236, 130, 40]], [10, 11, [236, 130, 40]]]);
+ITEM_PAINTERS[PUMPKIN_BREAD] = loaf([214, 140, 60], [170, 100, 40], [[5, 9, [236, 170, 80]], [9, 10, [236, 170, 80]]]);
+ITEM_PAINTERS[CHEESY_POTATO] = (ctx) => {
+  for (let y = 4; y < 14; y++) for (let x = 2; x < 14; x++) if (Math.hypot((x - 7.5) / 6, (y - 9) / 4.5) < 1) px(ctx, x, y, [150, 100, 50]);
+  for (let y = 5; y < 10; y++) for (let x = 4; x < 12; x++) if (Math.hypot((x - 7.5) / 3.6, (y - 7.5) / 2.2) < 1) px(ctx, x, y, y < 7 ? [250, 210, 90] : [240, 230, 190]);
+};
+const sweets = (c, hi, wrap) => (ctx) => {
+  for (const [cx, cy] of [[5, 6], [10, 9]]) {
+    rect(ctx, cx - 2, cy - 2, 5, 4, c); px(ctx, cx - 1, cy - 1, hi);
+    if (wrap) { px(ctx, cx - 3, cy - 2, wrap); px(ctx, cx - 3, cy + 1, wrap); px(ctx, cx + 3, cy - 2, wrap); px(ctx, cx + 3, cy + 1, wrap); }
+  }
+};
+ITEM_PAINTERS[TOFFEE] = sweets(TOF, TOF_HI, [230, 220, 200]);
+ITEM_PAINTERS[HONEY_CANDY] = sweets(AMBER, AMBER_HI, null);
+ITEM_PAINTERS[CANDIED_PEEL] = (ctx) => { for (const [ox, oy] of [[2, 3], [7, 7], [3, 10]]) for (let k = 0; k < 7; k++) { px(ctx, ox + k, oy + (k > 3 ? 1 : 0), [250, 150, 40]); px(ctx, ox + k, oy + 1 + (k > 3 ? 1 : 0), [255, 230, 180]); } };
+ITEM_PAINTERS[MELTED_TOFFEE] = bottleOf([200, 130, 56], false);
+ITEM_PAINTERS[HONEY_SYRUP] = bottleOf([240, 170, 40], false);

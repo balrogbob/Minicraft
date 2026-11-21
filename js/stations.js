@@ -604,3 +604,21 @@ export function dryingAt(world, x, y, z) {
   if (world.raining || !(world.daylight > 0.5) || !(world.skyAt?.(x, y + 1, z) >= 15)) return 0;
   return world.generator?.biomeAt?.(x, z) === 'desert' ? 2 : 1;
 }
+
+// v34 C: oven dishes, and sweets for the mould
+import { PIZZA, CARROT_CAKE, PUMPKIN_BREAD, CHEESY_POTATO, CANDIED_PEEL, MELTED_TOFFEE, HONEY_SYRUP, orFine, ORANGE_FRUIT, CHEESE } from './blocks.js';
+STATION_KINDS.oven.recipes.push(
+  { out: [PIZZA, 1], in: [[FLOUR, 2], [orFine(TOMATO), 1], [CHEESE, 1], [orFine(HERBS), 1]], time: 10 },
+  { out: [CARROT_CAKE, 1], in: [[orFine(CARROT), 2], [FLOUR, 2], [SUGAR, 1], [EGG, 1]], time: 10 },
+  { out: [PUMPKIN_BREAD, 2], in: [[orFine(PUMPKIN), 1], [FLOUR, 2], [SUGAR, 1]], time: 8 },
+  { out: [CHEESY_POTATO, 1], in: [[orFine(POTATO), 1], [CHEESE, 1], [BUTTER, 1]], time: 6 },
+);
+STATION_KINDS.cookpot.recipes.push(
+  { out: [MELTED_TOFFEE, 2], in: [[SUGAR, 3], [BUTTER, 1], [GLASS_BOTTLE, 2]], time: 6 },
+  { out: [HONEY_SYRUP, 2], in: [[HONEY_DROP, 4], [GLASS_BOTTLE, 2]], time: 6 },
+  { out: [CANDIED_PEEL, 3], in: [[ORANGE_FRUIT, 2], [SUGAR, 2]], time: 6 },
+);
+
+// (v34) The oven and the pot make the first recipe whose ingredients are all there, so the dishes that use
+// more ingredients go first: otherwise an egg in with the flour, carrots and sugar would just be fried.
+for (const kind of ['oven', 'cookpot']) STATION_KINDS[kind].recipes.sort((a, b) => b.in.length - a.in.length);

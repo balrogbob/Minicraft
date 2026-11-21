@@ -3818,7 +3818,7 @@ function placeInner() {
     if (BLOCKS[tid].bell) { ringBell(tx, tz, held); return; }
     if (tid === SLUICE_WHEEL) { workLock(tx, ty, tz); return; }
     if (tid === LOG && held?.id === TORCH && lightCharcoalPile(tx, ty, tz, [target.nx, target.ny, target.nz])) return;
-    if (tid >= CHOC_MOULD && tid < CHOC_MOULD + 4) { useMould(tx, ty, tz, tid, held); return; }
+    if (tid === CHOC_MOULD || mouldFill(tid)) { useMould(tx, ty, tz, tid, held); return; }
     if (tid >= CHOC_CAKE && tid < CHOC_CAKE + CAKE_SLICES && !(held && isBlock(held.id))) { eatCakeSlice(tx, ty, tz, tid); return; }
     if (BLOCKS[tid].fruit?.ripe) {
       // pick the fruit off a fruit tree's leaves
@@ -7010,7 +7010,7 @@ apiculture.onYoung = (x, y, z, sp, mate, kids) => {
 };
 
 // ---------- v32: tree taps ----------
-import { CHOC_MOULD, CHOC_CAKE, CAKE_SLICES, MOULD_BARS, MELTED_CHOC, CHOC_BAR } from './blocks.js';
+import { CHOC_MOULD, CHOC_CAKE, CAKE_SLICES, MOULD_BARS, MELTED_CHOC, CHOC_BAR, MOULD_FILLS, mouldFill } from './blocks.js';
 import { TREE_TAP, LATEX, MAX_LATEX, POLYMER_BOAT, DEMO_CHARGE, DETONATOR, DEMO_RADIUS, DETONATOR_LINKS, DETONATOR_RANGE } from './blocks.js';
 // Tapping a tree tap takes the latex in it.
 function useTap(x, y, z, tid) {
@@ -7058,22 +7058,23 @@ window.minicraft.useDetonator = useDetonator;
 // ---------- v33: the chocolate mould and chocolate cake ----------
 // Tap an empty mould holding melted chocolate to pour it in; tap it once it's set to knock out the bars.
 function useMould(x, y, z, tid, held) {
-  const k = tid - CHOC_MOULD;
-  if (k === 0) {
-    if (held?.id !== MELTED_CHOC) { toast('Pour melted chocolate into the mould (melt cocoa powder, sugar and butter in a cooking pot)', 2400); return; }
+  if (tid === CHOC_MOULD) {
+    const fill = MOULD_FILLS.find((f) => f.liquid === held?.id);
+    if (!fill) { toast('Pour melted chocolate, melted toffee or honey syrup into the mould (from a cooking pot)', 2400); return; }
     inventory.consumeHeld();
     if (inventory.add(GLASS_BOTTLE, 1)) toast('Inventory full');
-    world.setBlock(x, y, z, CHOC_MOULD + 1);
+    world.setBlock(x, y, z, fill.poured);
     sound.pour();
     const chill = world.mouldChill(x, y, z);
     toast(`Poured. Leave it to set${chill > 1 ? ': it\'s nice and cold here, so it won\'t be long' : chill < 1 ? ', though it\'s too warm here for it to set quickly' : ''}.`, 2200);
     return;
   }
-  if (k < 3) { toast(k === 1 ? 'The chocolate is still runny' : 'The chocolate is nearly set', 1500); return; }
+  const { fill, stage } = mouldFill(tid);
+  if (stage < 3) { toast(stage === 1 ? 'It\'s still runny' : 'It\'s nearly set', 1500); return; }
   world.setBlock(x, y, z, CHOC_MOULD);
   sound.click();
-  giveDrops([[CHOC_BAR, MOULD_BARS]]);
-  achieve('chocolate');
+  giveDrops([[fill.out, MOULD_BARS]]);
+  if (fill.out === CHOC_BAR) achieve('chocolate');
 }
 function eatCakeSlice(x, y, z, tid) {
   if (hunger > MAX_HUNGER - 1) { toast('You\'re not hungry'); return; }
