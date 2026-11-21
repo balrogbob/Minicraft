@@ -413,6 +413,25 @@ The chocolate mould takes melted toffee and honey syrup as well as chocolate. Th
   after three more; curds become **cheese**, and cheese becomes **aged cheese**. Tap a barrel to see how they're
   coming on. Aged things sell for more.
 
+### The distillery
+
+A **distillery** (6 copper ingots, 3 bricks, a glass bottle) is a copper still over a firebox. It burns fuel
+like an oven.
+
+| Make | From |
+| --- | --- |
+| 2 New spirit | 6 wheat or 4 rice + a water bucket + 2 glass bottles (the empty bucket goes in its tray) |
+| Rubbing alcohol | 2 new spirit (you get a bottle back) |
+| Biofuel bucket | 8 plant matter + an empty bucket |
+
+- **Whisky.** New spirit laid down in an oak barrel becomes **whisky** after two days, and **old whisky** after four
+  more. Both warm you through, and old whisky sells for 7 coins at a stall.
+- **Rubbing alcohol.** Craft it with a wool into 3 **bandages**. Tap with one in hand to heal 4 hearts and cure
+  food poisoning.
+- **Biofuel.** Plant matter is seeds, saplings, leaves, sugar cane, cactus, flowers, vegetables, fruit, cocoa
+  pods, coffee cherries or sawdust. A biofuel bucket burns six times as long as coal in a stove, an oven or a
+  steam engine, and you keep the bucket.
+
 ### New crops, cider and berry wine, cellars
 
 - **Onions**, **beans**, **tomatoes** and **herbs** grow from themselves (village farms grow them, and farmers sell
@@ -613,6 +632,18 @@ Place a charge and tap it to light the fuse: 3 seconds later it blows a round ho
 Three quarters of what it breaks comes to you (as if dug with an iron pickaxe) if you're within 24 blocks.
 Charges in the blast go off too. Chests, machines, furniture, obsidian and bedrock are blast-proof. Stand
 well back: the blast hurts anyone within about 5 blocks.
+
+### The carpenter and crates
+
+A **carpenter** (4 planks, 2 logs, 2 iron, a gear) is turned by a shaft, like the other machines.
+- It makes 2 empty **crates** from 4 planks and 2 sticks.
+- It packs 9 of a thing and an empty crate into a **crated** item ("Crated Cobblestone", "Crated Wheat", ...).
+  Crated items stack to 64, so one slot holds 9 stacks.
+- Put a crated item in to unpack it: you get the 9 back, and the empty crate goes in its tray.
+- You can also unpack a crated item by hand at the crafting grid, but the crate breaks.
+- Most bulk things can be crated: stone, dirt, sand and gravel, logs and planks, ores, ingots and dusts, coal, crops,
+  fruit, flour and sugar, sticks, string, wool and so on. A hopper or a logistics pipe can feed a carpenter, so
+  it can pack a farm's harvest as it comes in.
 
 ### Rubber and polymers
 
@@ -1366,6 +1397,9 @@ breed when there are 12 or more about.
 - At night **owls** come to sit in the treetops and hoot, turning their heads to watch you; they fly off if you get
   close. **Bats** flit about in caves and out over the land at dusk. On warm (spring and summer) nights
   **fireflies** blink over the grass.
+- Swat a bat out of the air by hitting it, and no more come for half a minute. Bats leave **bat guano** now and
+  then as they fly about under ground, and a swatted one drops some. Guano burns as fuel (a little under half as
+  long as coal). Grind 3 with the mortar into saltpetre for gunpowder, or craft 1 into 2 fertiliser.
 - An **apiary** (8 planks, 3 honeycomb, a glass) is a bee box that holds more honey than a wild hive (5 levels). When
   it's full, tap it to take 3 honeycomb and 2 **beeswax** (or, holding a bottle, a bottle of honey, 2 honeycomb and
   2 beeswax). Any honeycomb can be made into beeswax too. 2 beeswax and a string make 3 **beeswax candles**.
@@ -1507,8 +1541,12 @@ one that lands on a **hopper** drops in (sorting hoppers still only take what ma
 also tap a belt or hopper holding an item to put it straight in. Breaking a chest, oven or machine **spills**
 what was inside onto the ground, with enchantments and wear kept.
 
-Tooltips (on by default, ☰ → Tooltips) name what the crosshair is on, and in 🎒 show the name and details of
-the item under the mouse or the one you tap.
+Tooltips (on by default, ☰ → Tooltips) name what the crosshair is on. In 🎒 they show the name and details of
+the item under the mouse or the one you tap. Hover over a crafting recipe's ingredients or result, or a slot in
+a chest or machine window, to see the same details.
+
+If something you pick up won't fit in your inventory, it drops at your feet instead of being lost: make room
+and walk over it to pick it up (loose items vanish after five minutes).
 
 Holding the map, tap a sign to mark it on the map (named by its first line), or a bed. Tap it again
 to take the mark off. Marks off the edge of the map show as arrows pointing toward them.
@@ -1571,6 +1609,10 @@ guide to how everything works.
 
 ## Version history
 
+- **Version 35**: the carpenter and crates (9 of a thing to a crate, 64 crates to a slot), the distillery (whisky,
+  rubbing alcohol and bandages, biofuel), things that don't fit in a full inventory drop at your feet instead of
+  vanishing, bats can be swatted, bat guano (fuel, saltpetre, fertiliser), tooltips in crafting lists and machine
+  windows, and a fix for the view sometimes spinning round when you move the mouse.
 - **Version 34**: pork and chicken from farmed pigs and chickens, cream, ice cream and ice lollies, vinegar and
   pickles, smoking in the chimney, the drying rack, oven dishes (pizza, carrot cake, pumpkin bread, cheesy jacket
   potato), toffee and honey candy in the mould, coffee, rice and chillies and their dishes, treats at the market

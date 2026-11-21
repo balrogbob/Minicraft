@@ -141,7 +141,7 @@ export const T = {
   LEAD_CHEST_SIDE: 267, LEAD_CHEST_TOP: 268, LEAD_CHEST_FRONT: 269, CENTRIFUGE_SIDE: 270, CENTRIFUGE_TOP: 271, TESLA: 272, TESLA_TOP: 273,
   FENCE_POST: 274, FENCE_WIRE: 275, FREEZER_SIDE: 276, FREEZER_FRONT: 277, ARC_SIDE: 278, ARC_FRONT: 279, PACKED_ICE: 280, INVAR: 281, RAIL_STOP: 282, BASALT: 283, BASALT_TOP: 284, METEORITE: 285,
   IRON_BARS: 286, POT: 287, IVY: 288, BOX_FLOWERS: 289,
-  FRUIT_LEAVES: 290, FRUIT_RIPE: 293, FRUIT_SAPLING: 296, HAY: 299, SACK: 300, BEACON: 301, APIARY_SIDE: 302, APIARY_FRONT: 303, APIARY_FULL: 304, APIARY_TOP: 305, BELT_CROSS: 306, FARM_CTRL: 307, FARM_CTRL_ON: 308, TUBE: 309, TUBE_END: 310, AWNING: 311, FIRE: 312, CARROT_0: 313, POTATO_0: 317, STEM_0: 321, PUMPKIN_SIDE: 324, PUMPKIN_TOP: 325, JACK_FACE: 326, TRELLIS: 327, VINE_0: 328, BARREL_SIDE: 331, BARREL_TOP: 332, CHEESE: 333, SEA_BRICK: 334, SEA_LANTERN: 335, VAULT: 336, SKY_STONE: 337, AIR_PUMP: 338, RADIO: 339, RADIO_ON: 340, SORTBOX: 341, SORTBOX_TOP: 342, HEARTH: 343, HEARTH_LIT: 344, CHIMNEY_TOP: 345, STABLE_SIDE: 346, SNOWMAN_FRONT: 347, ONION_0: 348, BEAN_0: 352, TOMATO_0: 356, HERB_0: 360, KILN_SIDE: 364, KILN_TOP: 365, KILN_FRONT: 366, KILN_FRONT_LIT: 367, TERRACOTTA: 368, TERRA_COL: 369, GLAZED: 379, ROOF_TILES: 389, URN: 390, ROPE: 391, LOCK_GATE: 392, LOCK_GATE_TOP: 393, DRIPSTONE: 394, BEETLE_LAMP: 395, WASHER_SIDE: 396, WASHER_TOP: 397, WASHER_FRONT: 398, SIEVE: 399, SLAG_BRICKS: 400, CHARCOAL_HEAP: 401, LP_ARM: 402, LP_CORE: 403, LP_TABLE_TOP: 409, LP_TABLE_SIDE: 410, LP_JUNCTION: 411, LP_SENSOR_CORE: 412, LP_SENSOR_ON: 413, LP_FPROVIDER: 414, LP_FSUPPLIER: 415, DRONE_PAD_TOP: 416, DRONE_PAD_SIDE: 417, LP_FSINK: 418, BOTTLER_SIDE: 419, BOTTLER_TOP: 420, BEEHOUSE_SIDE: 421, BEEHOUSE_TOP: 422, BEEHOUSE_FRONT: 423, COMB_SPIN_SIDE: 424, COMB_SPIN_TOP: 425, TAP_SIDE: 426, TAP_LATEX: 427, PRESS_SIDE: 428, PRESS_TOP: 429, INSWIRE_OFF: 430, INSWIRE_ON: 431, BOUNCE_TOP: 432, BOUNCE_SIDE: 433, POLY_COL: 434, LUMEN: 444, DEMO_SIDE: 445, DEMO_TOP: 446, DEMO_ARMED: 447, DETONATOR_TILE: 448, COCOA_LEAVES: 449, COCOA_RIPE: 450, COCOA_SAPLING: 451, MOULD: 452, CHOC: 453, CHOC_LIQUID: 454, CAKE_TOP: 455, CAKE_SIDE: 456, RACK: 457, TOFFEE: 458, TOFFEE_LIQ: 459, CANDY: 460, CANDY_LIQ: 461, COFFEE_0: 462, RICE_0: 466, CHILLI_0: 470, // (434..443: polymer + colour) // (fruit tiles: apple, cherry, orange)
+  FRUIT_LEAVES: 290, FRUIT_RIPE: 293, FRUIT_SAPLING: 296, HAY: 299, SACK: 300, BEACON: 301, APIARY_SIDE: 302, APIARY_FRONT: 303, APIARY_FULL: 304, APIARY_TOP: 305, BELT_CROSS: 306, FARM_CTRL: 307, FARM_CTRL_ON: 308, TUBE: 309, TUBE_END: 310, AWNING: 311, FIRE: 312, CARROT_0: 313, POTATO_0: 317, STEM_0: 321, PUMPKIN_SIDE: 324, PUMPKIN_TOP: 325, JACK_FACE: 326, TRELLIS: 327, VINE_0: 328, BARREL_SIDE: 331, BARREL_TOP: 332, CHEESE: 333, SEA_BRICK: 334, SEA_LANTERN: 335, VAULT: 336, SKY_STONE: 337, AIR_PUMP: 338, RADIO: 339, RADIO_ON: 340, SORTBOX: 341, SORTBOX_TOP: 342, HEARTH: 343, HEARTH_LIT: 344, CHIMNEY_TOP: 345, STABLE_SIDE: 346, SNOWMAN_FRONT: 347, ONION_0: 348, BEAN_0: 352, TOMATO_0: 356, HERB_0: 360, KILN_SIDE: 364, KILN_TOP: 365, KILN_FRONT: 366, KILN_FRONT_LIT: 367, TERRACOTTA: 368, TERRA_COL: 369, GLAZED: 379, ROOF_TILES: 389, URN: 390, ROPE: 391, LOCK_GATE: 392, LOCK_GATE_TOP: 393, DRIPSTONE: 394, BEETLE_LAMP: 395, WASHER_SIDE: 396, WASHER_TOP: 397, WASHER_FRONT: 398, SIEVE: 399, SLAG_BRICKS: 400, CHARCOAL_HEAP: 401, LP_ARM: 402, LP_CORE: 403, LP_TABLE_TOP: 409, LP_TABLE_SIDE: 410, LP_JUNCTION: 411, LP_SENSOR_CORE: 412, LP_SENSOR_ON: 413, LP_FPROVIDER: 414, LP_FSUPPLIER: 415, DRONE_PAD_TOP: 416, DRONE_PAD_SIDE: 417, LP_FSINK: 418, BOTTLER_SIDE: 419, BOTTLER_TOP: 420, BEEHOUSE_SIDE: 421, BEEHOUSE_TOP: 422, BEEHOUSE_FRONT: 423, COMB_SPIN_SIDE: 424, COMB_SPIN_TOP: 425, TAP_SIDE: 426, TAP_LATEX: 427, PRESS_SIDE: 428, PRESS_TOP: 429, INSWIRE_OFF: 430, INSWIRE_ON: 431, BOUNCE_TOP: 432, BOUNCE_SIDE: 433, POLY_COL: 434, LUMEN: 444, DEMO_SIDE: 445, DEMO_TOP: 446, DEMO_ARMED: 447, DETONATOR_TILE: 448, COCOA_LEAVES: 449, COCOA_RIPE: 450, COCOA_SAPLING: 451, MOULD: 452, CHOC: 453, CHOC_LIQUID: 454, CAKE_TOP: 455, CAKE_SIDE: 456, RACK: 457, TOFFEE: 458, TOFFEE_LIQ: 459, CANDY: 460, CANDY_LIQ: 461, COFFEE_0: 462, RICE_0: 466, CHILLI_0: 470, CARP_SIDE: 474, CARP_TOP: 475, STILL_COPPER: 476, // (434..443: polymer + colour) // (fruit tiles: apple, cherry, orange)
 };
 
 // Ores, deepest-reaching last. tier: the pickaxe tier needed to mine it (see TOOL_TIERS);
@@ -3325,3 +3325,72 @@ export function contestScore(id, season) {
   if (!it?.meal && !it?.treat && !fav) return 0;
   return (it.food ?? 0) + (it.treat ? 3 : 0) + (fav ? 8 : 0);
 }
+
+// ---------- v35: bat guano ----------
+// Bats leave guano now and then as they flit about under ground, and drop some when you swat one. It burns (a
+// little under half as long as coal), grinds into saltpetre for gunpowder, and makes good fertiliser.
+export const GUANO = 3235;
+ITEMS[GUANO] = { name: 'Bat Guano', about: 'burns as fuel, grinds into saltpetre, or makes fertiliser' };
+RECIPES.push(
+  { out: [SALTPETRE, 1], in: [[GUANO, 3]], tools: [MORTAR] },
+  { out: [FERTILISER, 2], in: [[GUANO, 1]] },
+);
+
+// ---------- v35: the carpenter and crates ----------
+// The carpenter is turned by a shaft. It makes empty crates from planks and sticks, packs 9 of a bulk item and an
+// empty crate into a crated item (which stacks to 64, so a slot holds 9 stacks), and unpacks a crated item again,
+// giving the empty crate back in its tray. You can also unpack one by hand, but the crate breaks. Every bulk thing has its own crated item, listed in CRATED (id -> what's
+// inside); their icons are a crate with the item on it (see createIcons).
+export const CARPENTER = 1529, CRATE = 3236, CRATED_BASE = 3300;
+block(CARPENTER, { ...machine, sound: 'wood', tool: 'axe', name: 'Carpenter', station: 'carpenter', side: T.CARP_SIDE, top: T.CARP_TOP, bottom: T.PLANKS, stationBase: CARPENTER, machine: { load: 2 } });
+ITEMS[CARPENTER] = { name: 'Carpenter', about: 'turn it with a shaft: it makes crates, and packs 9 of a thing into each one' };
+ITEMS[CRATE] = { name: 'Crate', about: 'the carpenter packs 9 of a thing into it' };
+RECIPES.push({ out: [CARPENTER, 1], in: [[PLANKS, 4], [LOG, 2], [IRON_INGOT, 2], [kineticId('gear', 0), 1]], table: true, metal: IRON_INGOT });
+export const CRATED = {}; // crated id -> the item inside
+export const CRATE_OF = {}; // item -> its crated id
+const CRATEABLE = [COBBLE, STONE, DIRT, SAND, GRAVEL, CLAY, BASALT, OBSIDIAN, LOG, PLANKS, GLASS, BRICK, LEAVES, SAPLING, CACTUS,
+  COAL, CHARCOAL, SULPHUR, SALTPETRE, FLINT, CLAY_BALL, WHEAT, SEEDS, SUGAR_CANE, CARROT, POTATO, PUMPKIN, BERRIES, APPLE, CHERRIES,
+  ORANGE_FRUIT, GRAPES, ONION, BEANS, TOMATO, HERBS, RICE, COFFEE_CHERRIES, CHILLI, COCOA_BEANS, FLOUR, SUGAR, EGG, STICK, STRING, FEATHER,
+  WOOL, LEATHER, RUBBER, SAWDUST, GUANO, ...ORES.flatMap((o) => [o.id, o.ingot])];
+for (const id of Object.keys(ITEMS).map(Number)) if (/ (Ingot|Dust)$/.test(ITEMS[id]?.name ?? '')) CRATEABLE.push(id);
+let crateN = 0;
+for (const id of new Set(CRATEABLE.filter((i) => i && (ITEMS[i] || BLOCKS[i]) && maxStack(i) === 64))) {
+  const cid = CRATED_BASE + crateN++;
+  CRATED[cid] = id; CRATE_OF[id] = cid;
+  ITEMS[cid] = { name: `Crated ${itemName(id)}`, crated: id, about: `9 × ${itemName(id)}: a carpenter unpacks it and keeps the crate; by hand the crate breaks` };
+  // unpacking by hand breaks the crate (only listed once you have one of these: see `metal` in the recipe list)
+  RECIPES.push({ out: [id, 9], in: [[cid, 1]], metal: cid });
+}
+
+// ---------- v35: the distillery ----------
+// A copper still over a fire (it burns fuel like an oven). Grain mash (wheat or rice with water) distils into new
+// spirit, which ages into whisky in an oak barrel, and old whisky after that. Distilled again, new spirit makes
+// rubbing alcohol, for bandages. Any plant matter, with an empty bucket, ferments into a bucket of biofuel, which
+// burns long and hot in a stove, an oven or a steam engine.
+export const DISTILLERY = 1530;
+export const NEW_SPIRIT = 3237, WHISKY = 3238, OLD_WHISKY = 3239, RUBBING_ALCOHOL = 3240, BIOFUEL_BUCKET = 3241, BANDAGE = 3242;
+const copper = T.STILL_COPPER;
+block(DISTILLERY, {
+  name: 'Distillery', station: 'distillery', sound: 'metal', transparent: true, hardness: 2.5, tool: 'pick', stationBase: DISTILLERY,
+  model: [
+    [1, 0, 1, 15, 4, 15, T.BRICKS], // the firebox
+    [3, 4, 3, 13, 11, 13, copper], [5, 11, 5, 11, 13, 11, copper], [7, 13, 7, 9, 15, 9, copper], // the pot and its neck
+    [9, 14, 7.2, 15, 15, 8.8, copper], [14, 4, 7.2, 15, 14, 8.8, copper], // the pipe over and down to the worm
+  ],
+  boxes: [[1, 0, 1, 15, 15, 15]],
+});
+ITEMS[DISTILLERY] = { name: 'Distillery', about: 'burns fuel: distils whisky spirit and rubbing alcohol, and makes biofuel from plants' };
+ITEMS[NEW_SPIRIT] = { name: 'New Spirit', stack: 8, about: 'age it in an oak barrel into whisky, or distil it again into rubbing alcohol' };
+ITEMS[WHISKY] = { name: 'Whisky', stack: 8, food: 1, meal: ['warm', 600], bottle: true, about: 'warms you right through' };
+ITEMS[OLD_WHISKY] = { name: 'Old Whisky', stack: 8, food: 2, meal: ['warm', 900], bottle: true, about: 'warms you right through for a long time; sells very well' };
+ITEMS[RUBBING_ALCOHOL] = { name: 'Rubbing Alcohol', stack: 8, about: 'for bandages (not for drinking!)' };
+ITEMS[BIOFUEL_BUCKET] = { name: 'Biofuel Bucket', stack: 1, about: 'burns for a long time in a stove, oven or steam engine (you keep the bucket)' };
+ITEMS[BANDAGE] = { name: 'Bandage', stack: 16, about: 'tap to use: heals 4 hearts and cures food poisoning' };
+AGING[NEW_SPIRIT] = [WHISKY, 2];
+AGING[WHISKY] = [OLD_WHISKY, 4];
+export const PLANT_MATTER = [SEEDS, SAPLING, LEAVES, SUGAR_CANE, CACTUS, CARROT, POTATO, PUMPKIN, BERRIES, APPLE, CHERRIES, ORANGE_FRUIT,
+  GRAPES, ONION, BEANS, TOMATO, HERBS, SAWDUST, COFFEE_CHERRIES, CHILLI, COCOA_POD, ...FLOWERS.map((f) => f.id)].filter((i) => ITEMS[i] || BLOCKS[i]);
+RECIPES.push(
+  { out: [DISTILLERY, 1], in: [[COPPER_INGOT, 6], [BRICK, 3], [GLASS_BOTTLE, 1]], table: true, metal: COPPER_INGOT },
+  { out: [BANDAGE, 3], in: [[WOOL, 1], [RUBBING_ALCOHOL, 1]], also: [[GLASS_BOTTLE, 1]] },
+);

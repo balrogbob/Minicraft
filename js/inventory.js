@@ -32,7 +32,16 @@ export class Inventory {
   }
 
   // Adds items, returns how many did not fit. Prefers stacking, then hotbar, then backpack.
-  add(id, n) {
+  // Add n of an item. Returns how many did not fit; those are handed to `overflow` (if set), which drops them
+  // on the ground. fit() is the same without the overflow, for callers that keep what doesn't fit themselves.
+  add(id, n) { return this.spill({ id, count: this.fit(id, n) }); }
+  addItem(s) { return this.spill({ ...s, count: this.fitItem(s) }); }
+  spill(left) {
+    if (left.count > 0) this.overflow?.(left);
+    return left.count;
+  }
+
+  fit(id, n) {
     const max = maxStack(id);
     for (const s of this.slots) {
       if (n <= 0) break;
@@ -52,8 +61,8 @@ export class Inventory {
   }
 
   // Add a whole stack (keeping how worn it is). Returns how many did not fit.
-  addItem(s) {
-    if (!s.wear && !s.ench && !s.pack) return this.add(s.id, s.count);
+  fitItem(s) {
+    if (!s.wear && !s.ench && !s.pack) return this.fit(s.id, s.count);
     const i = this.slots.findIndex((x) => !x);
     if (i < 0) return s.count;
     this.slots[i] = { ...s };

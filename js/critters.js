@@ -6,6 +6,8 @@ import { AIR, GRASS, BLOCKS, isLeaves, MAX_LIGHT } from './blocks.js';
 
 const MAX_WORMS = 240;
 const MAX_OWLS = 2, MAX_BATS = 5, MAX_FLIES = 48;
+const GUANO_EVERY = 60; // seconds (on average) between a bat's droppings, under ground
+const BAT_QUIET = 30; // seconds after you swat a bat before new ones come
 const rand = (a, b) => a + Math.random() * (b - a);
 
 function owlMesh() {
@@ -85,6 +87,23 @@ export class Critters {
     scene.add(this.wormPoints);
   }
 
+  // (v35) Swat a bat: the first one within half a block or so of the line from `from` along `dir`, nearer than
+  // `reach`. It falls, leaving guano (onGuano(pos, true)), and no new bats come for a while. Returns its distance, or 0.
+  swatBat(from, dir, reach) {
+    let best = null, bestT = reach;
+    for (const b of this.bats) {
+      const rel = b.pos.clone().sub(from), t = rel.dot(dir);
+      if (t <= 0 || t >= bestT) continue;
+      if (rel.addScaledVector(dir, -t).length() < 0.6) { best = b; bestT = t; }
+    }
+    if (!best) return 0;
+    this.scene.remove(best.mesh.g);
+    this.bats.splice(this.bats.indexOf(best), 1);
+    this.batQuiet = BAT_QUIET;
+    this.onGuano?.(best.pos.clone(), true);
+    return bestT;
+  }
+
   clear() {
     for (const o of this.owls) this.scene.remove(o.mesh.g);
     for (const b of this.bats) this.scene.remove(b.mesh.g);
@@ -127,7 +146,8 @@ export class Critters {
         }
       }
       // bats: in the dark under ground, or out over the land at dusk
-      if ((underground || ctx.dusk) && this.bats.length < MAX_BATS && Math.random() < 0.5) {
+      this.batQuiet = Math.max(0, (this.batQuiet ?? 0) - 2);
+      if ((underground || ctx.dusk) && this.bats.length < MAX_BATS && !this.batQuiet && Math.random() < 0.5) {
         for (let tries = 0; tries < 8; tries++) {
           const x = Math.floor(p.x + rand(-10, 10)), y = Math.floor(p.y + rand(0, 5)), z = Math.floor(p.z + rand(-10, 10));
           if (world.get(x, y, z) !== AIR || world.lightAt(x, y, z) > 9) continue;
@@ -215,6 +235,7 @@ export class Critters {
       else b.pos.copy(next);
       b.mesh.g.rotation.y = Math.atan2(b.vel.x, b.vel.z);
       for (const w of b.mesh.wings) w.pivot.rotation.z = w.s * Math.sin(performance.now() / 30) * 1.1;
+      if (underground && Math.random() < dt / GUANO_EVERY) this.onGuano?.(b.pos.clone(), false); // now and then a bat leaves its droppings
       if ((b.squeak -= dt) <= 0) { b.squeak = rand(3, 9); const d = b.pos.distanceTo(p); if (d < 14) this.sound?.mob('bat', 1 - d / 14); }
     }
 
