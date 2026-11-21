@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { Graphics, GFX_DEFAULTS, GFX_NAMES, MAX_TORCH_SHADOWS, gfxUniforms, GFX_FRAG_HEAD, GFX_SUN_TERM, GFX_WATER, WATER_LAYER, LATE_LAYER } from './graphics.js';
 import {
   BLOCKS, RECIPES, TABLE, AIR, WATER, TORCH, TORCH_WALL_W, WALL_TORCH_DIRS,
   GRASS, DIRT, SAND, CHURN, SUGAR_CANE, BREAD, ITEMS, BOW, ARROW, BUCKET,
@@ -75,7 +76,7 @@ import { Logic } from './logic.js';
 
 // v2 = the 16k x 16k streaming world (player state here, edited chunks in IndexedDB).
 // v1 = the old 128 x 128 world, migrated into the middle of the big world on first launch.
-const GAME_VERSION = '35'; // shown in the menu; bump with each release
+const GAME_VERSION = '36'; // shown in the menu; bump with each release
 const SAVE_KEY = 'minicraft-save-v2';
 const LEGACY_SAVE_KEY = 'minicraft-save-v1';
 const SETTINGS_KEY = 'minicraft-settings-v1';
@@ -94,13 +95,15 @@ function writeSave(obj, slot = settings.slot) {
 }
 // Settings live apart from the world so they survive "New world".
 const settings = (() => {
-  const defaults = { sens: 6, volume: 70, music: 50, viewDistance: 6, perf: false, difficulty: 'worrying', wear: true, favs: [], pins: [], slot: 0, fov: 72, keys: {}, tips: true, doubleTap: true };
+  const defaults = { sens: 6, volume: 70, music: 50, viewDistance: 6, perf: false, difficulty: 'worrying', wear: true, favs: [], pins: [], slot: 0, fov: 72, keys: {}, tips: true, doubleTap: true, gfx: {} };
   let s;
   try { s = { ...defaults, ...JSON.parse(localStorage.getItem(SETTINGS_KEY)) }; } catch { s = { ...defaults }; }
   s.slot = Math.max(0, Math.min(SLOT_COUNT - 1, s.slot | 0));
   s.fov = Math.max(50, Math.min(110, +s.fov || 72));
   if (!s.keys || typeof s.keys !== 'object') s.keys = {};
   if (!Array.isArray(s.pins)) s.pins = [];
+  s.gfx = { ...GFX_DEFAULTS, ...(s.gfx && typeof s.gfx === 'object' ? s.gfx : {}) };
+  s.gfx.torches = Math.max(0, Math.min(MAX_TORCH_SHADOWS, s.gfx.torches | 0));
   return s;
 })();
 function saveSettings() {
@@ -120,6 +123,7 @@ scene.fog = new THREE.Fog(SKY, 38, 80);
 
 const camera = new THREE.PerspectiveCamera(settings.fov, window.innerWidth / window.innerHeight, 0.05, 160);
 camera.rotation.order = 'YXZ';
+camera.layers.enable(WATER_LAYER); camera.layers.enable(LATE_LAYER); // (see graphics.js)
 
 const atlasCanvas = createAtlas();
 const atlas = new THREE.CanvasTexture(atlasCanvas);
@@ -134,18 +138,20 @@ const material = new THREE.MeshBasicMaterial({ map: atlas, vertexColors: true, a
 // daylight is a uniform set by the sky, so nights darken everything the sun reaches,
 // caves stay dark all day, and torches glow wherever they are.
 const AMBIENT = 0.03; // linear; just enough to make out cave walls without a torch
-const lightUniforms = { uHand: { value: new THREE.Vector4(0, 0, 0, 0) }, uDay: { value: 1 }, uFlicker: { value: 1 }, uAmbient: { value: AMBIENT }, uTints: { value: TINTS.map((c) => new THREE.Vector3(...c)) } };
-function addTorchLight(mat) {
+const lightUniforms = { uHand: { value: new THREE.Vector4(0, 0, 0, 0) }, uDay: { value: 1 }, uFlicker: { value: 1 }, uAmbient: { value: AMBIENT }, uTints: { value: TINTS.map((c) => new THREE.Vector3(...c)) }, ...gfxUniforms };
+function addTorchLight(mat, water = false) {
+  // (sky also carries a "next to water" flag, +2, for caustics: see World.buildChunkGeometry)
+  mat.customProgramCacheKey = () => (water ? 'world-water' : 'world-solid');
   mat.onBeforeCompile = (shader) => {
     Object.assign(shader.uniforms, lightUniforms);
     // torch light comes in as brightness + 2 x its colour (see TINTS): decoded here, per vertex
     // (and a portable lamp you carry lights what's within HAND_REACH of you: uHand is where it is, and how bright)
-    shader.vertexShader = `attribute float torch;\nattribute float sky;\nvarying vec3 vTorchC;\nvarying float vSky;\nvarying vec3 vWorldP;\nuniform vec3 uTints[${TINTS.length}];\n` + shader.vertexShader
-      .replace('#include <color_vertex>', '#include <color_vertex>\nfloat tintI = floor(torch * 0.5);\nvTorchC = (torch - tintI * 2.0) * uTints[int(tintI)];\nvSky = sky;\nvWorldP = (modelMatrix * vec4(position, 1.0)).xyz;');
-    shader.fragmentShader = 'uniform float uDay;\nuniform float uFlicker;\nuniform float uAmbient;\nuniform vec4 uHand;\nvarying vec3 vTorchC;\nvarying float vSky;\nvarying vec3 vWorldP;\n' + shader.fragmentShader
+    shader.vertexShader = `attribute float torch;\nattribute float sky;\nvarying vec3 vTorchC;\nvarying float vSky;\nvarying float vWet;\nvarying vec3 vWorldP;\nuniform vec3 uTints[${TINTS.length}];\n` + shader.vertexShader
+      .replace('#include <color_vertex>', '#include <color_vertex>\nfloat tintI = floor(torch * 0.5);\nvTorchC = (torch - tintI * 2.0) * uTints[int(tintI)];\nvWet = step(1.5, sky);\nvSky = sky - vWet * 2.0;\nvWorldP = (modelMatrix * vec4(position, 1.0)).xyz;');
+    shader.fragmentShader = 'uniform float uDay;\nuniform float uFlicker;\nuniform float uAmbient;\nuniform vec4 uHand;\nvarying vec3 vTorchC;\nvarying float vSky;\nvarying vec3 vWorldP;\n' + GFX_FRAG_HEAD + shader.fragmentShader
       .replace('#include <color_fragment>',
-        '#include <color_fragment>\nfloat hl = uHand.w * pow(clamp(1.0 - distance(vWorldP, uHand.xyz) / 13.0, 0.0, 1.0), 1.4);\n' +
-        'diffuseColor.rgb *= max(max(vec3(max(uDay * vSky, uAmbient)), vTorchC * uFlicker), vec3(hl, hl * 0.96, hl * 0.86));');
+        '#include <color_fragment>\nfloat hl = uHand.w * pow(clamp(1.0 - distance(vWorldP, uHand.xyz) / 13.0, 0.0, 1.0), 1.4);\n' + GFX_SUN_TERM +
+        'diffuseColor.rgb *= max(max(vec3(max(sunT, uAmbient)), torchT), vec3(hl, hl * 0.96, hl * 0.86));\n' + (water ? GFX_WATER : ''));
   };
 }
 addTorchLight(material);
@@ -159,8 +165,27 @@ waterTex.colorSpace = THREE.SRGBColorSpace;
 const waterMat = new THREE.MeshBasicMaterial({
   map: waterTex, vertexColors: true, transparent: true, opacity: 0.72, side: THREE.DoubleSide, depthWrite: false,
 });
-addTorchLight(waterMat);
+addTorchLight(waterMat, true);
 const materials = { solid: material, water: waterMat };
+// optional fancy graphics: shadows, bloom, water (see graphics.js)
+const gfx = new Graphics(renderer, settings.gfx);
+// torch shadows: the nearest lights (not lava, not ones out in the sun) within 16 blocks
+gfx.findLights = (n) => {
+  if (!world || !player) return [];
+  const px = Math.floor(player.pos.x), py = Math.floor(player.pos.y + 1), pz = Math.floor(player.pos.z);
+  const day = lightUniforms.uDay.value, found = [];
+  for (let y = py - 10; y <= py + 10; y++) for (let x = px - 16; x <= px + 16; x++) for (let z = pz - 16; z <= pz + 16; z++) {
+    const id = world.get(x, y, z);
+    if (id === AIR) continue;
+    const def = BLOCKS[id];
+    if (!def || !(def.light >= 6) || def.liquid) continue;
+    if (day * world.skyAt(x, y, z) / 15 > 0.35) continue; // drowned out by daylight
+    found.push({ x: x + 0.5, y: y + 0.55, z: z + 0.5, r: def.light + 1, d: (x - px) ** 2 + (y - py) ** 2 + (z - pz) ** 2 });
+  }
+  found.sort((a, b) => a.d - b.d);
+  return found.slice(0, n);
+};
+gfx.onFail = (key) => { settings.gfx[key] = key === 'torches' ? 0 : false; saveSettings(); updateGfxLabels(); toast(`${GFX_NAMES[key]} doesn't work on this device — turned off`, 4000); };
 
 const sky = new Sky(scene);
 const sound = new Sound();
@@ -4752,6 +4777,16 @@ updateBreakLabel();
 $('btn-break').addEventListener('click', () => { settings.doubleTap = !settings.doubleTap; controls.doubleTapBreak = settings.doubleTap; updateBreakLabel(); saveSettings(); });
 function updateTipsLabel() { $('btn-tips').textContent = `Tooltips: ${settings.tips ? 'on' : 'off'}`; }
 updateTipsLabel();
+function updateGfxLabels() {
+  $('torch-shadows').value = settings.gfx.torches;
+  $('torch-shadows-label').textContent = `Torch shadows: ${settings.gfx.torches ? `nearest ${settings.gfx.torches}` : 'off'}`;
+  for (const key of Object.keys(GFX_DEFAULTS)) { const b = $(`btn-gfx-${key}`); if (b) b.textContent = `${GFX_NAMES[key]}: ${settings.gfx[key] ? 'on' : 'off'}`; }
+}
+updateGfxLabels();
+$('torch-shadows').addEventListener('input', (e) => { settings.gfx.torches = +e.target.value; gfx.set('torches', settings.gfx.torches); updateGfxLabels(); saveSettings(); });
+for (const key of Object.keys(GFX_DEFAULTS)) {
+  $(`btn-gfx-${key}`)?.addEventListener('click', () => { settings.gfx[key] = !settings.gfx[key]; gfx.set(key, settings.gfx[key]); updateGfxLabels(); saveSettings(); });
+}
 $('btn-tips').addEventListener('click', () => { settings.tips = !settings.tips; updateTipsLabel(); saveSettings(); if (!settings.tips) $('inv-tip').classList.remove('show'); });
 function updatePerfLabel() { $('btn-perf').textContent = `Performance info: ${settings.perf ? 'on' : 'off'}`; }
 updatePerfLabel();
@@ -6372,7 +6407,7 @@ function movePhotoCam(dt) {
 function snapPhoto() {
   if (!photoMode) return null;
   document.body.classList.add('snapping');
-  renderer.render(scene, camera);
+  gfx.render(scene, camera);
   let url = null;
   try { url = renderer.domElement.toDataURL('image/png'); } catch (err) { reportError(err); }
   document.body.classList.remove('snapping');
@@ -6859,7 +6894,8 @@ function frame(now) {
     if (openStationAt && (stationRefresh -= dt) <= 0) { stationRefresh = 0.15; renderStation(); }
   } catch (err) { reportError(err); }
   try { world.update(player.pos.x, player.pos.z, scene, materials, 6, dt); } catch (err) { reportError(err); }
-  renderer.render(scene, camera);
+  gfx.sunDir.copy(sky.sunDir); gfx.overcast = weather?.overcast ?? 0;
+  gfx.render(scene, camera);
   updatePerf(now);
 }
 
@@ -7044,6 +7080,7 @@ if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').ca
 
 // expose for debugging in the console
 window.minicraft = {
+  gfx,
   get world() { return world; }, player, inventory, saveGame, sky, sound, breakBlock, mobs,
   get hunger() { return hunger; }, set hunger(v) { hunger = v; renderHunger(); },
   get day() { return day; },

@@ -31,7 +31,7 @@ export class Weather {
     const pg = new THREE.BufferGeometry();
     pg.setAttribute('position', new THREE.BufferAttribute(new Float32Array(COUNT * 3), 3));
     this.flakes = new THREE.Points(pg, new THREE.PointsMaterial({ color: 0xffffff, size: 0.12, transparent: true, opacity: 0, depthWrite: false }));
-    for (const o of [this.streaks, this.flakes]) { o.frustumCulled = false; o.renderOrder = 2; scene.add(o); }
+    for (const o of [this.streaks, this.flakes]) { o.frustumCulled = false; o.renderOrder = 2; o.layers.set(4); scene.add(o); } // (layer 4: drawn after the water, see graphics.js)
     this.t = 0;
   }
 

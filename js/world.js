@@ -1090,7 +1090,7 @@ export class World {
         mesh = new THREE.Mesh(g, materials[kind]);
         // vertices are chunk-local; the mesh sits at the chunk origin (keeps float precision far from 0)
         mesh.position.set(c.cx * CHUNK, 0, c.cz * CHUNK);
-        if (kind === 'water') mesh.renderOrder = 1;
+        if (kind === 'water') { mesh.renderOrder = 1; mesh.layers.set(3); } // (water layer: see graphics.js)
         c[kind] = mesh;
         scene.add(mesh);
       }
@@ -1236,6 +1236,7 @@ export class World {
         const tu = (tile % ATLAS_COLS) * tileUV;
         const tvTop = 1 - Math.floor(tile / ATLAS_COLS) * tileUV;
         const ao = [0, 0, 0, 0];
+        const wet = isWaterId(nid);
         for (let k = 0; k < 4; k++) {
           const cr = f.corners[k];
           pos.push(lx + cr.o[0], y + cr.o[1], lz + cr.o[2]);
@@ -1256,7 +1257,7 @@ export class World {
           if (!s2) { sum += this.lightAt(x + cr.b[0], y + cr.b[1], z + cr.b[2]); sun += this.skyAt(x + cr.b[0], y + cr.b[1], z + cr.b[2]); n++; }
           if (!cc && !(s1 && s2)) { sum += this.lightAt(x + cr.c[0], y + cr.c[1], z + cr.c[2]); sun += this.skyAt(x + cr.c[0], y + cr.c[1], z + cr.c[2]); n++; }
           tl.push(lightBrightness(sum / n) + 2 * this.tintAt(nx, ny, nz));
-          sl.push(skyBrightness(sun / n));
+          sl.push(skyBrightness(sun / n) + (wet ? 2 : 0)); // (+2: faces under water, for caustics)
         }
         // flip the quad diagonal so AO interpolates without artifacts
         if (ao[0] + ao[2] < ao[1] + ao[3]) {
