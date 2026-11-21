@@ -3307,3 +3307,21 @@ RECIPES.push(
   { out: [GROUND_COFFEE, 1], in: [[ROASTED_COFFEE, 2]], tools: [MORTAR] },
   { out: [MOCHA, 2], in: [[COFFEE, 1], [CHOC_MILK, 1]] },
 );
+
+// ---------- v34 E: treats, and the festival food contest ----------
+// Villagers pay well for treats at a stall. At every festival the village holds a food contest: tap its bell
+// holding a dish (anything that does you good when you eat it, a treat, or one of the festival's favourites) to enter. The judges like a filling dish, a treat
+// more, and each festival's favourites most of all.
+for (const id of [CHOC_BAR, CHOC_COOKIE, CHOC_CHERRIES, HOT_CHOC, CHOC_ICE_CREAM, CHERRY_ICE_CREAM, HONEY_ICE_CREAM, ICE_LOLLY,
+  CARROT_CAKE, PUMPKIN_BREAD, TOFFEE, HONEY_CANDY, CANDIED_PEEL, MOCHA, RICE_PUDDING, TRAIL_MIX]) ITEMS[id].treat = true;
+export const FESTIVAL_FAVOURITES = [ // by season: Blossom Fair, Midsummer Feast, Harvest Festival, Frost Fair
+  [HONEY_CANDY, CANDIED_PEEL, CARROT_CAKE, CHOC_CHERRIES, PICKLES],
+  [CHOC_ICE_CREAM, CHERRY_ICE_CREAM, HONEY_ICE_CREAM, ICE_LOLLY, PIZZA, FISH_AND_CHIPS],
+  [PUMPKIN_BREAD, PORK_PIE, ROAST_PORK, CHEESY_POTATO, TRAIL_MIX, SMOKED_HAM],
+  [HOT_CHOC, MOCHA, CHILLI_CON_CARNE, CHICKEN_SOUP, RICE_PUDDING, TOFFEE],
+];
+export function contestScore(id, season) {
+  const it = ITEMS[id], fav = FESTIVAL_FAVOURITES[season]?.includes(id);
+  if (!it?.meal && !it?.treat && !fav) return 0;
+  return (it.food ?? 0) + (it.treat ? 3 : 0) + (fav ? 8 : 0);
+}

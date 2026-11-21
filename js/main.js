@@ -75,7 +75,7 @@ import { Logic } from './logic.js';
 
 // v2 = the 16k x 16k streaming world (player state here, edited chunks in IndexedDB).
 // v1 = the old 128 x 128 world, migrated into the middle of the big world on first launch.
-const GAME_VERSION = '33'; // shown in the menu; bump with each release
+const GAME_VERSION = '34'; // shown in the menu; bump with each release
 const SAVE_KEY = 'minicraft-save-v2';
 const LEGACY_SAVE_KEY = 'minicraft-save-v1';
 const SETTINGS_KEY = 'minicraft-settings-v1';
@@ -5787,6 +5787,7 @@ function stallPrice(id) {
   if (isFine(id)) return [1, 4]; // (v28: the pick of the harvest)
   if (id === FINE_WINE || id === AGED_CHEESE || id === PEARL || id === VINTAGE_CIDER || id === FINE_BERRY_WINE) return [1, 6]; // the best things villagers can buy
   if (id === WINE || id === CHEESE || id === CIDER || id === BERRY_WINE) return [1, 3];
+  if (ITEMS[id]?.treat) return [1, 3]; // (v34) villagers love a treat
   const food = foodValue(id);
   if (food) return food >= 6 ? [1, 2] : food >= 3 ? [1, 1] : [2, 1];
   if (id === GOLD_INGOT || id === STARSTEEL_INGOT) return [1, 5];
@@ -5899,6 +5900,7 @@ function ringBell(x, z, held) {
   const g = villageEntry(v), [id, n, coins] = requestFor(v), fest = festivalToday(), tier = repTier(g.rep)[1];
   const head = `${v.name}${fest ? ` (the ${fest.name})` : ''}: you are a ${tier.toLowerCase()} here.`;
   if (fest && held && isFine(held.id)) { showProduce(v, g, held); return; }
+  if (fest && held && contestScore(held.id, seasonOf(day))) { foodContest(v, g, held, fest); return; }
   if (g.reqDay === day) { toast(`${head} You've done what they asked today: come back tomorrow`, 3000); return; }
   if (held?.id === id && inventory.count(id) >= n) {
     inventory.remove(id, n);
@@ -5910,7 +5912,7 @@ function ringBell(x, z, held) {
     addRep(v, 8);
     return;
   }
-  toast(`${head} Today they need ${n} × ${itemName(id)} (${coins * (fest ? 2 : 1)} coins): tap the bell holding them${fest ? '. Bring fine produce for the show!' : ''}`, 4000);
+  toast(`${head} Today they need ${n} × ${itemName(id)} (${coins * (fest ? 2 : 1)} coins): tap the bell holding them${fest ? '. Bring fine produce for the show, and a dish for the food contest!' : ''}`, 4000);
 }
 // Decorations round the well: flowers in spring, lanterns in summer, jack-o'-lanterns in autumn and snowmen in winter.
 // They go up on the morning of the festival and come down the next day (unless you've moved them).
@@ -6377,6 +6379,21 @@ function showProduce(v, g, held) {
   addRep(v, 4 * n);
   sound.ding(); setTimeout(() => sound.ding(0.7), 220); setTimeout(() => sound.ding(0.9), 440);
   toast(`Your ${itemName(id).toLowerCase()} win${n > 1 ? '' : 's'} ${place} prize at ${v.name}'s show! (${pay} coins)${n < 3 ? ' Show three for first prize' : ''}`, 3500);
+}
+// (v34) The food contest, on festival days too: one dish a day. First prize pays 16 coins (and a rosette in your
+// achievements), second 9, third 4.
+function foodContest(v, g, held, fest) {
+  if (g.contestDay === day) { toast(`You've already entered ${v.name}'s food contest today`, 2500); return; }
+  g.contestDay = day;
+  const id = held.id, score = contestScore(id, seasonOf(day)), fav = FESTIVAL_FAVOURITES[seasonOf(day)].includes(id);
+  takeFromHeld(1);
+  const n = score >= 15 ? 3 : score >= 9 ? 2 : 1, place = ['', 'third', 'second', 'first'][n], pay = [0, 4, 9, 16][n];
+  giveDrops([[COIN, pay]]);
+  addRep(v, 4 * n);
+  if (n === 3) achieve('contest');
+  sound.ding(); setTimeout(() => sound.ding(0.8), 220); if (n === 3) setTimeout(() => sound.ding(1), 440);
+  const tip = n < 3 ? (fav ? ' Try something more filling next time' : ` The judges at the ${fest.name} like ${FESTIVAL_FAVOURITES[seasonOf(day)].slice(0, 3).map((f) => itemName(f).toLowerCase()).join(', ')}`) : '';
+  toast(`Your ${itemName(id).toLowerCase()} takes ${place} prize in ${v.name}'s food contest! (${pay} coins)${tip}`, 4000);
 }
 // Friends of a village are offered something special by each of its trades, and its heroes something more.
 const SPECIAL_TRADES = {
@@ -6985,7 +7002,7 @@ window.minicraft = {
   arrows, fishing, kinetics, electric, lightUniforms, bees, catchAt, seasonOf, applySeason, set day(v) { day = v; applySeason(); }, frames, signalAt, setSwitch, logic, machines, carts, minimap, signs, armour, damage, placeRail, getInCart, getOutOfCart,
   get riding() { return riding; }, explode, lightFuse, fuses, clockTime, compassText, place, editSign, closeSign, openInventory, closeInventory, chestMove, lamps, tickLamps, sleepUntilMorning, stations, openStation, closeStation,
   get caneToday() { return caneToday; }, get creative() { return creative; }, set creative(v) { creative = v; applyCreative(); }, toggleFly, wand, useWand, get achieved() { return achieved; }, achieve, worldMap, openMap, closeMap, openGuide, switchSlot, store, saveGame, renderWorlds, openWorlds, exportSlot, get target() { return target; }, set target(v) { target = v; }, applyKeys, renderKeys, camera, get controls() { return controls; }, loose, throwHeld, get waypoints() { return waypoints; }, toggleWaypoint, sortSlots, quickStack, dropMeteor, get meteors() { return meteors; }, weather, openTrade, closeTrade, mountMob, dismount, get ridingMob() { return ridingMob; }, effects, armourWear, useAnvil, rollLoot, settings,
-  get bedSpawn() { return bedSpawn; }, fertilise, openJournal, closeJournal, get packs() { return packs; }, radiationAt, vehicles, boardVehicle, leaveVehicle, get boarded() { return boarded; }, get seated() { return seated; }, crows, onInvSlot, onStationSlot, quickMoveInv, quickMoveStation, usedIn, itemTipHTML, critters, tickPets, get catGiftDay() { return catGiftDay; }, get villageGrowth() { return villageGrowth; }, notePlanting, tickPuzzles, airPumpNear, useStable, stableNear, horseLabel, logistics, openLogistics, closeLogistics, placeOrder, get lpOpen() { return lpOpen; }, music, musicMood, get guideDone() { return guideDone; }, get guideClaimed() { return guideClaimed; }, tickGuidebook, openGuidebook, closeGuidebook, claimGoal, goalMet, fineChance, fineHarvest, showProduce, specialTrades, catchAt, stockStable, tickStables, mangers, openSaddlebags, honeyAt, apiculture, scoopHive, beeEnv, fitUpgrade, piles, lightCharcoalPile, tickPiles, searchChests, takeFromChest, markChest, get chestMark() { return chestMark; }, enterPhotoMode, exitPhotoMode, snapPhoto, get photoMode() { return photoMode; }, photoCam, get lastPhoto() { return lastPhoto; }, tickStalactites, loosenStalactite, fallingRocks, shaking, workLock, findLock, tickLocks, openGates, lockJobs, hangRopeLadder, layBridge, rollUpRope, fireworks, ringBell, requestFor, festivalToday, repOf, addRep, tradeCost, tickFestival, villageEntry, hearths, tickHearths, feedHearth, chimneyTop, smoke, renderPins, togglePin, lightning, igniteAt, fires, tickFires, tickStorm, growVillage, buildVillageHouse, stallPrice, tickStalls, tickVillages, set catGiftDay(v) { catGiftDay = v; }, get places() { return places; }, get treasures() { return treasures; }, readTreasureMap, tickTreasure, beams, tickBeams, beaconSpots: () => beaconSpots, mistNow, tickSnow, tickExplore, sitOn, standUp, useDisplay, zips, linkZip, startZip, get zipping() { return zipping; }, burnCoal, get health() { return health; }, set health(v) { health = v; }, paintings, placeSwitchRail, signalAt, ailments, armourEnch, openAltar, lairNear, useBed, eat, drinkTea,
+  get bedSpawn() { return bedSpawn; }, fertilise, openJournal, closeJournal, get packs() { return packs; }, radiationAt, vehicles, boardVehicle, leaveVehicle, get boarded() { return boarded; }, get seated() { return seated; }, crows, onInvSlot, onStationSlot, quickMoveInv, quickMoveStation, usedIn, itemTipHTML, critters, tickPets, get catGiftDay() { return catGiftDay; }, get villageGrowth() { return villageGrowth; }, notePlanting, tickPuzzles, airPumpNear, useStable, stableNear, horseLabel, logistics, openLogistics, closeLogistics, placeOrder, get lpOpen() { return lpOpen; }, music, musicMood, get guideDone() { return guideDone; }, get guideClaimed() { return guideClaimed; }, tickGuidebook, openGuidebook, closeGuidebook, claimGoal, goalMet, fineChance, fineHarvest, showProduce, foodContest, specialTrades, catchAt, stockStable, tickStables, mangers, openSaddlebags, honeyAt, apiculture, scoopHive, beeEnv, fitUpgrade, piles, lightCharcoalPile, tickPiles, searchChests, takeFromChest, markChest, get chestMark() { return chestMark; }, enterPhotoMode, exitPhotoMode, snapPhoto, get photoMode() { return photoMode; }, photoCam, get lastPhoto() { return lastPhoto; }, tickStalactites, loosenStalactite, fallingRocks, shaking, workLock, findLock, tickLocks, openGates, lockJobs, hangRopeLadder, layBridge, rollUpRope, fireworks, ringBell, requestFor, festivalToday, repOf, addRep, tradeCost, tickFestival, villageEntry, hearths, tickHearths, feedHearth, chimneyTop, smoke, renderPins, togglePin, lightning, igniteAt, fires, tickFires, tickStorm, growVillage, buildVillageHouse, stallPrice, tickStalls, tickVillages, set catGiftDay(v) { catGiftDay = v; }, get places() { return places; }, get treasures() { return treasures; }, readTreasureMap, tickTreasure, beams, tickBeams, beaconSpots: () => beaconSpots, mistNow, tickSnow, tickExplore, sitOn, standUp, useDisplay, zips, linkZip, startZip, get zipping() { return zipping; }, burnCoal, get health() { return health; }, set health(v) { health = v; }, paintings, placeSwitchRail, signalAt, ailments, armourEnch, openAltar, lairNear, useBed, eat, drinkTea,
 };
 
 // ---------- v31: catching bees ----------
@@ -7011,6 +7028,7 @@ apiculture.onYoung = (x, y, z, sp, mate, kids) => {
 
 // ---------- v32: tree taps ----------
 import { CHOC_MOULD, CHOC_CAKE, CAKE_SLICES, MOULD_BARS, MELTED_CHOC, CHOC_BAR, MOULD_FILLS, mouldFill } from './blocks.js';
+import { FESTIVAL_FAVOURITES, contestScore } from './blocks.js';
 import { TREE_TAP, LATEX, MAX_LATEX, POLYMER_BOAT, DEMO_CHARGE, DETONATOR, DEMO_RADIUS, DETONATOR_LINKS, DETONATOR_RANGE } from './blocks.js';
 // Tapping a tree tap takes the latex in it.
 function useTap(x, y, z, tid) {

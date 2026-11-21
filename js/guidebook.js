@@ -128,6 +128,14 @@ const CHAPTERS = [
     ['chocbar', 'Chocolatier', ach('chocolate'), 'Melt chocolate in the cooking pot, pour it into a mould and let it set.', [B.TIN_INGOT, 3]],
     ['chocake', 'Chocolate Cake', has(B.CHOC_CAKE), 'Bake a chocolate cake, set it down and share it out a slice at a time.', [B.EGG, 3]],
   ]],
+  ['kitchen', 'Country Kitchen', 12, [
+    ['butcher', 'Farm to Table', ach('butcher'), 'Pigs and chickens are farm animals: butcher a grown one with a sword or an axe.', [B.FLOUR, 4]],
+    ['icecream', 'Ice Cream', has([B.CHOC_ICE_CREAM, B.CHERRY_ICE_CREAM, B.HONEY_ICE_CREAM]), 'Spin milk into cream in the comb centrifuge, then freeze it with sugar and a flavour.', [B.SUGAR, 4]],
+    ['smoke', 'Smokehouse', has([B.SMOKED_FISH, B.SMOKED_HAM, B.SMOKED_CHEESE]), 'Hang fish, pork or cheese in a chimney over a burning fireplace.', [B.COAL, 8]],
+    ['coffee', 'Morning Coffee', has(B.COFFEE), 'Coffee bushes grow by the deserts. Roast the cherries, grind them and brew them in the cooking pot.', [B.GLASS_BOTTLE, 3]],
+    ['chilli', 'Some Like It Hot', has(B.CHILLI_CON_CARNE), 'Chillies grow in the desert. Cook them with pork, beans and a tomato.', [B.BEANS, 4]],
+    ['contest', 'Blue Ribbon', ach('contest'), 'Win first prize in a festival food contest: the judges love their festival favourites.', [B.COIN, 8]],
+  ]],
   ['master', 'Mastery', 7, [
     ['enchant', 'Spellbound', ach('enchant'), 'Enchant a tool at an altar. Bookshelves round it help.', [B.BOOK, 3]],
     ['quarry', 'Quarry', has(B.QUARRY), 'Digs out a whole area by itself. Item frames on it pick what it keeps.', [B.YIELD_UPGRADE, 1]],
