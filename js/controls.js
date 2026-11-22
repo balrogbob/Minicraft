@@ -226,19 +226,23 @@ export class Controls {
     if (pressed(13)) this.hooks.toggleFly?.();
   }
 
+  // Take the mouse (look around by moving it). Only from a click or key press: browsers allow it no other way.
+  grabMouse() {
+    const L = this.layer;
+    if (document.pointerLockElement === L) return;
+    // raw mouse movement where the browser has it (no OS acceleration, and none of the jumps some give)
+    try {
+      const p = L.requestPointerLock?.({ unadjustedMovement: true });
+      p?.catch?.(() => L.requestPointerLock?.());
+    } catch { L.requestPointerLock?.(); }
+  }
+
   bindDesktop() {
     const L = this.layer;
     this.mouseBreak = false;
     L.addEventListener('mousedown', (e) => {
       if (this.hooks.isPaused()) return;
-      if (document.pointerLockElement !== L) {
-        // raw mouse movement where the browser has it (no OS acceleration, and none of the jumps some give)
-        try {
-          const p = L.requestPointerLock?.({ unadjustedMovement: true });
-          p?.catch?.(() => L.requestPointerLock?.());
-        } catch { L.requestPointerLock?.(); }
-        return;
-      }
+      if (document.pointerLockElement !== L) { this.grabMouse(); return; }
       if (e.button === 0) this.mouseBreak = true;
       if (e.button === 2) this.hooks.place();
     });

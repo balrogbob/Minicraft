@@ -6,6 +6,7 @@
 //   refraction - you see the bottom through the water, bent by the waves
 //   caustics   - rippling light on blocks under sunlit water
 //   torch shadows (0-50) - the nearest lights that aren't in sunlight cast shadows too
+//   torchDay   - (v40) ...and the ones in sunlight as well (their shadows show in shade: under roofs, in doorways)
 //   godrays    - shafts of sunlight around things that hide the sun
 //   sway       - leaves and plants move in the wind
 //   reflections - water mirrors the world above it (the scene drawn again, upside down)
@@ -16,13 +17,14 @@ import * as THREE from 'three';
 
 export const GFX_DEFAULTS = {
   shadows: 0, torches: 0, torchRate: 2, bloom: false, water: false, reflections: false, refraction: false, caustics: false,
-  godrays: false, sway: false, ripple: false,
+  godrays: false, sway: false, ripple: false, torchDay: false,
 };
 export const MAX_TORCH_SHADOWS = 50;
-export const GFX_TOGGLES = ['bloom', 'godrays', 'sway', 'water', 'reflections', 'refraction', 'caustics', 'ripple'];
+export const GFX_TOGGLES = ['torchDay', 'bloom', 'godrays', 'sway', 'water', 'reflections', 'refraction', 'caustics', 'ripple'];
 export const GFX_NAMES = {
   shadows: 'Sun shadows', torches: 'Torch shadows', bloom: 'Bloom', water: 'Fancy water', refraction: 'Water refraction', caustics: 'Water caustics',
   godrays: 'God rays', sway: 'Swaying leaves and plants', reflections: 'Water reflections', ripple: 'Underwater ripple',
+  torchDay: 'Torch shadows by day',
 };
 export const SHADOW_LEVELS = ['off', 'low', 'high'];
 // v38: quick presets for the fancy graphics. 'auto' starts at medium and steps up or down to keep the game
@@ -92,10 +94,13 @@ export const GFX_VERT_HEAD = `
 uniform float uTime;
 uniform float uSway;
 varying float vWet;
+varying float vGlow;
 `;
 export const GFX_VERT_DECODE = `
-float swayK = floor(sky / 4.0);
-float skyR = sky - swayK * 4.0;
+vGlow = floor(sky / 16.0);
+float skyS = sky - vGlow * 16.0;
+float swayK = floor(skyS / 4.0);
+float skyR = skyS - swayK * 4.0;
 vWet = step(1.5, skyR);
 vSky = skyR - vWet * 2.0;
 `;

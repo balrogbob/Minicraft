@@ -70,8 +70,13 @@ turn any off again if the game gets slow (☰ → Performance info shows the fra
   so in the day this mostly matters indoors and underground; at night every light counts. With more than
   5 lights it looks 24 blocks around you instead of 16. **Torch shadows redrawn per frame** (1 to 50)
   sets how many lights get their shadows redrawn each frame, in turn (new lights are drawn at once):
-  higher keeps shadows of moving animals smooth, lower is faster.
-- **Bloom**: bright things glow a little past their edges: lava, lamps, the sky behind trees, sun glints.
+  higher keeps shadows of moving animals smooth, lower is faster. **Torch shadows by day** counts the lights
+  out in the sun too, so their shadows show in shady places by day (under roofs, in doorways).
+- **Bloom**: bright things glow a little past their edges: lava, lamps, torch flames, the sky behind trees, sun
+  glints.
+
+Whatever the settings, the bright parts of things that give off light (a torch's flame, a lantern's glass, a
+lamp, glowing mushrooms) glow: brighter than anything lit around them, so a torch looks lit even in full sun.
 - **God rays**: when you look towards the sun, shafts of light stream out around whatever hides it
   (trees, hills, gaps in a wall); strongest near sunrise and sunset.
 - **Swaying leaves and plants**: leaves stir and flowers, grass and crops bend in the wind.
@@ -154,7 +159,7 @@ menu, right-stick click the view, d-pad up the guidebook, d-pad down fly (creati
 | Action | Touch | Keyboard / mouse |
 | --- | --- | --- |
 | Move | Drag on the left side of the screen (floating joystick) | WASD |
-| Look | Drag on the right side | Mouse (click to capture) |
+| Look | Drag on the right side | Mouse (click to capture; closing a window with its ✕ captures it again) |
 | Break | Double-tap and hold your finger still on the right side | Hold left button |
 | Place / use crafting table | Tap on the right side | Right click |
 | Tap an animal (bump, shear, pluck, milk…) | Tap it | Left or right click |
@@ -1706,6 +1711,8 @@ guide to how everything works.
 
 ## Version history
 
+- **Version 40**: torch flames, lantern glass, lamps and other lights glow (and bloom), and look lit in
+  daylight; a **Torch shadows by day** option; closing a window with its ✕ takes the mouse back for looking.
 - **Version 39**: playing together grows up: a host keeps the time and weather for everyone, chests, machines,
   signs and frames are shared, crops, machines and creatures are run by the nearest player's game and seen by
   all, pets stay with their owners, things on the ground are shared (one player gets each), and the night
