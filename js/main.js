@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { Viewmodel, Avatar, LOOKS, randomLook } from './held.js';
 import { Ripples } from './ripples.js';
+import { FarLand, FAR_REACH } from './farland.js';
 import { Net } from './net.js';
 import { Graphics, GFX_DEFAULTS, GFX_NAMES, GFX_TOGGLES, SHADOW_LEVELS, GFX_PRESETS, PRESET_ORDER, PRESET_NAMES, MAX_TORCH_SHADOWS, gfxUniforms, GFX_FRAG_HEAD, GFX_SUN_TERM, GFX_WATER, GFX_VERT_HEAD, GFX_VERT_DECODE, GFX_VERT_SWAY, WATER_LAYER, LATE_LAYER } from './graphics.js';
 import {
@@ -79,7 +80,7 @@ import { Logic } from './logic.js';
 
 // v2 = the 16k x 16k streaming world (player state here, edited chunks in IndexedDB).
 // v1 = the old 128 x 128 world, migrated into the middle of the big world on first launch.
-const GAME_VERSION = '41'; // shown in the menu; bump with each release
+const GAME_VERSION = '42'; // shown in the menu; bump with each release
 const SAVE_KEY = 'minicraft-save-v2';
 const LEGACY_SAVE_KEY = 'minicraft-save-v1';
 const SETTINGS_KEY = 'minicraft-settings-v1';
@@ -100,7 +101,7 @@ function writeSave(obj, slot = activeSlot) {
 }
 // Settings live apart from the world so they survive "New world".
 const settings = (() => {
-  const defaults = { gfxPreset: 'custom', sens: 6, volume: 70, music: 50, viewDistance: 6, perf: false, difficulty: 'worrying', wear: true, favs: [], pins: [], slot: 0, fov: 72, keys: {}, tips: true, doubleTap: true, gfx: {} };
+  const defaults = { farLand: true, gfxPreset: 'custom', sens: 6, volume: 70, music: 50, viewDistance: 6, perf: false, difficulty: 'worrying', wear: true, favs: [], pins: [], slot: 0, fov: 72, keys: {}, tips: true, doubleTap: true, gfx: {} };
   let s;
   try { s = { ...defaults, ...JSON.parse(localStorage.getItem(SETTINGS_KEY)) }; } catch { s = { ...defaults }; }
   s.slot = Math.max(0, Math.min(SLOT_COUNT - 1, s.slot | 0));
@@ -242,6 +243,7 @@ function findWaterLevel(dt) {
 gfx.onFail = (key) => { goCustom(); settings.gfx[key] = key === 'torches' || key === 'shadows' ? 0 : false; saveSettings(); updateGfxLabels(); toast(`${GFX_NAMES[key]} doesn't work on this device — turned off`, 4000); };
 
 const sky = new Sky(scene);
+const farLand = new FarLand(scene, null, lightUniforms.uDay); // (v41: the land past the loaded chunks)
 const sound = new Sound();
 const music = new Music(sound); // (v29)
 sound.volume = settings.volume / 100;
@@ -583,9 +585,11 @@ function newSeed() { return (Math.random() * 2 ** 31) | 0; }
 function applyViewDistance() {
   const r = settings.viewDistance;
   if (world) world.renderDistance = r;
-  sky.fogFar = r * CHUNK;
-  sky.fogNear = sky.fogFar * 0.55;
-  camera.far = Math.max(160, r * CHUNK + 48);
+  // (with distant land on, the fog moves out to where it ends, and the loaded chunks are clear to their edge)
+  farLand.on = settings.farLand !== false;
+  sky.fogFar = r * CHUNK + (farLand.on ? FAR_REACH : 0);
+  sky.fogNear = farLand.on ? r * CHUNK * 0.8 : sky.fogFar * 0.55;
+  camera.far = Math.max(160, sky.fogFar + 48);
   camera.updateProjectionMatrix();
   $('view-label').textContent = `View distance: ${r * CHUNK} blocks`;
 }
@@ -642,6 +646,7 @@ async function startWorld(save, opts = {}) {
   if (!save) await store.clear();
   const seed = save?.seed ?? newSeed();
   world = new World(seed, store);
+  farLand.setGenerator(world.generator);
   world.onError = reportError;
   // leaves falling from a tree you just cut drop their saplings and sticks to you, if you're nearby
   world.onLeafDecay = (x, y, z, was) => {
@@ -5488,6 +5493,9 @@ $('view').addEventListener('input', (e) => {
   applyViewDistance();
   saveSettings();
 });
+const farLabel = () => { $('btn-far').textContent = `Distant land: ${settings.farLand !== false ? 'on' : 'off'}`; };
+farLabel();
+$('btn-far').addEventListener('click', () => { settings.farLand = settings.farLand === false; applyViewDistance(); farLabel(); saveSettings(); });
 $('sens').value = settings.sens;
 $('sens').addEventListener('input', (e) => { settings.sens = +e.target.value; controls.lookSens = settings.sens / 1000; saveSettings(); });
 $('music').value = settings.music;
@@ -7597,6 +7605,7 @@ function frame(now) {
     if (openStationAt && (stationRefresh -= dt) <= 0) { stationRefresh = 0.15; renderStation(); }
   } catch (err) { reportError(err); }
   try { world.update(player.pos.x, player.pos.z, scene, materials, 6, dt); } catch (err) { reportError(err); }
+  farLand.update(player.pos, Math.floor(player.pos.x / CHUNK), Math.floor(player.pos.z / CHUNK), settings.viewDistance);
   gfx.sunDir.copy(sky.sunDir); gfx.overcast = weather?.overcast ?? 0; gfx.underwater = !!player.eyeInWater;
   try { findWaterLevel(dt); } catch (err) { reportError(err); }
   gfx.render(scene, camera);
@@ -7802,7 +7811,7 @@ if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').ca
 
 // expose for debugging in the console
 window.minicraft = {
-  gfx, highlight, get target() { return target; }, get controls() { return controls; }, viewmodel, avatar, swingArm, ripples, waterSurfaceAt, net, ownsSpot, get activeSlot() { return activeSlot; }, mpLeave, pendingEdits, get viewMode() { return viewMode; },
+  gfx, highlight, get target() { return target; }, get controls() { return controls; }, farLand, viewmodel, avatar, swingArm, ripples, waterSurfaceAt, net, ownsSpot, get activeSlot() { return activeSlot; }, mpLeave, pendingEdits, get viewMode() { return viewMode; },
   get world() { return world; }, player, inventory, saveGame, sky, sound, breakBlock, mobs,
   get hunger() { return hunger; }, set hunger(v) { hunger = v; renderHunger(); },
   get day() { return day; },

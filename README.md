@@ -127,6 +127,10 @@ server's world in a place of its own: your own worlds are left as they are, and 
 Everyone sees everyone else's character, with their name above it, walking, swimming and holding what they
 hold, and every block anyone places or breaks. Press **T** (or 💬) to chat.
 
+The host can switch **PvP** on in the Multiplayer window (it's off to start with): then players can hit each
+other with whatever they hold, as they would a creature, through each other's armour and shields, and a
+beating is announced in the chat. The server keeps the choice with its world.
+
 Options: `PORT=9000` (the port), `SEED=1234` (the world's seed, for a new world), `DATA=path/world.json`
 (where the world is kept; `server/world.json` by default), `MAX_PLAYERS=16`. The server saves every half
 minute and when you stop it (Ctrl+C).
@@ -189,6 +193,7 @@ menu, right-stick click the view, d-pad up the guidebook, d-pad down fly (creati
 | Mark a sign or bed on the map | Tap it holding the map | Right click |
 | Shoot the bow | Hold to draw, release to shoot (tap: quick shot) | Hold and release left button (right click: quick shot) |
 | Jump / swim up | ⤒ button (auto-jump also steps up 1-block ledges) | Space |
+| Sprint (a third faster; hungrier work, and not with 3 loaves or fewer) | Push the stick well past its rim | Double-tap W, or hold R (left stick click on a gamepad) |
 | Select item | Tap a hotbar slot | 1–9 / mouse wheel |
 | Inventory & crafting | 🎒 button | E |
 | First / third person view | — | V |
@@ -227,7 +232,8 @@ in the ☰ menu, and every keyboard key above can be changed under ☰ → **Key
 ## Basics
 
 - **The land** is hills, lakes and seas, beaches, trees, winding caves, coal and ten metal and mineral ores. You
-  start in the middle; the edges are walls. The view distance is adjustable (48–160 blocks), with a coordinates
+  start in the middle; the edges are walls. The view distance is adjustable (48–160 blocks; past it, **Distant
+  land** in the settings sketches the hills, sea and mountains for another 192 blocks), with a coordinates
   readout on screen.
 - **Day and night** last 12 minutes, with sunrise and sunset skies, sun, moon and stars. Open ground is fully lit,
   while overhangs, tunnels and caves fade into darkness even at noon. Leaves and water dim the light a little, so
@@ -1714,6 +1720,10 @@ guide to how everything works.
 
 ## Version history
 
+- **Version 42**: sprinting (double-tap forward, R, or push the touch stick past its rim); a PvP switch for
+  multiplayer, the host's to flip; distant land: a blocky sketch of the world past the loaded chunks, out to
+  the horizon.
+
 - **Version 41**: only the shining parts of a light glow (uranium ore's flecks, not its stone); glowing plants
   lose a faint outline; you point at what's really in a cell (a torch's stick, a ladder, a flower), so you can
   aim past it, and the outline fits it; clouds; tall plants sway as one.
@@ -1807,6 +1817,7 @@ guide to how everything works.
 | `js/critters.js` | Owls, bats and fireflies |
 | `js/paintings.js` | Paintings: the pictures and the panels that show them |
 | `js/sky.js` | Day/night cycle: sky colour, fog, sun, moon, stars, world brightness |
+| `js/farland.js` | Distant land: a blocky sketch of the terrain past the loaded chunks, built from the generator a few tiles at a time |
 | `js/sound.js` | Web Audio sound effects |
 | `js/controls.js` | Touch joystick / look / tap / hold, plus desktop input and key bindings |
 | `js/inventory.js` | 36-slot inventory |
