@@ -116,8 +116,11 @@ export class Player {
     this.thrusting = false;
     this.hovering = false;
     const control = this.flying ? 2.2 : this.inLava ? 0.3 : this.inWater ? 0.55 * (this.swimMul ?? 1) : this.onGround ? 1 : 0.85;
-    this.vel.x = wx * WALK * control * this.speedMul + this.kx;
-    this.vel.z = wz * WALK * control * this.speedMul + this.kz;
+    // (v41: sprinting is a third faster, on land or flying; not swimming, sneaking or climbing)
+    this.sprinting = !!input.sprint && input.moveZ > 0.3 && !input.down && !this.inWater && !this.inLava && !this.climbing;
+    const sprintK = this.sprinting ? (this.flying ? 1.5 : 1.35) : 1;
+    this.vel.x = wx * WALK * control * sprintK * this.speedMul + this.kx;
+    this.vel.z = wz * WALK * control * sprintK * this.speedMul + this.kz;
     const fade = Math.exp(-6 * dt);
     this.kx *= fade; this.kz *= fade;
     if (this.flying) {

@@ -1006,7 +1006,7 @@ let starvingWarned = false;
 function updateHunger(dt) {
   if (creative) { hunger = MAX_HUNGER; player.speedMul = 1; return false; }
   const moving = Math.hypot(player.vel.x, player.vel.z) > 0.5;
-  const rate = (1 / 80 + (moving ? 1 / 40 : 0) + (controls.breaking ? 1 / 50 : 0)) * (poisoned > 0 ? 4 : 1) *
+  const rate = (1 / 80 + (moving ? 1 / 40 : 0) + (moving && player.sprinting ? 1 / 25 : 0) + (controls.breaking ? 1 / 50 : 0)) * (poisoned > 0 ? 4 : 1) *
     (effects.fed > 0 ? 0.5 : 1) * (ailments.heat >= 1 ? 2 : 1);
   hunger = Math.max(0, hunger - rate * dt);
   // starving: you can only stagger along until you eat something; the cold slows you too
@@ -5326,8 +5326,15 @@ $('btn-mode').addEventListener('click', () => {
   saveGame();
 });
 $('fov').value = settings.fov;
+let sprintFov = 0; // (v41: the view widens a little while you sprint)
+function tickSprintFov(dt) {
+  const want = player.sprinting && Math.hypot(player.vel.x, player.vel.z) > 3 ? 1 : 0;
+  const was = sprintFov;
+  sprintFov += (want - sprintFov) * Math.min(1, dt * 8);
+  if (Math.abs(sprintFov - was) > 1e-4) { camera.fov = settings.fov * (1 + 0.1 * sprintFov); camera.updateProjectionMatrix(); }
+}
 function applyFov() {
-  camera.fov = settings.fov;
+  camera.fov = settings.fov * (1 + 0.1 * sprintFov);
   camera.updateProjectionMatrix();
   $('fov-label').textContent = `Field of view: ${settings.fov}°`;
 }
@@ -7590,14 +7597,16 @@ function stepGame(now, dt) {
       { day: lightUniforms.uDay.value, flicker: lightUniforms.uFlicker.value, ambient: lightUniforms.uAmbient.value });
     vehicles.update(dt, world, boarded && { v: boarded, moveX: controls.moveX, moveZ: controls.moveZ, jump: controls.jump, down: controls.down, yaw: player.yaw },
       { day: lightUniforms.uDay.value, flicker: lightUniforms.uFlicker.value, ambient: lightUniforms.uAmbient.value }, { fuel: burnCoal });
+    player.sprinting = false; // (until player.update says otherwise: not while riding, seated or carried)
     if (riding) followCart();
     else if (boarded) followVehicle();
     else if (seated) followSeat();
     else if (zipping) tickZip(dt);
     else if (ridingMob) followMount();
     else if (tickGrapple(dt) || tickLift(dt)) { /* carried by the hook or a lift */ }
-    else player.update(dt, { moveX: controls.moveX, moveZ: controls.moveZ, jump: controls.jump, down: controls.down });
+    else player.update(dt, { moveX: controls.moveX, moveZ: controls.moveZ, jump: controls.jump, down: controls.down, sprint: controls.sprint && (creative || hunger > 6) });
     if (player.pos.y < -20) respawn();
+    tickSprintFov(dt);
     playMovementSounds(dt, wasGround, wasWater, fallSpeed);
     world.tickWater(dt);
     world.tickPlants(dt);
@@ -7750,7 +7759,7 @@ if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').ca
 
 // expose for debugging in the console
 window.minicraft = {
-  gfx, highlight, get target() { return target; }, viewmodel, avatar, swingArm, ripples, waterSurfaceAt, net, ownsSpot, get activeSlot() { return activeSlot; }, mpLeave, pendingEdits, get viewMode() { return viewMode; },
+  gfx, highlight, get target() { return target; }, get controls() { return controls; }, viewmodel, avatar, swingArm, ripples, waterSurfaceAt, net, ownsSpot, get activeSlot() { return activeSlot; }, mpLeave, pendingEdits, get viewMode() { return viewMode; },
   get world() { return world; }, player, inventory, saveGame, sky, sound, breakBlock, mobs,
   get hunger() { return hunger; }, set hunger(v) { hunger = v; renderHunger(); },
   get day() { return day; },

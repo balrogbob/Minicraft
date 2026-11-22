@@ -24,7 +24,7 @@ const DOUBLE_SLOP = 60; // px between the two touches of a double tap
 // Keyboard actions and their default keys (KeyboardEvent.code). The player can rebind them from the menu.
 export const KEY_ACTIONS = [
   ['forward', 'Walk forward', 'KeyW'], ['back', 'Walk back', 'KeyS'], ['left', 'Step left', 'KeyA'], ['right', 'Step right', 'KeyD'],
-  ['jump', 'Jump / swim / fly up', 'Space'], ['down', 'Fly down (creative)', 'ShiftLeft'], ['inventory', 'Inventory', 'KeyE'],
+  ['jump', 'Jump / swim / fly up', 'Space'], ['down', 'Fly down (creative)', 'ShiftLeft'], ['sprint', 'Sprint (or double-tap forward)', 'KeyR'], ['inventory', 'Inventory', 'KeyE'],
   ['map', 'World map', 'KeyM'], ['fly', 'Fly on/off (creative)', 'KeyF'], ['drop', 'Throw item (Shift: whole stack)', 'KeyQ'],
   ['guidebook', 'Guidebook', 'KeyG'], ['view', 'Change view (first / third person)', 'KeyV'], ['chat', 'Chat (multiplayer)', 'KeyT'],
 ];
@@ -71,11 +71,14 @@ export class Controls {
 
   get jump() { return this.jumpTouch || this.padJump || this.keys.has(this.binds.jump); }
   get down() { return this.downTouch || this.padDown || this.keys.has(this.binds.down); }
+  // v41: sprinting, while you head forward: hold the sprint key, double-tap forward, push the stick past its rim
+  // (touch), or click the left stick (gamepad). It lasts until you stop going forward.
+  get sprint() { return this.moveZ > 0.3 && (this.sprintLatch || this.keys.has(this.binds.sprint)); }
 
   reset() {
     this.joy = null; this.look = null;
     this.moveX = this.moveZ = 0;
-    this.breaking = false; this.jumpTouch = false; this.downTouch = false;
+    this.breaking = false; this.jumpTouch = false; this.downTouch = false; this.sprintLatch = false;
     clearTimeout(this.pendingTap); this.pendingTap = null; this.lastTap = null;
     this.keys.clear();
     this.showJoy(false);
@@ -125,6 +128,7 @@ export class Controls {
         if (this.joy && t.identifier === this.joy.id) {
           let dx = t.clientX - this.joy.ox, dy = t.clientY - this.joy.oy;
           const d = Math.hypot(dx, dy);
+          if (d > JOY_RADIUS * 1.45 && -dy > d * 0.7) this.sprintLatch = true; // (pushed well past the rim, forward)
           if (d > JOY_RADIUS) { dx *= JOY_RADIUS / d; dy *= JOY_RADIUS / d; }
           this.moveX = dx / JOY_RADIUS;
           this.moveZ = -dy / JOY_RADIUS;
@@ -187,6 +191,7 @@ export class Controls {
       const z = (k.has(b.forward) ? 1 : 0) - (k.has(b.back) ? 1 : 0);
       if (x || z || this.usingKeys) { this.moveX = x; this.moveZ = z; this.usingKeys = !!(x || z); }
     }
+    if (this.moveZ <= 0.3) this.sprintLatch = false;
   }
 
   // v38: the first connected gamepad with the standard layout. Buttons act once when pressed; sticks and
@@ -216,6 +221,7 @@ export class Controls {
     if (lx || ly || this.usingPad) { this.moveX = lx; this.moveZ = -ly; this.usingPad = !!(lx || ly); }
     if (rx || ry) { const k = PAD_LOOK * dt * (this.lookSens / LOOK_SENS); this.rotate(rx * Math.abs(rx), ry * Math.abs(ry), k); }
     this.padJump = b(0); this.padDown = b(1); this.padBreak = b(7);
+    if (pressed(10)) this.sprintLatch = true; // (left stick click)
     if (pressed(6)) this.hooks.place();
     if (pressed(4) || pressed(14)) this.hooks.scrollSlot(-1);
     if (pressed(5) || pressed(15)) this.hooks.scrollSlot(1);
@@ -281,6 +287,11 @@ export class Controls {
       if (e.code === this.binds.fly) { this.hooks.toggleFly?.(); return; }
       if (e.code === this.binds.drop) { this.hooks.throwItem?.(e.shiftKey || e.ctrlKey); return; }
       if (/^Digit[1-9]$/.test(e.code)) this.hooks.selectSlot(+e.code.slice(5) - 1);
+      if (e.code === this.binds.forward && !e.repeat) {
+        const now = performance.now();
+        if (now - (this.lastForward ?? -1e9) < 300) this.sprintLatch = true;
+        this.lastForward = now;
+      }
       this.keys.add(e.code);
       if (e.code === this.binds.jump || e.code === 'Space') e.preventDefault();
     });
