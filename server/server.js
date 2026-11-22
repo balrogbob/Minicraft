@@ -181,7 +181,7 @@ function handle(id, me, m) {
       me.look = cleanLook(m.look);
       const edits = Object.entries(world.edits).map(([k, v]) => { const [x, y, z] = k.split(',').map(Number); return [x, y, z, v]; });
       if (!hostId) hostId = id;
-      me.ws.send({ t: 'welcome', id, host: hostId, clock: world.clock ?? null, kv: world.kv, seed: world.seed, world: world.id, edits, drops: (cleanDrops(), [...drops.values()]), players: [...players].filter(([pid, p]) => pid !== id && p.hello).map(([pid, p]) => ({ id: pid, name: p.name, look: p.look, state: p.state })) });
+      me.ws.send({ t: 'welcome', id, host: hostId, pvp: !!world.pvp, clock: world.clock ?? null, kv: world.kv, seed: world.seed, world: world.id, edits, drops: (cleanDrops(), [...drops.values()]), players: [...players].filter(([pid, p]) => pid !== id && p.hello).map(([pid, p]) => ({ id: pid, name: p.name, look: p.look, state: p.state })) });
       others(id, { t: 'join', id, name: me.name, look: me.look });
       console.log(`${me.name} joined (${players.size} playing)`);
       break;
@@ -254,6 +254,29 @@ function handle(id, me, m) {
       break;
     }
     case 'swing': if (me.hello) others(id, { t: 'swing', id }); break;
+    // v41: players fighting each other, only while the host has PvP on. A hit goes to the one struck, from
+    // someone close enough to have reached them; they take it, and say so if it beat them.
+    case 'pvp': {
+      if (id !== hostId) return;
+      world.pvp = !!m.on; dirty = true;
+      everyone({ t: 'pvp', on: world.pvp, by: me.name });
+      console.log(`${me.name} turned PvP ${world.pvp ? 'on' : 'off'}`);
+      break;
+    }
+    case 'hit': {
+      const to = players.get(m.to | 0);
+      if (!me.hello || !world.pvp || !to?.hello || to === me) return;
+      const a = me.state?.p, b = to.state?.p;
+      if (a && b && Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]) > 7) return; // (out of reach)
+      to.ws.send({ t: 'hit', id, name: me.name, dmg: num(m.dmg, 0, 20) ?? 0, k: [num(m.k?.[0], -12, 12) ?? 0, num(m.k?.[1], -12, 12) ?? 0] });
+      break;
+    }
+    case 'slain': {
+      const by = players.get(m.by | 0);
+      if (!me.hello || !world.pvp || !by?.hello) return;
+      everyone({ t: 'note', text: `${me.name} was beaten by ${by.name}` });
+      break;
+    }
     case 'look': if (me.hello) { me.look = cleanLook(m.look); others(id, { t: 'look', id, look: me.look }); } break;
     default: break;
   }

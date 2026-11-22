@@ -261,12 +261,14 @@ scene.add(avatar.root);
 // v38: multiplayer (see net.js, and server/server.js)
 const net = new Net({ scene, atlas, icons: icons.canvases, ITEMS, on: {
   welcome: (m) => mpWelcome(m), block: (x, y, z, id) => mpBlock(x, y, z, id), chat: (name, text, mine) => addChat(name, text, mine),
-  host: (me, name) => { if (me && weather.timer > 1e6) weather.timer = 120 + Math.random() * 300; addChat(null, me ? 'You are now the host: your game keeps the time and weather for everyone' : `${name ?? 'Someone'} is now the host`); clockTimer = 0; },
+  host: (me, name) => { if (me && weather.timer > 1e6) weather.timer = 120 + Math.random() * 300; addChat(null, me ? 'You are now the host: your game keeps the time and weather for everyone' : `${name ?? 'Someone'} is now the host`); clockTimer = 0; renderMp(); },
   clock: (c) => applyClock(c),
   kv: (ch, k, v) => applyKv(ch, k, v),
   mobs: (from, l, g) => { if (worldReady && activeSlot === MP_SLOT) mobs.netIn(from, l, g); },
   drop: (m) => netDrop(m), got: (u) => netGot(u), gone: (u) => netGone(u), beds: (n, of, go) => netBeds(n, of, go),
   join: (name) => addChat(null, `${name} joined`), leave: (name) => addChat(null, `${name} left`), status: (st, why) => mpStatus(st, why),
+  pvp: (on, by) => { addChat(null, on ? `${by ?? 'The host'} turned PvP on: players can hurt each other` : `${by ?? 'The host'} turned PvP off`); renderMp(); },
+  hit: (m, r) => netHit(m, r),
 } });
 let viewMode = 0; // 0 first person, 1 behind you, 2 facing you
 const VIEW_NAMES = ['First person', 'Third person (behind)', 'Third person (front)'];
@@ -364,6 +366,7 @@ const inventory = new Inventory();
 let paused = true;
 let target = null; // raycast hit
 let targetMob = null; // { mob, t } when the crosshair is on an animal (closer than any block)
+let targetPlayer = null; // { id, r, t } when it's on another player, and PvP is on (v41)
 let targetCart = null; // { cart, t } when the crosshair is on a minecart
 const breakState = { key: '', progress: 0 };
 let openedAt = null; // the station block (crafting table or churn) tapped to open crafting
@@ -2096,6 +2099,30 @@ function swatBat() {
 critters.onGuano = (pos, swatted) => loose.spawn({ id: GUANO, count: swatted ? 1 + Math.floor(Math.random() * 2) : 1 }, pos, { x: 0, y: swatted ? 1 : 0, z: 0 }, swatted ? 0.3 : 0);
 // Tap the animal under the crosshair with whatever is in hand: milk a yak, pluck a duck,
 // shear an alpaca, fill a bucket with newt slime, or just bump it.
+// v41: hitting another player (PvP on): what's in your hand decides how hard, as with creatures. Their game
+// takes the hit (and its armour and shield have their say); the server checks you're close enough.
+function hitPlayer() {
+  if (!targetPlayer || !net.pvp) return;
+  const now = performance.now();
+  if (now - lastSwing < (isSword(inventory.heldId()) ? 300 : 450)) return;
+  lastSwing = now;
+  swingArm();
+  const held = inventory.held();
+  const dmg = (WEAPON_DAMAGE[inventory.heldId()] ?? ITEMS[inventory.heldId()]?.tool?.damage ?? 1) + (hasEnch(held, 'keen') ? 3 : 0);
+  const d = player.lookDir(), h = Math.hypot(d.x, d.z) || 1;
+  net.send({ t: 'hit', to: targetPlayer.id, dmg, k: [+(d.x / h * 7).toFixed(2), +(d.z / h * 7).toFixed(2)] });
+  wearOutHeld(1);
+}
+function netHit(m, r) {
+  if (dead || activeSlot !== MP_SLOT) return;
+  const from = r?.pos ?? player.pos;
+  if (shieldBlocks(from, m.dmg)) return;
+  damage(armoured(m.dmg), `Beaten by ${m.name}`);
+  player.kx += m.k?.[0] ?? 0; player.kz += m.k?.[1] ?? 0;
+  if (player.onGround) player.vel.y = Math.max(player.vel.y, 4);
+  if (dead) net.send({ t: 'slain', by: m.id });
+}
+
 function hitMob() {
   if (!targetMob) return;
   if (targetMob.mob.spec.hostile) {
@@ -4071,6 +4098,7 @@ function placeInner() {
   if (held?.id === GRAPPLE && target?.id === ZIP_POST) { startZip(target.x, target.y, target.z); return; }
   if (held?.id === CABLE_CAR && target?.id === ZIP_POST) { startZip(target.x, target.y, target.z, true); return; }
   if (swatBat()) return;
+  if (targetPlayer) { hitPlayer(); return; }
   if (targetMob) { hitMob(); return; }
   if (held?.id === LOCOMOTIVE && target && isRail(target.id)) {
     if (carts.add(world, target.x, target.y, target.z, player.lookDir(), false, true)) {
@@ -4777,6 +4805,12 @@ function updateBreaking(dt) {
   if (!controls.breaking) breakState.mobCooldown = 0.5;
   breakState.mobCooldown = Math.max(0, breakState.mobCooldown - dt);
   if (controls.breaking && !breakState.mobCooldown && swatBat()) { breakState.mobCooldown = 0.5; breakState.key = ''; breakState.progress = 0; crack.visible = false; return; }
+  if (controls.breaking && targetPlayer) {
+    if (!breakState.mobCooldown) { hitPlayer(); breakState.mobCooldown = 0.5; }
+    breakState.key = ''; breakState.progress = 0;
+    crack.visible = false;
+    return;
+  }
   if (controls.breaking && targetMob) {
     if (!breakState.mobCooldown) { hitMob(); breakState.mobCooldown = 0.5; }
     breakState.key = ''; breakState.progress = 0;
@@ -5058,6 +5092,10 @@ function renderMp() {
   $('btn-mp-join').classList.toggle('hidden', net.live);
   $('btn-mp-leave').classList.toggle('hidden', !on);
   $('btn-chat').classList.toggle('hidden', !net.live);
+  const pv = $('btn-mp-pvp');
+  pv.classList.toggle('hidden', !net.live);
+  pv.textContent = `PvP (players can hurt each other): ${net.pvp ? 'on' : 'off'}${net.isHost ? '' : ' (the host decides)'}`;
+  pv.disabled = !net.isHost;
   const names = [...net.remotes.values()].map((r) => r.name);
   $('mp-players').textContent = net.live ? (names.length ? `Also here: ${names.join(', ')}` : 'Nobody else is here yet') : '';
 }
@@ -5076,6 +5114,7 @@ $('btn-mp-join').addEventListener('click', () => {
   net.connect(url, settings.mpName || 'Player', settings.look);
 });
 $('btn-mp-leave').addEventListener('click', () => mpLeave());
+$('btn-mp-pvp').addEventListener('click', () => { if (net.isHost) net.send({ t: 'pvp', on: !net.pvp }); });
 async function mpWelcome(m) {
   saveGame(); await world?.saveChunks();
   const key = saveKeyOf(MP_SLOT);
@@ -7735,6 +7774,10 @@ function stepGame(now, dt) {
   // whichever is closer wins: an animal in front of a block, or a block in front of an animal
   if (targetMob && target && target.t < targetMob.t) targetMob = null;
   if (targetMob) target = null;
+  // (another player, with PvP on: when nothing else is closer)
+  targetPlayer = !paused && !photoMode && net.live && net.pvp && !riding && !boarded ? net.raycast(eye, look, REACH) : null;
+  if (targetPlayer && [target, targetMob, targetCart, targetVehicle].some((o) => o && o.t < targetPlayer.t)) targetPlayer = null;
+  if (targetPlayer) target = targetMob = targetCart = targetVehicle = null;
   if (photoMode) target = targetMob = targetCart = targetVehicle = null;
   if (target) {
     highlight.visible = true;

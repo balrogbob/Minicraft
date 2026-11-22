@@ -34,6 +34,7 @@ export class Net {
     this.id = 0;
     this.worldId = null;
     this.host = 0; // the player whose game runs the clock, the weather, growth and creatures
+    this.pvp = false; // (v41: players can hurt each other: the host's choice)
     this.url = '';
     this.remotes = new Map(); // id -> { name, look, avatar, tag, pos, target, yaw, pitch, held, sw, sp, g }
     this.capture = 0; // > 0 while you're placing or breaking: the blocks that change are sent on
@@ -74,7 +75,7 @@ export class Net {
   handle(m) {
     switch (m.t) {
       case 'welcome':
-        this.live = true; this.id = m.id; this.worldId = m.world; this.host = m.host;
+        this.live = true; this.id = m.id; this.worldId = m.world; this.host = m.host; this.pvp = !!m.pvp;
         for (const p of m.players ?? []) this.addRemote(p.id, p.name, p.look, p.state);
         this.d.on.welcome?.(m);
         this.d.on.status?.('open');
@@ -95,6 +96,9 @@ export class Net {
       case 'look': { const r = this.remotes.get(m.id); if (r) { r.look = m.look; r.avatar.setLook(m.look); } break; }
       case 'block': this.d.on.block?.(m.x, m.y, m.z, m.id); break;
       case 'chat': this.d.on.chat?.(m.name, m.text, m.id === this.id); break;
+      case 'pvp': this.pvp = !!m.on; this.d.on.pvp?.(this.pvp, m.by); break;
+      case 'hit': if (this.pvp) this.d.on.hit?.(m, this.remotes.get(m.id)); break;
+      case 'note': this.d.on.chat?.(null, m.text, false); break;
       default: break;
     }
   }
@@ -126,6 +130,26 @@ export class Net {
     r.tag.material.map.dispose(); r.tag.material.dispose();
     r.avatar.dispose();
     this.remotes.delete(id);
+  }
+
+  // The other player the ray (origin, unit dir) first meets within maxDist: { id, r, t }, or null.
+  raycast(o, d, maxDist) {
+    let best = null;
+    for (const [id, r] of this.remotes) {
+      if (!r.pos) continue;
+      const min = [r.pos.x - 0.35, r.pos.y, r.pos.z - 0.35], max = [r.pos.x + 0.35, r.pos.y + 1.8, r.pos.z + 0.35];
+      const oo = [o.x, o.y, o.z], dd = [d.x, d.y, d.z];
+      let t0 = 0, t1 = maxDist, ok = true;
+      for (let a = 0; a < 3 && ok; a++) {
+        if (Math.abs(dd[a]) < 1e-9) { if (oo[a] < min[a] || oo[a] > max[a]) ok = false; continue; }
+        let ta = (min[a] - oo[a]) / dd[a], tb = (max[a] - oo[a]) / dd[a];
+        if (ta > tb) [ta, tb] = [tb, ta];
+        t0 = Math.max(t0, ta); t1 = Math.min(t1, tb);
+        if (t0 > t1) ok = false;
+      }
+      if (ok && (!best || t0 < best.t)) best = { id, r, t: t0 };
+    }
+    return best;
   }
 
   clearRemotes() { for (const id of [...this.remotes.keys()]) this.removeRemote(id); }
