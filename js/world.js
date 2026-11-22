@@ -360,18 +360,48 @@ export class World {
     const def = BLOCKS[c.data[localIndex(x, y, z)]];
     if (!def || !def.solid) return null;
     let boxes = def.stair ? this.stairModel(x, y, z, def).map((b) => b.slice(0, 6)) : def.boxes;
-    if (def.shape === 'fence' || def.shape === 'pane' || def.shape === 'wall') {
-      // tall for fences and walls (you can't hop over), with arms toward what they join so there's no gap
-      const top = def.shape === 'pane' ? 16 : 24, t = def.shape === 'fence' ? [6, 10] : def.shape === 'wall' ? [4, 12] : [7, 9];
-      boxes = [[t[0], 0, t[0], t[1], top, t[1]]];
-      for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
-        if (!this.joins(def, x + dx, y, z + dz)) continue;
-        boxes.push(dx > 0 ? [t[1], 0, t[0], 16, top, t[1]] : dx < 0 ? [0, 0, t[0], t[0], top, t[1]]
-          : dz > 0 ? [t[0], 0, t[1], t[1], top, 16] : [t[0], 0, 0, t[1], top, t[0]]);
-      }
-    }
+    if (def.shape === 'fence' || def.shape === 'pane' || def.shape === 'wall') boxes = this.joinBoxes(def, x, y, z, def.shape === 'pane' ? 16 : 24);
     if (!boxes) return [[x, y, z, x + 1, y + 1, z + 1]];
     return boxes.map(([a, b, cc, d, e, f]) => [x + a / 16, y + b / 16, z + cc / 16, x + d / 16, y + e / 16, z + f / 16]);
+  }
+
+  // A fence, wall or pane: a post, with arms toward what it joins (so there's no gap), `top` pixels tall
+  // (fences and walls are taller than a block to bump into, so you can't hop over them).
+  joinBoxes(def, x, y, z, top) {
+    const t = def.shape === 'fence' ? [6, 10] : def.shape === 'wall' ? [4, 12] : [7, 9];
+    const boxes = [[t[0], 0, t[0], t[1], top, t[1]]];
+    for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      if (!this.joins(def, x + dx, y, z + dz)) continue;
+      boxes.push(dx > 0 ? [t[1], 0, t[0], 16, top, t[1]] : dx < 0 ? [0, 0, t[0], t[0], top, t[1]]
+        : dz > 0 ? [t[0], 0, t[1], t[1], top, 16] : [t[0], 0, 0, t[1], top, t[0]]);
+    }
+    return boxes;
+  }
+
+  // What you point at in a cell (v41), as boxes in pixels (0..16), or null for the whole cell:
+  // only what's there, so a torch, a ladder or a flower isn't a whole block to aim past.
+  pickBoxes(x, y, z, id) {
+    const def = BLOCKS[id];
+    if (def.stair) return this.stairModel(x, y, z, def).map((b) => b.slice(0, 6));
+    if (def.shape === 'fence' || def.shape === 'pane' || def.shape === 'wall') return this.joinBoxes(def, x, y, z, 16);
+    if (def._pick !== undefined) return def._pick;
+    let box = def.boxes ?? null;
+    if (!box && def.shape === 'torch') {
+      // a stick 2 px wide and 10 tall; a wall torch leans out from the wall, low down
+      const [wx, wz] = def.wall ?? [0, 0], lift = def.wall ? 3.5 : 0;
+      const span = (w) => (w ? [Math.min(8 + w * 6.7, 8 + w * 2.4) - 1.5, Math.max(8 + w * 6.7, 8 + w * 2.4) + 1.5] : [6, 10]);
+      const [ax, bx] = span(wx), [az, bz] = span(wz);
+      box = [[ax, lift, az, bx, lift + 10.5, bz]];
+    } else if (!box && def.shape === 'cross') box = [[2, 0, 2, 14, 14, 14]];
+    else if (!box && def.shape === 'wire') box = [[0, 0, 0, 16, 2, 16]];
+    else if (!box && def.model) {
+      // the space all its parts fill
+      const b = [16, 16, 16, 0, 0, 0];
+      for (const m of def.model) for (let i = 0; i < 3; i++) { b[i] = Math.min(b[i], m[i]); b[i + 3] = Math.max(b[i + 3], m[i + 3]); }
+      box = b[3] > b[0] && b[4] > b[1] && b[5] > b[2] && !(b[0] === 0 && b[1] === 0 && b[2] === 0 && b[3] === 16 && b[4] === 16 && b[5] === 16) ? [b] : null;
+    }
+    def._pick = box;
+    return box;
   }
 
   // ---------- plant growth ----------
@@ -1410,10 +1440,11 @@ export class World {
       const id = this.get(x, y, z);
       if (id !== AIR && (!BLOCKS[id].liquid || (liquids && (id === WATER || id === LAVA))) && (!solidOnly || BLOCKS[id].solid)) {
         // slabs, stairs, gates and trapdoors: the ray must hit one of their boxes, not just their cell
-        const boxes = BLOCKS[id].boxes;
-        if (!boxes) return { x, y, z, id, nx, ny, nz, t };
+        // (and so must a torch, a ladder or a plant: see pickBoxes)
+        const boxes = BLOCKS[id].liquid ? null : this.pickBoxes(x, y, z, id);
+        if (!boxes) return { x, y, z, id, nx, ny, nz, t, boxes };
         const hit = rayBoxes(origin, dir, x, y, z, boxes, maxDist);
-        if (hit) return { x, y, z, id, nx: hit.n[0], ny: hit.n[1], nz: hit.n[2], t: hit.t };
+        if (hit) return { x, y, z, id, nx: hit.n[0], ny: hit.n[1], nz: hit.n[2], t: hit.t, boxes };
       }
       if (tmx < tmy && tmx < tmz) { x += sx; t = tmx; tmx += tdx; nx = -sx; ny = 0; nz = 0; }
       else if (tmy < tmz) { y += sy; t = tmy; tmy += tdy; nx = 0; ny = -sy; nz = 0; }

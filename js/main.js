@@ -7729,7 +7729,11 @@ function stepGame(now, dt) {
   if (photoMode) target = targetMob = targetCart = targetVehicle = null;
   if (target) {
     highlight.visible = true;
-    highlight.position.set(target.x + 0.5, target.y + 0.5, target.z + 0.5);
+    // (round what's there: a torch's stick, a ladder's rungs, not the whole cell)
+    const b = [16, 16, 16, 0, 0, 0];
+    for (const p of target.boxes ?? [[0, 0, 0, 16, 16, 16]]) for (let i = 0; i < 3; i++) { b[i] = Math.min(b[i], p[i]); b[i + 3] = Math.max(b[i + 3], p[i + 3]); }
+    highlight.scale.set((b[3] - b[0]) / 16, (b[4] - b[1]) / 16, (b[5] - b[2]) / 16);
+    highlight.position.set(target.x + (b[0] + b[3]) / 32, target.y + (b[1] + b[4]) / 32, target.z + (b[2] + b[5]) / 32);
   } else highlight.visible = false;
 
   updateLookTip();
@@ -7746,7 +7750,7 @@ if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').ca
 
 // expose for debugging in the console
 window.minicraft = {
-  gfx, viewmodel, avatar, swingArm, ripples, waterSurfaceAt, net, ownsSpot, get activeSlot() { return activeSlot; }, mpLeave, pendingEdits, get viewMode() { return viewMode; },
+  gfx, highlight, get target() { return target; }, viewmodel, avatar, swingArm, ripples, waterSurfaceAt, net, ownsSpot, get activeSlot() { return activeSlot; }, mpLeave, pendingEdits, get viewMode() { return viewMode; },
   get world() { return world; }, player, inventory, saveGame, sky, sound, breakBlock, mobs,
   get hunger() { return hunger; }, set hunger(v) { hunger = v; renderHunger(); },
   get day() { return day; },
