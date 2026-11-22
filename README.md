@@ -77,9 +77,12 @@ turn any off again if the game gets slow (☰ → Performance info shows the fra
 
 Whatever the settings, the bright parts of things that give off light (a torch's flame, a lantern's glass, a
 lamp, glowing mushrooms) glow: brighter than anything lit around them, so a torch looks lit even in full sun.
+Only the parts that shine glow: the green flecks in uranium ore, not the stone around them. Blocky white clouds
+drift across the sky, warm at sunrise and sunset, dim at night and grey when the weather turns.
 - **God rays**: when you look towards the sun, shafts of light stream out around whatever hides it
   (trees, hills, gaps in a wall); strongest near sunrise and sunset.
-- **Swaying leaves and plants**: leaves stir and flowers, grass and crops bend in the wind.
+- **Swaying leaves and plants**: leaves stir and flowers, grass and crops bend in the wind (tall plants like
+  sugar cane bend as one, from the root).
 - **Fancy water**: moving waves, reflections of the sky that get stronger as you look across the water, and
   glints of sunlight.
 - **Water reflections**: the water mirrors the hills, trees and buildings above it (the world is drawn a
@@ -1710,6 +1713,10 @@ guide to how everything works.
   and nothing grows almost at once any more. A night's sleep grows plants the same as the time it skips.
 
 ## Version history
+
+- **Version 41**: only the shining parts of a light glow (uranium ore's flecks, not its stone); glowing plants
+  lose a faint outline; you point at what's really in a cell (a torch's stick, a ladder, a flower), so you can
+  aim past it, and the outline fits it; clouds; tall plants sway as one.
 
 - **Version 40**: torch flames, lantern glass, lamps and other lights glow (and bloom), and look lit in
   daylight; a **Torch shadows by day** option; closing a window with its ✕ takes the mouse back for looking.

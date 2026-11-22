@@ -38,6 +38,54 @@ function discTexture(draw) {
   return t;
 }
 
+// Clouds (v41): a flat layer of blocky clouds above the world, drifting with the wind, that follows you.
+// The pattern is a seamless 64 x 64 map of cover, each pixel CLOUD_PX blocks across.
+const CLOUD_Y = 84, CLOUD_PX = 8, CLOUD_N = 64, CLOUD_SIZE = 300;
+function cloudTexture() {
+  const c = document.createElement('canvas');
+  c.width = c.height = CLOUD_N;
+  const g = c.getContext('2d'), img = g.createImageData(CLOUD_N, CLOUD_N);
+  let seed = 9173;
+  const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  // smooth noise that wraps: random values on coarse grids, eased in between, at two scales
+  const layer = (n) => {
+    const v = Array.from({ length: n * n }, rnd);
+    return (x, y) => {
+      const fx = (x / CLOUD_N) * n, fy = (y / CLOUD_N) * n, x0 = Math.floor(fx), y0 = Math.floor(fy);
+      const tx = fx - x0, ty = fy - y0, sx = tx * tx * (3 - 2 * tx), sy = ty * ty * (3 - 2 * ty);
+      const at = (i, j) => v[((j % n) * n + (i % n))];
+      const a = at(x0, y0) + (at(x0 + 1, y0) - at(x0, y0)) * sx, b = at(x0, y0 + 1) + (at(x0 + 1, y0 + 1) - at(x0, y0 + 1)) * sx;
+      return a + (b - a) * sy;
+    };
+  };
+  const big = layer(8), small = layer(16);
+  for (let y = 0; y < CLOUD_N; y++) for (let x = 0; x < CLOUD_N; x++) {
+    const k = big(x, y) * 0.7 + small(x, y) * 0.3, i = (y * CLOUD_N + x) * 4;
+    img.data[i] = img.data[i + 1] = img.data[i + 2] = 255;
+    img.data[i + 3] = k > 0.56 ? 235 : 0; // (cloud or clear sky: hard edges, like the world)
+  }
+  g.putImageData(img, 0, 0);
+  const t = new THREE.CanvasTexture(c);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.magFilter = t.minFilter = THREE.NearestFilter; t.generateMipmaps = false;
+  t.repeat.set(CLOUD_SIZE / (CLOUD_N * CLOUD_PX), CLOUD_SIZE / (CLOUD_N * CLOUD_PX));
+  return t;
+}
+// fades the layer out toward its edge, so you never see where it ends
+function cloudFade() {
+  const n = 64, c = document.createElement('canvas');
+  c.width = c.height = n;
+  const g = c.getContext('2d'), img = g.createImageData(n, n);
+  for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
+    const d = Math.hypot(x + 0.5 - n / 2, y + 0.5 - n / 2) / (n / 2), k = Math.max(0, Math.min(1, (1 - d) / 0.45)), i = (y * n + x) * 4;
+    img.data[i] = img.data[i + 1] = img.data[i + 2] = Math.round(k * k * 255); img.data[i + 3] = 255;
+  }
+  g.putImageData(img, 0, 0);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.NoColorSpace;
+  return t;
+}
+
 export class Sky {
   constructor(scene) {
     this.scene = scene;
@@ -82,6 +130,14 @@ export class Sky {
     }));
     this.stars.renderOrder = -2;
     scene.add(this.stars);
+
+    this.cloudDrift = 0;
+    this.clouds = new THREE.Mesh(new THREE.PlaneGeometry(CLOUD_SIZE, CLOUD_SIZE), new THREE.MeshBasicMaterial({
+      map: cloudTexture(), alphaMap: cloudFade(), transparent: true, depthWrite: false, fog: false, side: THREE.DoubleSide,
+    }));
+    this.clouds.rotation.x = -Math.PI / 2;
+    this.clouds.renderOrder = -1;
+    scene.add(this.clouds);
   }
 
   get isNight() { return this.time > 0.53 && this.time < 0.97; }
@@ -139,5 +195,17 @@ export class Sky {
     const night = Math.max(0, Math.min(1, (0.3 - light) / 0.08 + 0.1));
     this.stars.material.opacity = underwater ? 0 : night * (1 - (w.overcast ?? 0));
     this.sun.visible = this.moon.visible = (w.overcast ?? 0) < 0.6;
+
+    // clouds: white by day, warm at sunrise and sunset, dim at night, grey and thicker when it's overcast
+    const oc = w.overcast ?? 0;
+    this.cloudDrift += dt * (0.8 + 1.6 * oc); // (blocks a second, east: faster in a storm)
+    const cl = this.clouds, tex = cl.material.map, span = CLOUD_N * CLOUD_PX;
+    cl.visible = !underwater && (this.mistLevel ?? 0) < 0.3;
+    cl.position.set(camPos.x, CLOUD_Y, camPos.z);
+    tex.offset.set((camPos.x - this.cloudDrift - CLOUD_SIZE / 2) / span, -(camPos.z + CLOUD_SIZE / 2) / span);
+    const warm = Math.max(0, 1 - Math.abs(light - 0.6) / 0.25) * (light < 0.95 ? 1 : 0);
+    const day = Math.max(0.035, Math.min(1, (light - 0.22) / 0.6) ** 1.6);
+    cl.material.color.setRGB(1, 1, 1).lerp(this.skyColor, 0.15 + 0.35 * warm).multiplyScalar(day * (1 - 0.45 * oc));
+    cl.material.opacity = 0.85 + 0.15 * oc;
   }
 }

@@ -88,7 +88,8 @@ export const gfxUniforms = {
   uReflTex: { value: null },
 };
 
-// vertex shader: decode the flags packed into the sky attribute (sky + 2 x by-water + 4 x sway), and sway
+// vertex shader: decode the flags packed into the sky attribute (sky + 2 x by-water + 4 x sway + 16 x glows
+// + 32 x how many blocks up a plant this point is), and sway
 // (1 = leaves: the whole block wobbles a little; 2 = the top of a plant: it bends)
 export const GFX_VERT_HEAD = `
 uniform float uTime;
@@ -97,8 +98,10 @@ varying float vWet;
 varying float vGlow;
 `;
 export const GFX_VERT_DECODE = `
-vGlow = floor(sky / 16.0);
-float skyS = sky - vGlow * 16.0;
+float plantH = floor(sky / 32.0);
+float skyG = sky - plantH * 32.0;
+vGlow = floor(skyG / 16.0);
+float skyS = skyG - vGlow * 16.0;
 float swayK = floor(skyS / 4.0);
 float skyR = skyS - swayK * 4.0;
 vWet = step(1.5, skyR);
@@ -107,8 +110,10 @@ vSky = skyR - vWet * 2.0;
 export const GFX_VERT_SWAY = `
 if (uSway > 0.5 && swayK > 0.5) {
   vec3 swp = (modelMatrix * vec4(position, 1.0)).xyz;
-  float ph = swp.x * 0.7 + swp.z * 0.6 + swp.y * 0.3;
-  float amp = swayK > 1.5 ? 0.08 : 0.03;
+  // (a plant bends as one piece from its root: every block of a tall one keeps time with the rest, by its
+  // column, and sways more the higher up it is: plantH is how many blocks up from the root this point is)
+  float ph = swayK > 1.5 ? floor(swp.x) * 0.7 + floor(swp.z) * 0.6 : swp.x * 0.7 + swp.z * 0.6 + swp.y * 0.3;
+  float amp = swayK > 1.5 ? 0.08 * pow(max(plantH, 1.0), 0.8) : 0.03;
   transformed.x += (sin(uTime * 1.7 + ph) + 0.4 * sin(uTime * 2.9 + ph * 1.3)) * amp;
   transformed.z += cos(uTime * 1.3 + ph * 0.8) * amp * 0.8;
   if (swayK < 1.5) transformed.y += sin(uTime * 2.1 + ph) * amp * 0.3;

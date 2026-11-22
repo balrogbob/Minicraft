@@ -40,7 +40,7 @@ import {
 } from './blocks.js';
 import { Smoke } from './smoke.js';
 import { Fireworks } from './fireworks.js';
-import { createAtlas, createIcons, createCrackCanvases, createWaterCanvas, createHudIcons, paintSeason } from './textures.js';
+import { createAtlas, createGlowMask, createIcons, createCrackCanvases, createWaterCanvas, createHudIcons, paintSeason } from './textures.js';
 import { World, CHUNK, WORLD_SIZE, chunkKey, skyBrightness, lightBrightness } from './world.js';
 import { localIndex, CHUNK_VOLUME, H, SEA_LEVEL } from './terrain.js';
 import { ChunkStore } from './store.js';
@@ -79,7 +79,7 @@ import { Logic } from './logic.js';
 
 // v2 = the 16k x 16k streaming world (player state here, edited chunks in IndexedDB).
 // v1 = the old 128 x 128 world, migrated into the middle of the big world on first launch.
-const GAME_VERSION = '40'; // shown in the menu; bump with each release
+const GAME_VERSION = '41'; // shown in the menu; bump with each release
 const SAVE_KEY = 'minicraft-save-v2';
 const LEGACY_SAVE_KEY = 'minicraft-save-v1';
 const SETTINGS_KEY = 'minicraft-settings-v1';
@@ -142,12 +142,32 @@ atlas.generateMipmaps = false;
 atlas.colorSpace = THREE.SRGBColorSpace;
 const material = new THREE.MeshBasicMaterial({ map: atlas, vertexColors: true, alphaTest: 0.5 });
 
+// what glows on things that give off light (v41): a lamp's glass, a torch's flame, all of it;
+// on a block like uranium ore, only its bright flecks (and not tiles plain blocks share, like a shrine's bricks)
+const glowMask = (() => {
+  const modes = new Map(), plain = new Set();
+  const put = (t, m) => { if (t != null && modes.get(t) !== 'all') modes.set(t, m); };
+  for (const def of BLOCKS) {
+    if (!def) continue;
+    const faces = [def.top, def.side, def.bottom, def.front];
+    if (!(def.light > 0)) { if (!def.model && !def.shape) for (const t of faces) plain.add(t); continue; }
+    if (def.model) {
+      for (const [, , , , , , tiles, glow] of def.model) if (glow) for (const t of typeof tiles === 'number' ? [tiles] : Object.values(tiles)) put(t, 'all');
+    } else if (def.shape) put(def.shape === 'torch' ? def.top : def.side, 'all');
+    else for (const t of faces) put(t, def.liquid || def.sound === 'glass' ? 'all' : 'parts');
+  }
+  for (const [t, m] of modes) if (m === 'parts' && plain.has(t)) modes.delete(t);
+  const tex = new THREE.CanvasTexture(createGlowMask(atlasCanvas, modes));
+  tex.magFilter = tex.minFilter = THREE.NearestFilter; tex.generateMipmaps = false;
+  return tex;
+})();
+
 // World lighting: each pixel gets max(daylight x sunlight, torch light, faint ambient).
 // Sunlight and torch light are baked per vertex (how much of each reaches that spot);
 // daylight is a uniform set by the sky, so nights darken everything the sun reaches,
 // caves stay dark all day, and torches glow wherever they are.
 const AMBIENT = 0.03; // linear; just enough to make out cave walls without a torch
-const lightUniforms = { uHand: { value: new THREE.Vector4(0, 0, 0, 0) }, uDay: { value: 1 }, uFlicker: { value: 1 }, uAmbient: { value: AMBIENT }, uTints: { value: TINTS.map((c) => new THREE.Vector3(...c)) }, ...gfxUniforms };
+const lightUniforms = { uGlowMap: { value: glowMask }, uHand: { value: new THREE.Vector4(0, 0, 0, 0) }, uDay: { value: 1 }, uFlicker: { value: 1 }, uAmbient: { value: AMBIENT }, uTints: { value: TINTS.map((c) => new THREE.Vector3(...c)) }, ...gfxUniforms };
 function addTorchLight(mat, water = false) {
   // (sky also carries a "next to water" flag, +2, for caustics: see World.buildChunkGeometry)
   mat.customProgramCacheKey = () => (water ? 'world-water' : 'world-solid');
@@ -160,11 +180,11 @@ function addTorchLight(mat, water = false) {
       .replace('#include <begin_vertex>', '#include <begin_vertex>\n' + GFX_VERT_SWAY);
     // (v40: the bright parts of things that give off light, like a torch's flame or a lamp's glass, glow: brighter
     // than anything lit, by day too, and bright enough to bloom)
-    shader.fragmentShader = 'uniform float uDay;\nuniform float uFlicker;\nuniform float uAmbient;\nuniform vec4 uHand;\nvarying vec3 vTorchC;\nvarying float vSky;\nvarying vec3 vWorldP;\nvarying float vGlow;\n' + GFX_FRAG_HEAD + shader.fragmentShader
+    shader.fragmentShader = 'uniform sampler2D uGlowMap;\nuniform float uDay;\nuniform float uFlicker;\nuniform float uAmbient;\nuniform vec4 uHand;\nvarying vec3 vTorchC;\nvarying float vSky;\nvarying vec3 vWorldP;\nvarying float vGlow;\n' + GFX_FRAG_HEAD + shader.fragmentShader
       .replace('#include <color_fragment>',
         '#include <color_fragment>\nvec3 baseC = diffuseColor.rgb;\nfloat hl = uHand.w * pow(clamp(1.0 - distance(vWorldP, uHand.xyz) / 13.0, 0.0, 1.0), 1.4);\n' + GFX_SUN_TERM +
         'diffuseColor.rgb *= max(max(vec3(max(sunT, uAmbient)), torchT), vec3(hl, hl * 0.96, hl * 0.86));\n' +
-        'if (vGlow > 0.5) { float gk = smoothstep(0.3, 0.7, max(baseC.r, max(baseC.g, baseC.b))); diffuseColor.rgb = max(diffuseColor.rgb, baseC * (1.0 + gk * (0.7 + 0.25 * uFlicker))); }\n' + (water ? GFX_WATER : ''));
+        (water ? '' : 'if (vGlow > 0.5) { float gm = texture2D(uGlowMap, vMapUv).r; diffuseColor.rgb = mix(diffuseColor.rgb, max(diffuseColor.rgb, baseC * (1.7 + 0.25 * uFlicker)), gm); }\n') + (water ? GFX_WATER : ''));
   };
 }
 addTorchLight(material);
@@ -7709,7 +7729,11 @@ function stepGame(now, dt) {
   if (photoMode) target = targetMob = targetCart = targetVehicle = null;
   if (target) {
     highlight.visible = true;
-    highlight.position.set(target.x + 0.5, target.y + 0.5, target.z + 0.5);
+    // (round what's there: a torch's stick, a ladder's rungs, not the whole cell)
+    const b = [16, 16, 16, 0, 0, 0];
+    for (const p of target.boxes ?? [[0, 0, 0, 16, 16, 16]]) for (let i = 0; i < 3; i++) { b[i] = Math.min(b[i], p[i]); b[i + 3] = Math.max(b[i + 3], p[i + 3]); }
+    highlight.scale.set((b[3] - b[0]) / 16, (b[4] - b[1]) / 16, (b[5] - b[2]) / 16);
+    highlight.position.set(target.x + (b[0] + b[3]) / 32, target.y + (b[1] + b[4]) / 32, target.z + (b[2] + b[5]) / 32);
   } else highlight.visible = false;
 
   updateLookTip();
@@ -7726,7 +7750,7 @@ if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').ca
 
 // expose for debugging in the console
 window.minicraft = {
-  gfx, viewmodel, avatar, swingArm, ripples, waterSurfaceAt, net, ownsSpot, get activeSlot() { return activeSlot; }, mpLeave, pendingEdits, get viewMode() { return viewMode; },
+  gfx, highlight, get target() { return target; }, viewmodel, avatar, swingArm, ripples, waterSurfaceAt, net, ownsSpot, get activeSlot() { return activeSlot; }, mpLeave, pendingEdits, get viewMode() { return viewMode; },
   get world() { return world; }, player, inventory, saveGame, sky, sound, breakBlock, mobs,
   get hunger() { return hunger; }, set hunger(v) { hunger = v; renderHunger(); },
   get day() { return day; },
