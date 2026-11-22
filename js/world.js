@@ -1344,12 +1344,13 @@ export class World {
     const tv0 = 1 - Math.floor(def.side / ATLAS_COLS) * tileUV - tileUV;
     const a = 0.12, b = 0.88; // inset from the block corners
     const b2 = toLinear(0.88);
+    const e = 0.1 / TILE; // (a hair inside the tile, so its edges never pick up the next tile's pixels)
     const sway = def.sound === 'leaves' && !def.light; // plants, not fire or crystals
     for (const [x1, z1, x2, z2] of [[a, a, b, b], [b, a, a, b]]) {
       const corners = [[x1, 0, z1, 0, 0], [x2, 0, z2, 1, 0], [x2, 1, z2, 1, 1], [x1, 1, z1, 0, 1]];
       for (const [cx, cy, cz, u, v] of corners) {
         pos.push(x + cx, y + cy, z + cz);
-        uv.push(tu + u * tileUV, tv0 + v * tileUV);
+        uv.push(tu + (e + u * (1 - 2 * e)) * tileUV, tv0 + (e + v * (1 - 2 * e)) * tileUV);
         col.push(b2, b2, b2);
         tl.push(torch);
         sl.push(sky + (sway && cy ? 8 : 0) + (def.light > 0 ? 16 : 0)); // (+8: the top of a plant, which sways; +16: glows)

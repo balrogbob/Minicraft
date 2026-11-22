@@ -1464,6 +1464,36 @@ export function createAtlas() {
   return c;
 }
 
+// Which pixels of the atlas glow (v41), for things that give off light: red = how much, 0..255.
+// `modes` maps a tile to 'all' (the whole thing shines, like a lamp's glass: its bright pixels glow) or
+// 'parts' (only what stands out glows, like the green flecks in uranium ore, not the stone around them).
+export function createGlowMask(atlas, modes) {
+  const c = document.createElement('canvas');
+  c.width = atlas.width; c.height = atlas.height;
+  const src = atlas.getContext('2d').getImageData(0, 0, atlas.width, atlas.height).data;
+  const out = new ImageData(atlas.width, atlas.height);
+  const ss = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+  for (const [tile, mode] of modes) {
+    const x0 = (tile % ATLAS_COLS) * TILE, y0 = Math.floor(tile / ATLAS_COLS) * TILE;
+    const px = [];
+    for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+      const i = ((y0 + y) * atlas.width + x0 + x) * 4;
+      if (src[i + 3] < 128) continue;
+      const r = src[i] / 255, g = src[i + 1] / 255, b = src[i + 2] / 255;
+      const hi = Math.max(r, g, b);
+      px.push([i, hi, hi + hi - Math.min(r, g, b)]); // (how bright, and bright plus how colourful)
+    }
+    if (!px.length) continue;
+    const med = px.map((p) => p[2]).sort((a, b) => a - b)[px.length >> 1];
+    for (const [i, hi, k] of px) {
+      const m = mode === 'all' ? ss(0.55, 0.85, hi) : ss(med + 0.2, med + 0.5, k) * ss(0.4, 0.7, hi);
+      out.data[i] = Math.round(m * 255); out.data[i + 3] = 255;
+    }
+  }
+  c.getContext('2d').putImageData(out, 0, 0);
+  return c;
+}
+
 // Seamless water tile; used with RepeatWrapping and a scrolling offset.
 export function createWaterCanvas() {
   const t = new Tile(mulberry32(777));
