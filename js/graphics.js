@@ -193,20 +193,27 @@ float gfxTorchVis(float slot, vec3 L, float d, float reach, float bias) {
 // torch light at this spot is shaded by the nearby shadow-casting lights, weighted by how close each is
 float gfxTorchShadow(vec3 n) {
   float sw = 0.0, sv = 0.0;
+  float texA = 2.2214 * uTorchTexel.x / uTorchTile.x; // how wide one texel of a light's picture is, per block away
   for (int i = 0; i < ${MAX_TORCH_SHADOWS}; i++) {
     if (i >= uTorchCount) break;
     vec4 l = uTorchL[i];
     float slot = floor(l.w / 32.0), reach = l.w - slot * 32.0;
-    vec3 L = vWorldP + n * 0.04 - l.xyz;
+    vec3 L0 = vWorldP - l.xyz;
+    float d0 = length(L0);
+    if (d0 >= reach) continue;
+    float ndl = dot(n, -L0 / max(d0, 0.001));
+    // (v40) look up the picture from just off the surface, about a texel or two out (more where the light
+    // skims across it), with only a hair of depth allowance: a big allowance let light in along the foot of
+    // whatever casts the shadow, a line of light a texel or two wide at the edge of every block
+    float texW = d0 * texA;
+    vec3 L = L0 + n * texW * (1.0 + 1.5 * (1.0 - clamp(ndl, 0.0, 1.0)));
     float d = length(L);
-    if (d >= reach) continue;
-    float w = 1.0 - d / reach; w *= w;
-    float ndl = dot(n, -L / max(d, 0.001));
+    float w = 1.0 - d0 / reach; w *= w;
     // the light's own block (a lantern's glass, a torch's stick, and the faces it touches) is always lit: the
     // light sits 0.55 up its block. (Not everything within a block of the light: that left a round patch of light
     // with a hard edge, lighting faces that turn away from it.)
     vec3 own = abs(vWorldP - l.xyz + vec3(0.0, 0.05, 0.0));
-    float v = max(own.x, max(own.y, own.z)) < 0.52 ? 1.0 : ndl <= -0.05 ? 0.0 : gfxTorchVis(slot, L, d, reach, 0.08 + 0.22 * (1.0 - clamp(ndl, 0.0, 1.0)));
+    float v = max(own.x, max(own.y, own.z)) < 0.52 ? 1.0 : ndl <= -0.05 ? 0.0 : gfxTorchVis(slot, L, d, reach, 0.01 + texW * 0.5);
     sw += w; sv += w * v;
   }
   if (sw < 0.001) return 1.0;
