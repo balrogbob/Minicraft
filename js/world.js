@@ -1251,8 +1251,11 @@ export class World {
         continue;
       }
       if (def.shape === 'cross') {
+        // (how many plant blocks it stands on, so a tall plant sways as one: see addCross)
+        let up = 0;
+        while (up < 7 && y - up > 0 && BLOCKS[this.get(x, y - up - 1, z)]?.shape === 'cross') up++;
         vcount = this.addCross(lx, y, lz, def, this.torchAt(x, y, z), skyBrightness(this.skyAt(x, y, z)),
-          pos, uv, col, tl, sl, index, vcount);
+          pos, uv, col, tl, sl, index, vcount, up);
         continue;
       }
       for (const f of FACES) {
@@ -1368,7 +1371,8 @@ export class World {
 
   // Plants: two sprites crossed diagonally through the block, visible from both sides.
   // (x, y, z) are chunk-local; torch and sky are the light levels in the plant's own cell.
-  addCross(x, y, z, def, torch, sky, pos, uv, col, tl, sl, index, vcount) {
+  // `up` is how many plant blocks this one stands on: a tall plant bends from its root, not at every block.
+  addCross(x, y, z, def, torch, sky, pos, uv, col, tl, sl, index, vcount, up = 0) {
     const tileUV = 1 / ATLAS_COLS;
     const tu = (def.side % ATLAS_COLS) * tileUV;
     const tv0 = 1 - Math.floor(def.side / ATLAS_COLS) * tileUV - tileUV;
@@ -1383,7 +1387,8 @@ export class World {
         uv.push(tu + (e + u * (1 - 2 * e)) * tileUV, tv0 + (e + v * (1 - 2 * e)) * tileUV);
         col.push(b2, b2, b2);
         tl.push(torch);
-        sl.push(sky + (sway && cy ? 8 : 0) + (def.light > 0 ? 16 : 0)); // (+8: the top of a plant, which sways; +16: glows)
+        const h = up + cy; // blocks up from the root
+        sl.push(sky + (sway && h ? 8 + 32 * h : 0) + (def.light > 0 ? 16 : 0)); // (+8: above a plant's root, so it sways; +16: glows)
       }
       // both windings, so the sprite shows from either side
       index.push(vcount, vcount + 1, vcount + 2, vcount, vcount + 2, vcount + 3);
