@@ -204,8 +204,13 @@ export class Sky {
     cl.position.set(camPos.x, CLOUD_Y, camPos.z);
     tex.offset.set((camPos.x - this.cloudDrift - CLOUD_SIZE / 2) / span, -(camPos.z + CLOUD_SIZE / 2) / span);
     const warm = Math.max(0, 1 - Math.abs(light - 0.6) / 0.25) * (light < 0.95 ? 1 : 0);
-    const day = Math.max(0.035, Math.min(1, (light - 0.22) / 0.6) ** 1.6);
-    cl.material.color.setRGB(1, 1, 1).lerp(this.skyColor, 0.15 + 0.35 * warm).multiplyScalar(day * (1 - 0.45 * oc));
+    // (clamped before the power: a stormy night is darker than a clear one, and a negative number to a
+    // fractional power is NaN, which turned the clouds black)
+    const day = Math.max(0.035, Math.max(0, Math.min(1, (light - 0.22) / 0.6)) ** 1.6);
+    const cc = cl.material.color.setRGB(1, 1, 1).lerp(this.skyColor, 0.15 + 0.35 * warm).multiplyScalar(day * (1 - 0.45 * oc));
+    // and never darker than the sky behind them: at night or in a storm they're a shade lighter than it
+    const sk = this.skyColor;
+    if (light < 0.5) cc.setRGB(Math.max(cc.r, sk.r * 1.25 + 0.004), Math.max(cc.g, sk.g * 1.25 + 0.004), Math.max(cc.b, sk.b * 1.2 + 0.004));
     cl.material.opacity = 0.85 + 0.15 * oc;
   }
 }
