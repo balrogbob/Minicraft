@@ -6,6 +6,7 @@
 //   refraction - you see the bottom through the water, bent by the waves
 //   caustics   - rippling light on blocks under sunlit water
 //   torch shadows (0-50) - the nearest lights that aren't in sunlight cast shadows too
+//   torchDay   - (v40) ...and the ones in sunlight as well (their shadows show in shade: under roofs, in doorways)
 //   godrays    - shafts of sunlight around things that hide the sun
 //   sway       - leaves and plants move in the wind
 //   reflections - water mirrors the world above it (the scene drawn again, upside down)
@@ -16,13 +17,14 @@ import * as THREE from 'three';
 
 export const GFX_DEFAULTS = {
   shadows: 0, torches: 0, torchRate: 2, bloom: false, water: false, reflections: false, refraction: false, caustics: false,
-  godrays: false, sway: false, ripple: false,
+  godrays: false, sway: false, ripple: false, torchDay: false,
 };
 export const MAX_TORCH_SHADOWS = 50;
-export const GFX_TOGGLES = ['bloom', 'godrays', 'sway', 'water', 'reflections', 'refraction', 'caustics', 'ripple'];
+export const GFX_TOGGLES = ['torchDay', 'bloom', 'godrays', 'sway', 'water', 'reflections', 'refraction', 'caustics', 'ripple'];
 export const GFX_NAMES = {
   shadows: 'Sun shadows', torches: 'Torch shadows', bloom: 'Bloom', water: 'Fancy water', refraction: 'Water refraction', caustics: 'Water caustics',
   godrays: 'God rays', sway: 'Swaying leaves and plants', reflections: 'Water reflections', ripple: 'Underwater ripple',
+  torchDay: 'Torch shadows by day',
 };
 export const SHADOW_LEVELS = ['off', 'low', 'high'];
 // v38: quick presets for the fancy graphics. 'auto' starts at medium and steps up or down to keep the game
@@ -92,10 +94,13 @@ export const GFX_VERT_HEAD = `
 uniform float uTime;
 uniform float uSway;
 varying float vWet;
+varying float vGlow;
 `;
 export const GFX_VERT_DECODE = `
-float swayK = floor(sky / 4.0);
-float skyR = sky - swayK * 4.0;
+vGlow = floor(sky / 16.0);
+float skyS = sky - vGlow * 16.0;
+float swayK = floor(skyS / 4.0);
+float skyR = skyS - swayK * 4.0;
 vWet = step(1.5, skyR);
 vSky = skyR - vWet * 2.0;
 `;
@@ -188,20 +193,27 @@ float gfxTorchVis(float slot, vec3 L, float d, float reach, float bias) {
 // torch light at this spot is shaded by the nearby shadow-casting lights, weighted by how close each is
 float gfxTorchShadow(vec3 n) {
   float sw = 0.0, sv = 0.0;
+  float texA = 2.2214 * uTorchTexel.x / uTorchTile.x; // how wide one texel of a light's picture is, per block away
   for (int i = 0; i < ${MAX_TORCH_SHADOWS}; i++) {
     if (i >= uTorchCount) break;
     vec4 l = uTorchL[i];
     float slot = floor(l.w / 32.0), reach = l.w - slot * 32.0;
-    vec3 L = vWorldP + n * 0.04 - l.xyz;
+    vec3 L0 = vWorldP - l.xyz;
+    float d0 = length(L0);
+    if (d0 >= reach) continue;
+    float ndl = dot(n, -L0 / max(d0, 0.001));
+    // (v40) look up the picture from just off the surface, about a texel or two out (more where the light
+    // skims across it), with only a hair of depth allowance: a big allowance let light in along the foot of
+    // whatever casts the shadow, a line of light a texel or two wide at the edge of every block
+    float texW = d0 * texA;
+    vec3 L = L0 + n * texW * (1.0 + 1.5 * (1.0 - clamp(ndl, 0.0, 1.0)));
     float d = length(L);
-    if (d >= reach) continue;
-    float w = 1.0 - d / reach; w *= w;
-    float ndl = dot(n, -L / max(d, 0.001));
+    float w = 1.0 - d0 / reach; w *= w;
     // the light's own block (a lantern's glass, a torch's stick, and the faces it touches) is always lit: the
     // light sits 0.55 up its block. (Not everything within a block of the light: that left a round patch of light
     // with a hard edge, lighting faces that turn away from it.)
     vec3 own = abs(vWorldP - l.xyz + vec3(0.0, 0.05, 0.0));
-    float v = max(own.x, max(own.y, own.z)) < 0.52 ? 1.0 : ndl <= -0.05 ? 0.0 : gfxTorchVis(slot, L, d, reach, 0.08 + 0.22 * (1.0 - clamp(ndl, 0.0, 1.0)));
+    float v = max(own.x, max(own.y, own.z)) < 0.52 ? 1.0 : ndl <= -0.05 ? 0.0 : gfxTorchVis(slot, L, d, reach, 0.01 + texW * 0.5);
     sw += w; sv += w * v;
   }
   if (sw < 0.001) return 1.0;

@@ -1240,7 +1240,7 @@ export class World {
         const tvTop = 1 - Math.floor(tile / ATLAS_COLS) * tileUV;
         const ao = [0, 0, 0, 0];
         const wet = isWaterId(nid);
-        const leafSway = isLeaves(id) ? 4 : 0;
+        const leafSway = (isLeaves(id) ? 4 : 0) + (def.light > 0 ? 16 : 0); // (+16: it gives off light, so it glows)
         for (let k = 0; k < 4; k++) {
           const cr = f.corners[k];
           pos.push(lx + cr.o[0], y + cr.o[1], lz + cr.o[2]);
@@ -1261,7 +1261,7 @@ export class World {
           if (!s2) { sum += this.lightAt(x + cr.b[0], y + cr.b[1], z + cr.b[2]); sun += this.skyAt(x + cr.b[0], y + cr.b[1], z + cr.b[2]); n++; }
           if (!cc && !(s1 && s2)) { sum += this.lightAt(x + cr.c[0], y + cr.c[1], z + cr.c[2]); sun += this.skyAt(x + cr.c[0], y + cr.c[1], z + cr.c[2]); n++; }
           tl.push(lightBrightness(sum / n) + 2 * this.tintAt(nx, ny, nz));
-          sl.push(skyBrightness(sun / n) + (wet ? 2 : 0) + leafSway); // (+2: faces under water, for caustics; +4: leaves sway)
+          sl.push(skyBrightness(sun / n) + (wet ? 2 : 0) + leafSway); // (+2: faces under water, for caustics; +4: leaves sway; +16 glow)
         }
         // flip the quad diagonal so AO interpolates without artifacts
         if (ao[0] + ao[2] < ao[1] + ao[3]) {
@@ -1306,7 +1306,7 @@ export class World {
             uv.push(tu + clampUV(u) * tileUV, tv0 + clampUV(v) * tileUV);
             col.push(b2, b2, b2);
             tl.push(glow ? 1 : torch);
-            sl.push(glow ? 1 : sky);
+            sl.push(glow ? 17 : sky); // (+16: a glowing part)
           }
           index.push(vcount, vcount + 1, vcount + 2, vcount, vcount + 2, vcount + 3);
           index.push(vcount, vcount + 2, vcount + 1, vcount, vcount + 3, vcount + 2);
@@ -1327,7 +1327,7 @@ export class World {
           uv.push(tu + clampUV(u) * tileUV, tv0 + clampUV(v) * tileUV);
           col.push(b, b, b);
           tl.push(glow ? 1 : torch);
-          sl.push(glow ? 1 : sky);
+          sl.push(glow ? 17 : sky);
         }
         index.push(vcount, vcount + 1, vcount + 2, vcount, vcount + 2, vcount + 3);
         vcount += 4;
@@ -1352,7 +1352,7 @@ export class World {
         uv.push(tu + u * tileUV, tv0 + v * tileUV);
         col.push(b2, b2, b2);
         tl.push(torch);
-        sl.push(sky + (sway && cy ? 8 : 0)); // (+8: the top of a plant, which sways: see graphics.js)
+        sl.push(sky + (sway && cy ? 8 : 0) + (def.light > 0 ? 16 : 0)); // (+8: the top of a plant, which sways; +16: glows)
       }
       // both windings, so the sprite shows from either side
       index.push(vcount, vcount + 1, vcount + 2, vcount, vcount + 2, vcount + 3);
@@ -1385,7 +1385,7 @@ export class World {
         const b = toLinear(f.shade);
         col.push(b, b, b);
         tl.push(1); // torches are always fully lit
-        sl.push(1);
+        sl.push(17); // (and their flame glows)
       }
       index.push(vcount, vcount + 1, vcount + 2, vcount, vcount + 2, vcount + 3);
       vcount += 4;

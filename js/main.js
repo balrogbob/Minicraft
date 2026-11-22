@@ -79,7 +79,7 @@ import { Logic } from './logic.js';
 
 // v2 = the 16k x 16k streaming world (player state here, edited chunks in IndexedDB).
 // v1 = the old 128 x 128 world, migrated into the middle of the big world on first launch.
-const GAME_VERSION = '39'; // shown in the menu; bump with each release
+const GAME_VERSION = '40'; // shown in the menu; bump with each release
 const SAVE_KEY = 'minicraft-save-v2';
 const LEGACY_SAVE_KEY = 'minicraft-save-v1';
 const SETTINGS_KEY = 'minicraft-settings-v1';
@@ -158,10 +158,13 @@ function addTorchLight(mat, water = false) {
     shader.vertexShader = `attribute float torch;\nattribute float sky;\nvarying vec3 vTorchC;\nvarying float vSky;\nvarying vec3 vWorldP;\nuniform vec3 uTints[${TINTS.length}];\n` + GFX_VERT_HEAD + shader.vertexShader
       .replace('#include <color_vertex>', '#include <color_vertex>\nfloat tintI = floor(torch * 0.5);\nvTorchC = (torch - tintI * 2.0) * uTints[int(tintI)];\n' + GFX_VERT_DECODE + 'vWorldP = (modelMatrix * vec4(position, 1.0)).xyz;')
       .replace('#include <begin_vertex>', '#include <begin_vertex>\n' + GFX_VERT_SWAY);
-    shader.fragmentShader = 'uniform float uDay;\nuniform float uFlicker;\nuniform float uAmbient;\nuniform vec4 uHand;\nvarying vec3 vTorchC;\nvarying float vSky;\nvarying vec3 vWorldP;\n' + GFX_FRAG_HEAD + shader.fragmentShader
+    // (v40: the bright parts of things that give off light, like a torch's flame or a lamp's glass, glow: brighter
+    // than anything lit, by day too, and bright enough to bloom)
+    shader.fragmentShader = 'uniform float uDay;\nuniform float uFlicker;\nuniform float uAmbient;\nuniform vec4 uHand;\nvarying vec3 vTorchC;\nvarying float vSky;\nvarying vec3 vWorldP;\nvarying float vGlow;\n' + GFX_FRAG_HEAD + shader.fragmentShader
       .replace('#include <color_fragment>',
-        '#include <color_fragment>\nfloat hl = uHand.w * pow(clamp(1.0 - distance(vWorldP, uHand.xyz) / 13.0, 0.0, 1.0), 1.4);\n' + GFX_SUN_TERM +
-        'diffuseColor.rgb *= max(max(vec3(max(sunT, uAmbient)), torchT), vec3(hl, hl * 0.96, hl * 0.86));\n' + (water ? GFX_WATER : ''));
+        '#include <color_fragment>\nvec3 baseC = diffuseColor.rgb;\nfloat hl = uHand.w * pow(clamp(1.0 - distance(vWorldP, uHand.xyz) / 13.0, 0.0, 1.0), 1.4);\n' + GFX_SUN_TERM +
+        'diffuseColor.rgb *= max(max(vec3(max(sunT, uAmbient)), torchT), vec3(hl, hl * 0.96, hl * 0.86));\n' +
+        'if (vGlow > 0.5) { float gk = smoothstep(0.3, 0.7, max(baseC.r, max(baseC.g, baseC.b))); diffuseColor.rgb = max(diffuseColor.rgb, baseC * (1.0 + gk * (0.7 + 0.25 * uFlicker))); }\n' + (water ? GFX_WATER : ''));
   };
 }
 addTorchLight(material);
@@ -189,7 +192,7 @@ gfx.findLights = (n) => {
     if (id === AIR) continue;
     const def = BLOCKS[id];
     if (!def || !(def.light >= 6) || def.liquid) continue;
-    if (day * world.skyAt(x, y, z) / 15 > 0.35) continue; // drowned out by daylight
+    if (!gfx.opts.torchDay && day * world.skyAt(x, y, z) / 15 > 0.35) continue; // drowned out by daylight (unless shadows by day are on)
     found.push({ x: x + 0.5, y: y + 0.55, z: z + 0.5, r: def.light + 1, d: (x - px) ** 2 + (y - py) ** 2 + (z - pz) ** 2 });
   }
   found.sort((a, b) => a.d - b.d);
@@ -5466,6 +5469,14 @@ controls = null;
 {
   // Player must exist before Controls; startWorld gives it the real world.
   player = new Player(null);
+  // v40: closing a window with its ✕ (with the mouse) takes the mouse back for looking about, as a click on the
+  // world would, unless another window is still open
+  document.addEventListener('click', (e) => {
+    const b = e.target.closest?.('button');
+    if (!b || !/^(btn-close-|lp-close$|photo-exit$)/.test(b.id) || (e.pointerType && e.pointerType !== 'mouse')) return;
+    if (!e.pointerType && !matchMedia('(pointer: fine)').matches) return;
+    if (controls && !paused && !dead) controls.grabMouse();
+  });
   controls = new Controls($('touch-layer'), player, {
     place: () => { swingArm(); net.capture++; try { return place(); } finally { net.capture--; } },
     openChat,
