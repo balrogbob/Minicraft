@@ -12,11 +12,15 @@ function request(r) {
   });
 }
 
+import { CHUNK_VOLUME } from './terrain.js';
+
 // Chunks are stored as Uint16Arrays of block ids. Worlds saved before version 17 used one byte per block:
-// those are widened as they load (and saved in the new form the next time they change).
+// those are widened as they load (and saved in the new form the next time they change). Chunks saved before
+// version 43 are 64 blocks high: they go in the bottom half of a 128 high chunk, with air above.
 export function toBlocks(data) {
-  if (data instanceof Uint16Array) return data;
-  return Uint16Array.from(data instanceof Uint8Array ? data : new Uint8Array(data));
+  let d = data instanceof Uint16Array ? data : Uint16Array.from(data instanceof Uint8Array ? data : new Uint8Array(data));
+  if (d.length < CHUNK_VOLUME) { const tall = new Uint16Array(CHUNK_VOLUME); tall.set(d.subarray(0, CHUNK_VOLUME)); d = tall; }
+  return d;
 }
 
 // Each save slot keeps its chunks under its own prefix: slot 0 (the original world) has none, so worlds

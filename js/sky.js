@@ -40,7 +40,7 @@ function discTexture(draw) {
 
 // Clouds (v41): a flat layer of blocky clouds above the world, drifting with the wind, that follows you.
 // The pattern is a seamless 64 x 64 map of cover, each pixel CLOUD_PX blocks across.
-const CLOUD_Y = 84, CLOUD_PX = 8, CLOUD_N = 64, CLOUD_SIZE = 300;
+const CLOUD_Y = 136, CLOUD_PX = 8, CLOUD_N = 64, CLOUD_SIZE = 300;
 function cloudTexture() {
   const c = document.createElement('canvas');
   c.width = c.height = CLOUD_N;

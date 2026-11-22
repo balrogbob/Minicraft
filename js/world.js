@@ -110,6 +110,7 @@ class Chunk {
     this.light = new Uint8Array(CHUNK_VOLUME); // torch light
     this.tint = new Uint8Array(CHUNK_VOLUME); // the colour of that light (see TINTS in blocks.js)
     this.sky = new Uint8Array(CHUNK_VOLUME); // sunlight
+    this.top = H - 1; // the highest layer with a block in it (worked out when it's lit)
     this.solid = null; // meshes
     this.water = null;
     this.growing = new Set(); // local indices of plants that can still grow
@@ -129,9 +130,11 @@ const SOIL_REST_DAYS = 6; // a season: soil left this long without the same crop
 const LEAF_REACH = 4;
 
 export class World {
-  constructor(seed, store) {
+  // tall: (v43) the terrain profile, true for worlds made since v43 (see terrain.js)
+  constructor(seed, store, tall = false) {
     this.seed = seed;
-    this.generator = new Generator(seed);
+    this.tall = !!tall;
+    this.generator = new Generator(seed, this.tall);
     this.store = store;
     this.chunks = new Map();
     this.dirty = new Set(); // chunk keys needing a (re)mesh
@@ -240,6 +243,7 @@ export class World {
     }
     const li = localIndex(x, y, z), old = c.data[li];
     c.data[li] = id;
+    if (id !== AIR && y > c.top) c.top = y; // (see lightChunk)
     if (isWheel(old) && !isWheel(id)) this.wheelWater.delete(pack(x, y, z));
     // losing a log (or a leaf) may leave nearby leaves with nothing holding them up
     if (old === LOG && id !== LOG) this.checkLeavesAround(x, y, z, LEAF_REACH);
@@ -899,9 +903,23 @@ export class World {
   lightChunk(c) {
     const x0 = c.cx * CHUNK, z0 = c.cz * CHUNK;
     const skyQ = [], lightQ = [];
+    // (v43) Chunks are 128 high, mostly empty air at the top. Above the highest block here and in the loaded
+    // chunks around it, the light is full everywhere and nothing needs spreading, so it's just filled in.
+    let top = H - 1;
+    while (top > 0) {
+      let empty = true;
+      for (let i = top << 8, e = i + 256; i < e; i++) if (c.data[i] !== AIR) { empty = false; break; }
+      if (!empty) break;
+      top--;
+    }
+    c.top = top;
+    let reach = top;
+    for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) reach = Math.max(reach, this.chunks.get(chunkKey(c.cx + dx, c.cz + dz))?.top ?? top); // (one not loaded yet does this itself, when it is)
+    const open = Math.min(H, reach + 2); // the layers from here up are open sky, all full light
+    if (open < H) c.sky.fill(MAX_LIGHT, open << 8);
     for (let lz = 0; lz < CHUNK; lz++) for (let lx = 0; lx < CHUNK; lx++) {
       let level = MAX_LIGHT; // open sky above the world
-      for (let y = H - 1; y >= 0; y--) {
+      for (let y = open - 1; y >= 0; y--) {
         const li = localIndex(lx, y, lz);
         const id = c.data[li];
         if (!passes(id)) break;
@@ -923,7 +941,7 @@ export class World {
     for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
       const n = this.chunks.get(chunkKey(c.cx + dx, c.cz + dz));
       if (!n) continue;
-      for (let i = 0; i < CHUNK; i++) for (let y = 0; y < H; y++) {
+      for (let i = 0; i < CHUNK; i++) for (let y = 0; y < Math.min(H, Math.max(n.top ?? H, top) + 2); y++) {
         const gx = dx === 1 ? x0 + CHUNK : dx === -1 ? x0 - 1 : x0 + i;
         const gz = dz === 1 ? z0 + CHUNK : dz === -1 ? z0 - 1 : z0 + i;
         const li = localIndex(gx, y, gz);
@@ -1144,7 +1162,7 @@ export class World {
     };
     const x0 = c.cx * CHUNK, z0 = c.cz * CHUNK;
     const waterU = x0 % 64, waterV = z0 % 64; // keeps water UVs small but seamless across chunks
-    for (let y = 0; y < H; y++) for (let lz = 0; lz < CHUNK; lz++) for (let lx = 0; lx < CHUNK; lx++) {
+    for (let y = 0, yTop = Math.min(H - 1, c.top); y <= yTop; y++) for (let lz = 0; lz < CHUNK; lz++) for (let lx = 0; lx < CHUNK; lx++) {
       let id = data[localIndex(lx, y, lz)];
       if (id === AIR) continue;
       const x = x0 + lx, z = z0 + lz;

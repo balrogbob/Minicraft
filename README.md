@@ -258,6 +258,17 @@ in the ☰ menu, and every keyboard key above can be changed under ☰ → **Key
 
 ## The world
 
+### World height
+
+The world is 128 blocks high. Worlds made since version 43 are **tall worlds**: the sea is at height 56, with
+about 56 blocks of rock, caves, ore and (right at the bottom) lava under it, and mountains climb to 116, with snow
+on them from height 92. Sky islands float at about 100, and clouds drift at 136.
+
+Worlds made before version 43 are **classic worlds**: their ground stays exactly as it was (sea at 24,
+mountains to 50, snow from 46), and they get 64 more blocks of room to build in above. Old save files and
+exported world files load into either kind as before. In multiplayer, the server's world is tall if it was
+started fresh with version 43 or later.
+
 ### Trees
 
 - With any axe in hand, breaking a log brings down every log joined to it above (up to 64), and they all go
@@ -647,7 +658,9 @@ Example worlds to import from the Worlds screen (tap **Import** on a slot and pi
 ### Ores and metals
 
 Ores sit in small veins in the stone; the deeper you dig, the rarer and more valuable they get.
-Without a good enough pickaxe an ore breaks slowly and drops nothing.
+Without a good enough pickaxe an ore breaks slowly and drops nothing. The heights below are for classic worlds.
+In a tall world the layers are spread over the deeper rock: up to sea level, a height here is about 2⅓ times as
+high (gold, 1–16 here, is found from about 2 up to 37), and above 24 it's 32 higher.
 
 | Ore | Found at (Y) | Pickaxe needed | Smelts into |
 | --- | --- | --- | --- |
@@ -1720,6 +1733,9 @@ guide to how everything works.
 
 ## Version history
 
+- **Version 43**: a taller world. Worlds are now 128 blocks high. New worlds sit higher, with the sea at 56,
+  far deeper rock, caves and ore below it, and mountains to 116; worlds made before keep their ground as it was
+  and gain 64 blocks of building room above. Clouds moved up to 136.
 - **Version 42**: sprinting (double-tap forward, R, or push the touch stick past its rim); a PvP switch for
   multiplayer, the host's to flip; distant land: a blocky sketch of the world past the loaded chunks, out to
   the horizon.

@@ -4,13 +4,12 @@
 // the real chunks are, so it only ever fills the gap between them and the horizon.
 
 import * as THREE from 'three';
-import { CHUNK, SEA_LEVEL } from './terrain.js';
+import { CHUNK, SEA_LEVEL, SNOW_LINE } from './terrain.js';
 
 const FAR_CELL = 4; // blocks per step
 const TILE = 64; // blocks per tile (a mesh each)
 const STEPS = TILE / FAR_CELL;
 export const FAR_REACH = 192; // how far past the loaded chunks it goes, in blocks
-const SNOW_LINE = 46;
 const PER_FRAME = 2; // tiles built per frame at most (each samples the generator 17 x 17 times)
 
 // colours, in sRGB (converted when the mesh is built)

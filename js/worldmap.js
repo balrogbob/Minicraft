@@ -4,10 +4,9 @@
 // it shows the lie of the land even where the blocks themselves aren't in memory.
 // Drag to pan, pinch or scroll (or use + and -) to zoom, and tap to put down a waypoint or take one away.
 import { AIR, isWaterId, GRASS, SAND, SNOW, SNOW_GRASS, ICE, WATER } from './blocks.js';
-import { CHUNK, H, SEA_LEVEL, WORLD_CHUNKS } from './terrain.js';
+import { CHUNK, H, SEA_LEVEL, SNOW_LINE, TALL, WORLD_CHUNKS } from './terrain.js';
 import { chunkKey } from './world.js';
 
-const SNOW_LINE = 46; // (as in terrain.js)
 
 const MAX_EXPLORED = 40000; // chunks remembered (about 10 x 10 km)
 const NEW_TILES_PER_FRAME = 80;
@@ -158,7 +157,7 @@ export class WorldMap {
         if (isWaterId(id)) rgb = [52, 104, 210];
         else {
           const base = this.mini.colorOf(id);
-          let k = 0.8 + (y - SEA_LEVEL) * 0.012;
+          let k = 0.8 + (y - SEA_LEVEL) * (TALL ? 0.007 : 0.012);
           if (prev >= 0) k += Math.sign(y - prev) * 0.12;
           k = Math.min(1.35, Math.max(0.55, k));
           rgb = base.map((v) => v * k);

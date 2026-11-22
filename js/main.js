@@ -43,8 +43,8 @@ import { Smoke } from './smoke.js';
 import { Fireworks } from './fireworks.js';
 import { createAtlas, createGlowMask, createIcons, createCrackCanvases, createWaterCanvas, createHudIcons, paintSeason } from './textures.js';
 import { World, CHUNK, WORLD_SIZE, chunkKey, skyBrightness, lightBrightness } from './world.js';
-import { localIndex, CHUNK_VOLUME, H, SEA_LEVEL } from './terrain.js';
-import { ChunkStore } from './store.js';
+import { localIndex, CHUNK_VOLUME, OLD_CHUNK_VOLUME, H, SEA_LEVEL, SNOW_LINE } from './terrain.js';
+import { ChunkStore, toBlocks } from './store.js';
 import { buildLegacyWorld, LEGACY_W } from './legacy.js';
 import { Sky, DAY_LENGTH } from './sky.js';
 import { Sound } from './sound.js';
@@ -80,7 +80,7 @@ import { Logic } from './logic.js';
 
 // v2 = the 16k x 16k streaming world (player state here, edited chunks in IndexedDB).
 // v1 = the old 128 x 128 world, migrated into the middle of the big world on first launch.
-const GAME_VERSION = '42'; // shown in the menu; bump with each release
+const GAME_VERSION = '43'; // shown in the menu; bump with each release
 const SAVE_KEY = 'minicraft-save-v2';
 const LEGACY_SAVE_KEY = 'minicraft-save-v1';
 const SETTINGS_KEY = 'minicraft-settings-v1';
@@ -645,7 +645,7 @@ async function startWorld(save, opts = {}) {
   if (world) world.dispose(scene);
   if (!save) await store.clear();
   const seed = save?.seed ?? newSeed();
-  world = new World(seed, store);
+  world = new World(seed, store, save ? !!save.tall : true); // (v43: new worlds are tall; older saves stay classic)
   farLand.setGenerator(world.generator);
   world.onError = reportError;
   // leaves falling from a tree you just cut drop their saplings and sticks to you, if you're nearby
@@ -816,6 +816,7 @@ function saveGame() {
   world.saveChunks();
   return writeSave({
     seed: world.seed,
+    ...(world.tall ? { tall: true } : {}),
     ...(activeSlot === MP_SLOT ? { mpWorld: net.worldId } : {}),
     inv: inventory.serialize(),
     player: { x: player.pos.x, y: player.pos.y, z: player.pos.z, yaw: player.yaw, pitch: player.pitch },
@@ -5124,10 +5125,10 @@ async function mpWelcome(m) {
   saveGame(); await world?.saveChunks();
   const key = saveKeyOf(MP_SLOT);
   let save = loadSave(key);
-  if (!save || save.seed !== m.seed || save.mpWorld !== m.world) {
+  if (!save || save.seed !== m.seed || save.mpWorld !== m.world || !!save.tall !== !!m.tall) {
     try { localStorage.removeItem(key); } catch { /* storage unavailable */ }
     await store.clear(MP_SLOT);
-    save = { seed: m.seed, mpWorld: m.world };
+    save = { seed: m.seed, mpWorld: m.world, ...(m.tall ? { tall: true } : {}) };
   }
   worldReady = false;
   activeSlot = MP_SLOT; store.setSlot(MP_SLOT);
@@ -5719,7 +5720,7 @@ function tickProgress(dt) {
   if (METAL_PICKS.some(has)) achieve('metalpick');
   if (has(CRYSTAL_SHARD)) achieve('diamond');
   if (player.pos.y < 10) achieve('deep');
-  if (player.pos.y > 46) achieve('peak');
+  if (player.pos.y > SNOW_LINE) achieve('peak'); // (v43: where the snow starts, in either kind of world)
   if (startPos && Math.hypot(player.pos.x - startPos.x, player.pos.z - startPos.z) > 1000) achieve('far');
   if (day >= 7) achieve('week');
   tickGuidebook();
@@ -5967,7 +5968,7 @@ function musicMood(dt) {
   const v = world.generator.nearestVillage(x, z, 1);
   const nearVillage = v && Math.hypot(v.x - e.x, v.z - e.z) < 56;
   moodNow = player.eyeInWater ? 'water'
-    : !(world.skyAt(x, y, z) > 0) && y < 26 ? 'cave'
+    : !(world.skyAt(x, y, z) > 0) && y < SEA_LEVEL + 2 ? 'cave'
     : nearVillage && festivalToday() ? 'festival'
     : nearVillage && !sky.isNight ? 'village'
     : sky.isNight ? 'night'
@@ -6234,7 +6235,7 @@ $('import-file').addEventListener('change', async (e) => {
   if (slotSummary(n) && !confirm(`Replace World ${n + 1} with the imported world?`)) return;
   let chunks;
   try {
-    chunks = file.chunks.filter(([k, d]) => Number.isFinite(k) && typeof d === 'string').map(([k, d]) => [k, fromB64(d)]).filter(([, d]) => d.length === CHUNK_VOLUME);
+    chunks = file.chunks.filter(([k, d]) => Number.isFinite(k) && typeof d === 'string').map(([k, d]) => [k, fromB64(d)]).filter(([, d]) => d.length === CHUNK_VOLUME || d.length === OLD_CHUNK_VOLUME).map(([k, d]) => [k, toBlocks(d)]);
   } catch { toast('That world file is damaged', 2500); return; }
   if (n === settings.slot) { worldReady = false; await world?.saveChunks(); }
   await store.clear(n);
@@ -7412,7 +7413,7 @@ function notePlanting(x, y, z, id) {
 // Some spells of rain are thunderstorms: lightning strikes the ground now and then within sight, lights up the
 // sky, and can set trees alight; the thunder follows a moment later. Up in the mountains rain falls as hail,
 // which stings if your head's bare.
-const HAIL_HEIGHT = 50;
+const HAIL_HEIGHT = () => SEA_LEVEL + 26; // (v43: by sea level, as tall worlds sit higher)
 let strikeIn = 20, hailIn = 3, flashLevel = 0;
 const fires = new Map(); // "x,y,z" -> seconds left burning
 
@@ -7751,7 +7752,7 @@ function stepGame(now, dt) {
   const biome = world.generator.biomeAt(Math.floor(player.pos.x), Math.floor(player.pos.z));
   // in winter it snows rather than rains in temperate land
   weather.update(paused ? 0 : dt, eye, biome === 'temperate' && seasonOf(day) === 3 ? 'tundra' : biome, world.skyAt(Math.floor(eye.x), Math.min(H - 1, Math.floor(eye.y) + 1), Math.floor(eye.z)),
-    eye.y > HAIL_HEIGHT, Math.cos(sky.time * Math.PI * 2), sky.light);
+    eye.y > HAIL_HEIGHT(), Math.cos(sky.time * Math.PI * 2), sky.light);
   sky.weather = { overcast: weather.overcast, level: weather.level, kind: weather.kind };
   world.raining = weather.raining && biome !== 'desert';
   world.daylight = sky.light; // (v34: drying racks)
