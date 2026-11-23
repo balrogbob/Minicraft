@@ -211,8 +211,14 @@ function addTorchLight(mat, water = false) {
           '  diffuseColor.rgb = mix(diffuseColor.rgb, gfxVoxReflect(reflect(-V, N), N) * mix(vec3(1.0), baseC / max(vColor.rgb, vec3(0.2)), shine * 0.6), rk * fr); } }\n' +
           'float k = max(shine, wet * 0.8);\n' +
           'if (k > 0.0 && sunT > 0.02 && uSunStr > 0.0) { float s = pow(max(dot(N, normalize(uSunDir + V)), 0.0), mix(28.0, 90.0, shine)); diffuseColor.rgb += min(sunC * s * k * sunT * uSunStr, vec3(0.7)); } }\n') +
-        (water ? '' : 'if (vGlow > 0.5) { vec2 gm = texture2D(uGlowMap, vMapUv).rg; vec3 glowC = baseC / max(vColor.rgb, vec3(0.25)); diffuseColor.rgb = mix(diffuseColor.rgb, max(diffuseColor.rgb, glowC * (1.7 + 0.25 * uFlicker + gm.y * (1.6 + 0.6 * uFlicker))), gm.x); }\n') + (water ? GFX_WATER : ''));
+        (water ? '' : 'if (vGlow > 0.5) { vec2 gm = texture2D(uGlowMap, vMapUv).rg; vec3 glowC = baseC / max(vColor.rgb, vec3(0.25)); diffuseColor.rgb = mix(diffuseColor.rgb, max(diffuseColor.rgb, glowC * (1.7 + 0.25 * uFlicker + gm.y * (1.6 + 0.6 * uFlicker))), gm.x); }\n') + (water ? GFX_WATER : ''))
+      // (v46) path tracing: the plain pictures it lights (the colour of the block without light, its distance,
+      // which way it faces and how much it glows; see renderPathTraced in graphics.js)
+      .replace('#include <dithering_fragment>', '#include <dithering_fragment>\n' +
+        'if (uPTPass > 0.5) { float ptE = vGlow > 0.5 ? texture2D(uGlowMap, vMapUv).r : 0.0;\n' +
+        '  gl_FragColor = gfxPTOut(baseC / max(vColor.rgb, vec3(0.05)), vWorldP, gfxNormal(), ptE, 0.0); if (uPTPass < 1.5) gl_FragColor.a = diffuseColor.a; }');
   };
+  mat.userData.ptWorld = true;
 }
 addTorchLight(material);
 
@@ -232,6 +238,9 @@ const gfx = new Graphics(renderer, settings.gfx);
 // (v46) traced lighting: the world, and each block's colour, for the 3D picture of the blocks around you
 gfx.voxWorld = () => world;
 gfx.voxPalette = makePalette(atlasCanvas);
+// (v46) path tracing: the creatures (and you: your body casts light and shade even when you can't see it)
+gfx.ptObjects = () => { const l = mobs ? mobs.mobs.map((m) => m.root) : []; if (avatar && !dead) l.push(avatar.root); return l; };
+gfx.ptEnv = () => ({ day: lightUniforms.uDay.value, ambient: lightUniforms.uAmbient.value });
 // (v46) sunlight through stained glass takes on its colour (its leading still casts a shadow): see graphics.js
 gfx.glass = {
   material, first: TILES.STAINED, count: COLORS.length, cols: ATLAS_COLS,
@@ -5601,7 +5610,7 @@ $('torch-rate').addEventListener('input', (e) => { goCustom(); settings.gfx.torc
 $('btn-gfx-traced').addEventListener('click', () => { goCustom(); settings.gfx.traced = (settings.gfx.traced + 1) % 3; gfx.set('traced', settings.gfx.traced); updateGfxLabels(); saveSettings(); });
 $('btn-gfx-shadows').addEventListener('click', () => { goCustom(); settings.gfx.shadows = (settings.gfx.shadows + 1) % 3; gfx.set('shadows', settings.gfx.shadows); updateGfxLabels(); saveSettings(); });
 for (const key of GFX_TOGGLES) {
-  $(`btn-gfx-${key}`)?.addEventListener('click', () => { goCustom(); settings.gfx[key] = !settings.gfx[key]; gfx.set(key, settings.gfx[key]); updateGfxLabels(); saveSettings(); });
+  $(`btn-gfx-${key}`)?.addEventListener('click', () => { if (key !== 'pathtrace') goCustom(); settings.gfx[key] = !settings.gfx[key]; gfx.set(key, settings.gfx[key]); updateGfxLabels(); saveSettings(); });
 }
 $('btn-tips').addEventListener('click', () => { settings.tips = !settings.tips; updateTipsLabel(); saveSettings(); if (!settings.tips) $('inv-tip').classList.remove('show'); });
 function updatePerfLabel() { $('btn-perf').textContent = `Performance info: ${settings.perf ? 'on' : 'off'}`; }
@@ -7264,7 +7273,7 @@ function snapPhoto() {
   document.body.classList.add('snapping');
   gfx.render(scene, camera);
   let url = null;
-  try { url = renderer.domElement.toDataURL('image/png'); } catch (err) { reportError(err); }
+  try { url = (gfx.ptActive ? gfx.pt.canvas : renderer.domElement).toDataURL('image/png'); } catch (err) { reportError(err); }
   document.body.classList.remove('snapping');
   if (!url) return null;
   lastPhoto = url;
@@ -7845,13 +7854,16 @@ function frame(now) {
   wetU.value = Math.max(0, Math.min(1, wetU.value + dt * (weather?.raining && weather.kind === 'rain' ? 0.05 : -0.008)));
   try { findWaterLevel(dt); } catch (err) { reportError(err); }
   try { renderScreens(); } catch (err) { reportError(err); }
+  const hand = viewMode === 0 && !photoMode && !dead;
+  gfx.overlay = hand ? drawHand : null; // (path tracing draws it on its own picture)
   gfx.render(scene, camera);
-  if (viewMode === 0 && !photoMode && !dead) viewmodel.render(renderer);
+  if (hand && !gfx.ptActive) viewmodel.render(renderer);
   updatePerf(now);
 }
 
 // (v46) the mirrors' pictures and a security camera's view, drawn before the main view. In first person your
 // body is hidden from you, but it's in the mirror (and on camera).
+function drawHand(r) { viewmodel.render(r); }
 function renderScreens() {
   camera.updateMatrixWorld();
   const body = !dead && !avatar.root.visible ? [avatar.root] : [];

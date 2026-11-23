@@ -88,6 +88,20 @@ turn any off again if the game gets slow (☰ → Performance info shows the fra
   a narrow alley is dimmer than open ground) and real reflections: metal blocks, ice, glass, obsidian and
   puddles after rain mirror the blocks around them, or the sky. It fades out towards the edge of the copy.
   This is the heaviest setting: Ultra turns on Full, the other presets leave it off.
+- **Path tracing (WebGPU)** (off / on; only in browsers with WebGPU, such as recent Chrome and Edge): all the
+  light is traced, the way films are made, instead of the shortcuts above. Sunlight (or moonlight) and its
+  shadows, light from the sky, light bounced off the blocks around (a sunlit red wall tints the floor beside
+  it, light spills round corners into a doorway) and the light of the nearest 32 torches, lanterns and lamps,
+  each with its true shadow, all come from rays followed through the blocks around you. Animals, monsters,
+  villagers and you are traced at their real shape, not as boxes: each is rebuilt every frame from its posed
+  model as a grid of small cells (a 16th of a block), so a horse's legs cast four thin shadows while it walks,
+  and your own body still casts its shadow in first person. Each frame traces every other pixel; the light of
+  earlier frames is kept for the same spots and blurred along each surface, so it is grainy for a moment after
+  something changes and settles while you look. It takes over the whole picture: the other settings that change
+  light (shadows, torch shadows and shafts, traced lighting, colour bleed, bloom, god rays, water effects) have
+  no effect while it's on. It needs a strong graphics card. If the browser has no WebGPU, or it fails, it turns
+  itself off with a message. Not in any preset. Not yet traced: shadows of part blocks (slabs, stairs, fences,
+  plants, torches); light through glass and water.
 - **Distance fog** (on by default): the world fades into the sky towards the edge of what's loaded. Turn it
   off for a clear view all the way out (the edge of the world then shows). Under water it's always murky.
 - **Bloom**: bright things glow a little past their edges: lava, lamps, torch flames, the sky behind trees, sun
@@ -1841,6 +1855,8 @@ guide to how everything works.
   beams by bars, doorways and pillars);
   **Traced lighting** (exact block shadows from the sun, shade in corners, sky light and reflections, traced
   through a 3D copy of the blocks around you);
+  **Path tracing (WebGPU)** (sun, sky, bounced light and the nearest lights all traced, with animals and you
+  traced at your real shape);
   placing a gearbox or electric motor no longer turns it into a clutch or solar panel; a metal recipe
   (like the iron-banded chest) shows once you have that metal's plates, or everything it needs, not only its ingots.
 - **Version 45**: gears mesh at corners (axles at right angles) and large gears mesh in pairs; a **Distance

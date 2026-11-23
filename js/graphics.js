@@ -18,21 +18,25 @@
 //   shafts (0-50) - (v46) the nearest lights shine through the air: beams through windows, gaps and bars,
 //                 shadows of pillars cut through the glow (marched through the torch shadow pictures)
 //   mirrors    - (v46) mirror blocks show the world live (the scene drawn again from your eye's mirror image)
+//   pathtrace  - (v46) path-traced light on WebGPU, where the browser has it: see pathtrace.js. It takes over the
+//                frame: sunlight, sky light, bounced light and the light of nearby lamps all traced (creatures
+//                and you too, at your real shape), in place of the effects above
 // Torch light itself is flood-filled block by block, so it never shines through walls; torch shadows
 // only add the sharper shadows of things standing in the light (pillars, mobs, machines, furniture).
 import * as THREE from 'three';
 import { VoxelVolume, emptyVolume, VOX } from './voxels.js';
+import { PathTracer } from './pathtrace.js';
 
 export const GFX_DEFAULTS = {
   shadows: 0, torches: 0, torchRate: 2, bloom: false, water: false, reflections: false, refraction: false, caustics: false,
-  godrays: false, sway: false, ripple: false, torchDay: false, mirrors: false, bounce: false, shafts: 0, traced: 0,
+  godrays: false, sway: false, ripple: false, torchDay: false, mirrors: false, bounce: false, shafts: 0, traced: 0, pathtrace: false,
 };
 export const MAX_TORCH_SHADOWS = 50;
-export const GFX_TOGGLES = ['torchDay', 'bloom', 'godrays', 'sway', 'water', 'reflections', 'mirrors', 'bounce', 'refraction', 'caustics', 'ripple'];
+export const GFX_TOGGLES = ['torchDay', 'bloom', 'godrays', 'sway', 'water', 'reflections', 'mirrors', 'bounce', 'refraction', 'caustics', 'ripple', 'pathtrace'];
 export const GFX_NAMES = {
   shadows: 'Sun shadows', torches: 'Torch shadows', bloom: 'Bloom', water: 'Fancy water', refraction: 'Water refraction', caustics: 'Water caustics',
   godrays: 'God rays', sway: 'Swaying leaves and plants', reflections: 'Water reflections', ripple: 'Underwater ripple',
-  torchDay: 'Torch shadows by day', mirrors: 'Live mirrors', bounce: 'Colour bleed', shafts: 'Torch light shafts', traced: 'Traced lighting',
+  torchDay: 'Torch shadows by day', mirrors: 'Live mirrors', bounce: 'Colour bleed', shafts: 'Torch light shafts', traced: 'Traced lighting', pathtrace: 'Path tracing (WebGPU)',
 };
 export const SHADOW_LEVELS = ['off', 'low', 'high'];
 export const TRACED_LEVELS = ['off', 'shadows and shade', 'full'];
@@ -102,7 +106,73 @@ export const gfxUniforms = {
   uVoxO: { value: new THREE.Vector3() },
   uVoxOn: { value: 0 },
   uVoxStr: { value: 0 },
+  uPTPass: { value: 0 }, // (v46: path tracing: which picture of the scene is being drawn, see renderPathTraced)
+  uPTFar: { value: 1000 },
 };
+
+// (v46) path tracing draws the scene three times as plain pictures for pathtrace.js to light: 1 the colour of
+// everything (no light, no fog), 2 how far away each pixel is (24 bits over r, g, b), 3 which way it faces
+// (folded onto r, g) + how much it glows (b: 0-127, +128 for things that move: creatures, carts, items)
+export const GFX_PT_HEAD = `
+uniform float uPTPass;
+uniform float uPTFar;
+vec3 gfxSRGB(vec3 c) { c = clamp(c, 0.0, 1.0); return mix(1.055 * pow(c, vec3(1.0 / 2.4)) - 0.055, c * 12.92, vec3(lessThanEqual(c, vec3(0.0031308)))); }
+vec3 gfxPackDist(float d) {
+  float v = floor(clamp(d / uPTFar, 0.0, 0.9999) * 16777215.0);
+  float r = floor(v / 65536.0); v -= r * 65536.0;
+  float g = floor(v / 256.0);
+  return vec3(r, g, v - g * 256.0) / 255.0;
+}
+vec2 gfxOct(vec3 n) {
+  n /= abs(n.x) + abs(n.y) + abs(n.z);
+  vec2 e = n.xz;
+  if (n.y < 0.0) e = (1.0 - abs(n.zx)) * vec2(n.x >= 0.0 ? 1.0 : -1.0, n.z >= 0.0 ? 1.0 : -1.0);
+  return e * 0.5 + 0.5;
+}
+vec4 gfxPTOut(vec3 albedo, vec3 wp, vec3 n, float emit, float moving) {
+  if (uPTPass < 1.5) return vec4(gfxSRGB(albedo), 1.0);
+  if (uPTPass < 2.5) return vec4(gfxPackDist(distance(wp, cameraPosition)), 1.0);
+  return vec4(gfxOct(n), (floor(clamp(emit, 0.0, 1.0) * 127.0 + 0.5) + moving * 128.0) / 255.0, 1.0);
+}
+`;
+// ...and everything that isn't the world's blocks is drawn into those pictures with this
+const PT_VERT = `varying vec3 vWP;
+varying vec2 vUv;
+varying vec3 vCol;
+void main() {
+  vUv = uv;
+#ifdef USE_COLOR
+  vCol = color;
+#else
+  vCol = vec3(1.0);
+#endif
+  vec4 p = vec4(position, 1.0);
+#ifdef USE_INSTANCING
+  p = instanceMatrix * p;
+#endif
+  vec4 w = modelMatrix * p;
+  vWP = w.xyz;
+  gl_Position = projectionMatrix * viewMatrix * w;
+}`;
+const PT_FRAG = `uniform vec3 color;
+uniform sampler2D map;
+uniform float alphaTest;
+uniform float uEmit;
+varying vec3 vWP;
+varying vec2 vUv;
+varying vec3 vCol;
+` + GFX_PT_HEAD + `
+void main() {
+  vec3 c = color * vCol;
+#ifdef HAS_MAP
+  vec4 t = texture2D(map, vUv);
+  if (t.a < max(alphaTest, 0.01)) discard;
+  c *= t.rgb;
+#endif
+  vec3 n = normalize(cross(dFdx(vWP), dFdy(vWP)));
+  if (dot(n, cameraPosition - vWP) < 0.0) n = -n;
+  gl_FragColor = gfxPTOut(c, vWP, n, uEmit, 1.0);
+}`;
 
 // vertex shader: decode the flags packed into the sky attribute (sky + 2 x by-water + 4 x sway + 16 x glows
 // + 32 x how many blocks up a plant this point is), and sway
@@ -138,7 +208,7 @@ if (uSway > 0.5 && swayK > 0.5) {
 
 // ---------- shader code for the world materials ----------
 
-export const GFX_FRAG_HEAD = `
+export const GFX_FRAG_HEAD = GFX_PT_HEAD + `
 uniform float uTime;
 uniform vec3 uSunDir;
 uniform float uSunStr;
@@ -647,7 +717,18 @@ export class Graphics {
     this.voxWorld = null; // set by the game: () => the world (for traced lighting)
     this.voxPalette = null; // ...and the palette of block colours (see voxels.js)
     this.findLights = null; // set by the game: (n) => nearest lights not in sunlight, [{ x, y, z, r }]
+    // path tracing (v46)
+    this.pt = null;
+    this.ptMats = new WeakMap();
+    this.ptObjects = null; // set by the game: () => creatures' (and your) root objects, traced at their real shape
+    this.ptEnv = null; // ...and () => { day, ambient } (how light it is out, the faint light everywhere)
+    this.overlay = null; // ...and (renderer) => draws the thing in your hand on top (in first person), or null
+    this.ptLightT = 0;
+    if (this.opts.pathtrace) this.startPT();
   }
+
+  // is the path-traced picture what you see now?
+  get ptActive() { return !!(this.opts.pathtrace && this.pt?.ready && this.pt.shown); }
 
   distMat(m) {
     const cut = !!(m?.map && m.alphaTest > 0), glass = !!m && m === this.glass?.material;
@@ -670,6 +751,7 @@ export class Graphics {
     if (!o.bloom && !o.refraction && !o.godrays && !o.ripple && !o.bounce && !o.shafts) this.freeTargets();
     if (!o.reflections) this.freeReflections();
     if (!o.traced) this.freeVoxels();
+    if (key === 'pathtrace') { if (o.pathtrace) this.startPT(); else this.freePT(); }
     this.scanT = 0;
   }
 
@@ -688,6 +770,12 @@ export class Graphics {
     U.uCaustics.value = o.caustics ? 1 : 0;
     U.uSway.value = o.sway ? 1 : 0;
     this.frame++;
+    // (v46) path tracing takes over the whole frame
+    if (this.pt?.failed) { const err = this.pt.failed; this.freePT(); this.fail(err, 'pathtrace'); }
+    if (o.pathtrace && this.pt?.ready) {
+      try { this.renderPathTraced(scene, camera); this.showPT(true); return; } catch (err) { this.freePT(); this.fail(err, 'pathtrace'); }
+    }
+    this.showPT(false);
     U.uShadowStr.value = 0;
     U.uGlassOn.value = 0;
     if (o.shadows && sun > 0.01) {
@@ -722,6 +810,7 @@ export class Graphics {
   fail(err, key) {
     this.lastError = err;
     this.opts[key] = key === 'torches' || key === 'shadows' || key === 'shafts' || key === 'traced' ? 0 : false;
+    if (key === 'pathtrace') this.freePT();
     this.onFail?.(key, err);
   }
 
@@ -885,6 +974,134 @@ void main() {
     this.voxels = null;
     gfxUniforms.uVox.value = emptyVolume();
     gfxUniforms.uVoxOn.value = 0; gfxUniforms.uVoxStr.value = 0;
+  }
+
+  // ---------- path tracing (WebGPU) ----------
+
+  startPT() {
+    if (this.pt || this.ptStarting) return;
+    if (!PathTracer.available()) { queueMicrotask(() => this.fail(new Error('WebGPU is not available in this browser'), 'pathtrace')); return; }
+    this.ptStarting = true;
+    const pt = new PathTracer();
+    pt.init().then(() => {
+      this.ptStarting = false;
+      if (!this.opts.pathtrace) { pt.dispose(); return; }
+      this.pt = pt; this.ptPal = false;
+      pt.canvas.style.display = 'none'; pt.canvas.style.pointerEvents = 'none';
+      this.renderer.domElement.after(pt.canvas); // (on top of the WebGL picture, under everything else)
+      // (if showing it costs the WebGL picture its context on some computer, path tracing is turned off)
+      this.renderer.domElement.addEventListener('webglcontextlost', () => { if (this.pt === pt) { this.freePT(); this.fail(new Error('the WebGL picture was lost'), 'pathtrace'); } }, { once: true });
+    }).catch((err) => { this.ptStarting = false; pt.dispose(); if (this.opts.pathtrace) this.fail(err, 'pathtrace'); });
+  }
+
+  freePT() {
+    if (!this.pt) return;
+    this.pt.canvas.remove();
+    this.pt.dispose();
+    this.pt = null;
+  }
+
+  showPT(on) {
+    if (!this.pt || this.pt.shown === on) return;
+    this.pt.shown = on;
+    this.pt.canvas.style.display = on ? '' : 'none';
+  }
+
+  // the plain-picture stand-in for a material (keeps its colour, texture and cut-outs)
+  ptMat(m) {
+    let pm = this.ptMats.get(m);
+    if (pm) return pm;
+    const map = m.map ?? null;
+    pm = new THREE.ShaderMaterial({
+      vertexShader: PT_VERT, fragmentShader: PT_FRAG, side: m.side, vertexColors: !!m.vertexColors,
+      defines: map ? { HAS_MAP: '' } : {},
+      uniforms: {
+        // (creatures and things with a texture have their colour set to the light they're in each frame: not wanted here)
+        color: { value: m.vertexColors || map ? new THREE.Color(1, 1, 1) : m.color ?? new THREE.Color(1, 1, 1) }, map: { value: map }, alphaTest: { value: m.alphaTest ?? 0 },
+        uEmit: { value: m.userData?.ptGlow ? 1 : 0 }, uPTPass: gfxUniforms.uPTPass, uPTFar: gfxUniforms.uPTFar,
+      },
+    });
+    this.ptMats.set(m, pm);
+    return pm;
+  }
+
+  renderPathTraced(scene, camera) {
+    const r = this.renderer, pt = this.pt, U = gfxUniforms;
+    r.getDrawingBufferSize(this.size);
+    pt.resize(Math.max(1, this.size.x), Math.max(1, this.size.y));
+    if (!this.ptPal && this.voxPalette) { pt.setPalette(this.voxPalette.image.data); this.ptPal = true; }
+    camera.updateMatrixWorld();
+    const cp = camera.getWorldPosition(this._ptCam ??= new THREE.Vector3());
+    const world = this.voxWorld?.();
+    if (world) pt.updateWorld(world, cp.x, cp.z);
+    pt.updateMobs(this.ptObjects?.() ?? [], cp);
+    const now = performance.now();
+    if (now >= this.ptLightT) { this.ptLightT = now + 250; pt.setLights(this.findLights?.(32) ?? []); }
+    // none of the other effects: the light is all traced
+    U.uShadowStr.value = 0; U.uGlassOn.value = 0; U.uTorchCount.value = 0; U.uVoxOn.value = 0; U.uVoxStr.value = 0;
+    U.uReflect.value = 0; U.uRefract.value = 0; this.shaftCount = 0;
+    U.uPTFar.value = camera.far;
+    // the plain pictures: see-through things, lines, sprites and particles only go into the colour one
+    const swapped = [], hidden = [];
+    scene.traverseVisible((obj) => {
+      if (obj.isMesh && !obj.isSprite) {
+        const m = obj.material;
+        if (Array.isArray(m)) { hidden.push(obj); return; }
+        if (!m || m.transparent || m.depthWrite === false || obj.layers.isEnabled(WATER_LAYER)) { hidden.push(obj); return; }
+        if (m.userData?.ptWorld) return; // (the world's blocks draw their own: see addTorchLight in main.js)
+        swapped.push(obj, m);
+        obj.material = this.ptMat(m);
+      } else if (obj.isPoints || obj.isLine || obj.isSprite) hidden.push(obj);
+    });
+    const bg = scene.background, canvas = r.domElement;
+    const white = this._white ??= new THREE.Color(1, 1, 1), black = this._black ??= new THREE.Color(0, 0, 0);
+    const draw = (pass, back) => { U.uPTPass.value = pass; scene.background = back; r.setRenderTarget(null); r.render(scene, camera); pt.capture(pass - 1, canvas); };
+    let hand = false;
+    try {
+      draw(1, bg);
+      for (const o of hidden) o.visible = false;
+      draw(2, white);
+      draw(3, black);
+      if (this.overlay) {
+        // the thing in your hand, drawn as usual over magenta (which marks where it isn't)
+        U.uPTPass.value = 0;
+        const cc = r.getClearColor(this._cc ??= new THREE.Color()), ca = r.getClearAlpha();
+        r.setClearColor(0xff00ff, 1); r.clear();
+        this.overlay(r);
+        r.setClearColor(cc, ca);
+        pt.capture(3, canvas);
+        hand = true;
+      }
+    } finally {
+      U.uPTPass.value = 0;
+      scene.background = bg;
+      for (const o of hidden) o.visible = true;
+      for (let i = 0; i < swapped.length; i += 2) swapped[i].material = swapped[i + 1];
+    }
+    // (a jump in the time of day, like after sleeping: start the gathered light afresh)
+    const last = this._ptLastSun ??= this.sunDir.clone();
+    if (last.dot(this.sunDir) < 0.995) pt.resetHistory();
+    last.copy(this.sunDir);
+    // the sun by day, the moon by night
+    const env = this.ptEnv?.() ?? { day: 1, ambient: 0.03 }, sd = this.sunDir, S = THREE.MathUtils.smoothstep;
+    const up = sd.y > -0.03, dir = this._ptSun ??= new THREE.Vector3();
+    let str, col;
+    if (up) {
+      const low = 1 - S(sd.y, 0.04, 0.4);
+      str = S(sd.y, -0.03, 0.12) * (1 - 0.85 * this.overcast) * 0.95;
+      col = [1, 0.95 - 0.3 * low, 0.86 - 0.5 * low];
+      dir.copy(sd);
+    } else {
+      str = 0.13 * S(-sd.y, 0.03, 0.25) * (1 - 0.8 * this.overcast);
+      col = [0.6, 0.7, 1];
+      dir.copy(sd).negate();
+    }
+    if (dir.y < 0.05) { dir.y = 0.05; dir.normalize(); }
+    const fog = scene.fog;
+    pt.render(camera, {
+      sunDir: dir, sunStr: str, sunCol: col, ambient: env.ambient, sky: fog?.color ?? (bg?.isColor ? bg : white),
+      fogCol: fog?.color ?? black, fogNear: fog?.near ?? 1e6, fogFar: fog?.far ?? 2e6, hand, glowK: 2.5,
+    });
   }
 
   // ---------- torch shadows ----------

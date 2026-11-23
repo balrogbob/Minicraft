@@ -881,6 +881,7 @@ class Mob {
     this.dying = 0;
     this.material = new THREE.MeshBasicMaterial({ vertexColors: true });
     this.glowMaterial = new THREE.MeshBasicMaterial({ vertexColors: true });
+    this.glowMaterial.userData.ptGlow = true; // (v46: it glows when path traced)
     const b = new Builder(this.material, this.glowMaterial);
     this.root = new THREE.Group();
     this.parts = this.spec.build(b, this.root, opts);
