@@ -1781,7 +1781,8 @@ guide to how everything works.
 - **Version 45**: gears mesh at corners (axles at right angles) and large gears mesh in pairs; a **Distance
   fog** switch in ☰ → Graphics; your own shadow in first person; in survival a short pause after each block
   breaks while you hold on, so you don't dig the one behind it by accident; closing a window with its key
-  (E, M, G) takes the mouse back for looking, as its ✕ does.
+  (E, M, G) takes the mouse back for looking, as its ✕ does; a torch's flame glows the same on all four sides,
+  and the fire in a lit oven, smelter or kiln glows (and blooms) like a flame.
 - **Version 44**: the **glider** (wear it, jump in mid-air to open it, ride warm air over fires and lava);
   the sea comes alive: deep ocean in tall worlds, coral reefs, sea grass and kelp, schools of fish, jellyfish,
   sea turtles and dolphins; the **record player**; the **armour stand**; and **undo** in creative mode.

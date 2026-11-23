@@ -1466,7 +1466,8 @@ export function createAtlas() {
 
 // Which pixels of the atlas glow (v41), for things that give off light: red = how much, 0..255.
 // `modes` maps a tile to 'all' (the whole thing shines, like a lamp's glass: its bright pixels glow) or
-// 'parts' (only what stands out glows, like the green flecks in uranium ore, not the stone around them).
+// 'parts' (only what stands out glows, like the green flecks in uranium ore, not the stone around them) or
+// 'fire' (the flame and embers in a lit oven's front).
 export function createGlowMask(atlas, modes) {
   const c = document.createElement('canvas');
   c.width = atlas.width; c.height = atlas.height;
@@ -1481,13 +1482,18 @@ export function createGlowMask(atlas, modes) {
       if (src[i + 3] < 128) continue;
       const r = src[i] / 255, g = src[i + 1] / 255, b = src[i + 2] / 255;
       const hi = Math.max(r, g, b);
-      px.push([i, hi, hi + hi - Math.min(r, g, b)]); // (how bright, and bright plus how colourful)
+      const sat = hi > 0 ? (hi - Math.min(r, g, b)) / hi : 0, warm = r >= g && r >= b ? 1 : 0;
+      px.push([i, hi, hi + hi - Math.min(r, g, b), sat * warm]); // (how bright, bright plus how colourful, and how strongly warm)
     }
     if (!px.length) continue;
     const med = px.map((p) => p[2]).sort((a, b) => a - b)[px.length >> 1];
-    for (const [i, hi, k] of px) {
-      const m = mode === 'all' ? ss(0.55, 0.85, hi) : ss(med + 0.2, med + 0.5, k) * ss(0.4, 0.7, hi);
-      out.data[i] = Math.round(m * 255); out.data[i + 3] = 255;
+    for (const [i, hi, k, fire] of px) {
+      // ('fire', v45: a lit oven's or smelter's fire: its strongly coloured warm pixels, flame and embers, not the
+      // bricks or stone round it, which are duller)
+      const m = mode === 'all' ? ss(0.55, 0.85, hi)
+        : mode === 'fire' ? ss(0.72, 0.86, fire) * ss(0.4, 0.65, hi)
+        : ss(med + 0.2, med + 0.5, k) * ss(0.4, 0.7, hi);
+      out.data[i] = Math.round(m * 255); out.data[i + 1] = mode === 'fire' ? out.data[i] : 0; out.data[i + 3] = 255; // (green: glow extra bright, so embers bloom too)
     }
   }
   c.getContext('2d').putImageData(out, 0, 0);
