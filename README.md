@@ -64,6 +64,7 @@ turn any off again if the game gets slow (☰ → Performance info shows the fra
   blocks of you (and from you, in first person too). They lengthen towards evening, fade under clouds and go at night. (Torch and lamp light
   doesn't need these: it spreads block by block, so it already stops at walls.) **Low** is for mid-range
   machines: a smaller shadow picture over about 32 blocks, harder edges, redrawn every other frame.
+  Sunlight through stained glass comes out coloured (see Building).
 - **Torch shadows** (a slider, off or 1 to 50): the nearest few torches, lanterns, lamps and other lights
   cast shadows of their own: pillars, furniture, machines and animals standing in the light throw sharp
   shadows across the floor and walls. Lights out in the daytime sun are skipped (the sun drowns them out),
@@ -1017,6 +1018,11 @@ panes** in any of the ten colours. Light rooms with an iron **lantern** (it hang
 a gold **chandelier**, or **glow lamps** (crystal shards, stained glass and a torch) that cast light in their
 own colour. Hang a **painting** on a wall: it picks the biggest of eight pictures that fits the space.
 
+Light that shines through **stained glass** (blocks or panes) takes on its colour. A torch behind red glass
+lights the room beyond it red, and a lamp boxed in blue glass gives blue light. With **Sun shadows** on,
+sunlight through a stained-glass window or roof throws patches of its colours across the floor and walls.
+The glass's leading (its dark edge) still casts a thin shadow.
+
 ### Building and decorating
 
 - **Sit** on a chair: tap it with an empty hand (or anything that isn't a block). Move or jump to stand up.
@@ -1798,7 +1804,9 @@ guide to how everything works.
 ## Version history
 
 - **Version 46**: **mirrors** (live reflections, joined across a wall of them; a **Live mirrors** switch in
-  ☰ → Graphics), **security cameras** and **monitors** (joined into big screens, each tuned to a camera).
+  ☰ → Graphics), **security cameras** and **monitors** (joined into big screens, each tuned to a camera);
+  light through **stained glass** takes on its colour (torch light always, sunlight with sun shadows on);
+  placing a gearbox or electric motor no longer turns it into a clutch or solar panel.
 - **Version 45**: gears mesh at corners (axles at right angles) and large gears mesh in pairs; a **Distance
   fog** switch in ☰ → Graphics; your own shadow in first person; in survival a short pause after each block
   breaks while you hold on, so you don't dig the one behind it by accident; closing a window with its key

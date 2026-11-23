@@ -64,6 +64,7 @@ export const gfxUniforms = {
   uSunDir: { value: new THREE.Vector3(0, 1, 0) },
   uSunStr: { value: 0 }, // 0..1: how much direct sun there is (sun height, clouds)
   uShadowMap: { value: null },
+  uGlassMap: { value: null }, uGlassOn: { value: 0 }, // (v46) the colour of the stained glass the sunlight comes through
   uShadowMat: { value: new THREE.Matrix4() },
   uShadowStr: { value: 0 },
   uShadowTexel: { value: 1 / 2048 },
@@ -128,6 +129,8 @@ uniform float uTime;
 uniform vec3 uSunDir;
 uniform float uSunStr;
 uniform sampler2D uShadowMap;
+uniform sampler2D uGlassMap;
+uniform float uGlassOn;
 uniform mat4 uShadowMat;
 uniform float uShadowStr;
 uniform float uShadowTexel;
@@ -176,6 +179,14 @@ float gfxShadow(vec3 n) {
     lit *= 0.25;
   }
   return mix(1.0, min(lit, facing), edge);
+}
+// (v46) sunlight that came through stained glass on its way here takes on the glass's colour: the glass picture
+// holds the colour of the nearest stained glass along each ray of sunlight, and how far along the ray it is
+vec3 gfxGlass(vec3 n) {
+  vec3 p = (uShadowMat * vec4(vWorldP + n * 0.06, 1.0)).xyz;
+  if (p.x <= 0.0 || p.y <= 0.0 || p.x >= 1.0 || p.y >= 1.0 || p.z >= 1.0) return vec3(1.0);
+  vec4 g = texture2D(uGlassMap, p.xy);
+  return p.z - 0.004 > g.a ? g.rgb : vec3(1.0);
 }
 // how much of one light reaches this spot: 1 = all, 0 = blocked (4 taps in its cube picture)
 float gfxTorchVis(float slot, vec3 L, float d, float reach, float bias) {
@@ -241,6 +252,8 @@ float gfxCaustic(vec3 wp) {
 export const GFX_SUN_TERM = `
 float sunT = uDay * vSky;
 if (uShadowStr > 0.0 && sunT > 0.0) sunT *= 1.0 - uShadowStr * (1.0 - gfxShadow(gfxNormal()));
+vec3 sunC = vec3(1.0);
+if (uGlassOn > 0.5 && sunT > 0.0) sunC = gfxGlass(gfxNormal());
 if (uCaustics > 0.0 && vWet > 0.5) sunT *= 1.0 + gfxCaustic(vWorldP) * (0.25 + 0.75 * uSunStr);
 vec3 torchT = vTorchC * uFlicker;
 if (uTorchCount > 0 && torchT.r + torchT.g + torchT.b > 0.03) torchT *= gfxTorchShadow(gfxNormal());
@@ -368,6 +381,9 @@ void main() {
   gl_Position = projectionMatrix * viewMatrix * wp;
 }`;
 const DIST_FRAG = `uniform vec4 uLight;
+uniform float uCols;
+uniform float uFirst;
+uniform float uCount;
 uniform sampler2D map;
 uniform float alphaTest;
 varying vec3 vWP;
@@ -375,6 +391,10 @@ varying vec2 vUv;
 void main() {
 #ifdef CUT_OUT
   if (texture2D(map, vUv).a < alphaTest) discard;
+#endif
+#ifdef GLASS
+  { vec2 t = vec2(vUv.x, 1.0 - vUv.y) * uCols; vec2 tc = floor(t); float tile = tc.x + tc.y * uCols; vec2 f = fract(t) * 16.0;
+    if (tile >= uFirst && tile < uFirst + uCount && f.x > 1.0 && f.x < 15.0 && f.y > 1.0 && f.y < 15.0) discard; } // (v46: stained glass colours torch light instead)
 #endif
   float d = length(vWP - uLight.xyz);
   if (d < 0.9) discard; // the light's own block (a torch's stick, a lantern's glass) casts nothing
@@ -441,10 +461,10 @@ export class Graphics {
   }
 
   distMat(m) {
-    const cut = !!(m?.map && m.alphaTest > 0);
+    const cut = !!(m?.map && m.alphaTest > 0), glass = !!m && m === this.glass?.material;
     return new THREE.ShaderMaterial({
-      vertexShader: DIST_VERT, fragmentShader: DIST_FRAG, side: THREE.DoubleSide, defines: cut ? { CUT_OUT: '' } : {},
-      uniforms: { uLight: this.lightU, map: { value: cut ? m.map : null }, alphaTest: { value: cut ? m.alphaTest : 0 } },
+      vertexShader: DIST_VERT, fragmentShader: DIST_FRAG, side: THREE.DoubleSide, defines: { ...(cut ? { CUT_OUT: '' } : {}), ...(glass ? { GLASS: '' } : {}) },
+      uniforms: { uLight: this.lightU, map: { value: cut ? m.map : null }, alphaTest: { value: cut ? m.alphaTest : 0 }, ...(glass ? this.glassUniforms() : {}) },
     });
   }
 
@@ -476,8 +496,9 @@ export class Graphics {
     U.uSway.value = o.sway ? 1 : 0;
     this.frame++;
     U.uShadowStr.value = 0;
+    U.uGlassOn.value = 0;
     if (o.shadows && sun > 0.01) {
-      try { this.renderShadows(scene, camera); U.uShadowStr.value = 0.5 * sun; } catch (err) { this.fail(err, 'shadows'); this.freeShadows(); }
+      try { this.renderShadows(scene, camera); U.uShadowStr.value = 0.5 * sun; U.uGlassOn.value = this.glassRT ? 1 : 0; } catch (err) { this.fail(err, 'shadows'); this.freeShadows(); }
     }
     U.uTorchCount.value = 0;
     if (o.torches > 0) {
@@ -544,11 +565,76 @@ export class Graphics {
     cam.quaternion.setFromRotationMatrix(rot);
     cam.updateMatrixWorld(true);
     gfxUniforms.uShadowMat.value.copy(this.bias).multiply(cam.projectionMatrix).multiply(cam.matrixWorldInverse);
-    this.withCasters(scene, this.depthMats, (m) => (m.map && m.alphaTest > 0 ? new THREE.MeshDepthMaterial({ map: m.map, alphaTest: m.alphaTest, side: THREE.DoubleSide }) : this.plainDepth), () => {
+    const glass = this.glass;
+    this.withCasters(scene, this.depthMats, (m) => (m === glass?.material ? this.glassDepth(m) : m.map && m.alphaTest > 0 ? new THREE.MeshDepthMaterial({ map: m.map, alphaTest: m.alphaTest, side: THREE.DoubleSide }) : this.plainDepth), () => {
       r.setRenderTarget(this.shadowRT);
       r.clear();
       r.render(scene, cam);
     });
+    if (glass) this.renderGlass(scene, cam, SHADOW_RES);
+  }
+
+  // ---------- (v46) stained glass ----------
+  // The game sets this.glass = { material, first, count, cols, colours }: the world's block material, and which
+  // atlas tiles are stained glass (first .. first + count - 1, in an atlas cols tiles wide) and the colour of each.
+  // A stained glass tile's coloured middle lets the sun through (coloured); its leading round the edge doesn't.
+  glassUniforms() {
+    const g = this.glass;
+    return { uCols: { value: g.cols }, uFirst: { value: g.first }, uCount: { value: g.count }, uCol: { value: g.colours } };
+  }
+
+  glassDepth(m) {
+    const mat = new THREE.MeshDepthMaterial({ map: m.map, alphaTest: m.alphaTest, side: THREE.DoubleSide });
+    const u = this.glassUniforms();
+    mat.onBeforeCompile = (shader) => {
+      Object.assign(shader.uniforms, u);
+      shader.fragmentShader = 'uniform float uCols;\nuniform float uFirst;\nuniform float uCount;\n' + shader.fragmentShader.replace('#include <alphatest_fragment>', `#include <alphatest_fragment>
+{ vec2 t = vec2(vMapUv.x, 1.0 - vMapUv.y) * uCols; vec2 tc = floor(t); float tile = tc.x + tc.y * uCols;
+  vec2 f = fract(t) * 16.0;
+  if (tile >= uFirst && tile < uFirst + uCount && f.x > 1.0 && f.x < 15.0 && f.y > 1.0 && f.y < 15.0) discard; }`);
+    };
+    mat.customProgramCacheKey = () => 'glass-depth';
+    return mat;
+  }
+
+  renderGlass(scene, cam, res) {
+    const r = this.renderer;
+    if (!this.glassRT || this.glassRT.width !== res) {
+      this.glassRT?.dispose();
+      const half = r.extensions.has('EXT_color_buffer_half_float') || r.extensions.has('EXT_color_buffer_float');
+      this.glassRT = new THREE.WebGLRenderTarget(res, res, { type: half ? THREE.HalfFloatType : THREE.UnsignedByteType, minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter, generateMipmaps: false });
+      gfxUniforms.uGlassMap.value = this.glassRT.texture;
+    }
+    if (!this.glassColourMat) {
+      this.glassColourMat = new THREE.ShaderMaterial({
+        uniforms: this.glassUniforms(), side: THREE.DoubleSide,
+        vertexShader: 'varying vec2 vUv;\nvoid main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+        fragmentShader: `uniform float uCols;
+uniform float uFirst;
+uniform float uCount;
+uniform vec3 uCol[${this.glass.count}];
+varying vec2 vUv;
+void main() {
+  vec2 t = vec2(vUv.x, 1.0 - vUv.y) * uCols; vec2 tc = floor(t);
+  float k = tc.x + tc.y * uCols - uFirst;
+  vec2 f = fract(t) * 16.0;
+  if (k < 0.0 || k >= uCount || f.x < 1.0 || f.x > 15.0 || f.y < 1.0 || f.y > 15.0) discard;
+  vec3 c = uCol[0];
+  for (int i = 1; i < ${this.glass.count}; i++) if (float(i) == floor(k)) c = uCol[i];
+  gl_FragColor = vec4(c, gl_FragCoord.z);
+}`,
+      });
+      this.glassNone = new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false, depthTest: false });
+    }
+    const glass = this.glass, cache = this.glassMats ??= new WeakMap();
+    const clear = r.getClearColor(new THREE.Color()), alpha = r.getClearAlpha();
+    this.withCasters(scene, cache, (m) => (m === glass.material ? this.glassColourMat : this.glassNone), () => {
+      r.setRenderTarget(this.glassRT);
+      r.setClearColor(0xffffff, 1);
+      r.clear();
+      r.render(scene, cam);
+    });
+    r.setClearColor(clear, alpha);
   }
 
   // Swap every solid thing's material for a shadow-picture one while draw() runs: chunk meshes, mobs,
@@ -720,6 +806,8 @@ export class Graphics {
   }
 
   freeShadows() {
+    this.glassRT?.dispose(); this.glassRT = null;
+    gfxUniforms.uGlassMap.value = null; gfxUniforms.uGlassOn.value = 0;
     if (!this.shadowRT) return;
     this.shadowRT.depthTexture.dispose();
     this.shadowRT.dispose();

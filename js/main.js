@@ -41,7 +41,7 @@ import {
 } from './blocks.js';
 import { Smoke } from './smoke.js';
 import { Fireworks } from './fireworks.js';
-import { createAtlas, createGlowMask, createIcons, createCrackCanvases, createWaterCanvas, createHudIcons, paintSeason } from './textures.js';
+import { createAtlas, createGlowMask, createIcons, createCrackCanvases, createWaterCanvas, createHudIcons, paintSeason, ATLAS_COLS } from './textures.js';
 import { World, CHUNK, WORLD_SIZE, chunkKey, skyBrightness, lightBrightness } from './world.js';
 import { localIndex, CHUNK_VOLUME, OLD_CHUNK_VOLUME, H, SEA_LEVEL, SNOW_LINE } from './terrain.js';
 import { ChunkStore, toBlocks } from './store.js';
@@ -190,7 +190,7 @@ function addTorchLight(mat, water = false) {
     shader.fragmentShader = 'uniform sampler2D uGlowMap;\nuniform float uDay;\nuniform float uFlicker;\nuniform float uAmbient;\nuniform vec4 uHand;\nvarying vec3 vTorchC;\nvarying float vSky;\nvarying vec3 vWorldP;\nvarying float vGlow;\n' + GFX_FRAG_HEAD + shader.fragmentShader
       .replace('#include <color_fragment>',
         '#include <color_fragment>\nvec3 baseC = diffuseColor.rgb;\nfloat hl = uHand.w * pow(clamp(1.0 - distance(vWorldP, uHand.xyz) / 13.0, 0.0, 1.0), 1.4);\n' + GFX_SUN_TERM +
-        'diffuseColor.rgb *= max(max(vec3(max(sunT, uAmbient)), torchT), vec3(hl, hl * 0.96, hl * 0.86));\n' +
+        'diffuseColor.rgb *= max(max(max(sunT * sunC, vec3(uAmbient)), torchT), vec3(hl, hl * 0.96, hl * 0.86));\n' +
         (water ? '' : 'if (vGlow > 0.5) { vec2 gm = texture2D(uGlowMap, vMapUv).rg; vec3 glowC = baseC / max(vColor.rgb, vec3(0.25)); diffuseColor.rgb = mix(diffuseColor.rgb, max(diffuseColor.rgb, glowC * (1.7 + 0.25 * uFlicker + gm.y * (1.6 + 0.6 * uFlicker))), gm.x); }\n') + (water ? GFX_WATER : ''));
   };
 }
@@ -209,6 +209,11 @@ addTorchLight(waterMat, true);
 const materials = { solid: material, water: waterMat };
 // optional fancy graphics: shadows, bloom, water (see graphics.js)
 const gfx = new Graphics(renderer, settings.gfx);
+// (v46) sunlight through stained glass takes on its colour (its leading still casts a shadow): see graphics.js
+gfx.glass = {
+  material, first: TILES.STAINED, count: COLORS.length, cols: ATLAS_COLS,
+  colours: COLORS.map((c) => { const v = new THREE.Color().setRGB(c.rgb[0] / 255, c.rgb[1] / 255, c.rgb[2] / 255, THREE.SRGBColorSpace); const m = Math.max(v.r, v.g, v.b); return new THREE.Vector3(v.r, v.g, v.b).multiplyScalar(1 / Math.max(m, 0.35)); }),
+};
 // torch shadows: the nearest lights (not lava, not ones out in the sun) within 16 blocks (24 for many lights)
 gfx.findLights = (n) => {
   if (!world || !player) return [];
@@ -8063,7 +8068,7 @@ apiculture.onYoung = (x, y, z, sp, mate, kids) => {
 import { CHOC_MOULD, CHOC_CAKE, CAKE_SLICES, MOULD_BARS, MELTED_CHOC, CHOC_BAR, MOULD_FILLS, mouldFill } from './blocks.js';
 import { FESTIVAL_FAVOURITES, contestScore, GUANO, BANDAGE, WHISKY, OLD_WHISKY } from './blocks.js';
 import { GLIDER, isWetId, KELP, RECORD_PLAYER, RECORD_MOODS, RECORD_NAMES, isRecordPlayer, ARMOUR_STAND, isStand } from './blocks.js';
-import { MIRROR, CAMERA, MONITOR, isCamera, isMonitor } from './blocks.js';
+import { MIRROR, CAMERA, MONITOR, isCamera, isMonitor, T as TILES } from './blocks.js';
 import { Screens } from './screens.js';
 import { TREE_TAP, LATEX, MAX_LATEX, POLYMER_BOAT, DEMO_CHARGE, DETONATOR, DEMO_RADIUS, DETONATOR_LINKS, DETONATOR_RANGE } from './blocks.js';
 // Tapping a tree tap takes the latex in it.

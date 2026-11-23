@@ -4,6 +4,7 @@ import * as THREE from 'three';
 import {
   BLOCKS, AIR, LEAVES, LOG, isLeaves, FRUIT_SAPLING, FRUITS, fruitLeaves, saplingLeaves, GLASS, DIRT, GRASS, WATER, MAX_LIGHT, SUGAR_CANE, MAX_CANE_HEIGHT,
   PUMPKIN, isWheat, WATER_FLOW, WATER_FALL, WATER_WHEEL, isWaterId, isFlowing, waterLevel, LAVA, OBSIDIAN, COBBLE, PIPE, PUMP, SPOUT, T, FLOWERS, isFlower, FACING_DIRS, isWetId,
+  COLORS, STAINED_GLASS, STAINED_PANE,
 } from './blocks.js';
 
 // Water wheels let water run through their cell (and over them); see waterAt().
@@ -100,6 +101,9 @@ function rayBoxes(o, d, x, y, z, boxes, maxDist) {
 const NEIGHBOURS = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]];
 const SIDES = [[1, 0], [-1, 0], [0, 1], [0, -1]];
 const passes = (id) => id === AIR || BLOCKS[id].transparent;
+// (v46) torch light shining through stained glass takes on its colour (an index into TINTS, like a glow lamp's)
+const GLASS_TINT = new Map();
+COLORS.forEach((c, i) => { GLASS_TINT.set(STAINED_GLASS + i, i + 1); GLASS_TINT.set(STAINED_PANE + i, i + 1); });
 
 class Chunk {
   constructor(cx, cz, data) {
@@ -827,7 +831,7 @@ export class World {
         const next = isSky ? skyStep(level, dy === -1, id) : level - 1;
         if (next > nc[channel][li]) {
           nc[channel][li] = next;
-          if (!isSky) nc.tint[li] = c.tint[localIndex(x, y, z)]; // coloured light stays its colour as it spreads
+          if (!isSky) nc.tint[li] = GLASS_TINT.get(id) ?? c.tint[localIndex(x, y, z)]; // coloured light stays its colour as it spreads (and stained glass colours it)
           this.markCellDirty(nx, nz);
           queue.push(pack(nx, ny, nz));
         }
