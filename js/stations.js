@@ -68,7 +68,7 @@ export const STATION_KINDS = {
     recipes: [
       // alloys first (stainless steel before plain steel, as it needs the same plus zinc).
       // Coal here is an ingredient, separate from whatever is burning in the fuel slot.
-      // (v45: steel, stainless steel and tungsten need the heat of a blast smelter, or hotter: `hot`)
+      // (v45: steel, stainless steel, tungsten and uranium need the heat of a blast smelter, or hotter: `hot`)
       { out: [STAINLESS_INGOT, 2], in: [[ZINC_INGOT, 1], [IRON_INGOT, 1], [COAL_OR_CHARCOAL, 1]], time: 8, hot: true },
       { out: [STEEL_INGOT, 1], in: [[IRON_INGOT, 1], [COAL_OR_CHARCOAL, 1]], time: 6, hot: true },
       { out: [BRONZE_INGOT, 4], in: [[COPPER_INGOT, 3], [TIN_INGOT, 1]], time: 6 },
@@ -76,11 +76,11 @@ export const STATION_KINDS = {
       { out: [ELECTRUM_INGOT, 2], in: [[SILVER_INGOT, 1], [GOLD_INGOT, 1]], time: 6 },
       { out: [CUPRONICKEL_INGOT, 4], in: [[COPPER_INGOT, 3], [NICKEL_INGOT, 1]], time: 6 },
       // ores into ingots
-      ...ORES.filter((o) => o.ingot).map((o) => ({ out: [o.ingot, 1], in: [[o.id, 1]], time: o.tier >= 5 ? 8 : 5, side: [[SLAG, 0.15]], hot: o.ingot === TUNGSTEN_INGOT })),
+      ...ORES.filter((o) => o.ingot).map((o) => ({ out: [o.ingot, 1], in: [[o.id, 1]], time: o.tier >= 5 ? 8 : 5, side: [[SLAG, 0.15]], hot: o.ingot === TUNGSTEN_INGOT || o.ingot === URANIUM_INGOT })),
       // crushed ore: each dust is a whole ingot, so crushing first doubles what an ore gives
-      ...ORES.filter((o) => o.ingot).map((o) => ({ out: [o.ingot, 1], in: [[oreDust(o.id), 1]], time: o.tier >= 5 ? 6 : 4, side: [[SLAG, 0.05]], hot: o.ingot === TUNGSTEN_INGOT })),
+      ...ORES.filter((o) => o.ingot).map((o) => ({ out: [o.ingot, 1], in: [[oreDust(o.id), 1]], time: o.tier >= 5 ? 6 : 4, side: [[SLAG, 0.05]], hot: o.ingot === TUNGSTEN_INGOT || o.ingot === URANIUM_INGOT })),
       // v28: dirty dust (straight from the crusher) smelts too, but four make only three ingots, and more slag
-      ...ORES.filter((o) => o.ingot).map((o) => ({ out: [o.ingot, 3], in: [[dirtyDust(o.id), 4]], time: o.tier >= 5 ? 18 : 12, side: [[SLAG, 0.4]], hot: o.ingot === TUNGSTEN_INGOT })),
+      ...ORES.filter((o) => o.ingot).map((o) => ({ out: [o.ingot, 3], in: [[dirtyDust(o.id), 4]], time: o.tier >= 5 ? 18 : 12, side: [[SLAG, 0.4]], hot: o.ingot === TUNGSTEN_INGOT || o.ingot === URANIUM_INGOT })),
       { out: [STONE, 1], in: [[COBBLE, 1]], time: 4 },
       { out: [GLASS, 2], in: [[FLINT_DUST, 1], [SAND, 1]], time: 4 }, // flint dust helps sand melt into twice the glass
       { out: [GLASS, 1], in: [[SAND, 1]], time: 4 },
@@ -131,7 +131,7 @@ STATION_KINDS.hammer = {
   ],
 };
 // The blast smelter: lined with fire bricks, it smelts everything the smelter does, twice as fast, and is hot
-// enough for steel, stainless steel and tungsten, which the plain smelter isn't (v45).
+// enough for steel, stainless steel, tungsten and uranium, which the plain smelter isn't (v45).
 const SMELT_ALL = STATION_KINDS.smelter.recipes;
 STATION_KINDS.smelter.recipes = SMELT_ALL.filter((r) => !r.hot);
 STATION_KINDS.blast = { ...STATION_KINDS.smelter, name: 'Blast Smelter', speed: 2, recipes: SMELT_ALL };
@@ -329,7 +329,7 @@ export class Stations {
     return null;
   }
 
-  // (v45) What a plain smelter holds the makings of but isn't hot enough for (steel, stainless steel, tungsten), or null.
+  // (v45) What a plain smelter holds the makings of but isn't hot enough for (steel, stainless steel, tungsten, uranium), or null.
   tooHotFor(st) {
     if (st.kind !== 'smelter') return null;
     return SMELT_ALL.find((r) => r.hot && r.in.every(([id, n]) => this.count(st, id) >= n)) ?? null;
