@@ -3,7 +3,7 @@ import { Viewmodel, Avatar, LOOKS, randomLook, gliderGroup, lightColour } from '
 import { Ripples } from './ripples.js';
 import { FarLand, FAR_REACH } from './farland.js';
 import { Net } from './net.js';
-import { Graphics, GFX_DEFAULTS, GFX_NAMES, GFX_TOGGLES, SHADOW_LEVELS, TRACED_LEVELS, GFX_PRESETS, PRESET_ORDER, PRESET_NAMES, MAX_TORCH_SHADOWS, gfxUniforms, GFX_FRAG_HEAD, GFX_SUN_TERM, GFX_WATER, GFX_VERT_HEAD, GFX_VERT_DECODE, GFX_VERT_SWAY, WATER_LAYER, LATE_LAYER } from './graphics.js';
+import { Graphics, GFX_DEFAULTS, GFX_NAMES, GFX_TOGGLES, SHADOW_LEVELS, TRACED_LEVELS, GODRAY_LEVELS, GFX_PRESETS, PRESET_ORDER, PRESET_NAMES, MAX_TORCH_SHADOWS, gfxUniforms, GFX_FRAG_HEAD, GFX_SUN_TERM, GFX_WATER, GFX_VERT_HEAD, GFX_VERT_DECODE, GFX_VERT_SWAY, WATER_LAYER, LATE_LAYER } from './graphics.js';
 import {
   BLOCKS, RECIPES, TABLE, AIR, WATER, TORCH, TORCH_WALL_W, WALL_TORCH_DIRS,
   GRASS, DIRT, SAND, CHURN, SUGAR_CANE, BREAD, ITEMS, BOW, ARROW, BUCKET,
@@ -114,6 +114,7 @@ const settings = (() => {
   s.gfx = { ...GFX_DEFAULTS, ...(s.gfx && typeof s.gfx === 'object' ? s.gfx : {}) };
   s.gfx.torches = Math.max(0, Math.min(MAX_TORCH_SHADOWS, s.gfx.torches | 0));
   s.gfx.traced = Math.max(0, Math.min(2, s.gfx.traced | 0));
+  s.gfx.godrays = Math.max(0, Math.min(2, s.gfx.godrays | 0)); // (v47: was on/off; on is classic)
   s.gfx.shafts = Math.max(0, Math.min(MAX_TORCH_SHADOWS, s.gfx.shafts | 0));
   s.gfx.torchRate = Math.max(1, Math.min(MAX_TORCH_SHADOWS, s.gfx.torchRate | 0 || 2));
   s.gfx.shadows = s.gfx.shadows === true ? 2 : Math.max(0, Math.min(2, s.gfx.shadows | 0)); // (v36 saved on/off)
@@ -216,6 +217,9 @@ function addTorchLight(mat, water = false) {
       // which way it faces and how much it glows; see renderPathTraced in graphics.js)
       .replace('#include <dithering_fragment>', '#include <dithering_fragment>\n' +
         'if (uPTPass > 0.5) { float ptE = vGlow > 0.5 ? texture2D(uGlowMap, vMapUv).r : 0.0;\n' +
+        // (v47: and how shiny it is, for path-traced reflections: metal, glassy, or a wet patch of open ground after rain)
+        (water ? '' : '  float ptS = texture2D(uGlowMap, vMapUv).b; vec3 ptN = gfxNormal(); gfxPTShine = ptS > 0.8 ? 2.0 : ptS > 0.3 ? 1.0 : 0.0;\n' +
+          '  if (gfxPTShine < 0.5 && uWet > 0.0 && ptN.y > 0.7 && vSky > 0.85 && uWet * (fract(sin(dot(floor(vWorldP.xz * 2.0), vec2(12.99, 78.23))) * 437.58) * 0.5 + 0.5 * sin(vWorldP.x * 0.7 + 1.3 * sin(vWorldP.z * 0.5))) > 0.45) gfxPTShine = 3.0;\n') +
         '  gl_FragColor = gfxPTOut(baseC / max(vColor.rgb, vec3(0.05)), vWorldP, gfxNormal(), ptE, 0.0); if (uPTPass < 1.5) gl_FragColor.a = diffuseColor.a; }');
   };
   mat.userData.ptWorld = true;
@@ -262,6 +266,32 @@ gfx.findLights = (n) => {
   found.sort((a, b) => a.d - b.d);
   return found.slice(0, n);
 };
+// (v47) path tracing's lights: every light within 32 blocks, in sun or not, and the open tops of lava as lights too,
+// gathered into patches 4 blocks across (a patch's light is as wide as the patch and stronger the more lava it holds)
+gfx.findPTLights = (n) => {
+  if (!world || !player) return [];
+  const px = Math.floor(player.pos.x), py = Math.floor(player.pos.y + 1), pz = Math.floor(player.pos.z);
+  const found = [], R = 32, V = 14, lava = new Map();
+  for (let y = py - V; y <= py + V; y++) for (let x = px - R; x <= px + R; x++) for (let z = pz - R; z <= pz + R; z++) {
+    const id = world.get(x, y, z);
+    if (id === AIR) continue;
+    const def = BLOCKS[id];
+    if (!def || !(def.light >= 6)) continue;
+    if (def.liquid) {
+      if (id !== LAVA || world.get(x, y + 1, z) === LAVA) continue;
+      const k = `${x >> 2},${y >> 2},${z >> 2}`, p = lava.get(k);
+      if (p) { p.x += x; p.y += y; p.z += z; p.n++; } else lava.set(k, { x, y, z, n: 1 });
+      continue;
+    }
+    found.push({ x: x + 0.5, y: y + 0.55, z: z + 0.5, r: def.light + 1, c: TINTS[def.tint] ?? TINTS[0], size: 0.3, d: (x - px) ** 2 + (y - py) ** 2 + (z - pz) ** 2 });
+  }
+  for (const p of lava.values()) {
+    const x = p.x / p.n + 0.5, y = p.y / p.n + 1.0, z = p.z / p.n + 0.5, k = Math.min(2.4, 0.9 + p.n / 8);
+    found.push({ x, y, z, r: 10 + Math.min(5, Math.sqrt(p.n) * 1.2), c: [1.0 * k, 0.42 * k, 0.12 * k], size: 3.5, d: (x - px) ** 2 + (y - py) ** 2 + (z - pz) ** 2 });
+  }
+  found.sort((a, b) => a.d - b.d);
+  return found.slice(0, n);
+};
 // water reflections: the height of the water surface around you (the most common nearby, weighted by
 // closeness), looked for twice a second
 let waterLookT = 0;
@@ -283,7 +313,7 @@ function findWaterLevel(dt) {
   for (const [y, v] of votes) if (v > most) { most = v; best = y; }
   gfx.waterY = best === null ? null : best + 0.875; // (the surface sits a little below the block top)
 }
-gfx.onFail = (key) => { goCustom(); settings.gfx[key] = key === 'torches' || key === 'shadows' || key === 'shafts' || key === 'traced' ? 0 : false; saveSettings(); updateGfxLabels(); toast(`${GFX_NAMES[key]} doesn't work on this device — turned off`, 4000); };
+gfx.onFail = (key) => { goCustom(); settings.gfx[key] = key === 'torches' || key === 'shadows' || key === 'shafts' || key === 'traced' || key === 'godrays' ? 0 : false; saveSettings(); updateGfxLabels(); toast(`${GFX_NAMES[key]} doesn't work on this device — turned off`, 4000); };
 
 const sky = new Sky(scene);
 const farLand = new FarLand(scene, null, lightUniforms.uDay); // (v41: the land past the loaded chunks)
@@ -5551,6 +5581,7 @@ function updateGfxLabels() {
   const g = settings.gfx;
   $('btn-gfx-shadows').textContent = `Sun shadows: ${SHADOW_LEVELS[g.shadows]}`;
   $('btn-gfx-traced').textContent = `Traced lighting: ${TRACED_LEVELS[g.traced]}`;
+  $('btn-gfx-godrays').textContent = `God rays: ${GODRAY_LEVELS[g.godrays | 0]}`;
   $('torch-shadows').value = g.torches;
   $('torch-shadows-label').textContent = `Torch shadows: ${g.torches ? `nearest ${g.torches}` : 'off'}`;
   $('torch-shafts').value = g.shafts;
@@ -5608,6 +5639,7 @@ $('torch-shadows').addEventListener('input', (e) => { goCustom(); settings.gfx.t
 $('torch-shafts').addEventListener('input', (e) => { goCustom(); settings.gfx.shafts = +e.target.value; gfx.set('shafts', settings.gfx.shafts); updateGfxLabels(); saveSettings(); });
 $('torch-rate').addEventListener('input', (e) => { goCustom(); settings.gfx.torchRate = +e.target.value; gfx.set('torchRate', settings.gfx.torchRate); updateGfxLabels(); saveSettings(); });
 $('btn-gfx-traced').addEventListener('click', () => { goCustom(); settings.gfx.traced = (settings.gfx.traced + 1) % 3; gfx.set('traced', settings.gfx.traced); updateGfxLabels(); saveSettings(); });
+$('btn-gfx-godrays').addEventListener('click', () => { goCustom(); settings.gfx.godrays = ((settings.gfx.godrays | 0) + 1) % 3; gfx.set('godrays', settings.gfx.godrays); updateGfxLabels(); saveSettings(); });
 $('btn-gfx-shadows').addEventListener('click', () => { goCustom(); settings.gfx.shadows = (settings.gfx.shadows + 1) % 3; gfx.set('shadows', settings.gfx.shadows); updateGfxLabels(); saveSettings(); });
 for (const key of GFX_TOGGLES) {
   $(`btn-gfx-${key}`)?.addEventListener('click', () => { if (key !== 'pathtrace') goCustom(); settings.gfx[key] = !settings.gfx[key]; gfx.set(key, settings.gfx[key]); updateGfxLabels(); saveSettings(); });
@@ -7848,7 +7880,7 @@ function frame(now) {
   } catch (err) { reportError(err); }
   try { world.update(player.pos.x, player.pos.z, scene, materials, 6, dt); } catch (err) { reportError(err); }
   farLand.update(player.pos, Math.floor(player.pos.x / CHUNK), Math.floor(player.pos.z / CHUNK), settings.viewDistance);
-  gfx.sunDir.copy(sky.sunDir); gfx.overcast = weather?.overcast ?? 0; gfx.underwater = !!player.eyeInWater;
+  gfx.sunDir.copy(sky.sunDir); gfx.clouds = sky.cloudInfo(); gfx.overcast = weather?.overcast ?? 0; gfx.underwater = !!player.eyeInWater;
   // (v46) the ground gets wet while it rains and dries off slowly after (it glints in the sun, see addTorchLight)
   const wetU = lightUniforms.uWet;
   wetU.value = Math.max(0, Math.min(1, wetU.value + dt * (weather?.raining && weather.kind === 'rain' ? 0.05 : -0.008)));
