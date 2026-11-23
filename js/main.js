@@ -4645,6 +4645,7 @@ function placeInner() {
 // A water wheel's axle is always level: on top of a block it points the way you're looking.
 function kineticVariant(id) {
   const k = BLOCKS[id].kinetic;
+  if (k.axis < 0) return id; // (a gearbox has no axle: every face is an axle end)
   let axis = target.nx ? 0 : target.ny ? 1 : 2;
   const other = BLOCKS[target.id].kinetic;
   // (not a gearbox or engine: those have no axle; sneak to keep the tapped face's axle, for a gear at a corner)
