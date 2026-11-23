@@ -78,7 +78,7 @@ turn any off again if the game gets slow (☰ → Performance info shows the fra
 - **Torch light shafts** (a slider, off or 1 to 50): the nearest few lights shine through the air around
   them, so you see their light hang in a dark room: beams fan out through iron bars, a doorway or a window,
   and pillars and furniture cut dark gaps through the glow. Each light takes its colour (a blue glow lamp
-  gives blue beams). They use the same shadow pictures as torch shadows (those are drawn for the shafts'
+  gives blue beams), and a light behind stained glass sends out beams in the glass's colours. They use the same shadow pictures as torch shadows (those are drawn for the shafts'
   lights even with torch shadows off), and show best at night and underground. High lights 2, Ultra 6.
 - **Traced lighting** (off / shadows and shade / full): the game keeps a 3D copy of the blocks within about
   64 blocks of you on the graphics card and follows light through it block by block. **Shadows and shade**
@@ -100,8 +100,9 @@ turn any off again if the game gets slow (☰ → Performance info shows the fra
   something changes and settles while you look. It takes over the whole picture: the other settings that change
   light (shadows, torch shadows and shafts, traced lighting, colour bleed, bloom, god rays, water effects) have
   no effect while it's on. It needs a strong graphics card. If the browser has no WebGPU, or it fails, it turns
-  itself off with a message. Not in any preset. Not yet traced: shadows of part blocks (slabs, stairs, fences,
-  plants, torches); light through glass and water.
+  itself off with a message. Not in any preset. Part blocks (slabs, stairs, fences, walls, panes, plants,
+  torches) cast shadows at their real shape; sunlight and torch light pass through glass (stained glass colours
+  it), through water (fading and turning blue-green the deeper it goes) and dappled through leaves.
 - **Distance fog** (on by default): the world fades into the sky towards the edge of what's loaded. Turn it
   off for a clear view all the way out (the edge of the world then shows). Under water it's always murky.
 - **Bloom**: bright things glow a little past their edges: lava, lamps, torch flames, the sky behind trees, sun
@@ -1852,11 +1853,12 @@ guide to how everything works.
   and on wet ground after rain; a **Colour bleed** switch in ☰ → Graphics;
   **blocks** of every metal (9 ingots each, and back);
   **Torch light shafts** (a slider in ☰ → Graphics: light hanging in the air around the nearest lights, cut into
-  beams by bars, doorways and pillars);
+  beams by bars, doorways and pillars, and coloured by stained glass they shine through);
   **Traced lighting** (exact block shadows from the sun, shade in corners, sky light and reflections, traced
   through a 3D copy of the blocks around you);
   **Path tracing (WebGPU)** (sun, sky, bounced light and the nearest lights all traced, with animals and you
-  traced at your real shape);
+  traced at your real shape, slabs, stairs and fences casting their true shadows, and light coming through glass,
+  stained glass and water);
   placing a gearbox or electric motor no longer turns it into a clutch or solar panel; a metal recipe
   (like the iron-banded chest) shows once you have that metal's plates, or everything it needs, not only its ingots.
 - **Version 45**: gears mesh at corners (axles at right angles) and large gears mesh in pairs; a **Distance

@@ -550,8 +550,10 @@ void main() {
 const SHAFT_FRAG = `uniform sampler2D tDepth; uniform mat4 uInvProj; uniform mat4 uCamWorld; uniform vec3 uCamPos;
 uniform vec4 uTorchL[${MAX_TORCH_SHADOWS}]; uniform vec3 uShaftC[${MAX_TORCH_SHADOWS}]; uniform int uShaftCount;
 uniform sampler2D uTorchMap; uniform vec2 uTorchTexel; uniform vec2 uTorchTile; uniform mat3 uFaceRot[6]; uniform float uFaceScale;
+uniform sampler2D uTorchGlass; uniform float uGlassOn;
 varying vec2 vUv;
-float vis(float slot, vec3 L, float d, float reach) {
+// how much of a light gets to p (L from the light to p, d its length): 0 in shadow, coloured past stained glass
+vec3 vis(float slot, vec3 L, float d, float reach) {
   vec3 a = abs(L);
   int f = a.x >= a.y && a.x >= a.z ? (L.x > 0.0 ? 0 : 1) : a.y >= a.z ? (L.y > 0.0 ? 2 : 3) : (L.z > 0.0 ? 4 : 5);
   vec3 p = uFaceRot[f] * L;
@@ -559,7 +561,10 @@ float vis(float slot, vec3 L, float d, float reach) {
   float row = floor(slot / ${TORCH_ROW}.0);
   vec2 lo = vec2((slot - row * ${TORCH_ROW}.0) * 6.0 + float(f), row) * uTorchTile;
   vec2 c = clamp(lo + uv * uTorchTile, lo + uTorchTexel, lo + uTorchTile - uTorchTexel);
-  return step((d - 0.05) / reach, texture2D(uTorchMap, c).r);
+  float v = step((d - 0.05) / reach, texture2D(uTorchMap, c).r);
+  if (uGlassOn < 0.5 || v == 0.0) return vec3(v);
+  vec4 g = texture2D(uTorchGlass, c); // (the nearest stained glass that way: its colour, and how far)
+  return d / reach > g.a + 0.02 ? g.rgb : vec3(1.0);
 }
 void main() {
   float z = texture2D(tDepth, vUv).r;
@@ -677,7 +682,7 @@ export class Graphics {
     this.shaftMat = pass(SHAFT_FRAG, {
       tDepth: { value: null }, uInvProj: { value: new THREE.Matrix4() }, uCamWorld: { value: new THREE.Matrix4() }, uCamPos: { value: new THREE.Vector3() },
       uTorchL: G.uTorchL, uShaftC: { value: this.shaftC }, uShaftCount: { value: 0 }, uTorchMap: G.uTorchMap, uTorchTexel: G.uTorchTexel,
-      uTorchTile: G.uTorchTile, uFaceRot: G.uFaceRot, uFaceScale: G.uFaceScale,
+      uTorchTile: G.uTorchTile, uFaceRot: G.uFaceRot, uFaceScale: G.uFaceScale, uTorchGlass: { value: null }, uGlassOn: { value: 0 },
     });
     this.shaftCount = 0;
     this.sunNow = 0;
@@ -1148,6 +1153,17 @@ void main() {
       const s = this.slots[(this.rr++) % this.slots.length];
       if (!todo.includes(s)) todo.push(s);
     }
+    // (v46) stained glass round a light that has a shaft: a second picture the same shape, holding the colour of
+    // the nearest stained glass each way and how far off it is, so beams come out of a window in its colours
+    const glassy = !!(this.glass && this.opts.shafts);
+    if (glassy && !this.torchGlassRT) {
+      const rt = this.torchRT;
+      this.torchGlassRT = new THREE.WebGLRenderTarget(rt.width, rt.height, { type: rt.texture.type, generateMipmaps: false, minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter });
+      for (const s of this.slots) s.ready = false;
+      todo.length = 0; todo.push(...this.slots);
+    }
+    this.shaftMat.uniforms.uTorchGlass.value = glassy ? this.torchGlassRT.texture : null;
+    this.shaftMat.uniforms.uGlassOn.value = glassy ? 1 : 0;
     if (todo.length) {
       const rt = this.torchRT, cam = this.faceCam, cc = new THREE.Color();
       r.getClearColor(cc);
@@ -1179,6 +1195,7 @@ void main() {
           r.setClearColor(cc, ca);
         }
       });
+      if (glassy) this.renderTorchGlass(scene, todo, T);
     }
     // hand the ready lights to the shaders, nearest first: the world shader shades with the nearest few (torch
     // shadows), the light shafts shine from the nearest few (shafts)
@@ -1196,8 +1213,63 @@ void main() {
     this.shaftCount = Math.min(c, this.opts.shafts);
   }
 
+  // each light's stained glass picture: only the glass is drawn (the nearest wins), the rest left clear (white, far)
+  renderTorchGlass(scene, todo, T) {
+    const r = this.renderer, rt = this.torchGlassRT, cam = this.faceCam, cc = new THREE.Color(), glass = this.glass;
+    if (!this.torchGlassMat) {
+      this.torchGlassMat = new THREE.ShaderMaterial({
+        uniforms: { ...this.glassUniforms(), uLight: this.lightU }, side: THREE.DoubleSide,
+        vertexShader: DIST_VERT,
+        fragmentShader: `uniform float uCols;
+uniform float uFirst;
+uniform float uCount;
+uniform vec3 uCol[${glass.count}];
+uniform vec4 uLight;
+varying vec3 vWP;
+varying vec2 vUv;
+void main() {
+  vec2 t = vec2(vUv.x, 1.0 - vUv.y) * uCols; vec2 tc = floor(t);
+  float k = tc.x + tc.y * uCols - uFirst;
+  if (k < 0.0 || k >= uCount) discard;
+  vec3 c = uCol[0];
+  for (int i = 1; i < ${glass.count}; i++) if (float(i) == floor(k)) c = uCol[i];
+  gl_FragColor = vec4(c, length(vWP - uLight.xyz) / uLight.w);
+}`,
+      });
+      this.torchGlassNone = new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false, depthTest: false });
+    }
+    r.getClearColor(cc);
+    const ca = r.getClearAlpha();
+    this.withCasters(scene, this.torchGlassMats ??= new WeakMap(), (m) => (m === glass.material ? this.torchGlassMat : this.torchGlassNone), () => {
+      rt.scissorTest = true;
+      try {
+        for (const s of todo) {
+          this.lightU.value.set(s.x, s.y, s.z, s.r);
+          cam.far = s.r + 1; cam.updateProjectionMatrix();
+          for (let f = 0; f < 6; f++) {
+            const [dx, dy, dz, ux, uy, uz] = FACES[f];
+            cam.position.set(s.x, s.y, s.z); cam.up.set(ux, uy, uz); cam.lookAt(s.x + dx, s.y + dy, s.z + dz);
+            cam.updateMatrixWorld(true);
+            rt.viewport.set(((s.row % TORCH_ROW) * 6 + f) * T, Math.floor(s.row / TORCH_ROW) * T, T, T);
+            rt.scissor.copy(rt.viewport);
+            r.setRenderTarget(rt);
+            r.setClearColor(0xffffff, 1);
+            r.clear();
+            r.render(scene, cam);
+          }
+        }
+      } finally {
+        rt.scissorTest = false;
+        rt.viewport.set(0, 0, rt.width, rt.height); rt.scissor.copy(rt.viewport);
+        r.setClearColor(cc, ca);
+      }
+    });
+  }
+
   freeTorches() {
     this.slots = [];
+    this.torchGlassRT?.dispose(); this.torchGlassRT = null;
+    if (this.shaftMat) this.shaftMat.uniforms.uTorchGlass.value = null;
     gfxUniforms.uTorchCount.value = 0;
     if (!this.torchRT) return;
     this.torchRT.dispose();
