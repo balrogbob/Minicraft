@@ -81,7 +81,7 @@ import { Logic } from './logic.js';
 
 // v2 = the 16k x 16k streaming world (player state here, edited chunks in IndexedDB).
 // v1 = the old 128 x 128 world, migrated into the middle of the big world on first launch.
-const GAME_VERSION = '45'; // shown in the menu; bump with each release
+const GAME_VERSION = '46'; // shown in the menu; bump with each release
 const SAVE_KEY = 'minicraft-save-v2';
 const LEGACY_SAVE_KEY = 'minicraft-save-v1';
 const SETTINGS_KEY = 'minicraft-settings-v1';
@@ -495,6 +495,8 @@ let riding = null; // the minecart you're sitting in
 const minimap = new MiniMap($('map'), atlasCanvas);
 const frames = new Frames(scene, icons); // what's shown in each item frame
 const paintings = new Paintings(scene); // the pictures in paintings
+const screens = new Screens(scene, renderer); // (v46) mirrors, and what security cameras see on monitors
+screens.links = frames; // (a monitor's camera is kept with the item frames)
 const weather = new Weather(scene);
 const smoke = new Smoke(scene); // chimney and locomotive smoke
 const fireworks = new Fireworks(scene);
@@ -3775,6 +3777,21 @@ function tickSwitches(dt) {
 
 // ---------- item frames ----------
 // Tap an empty frame holding something to put one in it; tap a full one to take it out.
+// (v46) tap a security camera to tilt it down a step (and back up after the lowest)
+function tiltCamera(x, y, z, id) {
+  const d = BLOCKS[id], tilt = (d.tilt + 1) % 3;
+  world.setBlock(x, y, z, CAMERA + (d.floor ? 12 : 0) + tilt * 4 + d.facing);
+  sound.click();
+  toast(['Camera looking straight ahead', 'Camera tilted down', 'Camera tilted well down'][tilt], 1200);
+}
+// ...and a monitor to watch the next camera (the nearest first), or switch it off after the last one
+function tuneMonitor(x, y, z) {
+  const on = screens.nextCamera(x, y, z);
+  sound.click();
+  if (!on) { toast(screens.cameras.size ? 'Monitor off' : 'No cameras nearby: put up a security camera first', 1800); return; }
+  const [cx, cy, cz] = on.at;
+  toast(`Camera ${on.index} of ${on.count} (${Math.round(Math.hypot(cx - x, cz - z))} blocks ${pointName(cx - x, cz - z)}${cy !== y ? `, ${Math.abs(cy - y)} ${cy > y ? 'up' : 'down'}` : ''})`, 2200);
+}
 function useFrame(x, y, z, held) {
   const item = frames.get(x, y, z);
   if (item) {
@@ -4220,6 +4237,8 @@ function placeInner() {
     if (BLOCKS[tid].logic && !(held && isBlock(held.id))) { useLogic(tx, ty, tz, BLOCKS[tid]); return; }
     if (BLOCKS[tid].switch === 'button') { setSwitch(tx, ty, tz, true); pressedButtons.set(lampKey(tx, ty, tz), 1.5); return; }
     if (isFrame(tid)) { useFrame(tx, ty, tz, held); return; }
+    if (isCamera(tid) && !(held && isBlock(held.id))) { tiltCamera(tx, ty, tz, tid); return; }
+    if (isMonitor(tid) && !(held && isBlock(held.id))) { tuneMonitor(tx, ty, tz); return; }
     if (isRecordPlayer(tid) && !(held && isBlock(held.id))) { useRecordPlayer(tx, ty, tz, tid); return; }
     if (isStand(tid) && !(held && isBlock(held.id) && !ITEMS[held.id]?.armour)) { useStand(tx, ty, tz); return; }
     if (isDisplay(tid) && target.ny === 1 && (frames.get(tx, ty, tz) || (held && !isBlock(held.id)))) { useDisplay(tx, ty, tz, held); return; }
@@ -4574,6 +4593,20 @@ function placeInner() {
     sound.place('wood');
     inventory.consumeHeld();
     if (isSign(id)) editSign(x, y, z);
+    return;
+  } else if (id === MIRROR || id === CAMERA || id === MONITOR) {
+    // (v46) a mirror hangs on the side of a block; a camera hangs on one or stands on top, looking the way you
+    // look; a monitor faces you
+    if (there !== AIR) return;
+    const side = FACING_DIRS.findIndex(([dx, dz]) => dx === target.nx && dz === target.nz);
+    if (id === MONITOR) id += facingTowardPlayer(x, z);
+    else if (id === CAMERA && target.ny === 1 && BLOCKS[target.id].solid) id += 12 + (facingTowardPlayer(x, z) + 2) % 4;
+    else if (target.ny !== 0 || !BLOCKS[target.id].solid) { toast(id === MIRROR ? 'Mirrors hang on the side of a block' : 'Cameras go on the side of a block or on top of one'); return; }
+    else id += side;
+    world.setBlock(x, y, z, id);
+    sound.place(BLOCKS[id].sound);
+    inventory.consumeHeld();
+    if (isMonitor(id)) toast('Tap the monitor to pick a camera to watch', 2500);
     return;
   } else if (id === LAMP || id === MIRROR_LAMP || isCarpet(id)) {
     if (there !== AIR || !world.isSolid(x, y - 1, z)) { toast(`${BLOCKS[id].name}s need something solid underneath`); return; }
@@ -5075,7 +5108,7 @@ function dropUnsupported(x, y, z) {
   FACING_DIRS.forEach(([dx, dz], f) => {
     const id = world.get(x + dx, y, z + dz), d = BLOCKS[id];
     if (id === ROPE_LADDER + f) { rollUpRope(x + dx, y, z + dz); return; }
-    const hung = id === LADDER + f || id === SIGN + f || id === ITEM_FRAME + f || (d?.switch && !d.floor && d.facing === f);
+    const hung = id === LADDER + f || id === SIGN + f || id === ITEM_FRAME + f || (d?.switch && !d.floor && d.facing === f) || (d?.hung === 'wall' && d.facing === f);
     if (hung) {
       world.setBlock(x + dx, y, z + dz, AIR);
       if (id === SIGN + f) signs.remove(x + dx, y, z + dz);
@@ -5091,6 +5124,7 @@ function dropUnsupported(x, y, z) {
     inventory.add(onTop.drop, 1);
     signalChanged(x, y + 1, z);
   }
+  if (BLOCKS[world.get(x, y + 1, z)]?.hung === 'floor') { const d = BLOCKS[world.get(x, y + 1, z)]; world.setBlock(x, y + 1, z, AIR); inventory.add(d.drop, 1); }
   if (BLOCKS[world.get(x, y + 1, z)]?.post) {
     world.setBlock(x, y + 1, z, AIR);
     signs.remove(x, y + 1, z);
@@ -5294,7 +5328,7 @@ const KV = {
   },
   frame: {
     entries: () => frames.items,
-    apply: (k, v) => { if ((Number.isInteger(v) && v > 0) || (typeof v === 'string' && v[0] === 'A' && v.length < 4000)) frames.items.set(k, v); else frames.items.delete(k); return frames.items.get(k); },
+    apply: (k, v) => { if ((Number.isInteger(v) && v > 0) || (typeof v === 'string' && (v[0] === 'A' || v[0] === 'M') && v.length < 4000)) frames.items.set(k, v); else frames.items.delete(k); return frames.items.get(k); },
   },
 };
 const kvKey = (v) => (v === undefined || v === null ? '' : JSON.stringify(v));
@@ -7772,9 +7806,18 @@ function frame(now) {
   farLand.update(player.pos, Math.floor(player.pos.x / CHUNK), Math.floor(player.pos.z / CHUNK), settings.viewDistance);
   gfx.sunDir.copy(sky.sunDir); gfx.overcast = weather?.overcast ?? 0; gfx.underwater = !!player.eyeInWater;
   try { findWaterLevel(dt); } catch (err) { reportError(err); }
+  try { renderScreens(); } catch (err) { reportError(err); }
   gfx.render(scene, camera);
   if (viewMode === 0 && !photoMode && !dead) viewmodel.render(renderer);
   updatePerf(now);
+}
+
+// (v46) the mirrors' pictures and a security camera's view, drawn before the main view. In first person your
+// body is hidden from you, but it's in the mirror (and on camera).
+function renderScreens() {
+  camera.updateMatrixWorld();
+  const body = !dead && !avatar.root.visible ? [avatar.root] : [];
+  screens.render(camera, { mirrors: !!gfx.opts.mirrors, show: body, hide: [highlight, crack], sky: scene.fog?.color, uniforms: gfxUniforms });
 }
 
 function updatePerf(now) {
@@ -7901,6 +7944,7 @@ function stepGame(now, dt) {
   } catch (err) { reportError(err); }
   frames.update(dt, world, { day: lightUniforms.uDay.value, flicker: lightUniforms.uFlicker.value, ambient: lightUniforms.uAmbient.value });
   paintings.update(dt, world, { day: lightUniforms.uDay.value, flicker: lightUniforms.uFlicker.value, ambient: lightUniforms.uAmbient.value });
+  screens.update(dt, world);
   signs.update(dt, world, { day: lightUniforms.uDay.value, flicker: lightUniforms.uFlicker.value, ambient: lightUniforms.uAmbient.value });
   coordsTimer -= dt;
   if (coordsTimer <= 0) {
@@ -7990,7 +8034,7 @@ window.minicraft = {
   arrows, fishing, kinetics, electric, lightUniforms, bees, catchAt, seasonOf, applySeason, set day(v) { day = v; applySeason(); }, frames, signalAt, setSwitch, logic, machines, carts, minimap, signs, armour, damage, placeRail, getInCart, getOutOfCart,
   get riding() { return riding; }, explode, lightFuse, fuses, clockTime, compassText, place, editSign, closeSign, openInventory, closeInventory, chestMove, lamps, tickLamps, sleepUntilMorning, stations, openStation, closeStation,
   get caneToday() { return caneToday; }, get creative() { return creative; }, set creative(v) { creative = v; applyCreative(); }, toggleFly, wand, useWand, get achieved() { return achieved; }, achieve, worldMap, openMap, closeMap, openGuide, switchSlot, store, saveGame, renderWorlds, openWorlds, exportSlot, get target() { return target; }, set target(v) { target = v; }, applyKeys, renderKeys, camera, get controls() { return controls; }, loose, throwHeld, get waypoints() { return waypoints; }, toggleWaypoint, sortSlots, quickStack, dropMeteor, get meteors() { return meteors; }, weather, openTrade, closeTrade, mountMob, dismount, get ridingMob() { return ridingMob; }, effects, armourWear, useAnvil, rollLoot, settings,
-  get bedSpawn() { return bedSpawn; }, fertilise, openJournal, closeJournal, get packs() { return packs; }, radiationAt, vehicles, boardVehicle, leaveVehicle, get boarded() { return boarded; }, get seated() { return seated; }, crows, onInvSlot, onStationSlot, quickMoveInv, quickMoveStation, usedIn, itemTipHTML, critters, tickPets, sealife, useRecordPlayer, recordNear, useStand, undoEdit, undoStack, get catGiftDay() { return catGiftDay; }, get villageGrowth() { return villageGrowth; }, notePlanting, tickPuzzles, airPumpNear, useStable, stableNear, horseLabel, logistics, openLogistics, closeLogistics, placeOrder, get lpOpen() { return lpOpen; }, music, musicMood, get guideDone() { return guideDone; }, get guideClaimed() { return guideClaimed; }, tickGuidebook, openGuidebook, closeGuidebook, claimGoal, goalMet, fineChance, fineHarvest, showProduce, foodContest, specialTrades, catchAt, stockStable, tickStables, mangers, openSaddlebags, honeyAt, apiculture, scoopHive, beeEnv, fitUpgrade, piles, lightCharcoalPile, tickPiles, searchChests, takeFromChest, markChest, get chestMark() { return chestMark; }, enterPhotoMode, exitPhotoMode, snapPhoto, get photoMode() { return photoMode; }, photoCam, get lastPhoto() { return lastPhoto; }, tickStalactites, loosenStalactite, fallingRocks, shaking, workLock, findLock, tickLocks, openGates, lockJobs, hangRopeLadder, layBridge, rollUpRope, fireworks, ringBell, requestFor, festivalToday, repOf, addRep, tradeCost, tickFestival, villageEntry, hearths, tickHearths, feedHearth, chimneyTop, smoke, renderPins, togglePin, lightning, igniteAt, fires, tickFires, tickStorm, growVillage, buildVillageHouse, stallPrice, tickStalls, tickVillages, set catGiftDay(v) { catGiftDay = v; }, get places() { return places; }, get treasures() { return treasures; }, readTreasureMap, tickTreasure, beams, tickBeams, beaconSpots: () => beaconSpots, mistNow, tickSnow, tickExplore, sitOn, standUp, useDisplay, zips, linkZip, startZip, get zipping() { return zipping; }, burnCoal, get health() { return health; }, set health(v) { health = v; }, paintings, placeSwitchRail, signalAt, ailments, armourEnch, openAltar, lairNear, useBed, eat, drinkTea,
+  get bedSpawn() { return bedSpawn; }, fertilise, openJournal, closeJournal, get packs() { return packs; }, radiationAt, vehicles, boardVehicle, leaveVehicle, get boarded() { return boarded; }, get seated() { return seated; }, crows, onInvSlot, onStationSlot, quickMoveInv, quickMoveStation, usedIn, itemTipHTML, critters, tickPets, sealife, useRecordPlayer, recordNear, useStand, undoEdit, undoStack, get catGiftDay() { return catGiftDay; }, get villageGrowth() { return villageGrowth; }, notePlanting, tickPuzzles, airPumpNear, useStable, stableNear, horseLabel, logistics, openLogistics, closeLogistics, placeOrder, get lpOpen() { return lpOpen; }, music, musicMood, get guideDone() { return guideDone; }, get guideClaimed() { return guideClaimed; }, tickGuidebook, openGuidebook, closeGuidebook, claimGoal, goalMet, fineChance, fineHarvest, showProduce, foodContest, specialTrades, catchAt, stockStable, tickStables, mangers, openSaddlebags, honeyAt, apiculture, scoopHive, beeEnv, fitUpgrade, piles, lightCharcoalPile, tickPiles, searchChests, takeFromChest, markChest, get chestMark() { return chestMark; }, enterPhotoMode, exitPhotoMode, snapPhoto, get photoMode() { return photoMode; }, photoCam, get lastPhoto() { return lastPhoto; }, tickStalactites, loosenStalactite, fallingRocks, shaking, workLock, findLock, tickLocks, openGates, lockJobs, hangRopeLadder, layBridge, rollUpRope, fireworks, ringBell, requestFor, festivalToday, repOf, addRep, tradeCost, tickFestival, villageEntry, hearths, tickHearths, feedHearth, chimneyTop, smoke, renderPins, togglePin, lightning, igniteAt, fires, tickFires, tickStorm, growVillage, buildVillageHouse, stallPrice, tickStalls, tickVillages, set catGiftDay(v) { catGiftDay = v; }, get places() { return places; }, get treasures() { return treasures; }, readTreasureMap, tickTreasure, beams, tickBeams, beaconSpots: () => beaconSpots, mistNow, tickSnow, tickExplore, sitOn, standUp, useDisplay, zips, linkZip, startZip, get zipping() { return zipping; }, burnCoal, get health() { return health; }, set health(v) { health = v; }, paintings, screens, tuneMonitor, tiltCamera, placeSwitchRail, signalAt, ailments, armourEnch, openAltar, lairNear, useBed, eat, drinkTea,
 };
 
 // ---------- v31: catching bees ----------
@@ -8018,6 +8062,8 @@ apiculture.onYoung = (x, y, z, sp, mate, kids) => {
 import { CHOC_MOULD, CHOC_CAKE, CAKE_SLICES, MOULD_BARS, MELTED_CHOC, CHOC_BAR, MOULD_FILLS, mouldFill } from './blocks.js';
 import { FESTIVAL_FAVOURITES, contestScore, GUANO, BANDAGE, WHISKY, OLD_WHISKY } from './blocks.js';
 import { GLIDER, isWetId, KELP, RECORD_PLAYER, RECORD_MOODS, RECORD_NAMES, isRecordPlayer, ARMOUR_STAND, isStand } from './blocks.js';
+import { MIRROR, CAMERA, MONITOR, isCamera, isMonitor } from './blocks.js';
+import { Screens } from './screens.js';
 import { TREE_TAP, LATEX, MAX_LATEX, POLYMER_BOAT, DEMO_CHARGE, DETONATOR, DEMO_RADIUS, DETONATOR_LINKS, DETONATOR_RANGE } from './blocks.js';
 // Tapping a tree tap takes the latex in it.
 function useTap(x, y, z, tid) {

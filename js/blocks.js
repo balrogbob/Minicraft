@@ -259,6 +259,9 @@ function block(id, o) {
     wireTex: o.wireTex ?? null, // v32: [off, on] tiles for a wire that isn't electrum
     bounce: o.bounce ?? 0, // v32: how high a bounce pad throws you (blocks/s), 0 for none
     record: o.record ?? -1, wet: !!o.wet, // v44: a record player's record (0: none); a sea plant that stands in water
+    screen: o.screen ?? null, // v46: 'mirror' | 'camera' | 'monitor' (see screens.js)
+    hung: o.hung ?? null, // v46: 'wall': falls off when the block behind it goes; 'floor': ...the block under it
+    tilt: o.tilt ?? 0, // v46: how far a camera looks down (0..2)
   };
 }
 
@@ -3463,4 +3466,54 @@ ITEMS[ARMOUR_STAND] = { name: 'Armour Stand', about: 'tap it to swap your armour
 RECIPES.push(
   { out: [RECORD_PLAYER, 1], in: [[PLANKS, 4], [IRON_INGOT, 1], [COPPER_INGOT, 1]], table: true },
   { out: [ARMOUR_STAND, 1], in: [[STICK, 6], [PLANKS, 2]], table: true },
+);
+
+// ---------- v46: mirrors, security cameras and monitors (see screens.js) ----------
+// A mirror hangs flat on the side of a block; mirrors side by side join into one big mirror. A camera hangs on
+// a wall or stands on a block, looking out the way it faces (tap it to tilt it down); a monitor shows what a
+// camera sees (tap it to pick the next camera), and monitors side by side join into one big screen.
+export const MIRROR = 1553, // 1553..1556: + facing (out of the wall)
+  CAMERA = 1557, // 1557..1580: + mount * 12 (0 on a wall, 1 standing on a block) + tilt * 4 + facing
+  MONITOR = 1581; // 1581..1584: + facing (the way the screen faces)
+export const isMirror = (id) => id >= MIRROR && id < MIRROR + 4;
+export const isCamera = (id) => id >= CAMERA && id < CAMERA + 24;
+export const isMonitor = (id) => id >= MONITOR && id < MONITOR + 4;
+Object.assign(T, { MIRROR_BACK: 489, CAMERA_BODY: 490, CAMERA_LENS: 491, MONITOR_SIDE: 492, MONITOR_SCREEN: 493 });
+for (let f = 0; f < 4; f++) {
+  block(MIRROR + f, {
+    name: 'Mirror', sound: 'glass', hardness: 0.4, transparent: true, solid: false, facing: f, screen: 'mirror', hung: 'wall',
+    model: rotateModel([[0, 0, 0, 16, 16, 1, T.MIRROR_BACK]], f), variantOf: f ? MIRROR : 0, drop: MIRROR,
+  });
+}
+// cameras, drawn looking toward +z (facing 0); a tilted one's lens sits lower, under a deeper hood
+const cameraModel = (stand, tilt) => {
+  const y0 = stand ? 5 : 6, lensY = y0 + 1.5 - tilt * 1.2;
+  return [
+    ...(stand ? [[6, 0, 6, 10, 1, 10, T.IRON], [7.5, 1, 7.5, 8.5, y0, 8.5, T.IRON]] : [[7, 8, 0, 9, 10, 4, T.IRON]]),
+    [5, y0, stand ? 4 : 3, 11, y0 + 5, stand ? 12 : 11, T.CAMERA_BODY],
+    [6.5, lensY, stand ? 12 : 11, 9.5, lensY + 2.5, stand ? 13 : 12, T.CAMERA_LENS],
+    [5, y0 + 5, stand ? 6 : 5, 11, y0 + 5.6, stand ? 13 + tilt * 0.5 : 12 + tilt * 0.5, T.CAMERA_BODY], // (the hood)
+  ];
+};
+for (let k = 0; k < 24; k++) {
+  const f = k & 3, tilt = (k >> 2) % 3, stand = k >= 12;
+  block(CAMERA + k, {
+    name: 'Security Camera', sound: 'stone', hardness: 0.6, tool: 'pick', transparent: true, solid: false, facing: f, tilt,
+    screen: 'camera', hung: stand ? 'floor' : 'wall', floor: stand,
+    model: rotateModel(cameraModel(stand, tilt), f), variantOf: k ? CAMERA : 0, drop: CAMERA,
+  });
+}
+for (let f = 0; f < 4; f++) {
+  block(MONITOR + f, {
+    name: 'Monitor', sound: 'stone', hardness: 1, tool: 'pick', side: T.MONITOR_SIDE, top: T.MONITOR_SIDE, bottom: T.MONITOR_SIDE,
+    front: T.MONITOR_SCREEN, facing: f, screen: 'monitor', variantOf: f ? MONITOR : 0, drop: MONITOR,
+  });
+}
+ITEMS[MIRROR] = { name: 'Mirror', about: 'hang it on a wall; mirrors side by side join into one' };
+ITEMS[CAMERA] = { name: 'Security Camera', about: 'put it on a wall or on top of a block, facing what to watch; tap it to tilt it down' };
+ITEMS[MONITOR] = { name: 'Monitor', about: 'shows what a camera sees: tap it to pick the next camera. Monitors side by side join into one big screen' };
+RECIPES.push(
+  { out: [MIRROR, 2], in: [[GLASS, 2], [SILVER_INGOT, 1]], table: true, metal: SILVER_INGOT },
+  { out: [CAMERA, 1], in: [[IRON_INGOT, 2], [GLASS, 1], [COPPER_INGOT, 1]], table: true, metal: IRON_INGOT },
+  { out: [MONITOR, 1], in: [[IRON_INGOT, 2], [GLASS, 2], [COPPER_INGOT, 1]], table: true, metal: IRON_INGOT },
 );

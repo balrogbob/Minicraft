@@ -11,20 +11,21 @@
 //   sway       - leaves and plants move in the wind
 //   reflections - water mirrors the world above it (the scene drawn again, upside down)
 //   ripple     - the view wobbles while your head is under water
+//   mirrors    - (v46) mirror blocks show the world live (the scene drawn again from your eye's mirror image)
 // Torch light itself is flood-filled block by block, so it never shines through walls; torch shadows
 // only add the sharper shadows of things standing in the light (pillars, mobs, machines, furniture).
 import * as THREE from 'three';
 
 export const GFX_DEFAULTS = {
   shadows: 0, torches: 0, torchRate: 2, bloom: false, water: false, reflections: false, refraction: false, caustics: false,
-  godrays: false, sway: false, ripple: false, torchDay: false,
+  godrays: false, sway: false, ripple: false, torchDay: false, mirrors: false,
 };
 export const MAX_TORCH_SHADOWS = 50;
-export const GFX_TOGGLES = ['torchDay', 'bloom', 'godrays', 'sway', 'water', 'reflections', 'refraction', 'caustics', 'ripple'];
+export const GFX_TOGGLES = ['torchDay', 'bloom', 'godrays', 'sway', 'water', 'reflections', 'mirrors', 'refraction', 'caustics', 'ripple'];
 export const GFX_NAMES = {
   shadows: 'Sun shadows', torches: 'Torch shadows', bloom: 'Bloom', water: 'Fancy water', refraction: 'Water refraction', caustics: 'Water caustics',
   godrays: 'God rays', sway: 'Swaying leaves and plants', reflections: 'Water reflections', ripple: 'Underwater ripple',
-  torchDay: 'Torch shadows by day',
+  torchDay: 'Torch shadows by day', mirrors: 'Live mirrors',
 };
 export const SHADOW_LEVELS = ['off', 'low', 'high'];
 // v38: quick presets for the fancy graphics. 'auto' starts at medium and steps up or down to keep the game
@@ -32,9 +33,9 @@ export const SHADOW_LEVELS = ['off', 'low', 'high'];
 export const GFX_PRESETS = {
   off: { ...GFX_DEFAULTS },
   low: { ...GFX_DEFAULTS, water: true, sway: true, ripple: true },
-  medium: { ...GFX_DEFAULTS, shadows: 1, torches: 3, torchRate: 1, bloom: true, water: true, caustics: true, sway: true, ripple: true },
-  high: { shadows: 2, torches: 8, torchRate: 2, bloom: true, water: true, reflections: true, refraction: true, caustics: true, godrays: true, sway: true, ripple: true },
-  ultra: { shadows: 2, torches: 24, torchRate: 6, bloom: true, water: true, reflections: true, refraction: true, caustics: true, godrays: true, sway: true, ripple: true },
+  medium: { ...GFX_DEFAULTS, shadows: 1, torches: 3, torchRate: 1, bloom: true, water: true, caustics: true, sway: true, ripple: true, mirrors: true },
+  high: { shadows: 2, torches: 8, torchRate: 2, bloom: true, water: true, reflections: true, refraction: true, caustics: true, godrays: true, sway: true, ripple: true, mirrors: true },
+  ultra: { shadows: 2, torches: 24, torchRate: 6, bloom: true, water: true, reflections: true, refraction: true, caustics: true, godrays: true, sway: true, ripple: true, mirrors: true },
 };
 export const PRESET_ORDER = ['off', 'low', 'medium', 'high', 'ultra'];
 export const PRESET_NAMES = { off: 'Off', low: 'Low', medium: 'Medium', high: 'High', ultra: 'Ultra', auto: 'Auto', custom: 'Custom' };

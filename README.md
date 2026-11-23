@@ -89,6 +89,9 @@ drift across the sky, warm at sunrise and sunset, dim at night and grey when the
   glints of sunlight.
 - **Water reflections**: the water mirrors the hills, trees and buildings above it (the world is drawn a
   second time, upside down, at half size). Works on the water around you at the height most of it is.
+- **Live mirrors**: mirror blocks show the world in front of them. Each flat wall of mirrors costs one more
+  drawing of the world, at a quarter of the screen's pixels, and only the two nearest walls of mirrors in
+  view are drawn. On from Medium up.
 - **Water refraction**: you see the bottom through the water, bent by the waves.
 - **Water caustics**: rippling lines of light on blocks under sunlit water.
 - **Underwater ripple**: the view wobbles gently while your head is under water.
@@ -96,7 +99,7 @@ drift across the sky, warm at sunrise and sunset, dim at night and grey when the
 If an effect doesn't work on your device it is switched off by itself, with a message.
 
 **Graphics preset** at the top sets them all at once: **Off**, **Low** (water and swaying only), **Medium**
-(low-cost sun shadows, 3 torch shadows, bloom, caustics), **High** (everything, 8 torch shadows) or **Ultra**
+(low-cost sun shadows, 3 torch shadows, bloom, caustics, live mirrors), **High** (everything, 8 torch shadows) or **Ultra**
 (24 torch shadows, more redrawn each frame). **Auto** starts at Medium and steps down a level when the game
 drops below 40 frames a second, or up when it stays smooth (and won't climb back to a level that was too
 slow). Changing any one effect yourself makes it **Custom**.
@@ -941,6 +944,22 @@ An **armour stand** faces you when you place it and needs room above it. Tap it 
 your shield) with what it holds: hang a set up, put on another, and swap back whenever you like. Wear and
 enchantments stay with each piece. Break the stand and its armour drops.
 
+A **mirror** (2 glass and a silver ingot make 2) hangs flat on the side of a block. Mirrors hung side by side in
+the same wall join into one big mirror. With **Live mirrors** on (☰ → Graphics) a mirror shows the world in
+front of it, you included (in first person too). With it off, a mirror shows a plain silvery sheen.
+
+A **security camera** (2 iron ingots, glass and a copper ingot) hangs on the side of a block or stands on top of
+one. On a wall it looks straight out; standing on a block, it looks the way you were looking when you put it
+down. Tap it to tilt it down a step (straight ahead, down, well down, then back).
+
+A **monitor** (2 iron ingots, 2 glass and a copper ingot) is a full block whose screen faces you. Tap it to
+watch the nearest camera; tap again for the next nearest, and so on, then off after the last. A toast says
+which camera it's on and how far away. Monitors side by side or stacked in the same wall join into one big
+screen showing one wide picture, so a wall of them makes a control room for a whole factory. Any monitor in
+the screen tunes all of it. A camera that's broken, or too far away to be loaded, shows **NO SIGNAL**.
+Cameras need no power. Screens you can see are redrawn in turn, one each frame, at a low resolution. In
+multiplayer everyone sees what each monitor is tuned to.
+
 ### Storage, ladders and signs
 
 | Make | Recipe (crafting table) |
@@ -1778,6 +1797,8 @@ guide to how everything works.
 
 ## Version history
 
+- **Version 46**: **mirrors** (live reflections, joined across a wall of them; a **Live mirrors** switch in
+  ☰ → Graphics), **security cameras** and **monitors** (joined into big screens, each tuned to a camera).
 - **Version 45**: gears mesh at corners (axles at right angles) and large gears mesh in pairs; a **Distance
   fog** switch in ☰ → Graphics; your own shadow in first person; in survival a short pause after each block
   breaks while you hold on, so you don't dig the one behind it by accident; closing a window with its key

@@ -3594,3 +3594,27 @@ P[T.RECORD] = (t) => { // a black disc with grooves and a red label
   }
 };
 P[T.TURNTABLE] = (t) => { t.fill([70, 70, 76], 0.08); for (let y = 6; y < 10; y++) for (let x = 6; x < 10; x++) t.set(x, y, [150, 150, 160]); };
+
+// ---------- v46: mirrors, security cameras and monitors ----------
+P[T.MIRROR_BACK] = (t) => { // the silvered glass (the mirror's picture is drawn over it by screens.js)
+  for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+    const streak = ((x + y) % 7 === 0 || (x + y) % 7 === 1) && x > 1 && y > 1 && x < 14 && y < 14;
+    t.set(x, y, t.vary(streak ? [220, 228, 236] : [168, 182, 196], 0.03));
+  }
+};
+P[T.CAMERA_BODY] = (t) => { t.fill([206, 208, 204], 0.04); for (let x = 0; x < TILE; x++) { t.set(x, 0, [150, 152, 150]); t.set(x, 15, [150, 152, 150]); } };
+P[T.CAMERA_LENS] = (t) => {
+  for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+    const d = Math.hypot(x - 7.5, y - 7.5);
+    t.set(x, y, d < 2 ? [60, 90, 140] : d < 5.5 ? [16, 18, 24] : [40, 42, 46]);
+  }
+  t.set(6, 6, [200, 220, 255]);
+};
+P[T.MONITOR_SIDE] = (t) => { t.fill([52, 54, 60], 0.05); for (let y = 2; y < 14; y += 3) for (let x = 4; x < 12; x++) t.set(x, y, [36, 38, 42]); };
+P[T.MONITOR_SCREEN] = (t) => { // a dark screen in a thin bezel (screens.js draws the picture over it)
+  for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+    const edge = x === 0 || y === 0 || x === 15 || y === 15;
+    t.set(x, y, edge ? [52, 54, 60] : t.vary([14, 20, 26], 0.04));
+  }
+  t.set(13, 14, [60, 200, 90]); // (the power light)
+};

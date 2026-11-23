@@ -3,7 +3,7 @@
 // What each frame holds is kept here by position (and saved with the world); the item is drawn as a
 // flat picture in the frame, lit like the blocks around it.
 import * as THREE from 'three';
-import { BLOCKS, ITEMS, FACING_DIRS, isFrame, SHELF, FURN_TABLE, isStand } from './blocks.js';
+import { BLOCKS, ITEMS, FACING_DIRS, isFrame, SHELF, FURN_TABLE, isStand, isMonitor } from './blocks.js';
 
 // Shelves and tables show one thing standing on top of them.
 export const isDisplay = (id) => id === SHELF || id === FURN_TABLE;
@@ -61,7 +61,8 @@ export class Frames {
         const [x, y, z] = k.split(',').map(Number);
         if (!world.chunkAt(x, z)) continue;
         const id = world.get(x, y, z);
-        if (!isFrame(id) && !isDisplay(id) && !isStand(id)) { this.items.delete(k); continue; }
+        if (!isFrame(id) && !isDisplay(id) && !isStand(id) && !isMonitor(id)) { this.items.delete(k); continue; }
+        if (isMonitor(id)) continue; // (v46: a monitor's camera: 'M' + where it is; see screens.js)
         if (isStand(id) !== (typeof item === 'string')) continue; // (not yet in step)
         this.panels.set(k, this.make(x, y, z, id, item));
       }
@@ -145,6 +146,6 @@ export class Frames {
 
   load(list) {
     this.clear();
-    for (const [k, id] of list ?? []) if (typeof k === 'string' && ((Number.isInteger(id) && id > 0) || (typeof id === 'string' && id[0] === 'A'))) this.items.set(k, id);
+    for (const [k, id] of list ?? []) if (typeof k === 'string' && ((Number.isInteger(id) && id > 0) || (typeof id === 'string' && (id[0] === 'A' || id[0] === 'M')))) this.items.set(k, id);
   }
 }
