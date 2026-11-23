@@ -4603,7 +4603,8 @@ function kineticVariant(id) {
   const k = BLOCKS[id].kinetic;
   let axis = target.nx ? 0 : target.ny ? 1 : 2;
   const other = BLOCKS[target.id].kinetic;
-  if (other && other.axis !== axis) axis = other.axis;
+  // (not a gearbox or engine: those have no axle; sneak to keep the tapped face's axle, for a gear at a corner)
+  if (other && other.axis >= 0 && other.axis !== axis && !controls.down) axis = other.axis;
   if (k.part === 'wheel' || k.part === 'windmill') {
     if (axis === 1) { const look = player.lookDir(); axis = Math.abs(look.x) > Math.abs(look.z) ? 0 : 2; }
     return (k.part === 'wheel' ? WATER_WHEEL : WINDMILL) + (axis === 2 ? 1 : 0);

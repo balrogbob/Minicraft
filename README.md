@@ -1057,13 +1057,18 @@ drains away. Water at or below sea level just fills the hole, as before.
 | Rock crusher | 3 bronze ingots + 4 cobblestone + 1 wooden large gear + 1 wooden small gear |
 
 **Placing.** A part's axle points out of the face you tap. Tap the side of another part and the new one
-lines up with it instead, so gears sit side by side. A water wheel's axle is always level.
+lines up with it instead, so gears sit side by side; sneak while placing to keep the tapped face's axle
+(for a gear at a corner). A water wheel's axle is always level.
 
 **How they connect:**
 - Shafts, gears and wheels join end to end along their axles.
 - Two small gears side by side (on parallel axles) mesh, at the same speed.
 - A large gear meshes with a small gear set **one block diagonally** from it across the axle. The small
   gear turns **twice as fast** as the large one; drive the small one and the large one turns at half speed.
+- **Corners:** two small gears side by side with their axles at right angles mesh too, at the same speed,
+  so rotation can turn a corner without a gearbox.
+- Two large gears on parallel axles mesh with **one empty block** between them, at the same speed.
+- Gears that only touch end to end (axle to axle) don't mesh. Look at a lone gear to see these rules.
 - A shaft, gear or wheel whose axle points into a face of the rock crusher drives it.
 
 **Power.** A water wheel turns at 1x while flowing (not still) water touches it above, below or at the
