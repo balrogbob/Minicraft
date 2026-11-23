@@ -3394,3 +3394,10 @@ RECIPES.push(
   { out: [DISTILLERY, 1], in: [[COPPER_INGOT, 6], [BRICK, 3], [GLASS_BOTTLE, 1]], table: true, metal: COPPER_INGOT },
   { out: [BANDAGE, 3], in: [[WOOL, 1], [RUBBING_ALCOHOL, 1]], also: [[GLASS_BOTTLE, 1]] },
 );
+
+// ---------- v44: the glider ----------
+// Worn in place of a chestplate. Jump in mid-air to open it and glide: you fly the way you look (look down to
+// dive and gather speed, up to slow down and sink less) and warm air rising over fire and lava lifts you.
+export const GLIDER = 3243;
+ITEMS[GLIDER] = { name: 'Glider', stack: 1, armour: { piece: 1, points: 1, mat: 'glider' }, about: 'wear it in place of a chestplate, then jump in mid-air to open it and glide (sneak to fold it)' };
+RECIPES.push({ out: [GLIDER, 1], in: [[STICK, 6], [WOOL, 4], [LEATHER, 2]], table: true });

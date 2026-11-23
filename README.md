@@ -1431,6 +1431,16 @@ second. One that isn't turning is a brake. Hold on a cart to pick it up.
 Hold a **map** to see the land 64 blocks around you from above, with you as an arrow (north is up) and
 home as a red dot.
 
+### The glider
+
+A **glider** (6 sticks, 4 wool, 2 leather, at a crafting table) is worn in place of a chestplate. Jump off
+somewhere high, then **jump again in mid-air** to open it. You fly the way you look: level, it carries you along
+at about 9 blocks a second, sinking gently (about one block down for every five forward); look down to dive and
+pick up speed, look up to slow down and sink less; left and right steer. **Warm air rises** over fire, lava and
+lit furnaces and fireplaces (up a chimney too), lifting you strongly, and gently over desert sand on a sunny day.
+Sneak, or jump again, to fold it. Landing under it is soft, unless you dive hard into the ground. Other players
+see you hanging under it.
+
 ### Ziplines, boats, balloons and rail stations
 
 - **Zipline posts** (2 from 2 logs and an iron) and **zipline rope** (2 from 6 string and an iron): with rope in

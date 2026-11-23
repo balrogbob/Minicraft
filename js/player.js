@@ -11,6 +11,8 @@ const WALK = 4.3;
 const JET_THRUST = 16; // how much harder than gravity a jetpack pushes up
 const JET_RISE = 6; // the fastest it climbs
 const HOVER_FALL = 3; // the fastest hover boots let you fall
+// (v44) the glider: its airspeed level, how fast it sinks level, and how much diving and climbing change them
+const GLIDE_SPEED = 9, GLIDE_SINK = 1.7, GLIDE_DIVE_SPEED = 11, GLIDE_DIVE_SINK = 9;
 
 export class Player {
   constructor(world) {
@@ -31,6 +33,11 @@ export class Player {
     this.thrusting = false; // the jetpack is firing (main.js uses its charge)
     this.hover = false; // wearing hover boots with charge in them (main.js)
     this.hovering = false; // they're slowing a fall
+    this.glider = false; // (v44) wearing a glider (main.js)
+    this.gliding = false; // it's open
+    this.glideSpeed = 0; // airspeed while gliding
+    this.updraft = 0; // rising air under you (main.js: over fires and lava, gently over sun-warmed sand)
+    this.jumpHeld = false;
   }
 
   updateWaterState() {
@@ -115,6 +122,8 @@ export class Player {
     this.updateWaterState();
     this.thrusting = false;
     this.hovering = false;
+    const jumpPress = !!input.jump && !this.jumpHeld;
+    this.jumpHeld = !!input.jump;
     const control = this.flying ? 2.2 : this.inLava ? 0.3 : this.inWater ? 0.55 * (this.swimMul ?? 1) : this.onGround ? 1 : 0.85;
     // (v41: sprinting is a third faster, on land or flying; not swimming, sneaking or climbing)
     this.sprinting = !!input.sprint && input.moveZ > 0.3 && !input.down && !this.inWater && !this.inLava && !this.climbing;
@@ -145,7 +154,16 @@ export class Player {
       this.vel.y = Math.max(this.vel.y - GRAVITY * dt, -40);
       // hover boots: a gentle fall, unless you hold sneak (or are using a jetpack)
       if (this.hover && !this.thrusting && !input.down && !this.onGround && this.vel.y < -HOVER_FALL) { this.vel.y = -HOVER_FALL; this.hovering = true; }
+      // (v44) a glider: jump in mid-air to open it (again, or sneak, to fold it)
+      if (this.glider && jumpPress && !this.onGround && !(this.jumpedAt > performance.now() - 250)) {
+        this.gliding = !this.gliding;
+        if (this.gliding) this.glideSpeed = Math.max(4, Math.hypot(this.vel.x, this.vel.z));
+      }
+      if (input.jump && this.onGround) this.jumpedAt = performance.now(); // (so the jump itself doesn't open it)
+      if (input.down) this.gliding = false;
+      if (this.gliding) this.glide(dt, input);
     }
+    if (this.gliding && (this.onGround || this.inWater || this.inLava || this.climbing || this.flying || !this.glider)) this.gliding = false;
 
     // sub-step so fast falls never tunnel through blocks
     const steps = Math.max(1, Math.ceil((Math.abs(this.vel.y) + WALK) * dt / 0.4));
@@ -181,6 +199,27 @@ export class Player {
       this.moveAxis('y', v.y * h);
     }
     return this.pos.distanceTo(from);
+  }
+
+  // (v44) Gliding: you fly the way you look. Level, it carries you along at a steady speed, sinking gently;
+  // look down to dive (faster, and sinking faster), look up to trade speed for a slower sink, and steer
+  // with left and right. Rising air (this.updraft) lifts you.
+  glide(dt, input) {
+    const s = Math.sin(this.pitch); // + up, - down
+    const dive = Math.max(0, -s), climb = Math.max(0, s);
+    const want = GLIDE_SPEED + GLIDE_DIVE_SPEED * dive - 4 * climb;
+    const k = 1 - Math.exp(-(want > this.glideSpeed ? 1.6 : 0.8) * dt);
+    this.glideSpeed += (want - this.glideSpeed) * k;
+    if (climb > 0) this.glideSpeed = Math.max(3, this.glideSpeed - 5 * climb * dt);
+    const fx = -Math.sin(this.yaw), fz = -Math.cos(this.yaw), rx = Math.cos(this.yaw), rz = -Math.sin(this.yaw);
+    const side = input.moveX * 2.5;
+    this.vel.x = fx * this.glideSpeed + rx * side + this.kx;
+    this.vel.z = fz * this.glideSpeed + rz * side + this.kz;
+    // sink: slower while fast and level, faster in a dive; climbing (while there's speed to spend) sinks least
+    const sink = GLIDE_SINK + GLIDE_DIVE_SINK * dive - Math.min(1.2, climb * this.glideSpeed * 0.2);
+    const target = -Math.max(0.4, sink) + this.updraft;
+    this.vel.y += GRAVITY * dt; // (the wing holds you up: gravity was already taken off this step)
+    this.vel.y += (target - this.vel.y) * (1 - Math.exp(-2.5 * dt));
   }
 
   canStepUp(wx, wz) {

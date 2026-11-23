@@ -18,6 +18,7 @@ export const ACHIEVEMENTS = [
   { id: 'engine', icon: '♨', name: 'Full Steam', about: 'Get a steam engine running.' },
   { id: 'deep', icon: '🕳', name: 'Deep Down', about: 'Reach the depths, below height 10.' },
   { id: 'peak', icon: '🏔', name: 'Top of the World', about: 'Climb up to where the snow lies on the mountain tops.' },
+  { id: 'glider', icon: '🪂', name: 'Taking Wing', about: 'Open a glider in mid-air.' },
   { id: 'far', icon: '🧭', name: 'Explorer', about: 'Travel 1000 blocks from where you started.' },
   { id: 'map', icon: '🗺', name: 'Cartographer', about: 'Open the world map and put down a waypoint.' },
   { id: 'paint', icon: '🖼', name: 'Art Lover', about: 'Hang a painting.' },

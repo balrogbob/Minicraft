@@ -3529,3 +3529,16 @@ ITEM_PAINTERS[BANDAGE] = (ctx) => {
   for (let y = 4; y < 12; y++) for (let x = 2; x < 14; x++) px(ctx, x, y, (x + y) % 3 === 0 ? [226, 222, 210] : [246, 244, 236]);
   rect(ctx, 6, 6, 4, 4, [230, 60, 50]); rect(ctx, 7, 5, 2, 6, [230, 60, 50]); rect(ctx, 5, 7, 6, 2, [230, 60, 50]);
 };
+
+// ---------- v44: the glider ----------
+import { GLIDER } from './blocks.js';
+ITEM_PAINTERS[GLIDER] = (ctx) => {
+  // a wide wing of red and cream cloth over a wooden frame
+  for (let x = 0; x < 16; x++) {
+    const sag = Math.round(Math.abs(x - 7.5) / 3);
+    for (let y = 3 + sag; y < 8 + sag - (x < 2 || x > 13 ? 2 : 0); y++) px(ctx, x, y, (x >> 2) % 2 ? [236, 226, 200] : [206, 58, 48]);
+  }
+  rect(ctx, 1, 4, 14, 1, [120, 80, 44]); // the spar
+  for (const [x0, x1] of [[5, 7], [10, 8]]) for (let i = 0; i < 6; i++) px(ctx, Math.round(x0 + (x1 - x0) * i / 5), 8 + i, [110, 74, 40]); // struts
+  rect(ctx, 6, 13, 4, 1, [110, 74, 40]); // the bar
+};

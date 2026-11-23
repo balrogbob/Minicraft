@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { Viewmodel, Avatar, LOOKS, randomLook } from './held.js';
+import { Viewmodel, Avatar, LOOKS, randomLook, gliderGroup, lightColour } from './held.js';
 import { Ripples } from './ripples.js';
 import { FarLand, FAR_REACH } from './farland.js';
 import { Net } from './net.js';
@@ -304,9 +304,22 @@ function updateMe(dt) {
   const speed = Math.hypot(player.vel.x, player.vel.z);
   const swimming = player.inWater && !player.onGround && !riding && !ridingMob;
   avatar.root.visible = !dead && (photoMode || viewMode > 0);
-  if (avatar.root.visible) avatar.update(dt, { pos: player.pos, yaw: player.yaw, pitch: player.pitch, speed, swimming, onGround: player.onGround, light });
+  if (avatar.root.visible) avatar.update(dt, { pos: player.pos, yaw: player.yaw, pitch: player.pitch, speed, swimming, onGround: player.onGround, gliding: player.gliding, light });
+  // (v44) in first person, the glider's wing and bar over and in front of you
+  fpGlider.visible = player.gliding && !avatar.root.visible && !dead;
+  if (fpGlider.visible) {
+    const e = player.eye;
+    fpGlider.position.set(e.x - Math.sin(player.yaw) * 1.3, e.y + 1.2, e.z - Math.cos(player.yaw) * 1.3); // (out ahead, so its edge and struts frame the view)
+    fpGlider.rotation.set(0, player.yaw, 0);
+    lightColour(fpGliderMat.color, light);
+  }
   viewmodel.update(dt, { moving: Math.min(1, speed / 4.3), onGround: player.onGround, swimming, aspect: camera.aspect, light });
 }
+const fpGliderMat = new THREE.MeshBasicMaterial({ vertexColors: true });
+const fpGlider = gliderGroup(fpGliderMat, []);
+fpGlider.visible = false;
+fpGlider.traverse((o) => { o.userData.noShadow = true; });
+scene.add(fpGlider);
 const mobs = new MobManager(scene, sound);
 const arrows = new ArrowManager(scene, sound);
 const fishing = new Fishing(scene, sound);
@@ -1112,6 +1125,9 @@ function updateHealth(dt, wasGround, prevY) {
   // falling: track the highest point since leaving the ground (including where this step started)
   if (riding || ridingMob || boarded || zipping || seated || player.flying || player.thrusting || player.hovering || player.inWater || player.inLava || player.climbing || player.onGround && wasGround) fallTop = null;
   if (!player.onGround && !player.inWater) fallTop = Math.max(fallTop ?? prevY, prevY, player.pos.y);
+  // (v44) under a glider a landing only hurts as much as your speed down: count the fall from the height a
+  // drop to that speed would take
+  if (player.gliding) fallTop = player.pos.y + (player.vel.y < 0 ? player.vel.y ** 2 / 56 : 0);
   else if (player.onGround && !wasGround && fallTop === null && !player.inWater) fallTop = prevY;
   if (player.onGround && !wasGround && fallTop !== null) {
     const fall = fallTop - player.pos.y;
@@ -2954,6 +2970,28 @@ function tickMending(dt) {
   if (changed) inventory.onChange();
 }
 
+// (v44) The glider: worn in place of a chestplate (see Player.glide). Rising air lifts it: strongly over fire
+// and lava (and up a chimney over a lit fireplace), gently over sand warmed by the sun.
+let gliderWas = false;
+function tickGlider(dt) {
+  player.glider = armour[1] === GLIDER && !riding && !ridingMob && !boarded && !zipping && !seated;
+  if (player.gliding !== gliderWas) { sound.place('wool'); gliderWas = player.gliding; if (player.gliding) achieve('glider'); }
+  let lift = 0;
+  if (player.gliding) {
+    const x = Math.floor(player.pos.x), z = Math.floor(player.pos.z), y0 = Math.floor(player.pos.y);
+    for (let d = 1; d <= 24 && y0 - d > 0; d++) {
+      const id = world.get(x, y0 - d, z);
+      if (id === AIR || BLOCKS[id]?.chimney) continue;
+      const hot = id === FIRE || id === LAVA || BLOCKS[id]?.lit || BLOCKS[id]?.fire;
+      if (hot) { lift = 6.5 * (1 - (d - 1) / 26); break; }
+      if (world.isWater(x, y0 - d, z)) break;
+      const sandy = id === SAND || id === SANDSTONE;
+      if (sandy && sky.light > 0.6 && !(weather.level > 0.3)) lift = 2.0 * (1 - d / 30); // (a warm sunny day)
+      break;
+    }
+  }
+  player.updraft += (lift - player.updraft) * Math.min(1, dt * (lift > player.updraft ? 2 : 3));
+}
 function tickBatteryGear(dt) {
   tickMending(dt);
   tickRadiation(dt);
@@ -2963,6 +3001,7 @@ function tickBatteryGear(dt) {
   if (jet && player.thrusting && !drawCharge(jet, CHARGE_USE.jetpack * dt)) toast('Your jetpack has run flat', 1500);
   if (jet) armourWear[1] = jet.wear ?? 0;
   player.jetpack = !!jet && hasCharge(jet);
+  tickGlider(dt);
   // a portable lamp that's switched on lights the way from anywhere in your inventory
   const lamp = inventory.slots.find((s) => s?.id === PORTABLE_LAMP && s.on);
   let shine = 0;
@@ -5305,7 +5344,7 @@ function tickNet(dt) {
   const p = player.pos;
   net.update(dt, net.live && activeSlot === MP_SLOT && !dead ? {
     pos: p, yaw: player.yaw, pitch: player.pitch, held: inventory.heldId(), speed: Math.hypot(player.vel.x, player.vel.z),
-    swimming: player.inWater && !player.onGround, onGround: player.onGround,
+    swimming: player.inWater && !player.onGround, onGround: player.onGround, gliding: player.gliding,
   } : null, (pos) => {
     const x = Math.floor(pos.x), y = Math.min(H - 1, Math.max(0, Math.floor(pos.y + 1.2))), z = Math.floor(pos.z);
     return { sun: lightUniforms.uDay.value * skyBrightness(world.skyAt(x, y, z)), torch: lightBrightness(world.lightAt(x, y, z)) * lightUniforms.uFlicker.value, ambient: lightUniforms.uAmbient.value };
@@ -5373,7 +5412,7 @@ $('btn-mode').addEventListener('click', () => {
 $('fov').value = settings.fov;
 let sprintFov = 0; // (v41: the view widens a little while you sprint)
 function tickSprintFov(dt) {
-  const want = player.sprinting && Math.hypot(player.vel.x, player.vel.z) > 3 ? 1 : 0;
+  const want = player.gliding ? Math.min(1.5, Math.hypot(player.vel.x, player.vel.z, player.vel.y) / 12) : player.sprinting && Math.hypot(player.vel.x, player.vel.z) > 3 ? 1 : 0;
   const was = sprintFov;
   sprintFov += (want - sprintFov) * Math.min(1, dt * 8);
   if (Math.abs(sprintFov - was) > 1e-4) { camera.fov = settings.fov * (1 + 0.1 * sprintFov); camera.updateProjectionMatrix(); }
@@ -7849,6 +7888,7 @@ apiculture.onYoung = (x, y, z, sp, mate, kids) => {
 // ---------- v32: tree taps ----------
 import { CHOC_MOULD, CHOC_CAKE, CAKE_SLICES, MOULD_BARS, MELTED_CHOC, CHOC_BAR, MOULD_FILLS, mouldFill } from './blocks.js';
 import { FESTIVAL_FAVOURITES, contestScore, GUANO, BANDAGE, WHISKY, OLD_WHISKY } from './blocks.js';
+import { GLIDER } from './blocks.js';
 import { TREE_TAP, LATEX, MAX_LATEX, POLYMER_BOAT, DEMO_CHARGE, DETONATOR, DEMO_RADIUS, DETONATOR_LINKS, DETONATOR_RANGE } from './blocks.js';
 // Tapping a tree tap takes the latex in it.
 function useTap(x, y, z, tid) {

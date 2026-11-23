@@ -190,7 +190,7 @@ function handle(id, me, m) {
       if (!me.hello || !Array.isArray(m.p)) return;
       const x = num(m.p[0], -1e6, 1e6), y = num(m.p[1], -64, 512), z = num(m.p[2], -1e6, 1e6);
       if (x === null || y === null || z === null) return;
-      me.state = { p: [x, y, z], yaw: num(m.yaw, -1e4, 1e4) ?? 0, pitch: num(m.pitch, -2, 2) ?? 0, held: m.held | 0, sw: !!m.sw, sp: num(m.sp, 0, 50) ?? 0, g: !!m.g };
+      me.state = { p: [x, y, z], yaw: num(m.yaw, -1e4, 1e4) ?? 0, pitch: num(m.pitch, -2, 2) ?? 0, held: m.held | 0, sw: !!m.sw, sp: num(m.sp, 0, 50) ?? 0, g: !!m.g, ...(m.gl ? { gl: true } : {}) };
       others(id, { t: 'move', id, ...me.state });
       break;
     }
