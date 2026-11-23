@@ -203,6 +203,7 @@ menu, right-stick click the view, d-pad up the guidebook, d-pad down fly (creati
 | World map | ☰ → World map, or tap the corner map | M |
 | Fly on / off (creative) | 🕊 button | F |
 | Fly up / down (creative) | ⤒ / ⤓ buttons | Space / Left Shift |
+| Undo your last block change (creative) | ↶ button | Ctrl + Z |
 | Photo mode (free camera, no HUD) | ☰ → 📷 Photo mode; move and look as usual, ▲ ▼ to rise and sink, 📷 to save the picture, ✕ to leave | F2 (Space / Left Shift to rise and sink, Enter or P to snap, F2 or Esc to leave) |
 | Copy and paste a build (creative) | Tap two corners with the copy wand, then tap to paste; double-tap and hold to clear | Right click / hold left button |
 
@@ -328,6 +329,21 @@ honeycomb. Honeycomb and a bottle in the cauldron make **honey tea**, which keep
 
 Underground there are flooded caverns, caverns lit by **glowcap mushrooms** (cook three with butter in the
 oven for mushroom stew) and **geodes** lined with **crystal**: break it for crystal shards.
+
+### The sea
+
+- In tall worlds the open sea, far from land, falls away into **deep ocean**, 40 blocks deep in places.
+- Warm, shallow seas have **coral reefs**: mounds of **red, yellow, blue and pink coral** (mine it with a
+  pickaxe) with **coral fans** growing on them. Meadows of **sea grass** cover the sandy bottom, and forests of
+  **kelp** climb up through deeper and cooler water. Frozen seas have none.
+- Coral fans, sea grass and kelp grow **underwater** only: their cell is full of water, so you swim through them
+  and break them without letting the water out. Plant them on the sea bed (or kelp on top of kelp). Kelp grows
+  slowly upward until it is two blocks short of the surface.
+- Dry kelp on a **drying rack** to make **dried kelp**, a salty snack.
+- The sea is full of life: **schools of fish** dart round the reefs (bright ones in warm water, silver in cold)
+  and scatter when you swim at them; **sea turtles** paddle over warm shallows; **dolphins** swim beside you over
+  the deep ocean and leap clear of the water; and **jellyfish** drift in open water, glowing at night. Don't
+  touch a jellyfish: it stings.
 
 ### Caves
 
@@ -905,12 +921,23 @@ cobblestone, the metal's ingot, or leather. Wear can be turned off in the ☰ me
 | 3 Carpets | 2 wool |
 | Curtain | 2 wool + 1 stick |
 | Door | 4 planks |
+| Record Player | 4 planks + 1 iron ingot + 1 copper ingot |
+| Armour Stand | 6 sticks + 2 planks |
 
 Chairs face you when you place them; doors take two blocks. Beds are two blocks long: the foot goes
 where you tap and the head (with the pillow) extends away from you. Tap a bed in the evening or at
 night to sleep until morning (not while a creature is lurking nearby); any tap sets it as your respawn point.
 
 Tap a crafting table or butter churn to open crafting there.
+
+A **record player** plays music: tap it to put on a record (Morning Fields, Night Sky, Deep Caves, Under the
+Waves, Village Square, Festival Day and First Snow, one tap each) and once more past the last to stop it. While
+it plays, its music goes on and on (even with the Music slider at 0), loudest close by and fading out about 24
+blocks away. In multiplayer everyone nearby hears it.
+
+An **armour stand** faces you when you place it and needs room above it. Tap it to swap all your armour (and
+your shield) with what it holds: hang a set up, put on another, and swap back whenever you like. Wear and
+enchantments stay with each piece. Break the stand and its armour drops.
 
 ### Storage, ladders and signs
 
@@ -1030,13 +1057,18 @@ drains away. Water at or below sea level just fills the hole, as before.
 | Rock crusher | 3 bronze ingots + 4 cobblestone + 1 wooden large gear + 1 wooden small gear |
 
 **Placing.** A part's axle points out of the face you tap. Tap the side of another part and the new one
-lines up with it instead, so gears sit side by side. A water wheel's axle is always level.
+lines up with it instead, so gears sit side by side; sneak while placing to keep the tapped face's axle
+(for a gear at a corner). A water wheel's axle is always level.
 
 **How they connect:**
 - Shafts, gears and wheels join end to end along their axles.
 - Two small gears side by side (on parallel axles) mesh, at the same speed.
 - A large gear meshes with a small gear set **one block diagonally** from it across the axle. The small
   gear turns **twice as fast** as the large one; drive the small one and the large one turns at half speed.
+- **Corners:** two small gears side by side with their axles at right angles mesh too, at the same speed,
+  so rotation can turn a corner without a gearbox.
+- Two large gears on parallel axles mesh with **one empty block** between them, at the same speed.
+- Gears that only touch end to end (axle to axle) don't mesh. Look at a lone gear to see these rules.
 - A shaft, gear or wheel whose axle points into a face of the rock crusher drives it.
 
 **Power.** A water wheel turns at 1x while flowing (not still) water touches it above, below or at the
@@ -1431,6 +1463,16 @@ second. One that isn't turning is a brake. Hold on a cart to pick it up.
 Hold a **map** to see the land 64 blocks around you from above, with you as an arrow (north is up) and
 home as a red dot.
 
+### The glider
+
+A **glider** (6 sticks, 4 wool, 2 leather, at a crafting table) is worn in place of a chestplate. Jump off
+somewhere high, then **jump again in mid-air** to open it. You fly the way you look: level, it carries you along
+at about 9 blocks a second, sinking gently (about one block down for every five forward); look down to dive and
+pick up speed, look up to slow down and sink less; left and right steer. **Warm air rises** over fire, lava and
+lit furnaces and fireplaces (up a chimney too), lifting you strongly, and gently over desert sand on a sunny day.
+Sneak, or jump again, to fold it. Landing under it is soft, unless you dive hard into the ground. Other players
+see you hanging under it.
+
 ### Ziplines, boats, balloons and rail stations
 
 - **Zipline posts** (2 from 2 logs and an iron) and **zipline rope** (2 from 6 string and an iron): with rope in
@@ -1715,7 +1757,8 @@ to take the mark off. Marks off the edge of the map show as arrows pointing towa
 In **creative mode** you can't be hurt or get hungry, blocks break at once and are never used up, and 🎒
 has a **palette** of every block and item (the recipe search filters it). Press F (or 🕊) to fly. The
 **copy wand** (in the palette) copies builds of up to 32,768 blocks: tap one corner, then the opposite corner,
-then tap wherever you want copies. Switch a world between survival and creative under ☰ → Game mode.
+then tap wherever you want copies. Made a mistake? **Ctrl + Z** (or the ↶ button) undoes your last place,
+break or paste, up to 64 steps back. Switch a world between survival and creative under ☰ → Game mode.
 
 The **world map** (M, ☰ → World map, or tap the corner map) shows all the land you've explored. Drag to look
 around, pinch or scroll to zoom, and tap to put down a waypoint (or tap one to take it away). Waypoints show
@@ -1733,6 +1776,9 @@ guide to how everything works.
 
 ## Version history
 
+- **Version 44**: the **glider** (wear it, jump in mid-air to open it, ride warm air over fires and lava);
+  the sea comes alive: deep ocean in tall worlds, coral reefs, sea grass and kelp, schools of fish, jellyfish,
+  sea turtles and dolphins; the **record player**; the **armour stand**; and **undo** in creative mode.
 - **Version 43**: a taller world. Worlds are now 128 blocks high. New worlds sit higher, with the sea at 56,
   far deeper rock, caves and ore below it, and mountains to 116; worlds made before keep their ground as it was
   and gain 64 blocks of building room above. Clouds moved up to 136.
@@ -1831,6 +1877,7 @@ guide to how everything works.
 | `js/apiculture.js` | Bee breeding: queens at work in bee houses, combs, young bees and mutations |
 | `js/birds.js` | Crows that come down to eat ripe wheat, and the scarecrows that keep them off |
 | `js/critters.js` | Owls, bats and fireflies |
+| `js/sealife.js` | Fish, jellyfish, sea turtles and dolphins |
 | `js/paintings.js` | Paintings: the pictures and the panels that show them |
 | `js/sky.js` | Day/night cycle: sky colour, fog, sun, moon, stars, world brightness |
 | `js/farland.js` | Distant land: a blocky sketch of the terrain past the loaded chunks, built from the generator a few tiles at a time |

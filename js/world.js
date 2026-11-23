@@ -3,7 +3,7 @@
 import * as THREE from 'three';
 import {
   BLOCKS, AIR, LEAVES, LOG, isLeaves, FRUIT_SAPLING, FRUITS, fruitLeaves, saplingLeaves, GLASS, DIRT, GRASS, WATER, MAX_LIGHT, SUGAR_CANE, MAX_CANE_HEIGHT,
-  PUMPKIN, isWheat, WATER_FLOW, WATER_FALL, WATER_WHEEL, isWaterId, isFlowing, waterLevel, LAVA, OBSIDIAN, COBBLE, PIPE, PUMP, SPOUT, T, FLOWERS, isFlower, FACING_DIRS,
+  PUMPKIN, isWheat, WATER_FLOW, WATER_FALL, WATER_WHEEL, isWaterId, isFlowing, waterLevel, LAVA, OBSIDIAN, COBBLE, PIPE, PUMP, SPOUT, T, FLOWERS, isFlower, FACING_DIRS, isWetId,
 } from './blocks.js';
 
 // Water wheels let water run through their cell (and over them); see waterAt().
@@ -71,7 +71,7 @@ export const skyBrightness = (level) => SKY_CURVE[Math.round(level * 4)];
 // through air or glass stays full; everything else (sideways, or down through leaves and water)
 // loses one level per block. Both chunk lighting and the incremental updates use this rule.
 function skyStep(level, down, id) {
-  return down && level === MAX_LIGHT && !isLeaves(id) && !isWaterId(id) ? MAX_LIGHT : level - 1;
+  return down && level === MAX_LIGHT && !isLeaves(id) && !isWaterId(id) && !isWetId(id) ? MAX_LIGHT : level - 1;
 }
 
 // The nearest of a block's boxes (in 1/16 block) hit by a ray: { t, n: the face's normal } or null.
@@ -194,7 +194,7 @@ export class World {
   // (kept in wheelWater rather than in the block data).
   waterAt(x, y, z) {
     const id = this.get(x, y, z);
-    return isWheel(id) ? this.wheelWater.get(pack(x, y, z)) ?? AIR : id;
+    return isWheel(id) ? this.wheelWater.get(pack(x, y, z)) ?? AIR : isWetId(id) ? WATER : id; // (v44: sea plants stand in still water)
   }
 
   lightAt(x, y, z) {
@@ -242,6 +242,7 @@ export class World {
       }
     }
     const li = localIndex(x, y, z), old = c.data[li];
+    if (id === AIR && isWetId(old)) id = WATER; // (v44) a sea plant broken leaves its water behind
     c.data[li] = id;
     if (id !== AIR && y > c.top) c.top = y; // (see lightChunk)
     if (isWheel(old) && !isWheel(id)) this.wheelWater.delete(pack(x, y, z));
@@ -414,6 +415,12 @@ export class World {
     const id = c.data[localIndex(x, y, z)];
     const grows = BLOCKS[id]?.grows;
     if (!grows) return false;
+    if (grows === 'kelp') { // (v44) kelp: the top of a strand, with water above it and above that
+      if (y + 2 >= H || c.data[localIndex(x, y + 1, z)] !== WATER || c.data[localIndex(x, y + 2, z)] !== WATER) return false;
+      let height = 1;
+      while (y - height >= 0 && c.data[localIndex(x, y - height, z)] === id) height++;
+      return height < 12;
+    }
     if (grows !== 'up') return true;
     // sugar cane: only the top of a column shorter than the maximum, with air above
     if (y + 1 >= H || c.data[localIndex(x, y + 1, z)] !== AIR) return false;
@@ -466,6 +473,7 @@ export class World {
         if (def.crop?.needs === 'water' && ![[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dz]) => isWaterId(this.get(x + dx, y - 1, z + dz)))) continue;
         if (Math.random() >= Math.min(GROW_MAX_CHANCE, chance)) continue;
         if (def.grows === 'up') this.setBlock(x, y + 1, z, SUGAR_CANE);
+        else if (def.grows === 'kelp') this.setBlock(x, y + 1, z, id);
         else if (def.grows === 'pumpkin') this.growPumpkin(x, y, z);
         else if (def.grows === 'tree') {
           const leaves = saplingLeaves(id); // a fruit (or cocoa) tree is a little shorter
@@ -767,7 +775,7 @@ export class World {
   isFloor(x, y, z) {
     if (y < 0) return true;
     const id = this.get(x, y, z);
-    return id !== AIR && !isWaterId(id) && !isWheel(id);
+    return id !== AIR && !isWaterId(id) && !isWheel(id) && !isWetId(id);
   }
 
   // Height of the water surface at one corner of a cell: the average of the water cells sharing that
@@ -1172,7 +1180,9 @@ export class World {
         if (id === AIR) continue;
       }
       const def = BLOCKS[id];
-      if (isWaterId(id)) {
+      const wet = isWetId(id); // (v44) a sea plant: draw the water it stands in, then the plant
+      if (wet || isWaterId(id)) {
+        if (wet) id = WATER;
         const height = wheel ? WHEEL_STREAM : this.waterHeight(x, y, z, id);
         // water falling onto a water wheel narrows to a stream, so the wheel's paddles show around it
         const ins = id === WATER_FALL && this.fallsOnWheel(x, y, z) ? 0.25 : 0;
@@ -1180,7 +1190,7 @@ export class World {
           if (f.n[1] < 0 && y === 0) continue;
           const nx = x + f.n[0], ny = y + f.n[1], nz = z + f.n[2];
           // (a wheel's shallow stream counts as open, so water around and above it shows its faces)
-          const nid = isWheel(this.get(nx, ny, nz)) ? AIR : this.get(nx, ny, nz);
+          const raw = this.get(nx, ny, nz), nid = isWheel(raw) ? AIR : isWetId(raw) ? WATER : raw;
           if (nid !== AIR && !isWaterId(nid) && !BLOCKS[nid].transparent) continue;
           // between two water cells, only where this one stands higher than its neighbour
           if (!wheel && !ins && isWaterId(nid) && (f.d === 1 || this.waterHeight(nx, ny, nz, nid) >= height)) continue;
@@ -1202,7 +1212,8 @@ export class World {
           windex.push(wcount, wcount + 1, wcount + 2, wcount, wcount + 2, wcount + 3);
           wcount += 4;
         }
-        continue;
+        if (!wet) continue;
+        id = def.id;
       }
       if (def.shape === 'kinetic') continue; // drawn (and turned) by kinetics.js
       if (def.shape === 'pipe') {

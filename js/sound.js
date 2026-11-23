@@ -333,6 +333,10 @@ export class Sound {
   mob(kind, gain = 1, hurt = false) {
     if (!this.ready || gain <= 0.01) return;
     const p = (a, b) => a + Math.random() * (b - a);
+    if (kind === 'dolphin') { // (v44) a run of rising whistles and clicks
+      for (let k = 0, d = 0; k < 4; k++, d += p(0.06, 0.14)) this.voice({ type: 'sine', from: p(1600, 2100), to: p(2500, 3300), dur: p(0.05, 0.12), vol: 0.16 * gain, filter: 'bandpass', freq: 2600, q: 1.5, delay: d });
+      return;
+    }
     if (kind === 'duck') {
       // two nasal quacks
       const f = hurt ? p(650, 750) : p(480, 560);

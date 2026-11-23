@@ -6,6 +6,8 @@
 //  - two small gears on parallel axles mesh when side by side (next cell across the axle): same speed;
 //  - a large gear meshes with a small gear one cell diagonally across the axle: the small one turns
 //    twice as fast as the large one (and the large one half as fast as the small one);
+//  - (v44) two small gears at right angles mesh side by side when each is across the other's axle (a corner);
+//    two large gears on parallel axles mesh with one empty cell between them;
 //  - a machine (crusher, millstone, saw, trip hammer, bellows, pump, drill, filament lamp, belt) is driven
 //    by any shaft, gear or wheel whose axle points into one of its faces; belts side by side share it (and a
 //    bucket elevator's column).
@@ -165,6 +167,16 @@ export class Kinetics {
           for (const [du, dv] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
             const d = off(du, dv), m = side(d);
             if (m?.part === 'gear' && m.axis === n.axis) out.push([m, -1, d]);
+            // (v44) a corner: a small gear beside this one with its axle at right angles (and across both
+            // axles), so the teeth meet at the face between them, turns at the same speed
+            else if (m?.part === 'gear' && m.axis >= 0 && m.axis !== n.axis && d[m.axis] === 0) out.push([m, -1, d]);
+          }
+        }
+        if (n.part === 'large') {
+          // (v44) two large gears mesh with one cell between them: the same speed
+          for (const [du, dv] of [[2, 0], [-2, 0], [0, 2], [0, -2]]) {
+            const d = off(du, dv), m = side(d);
+            if (m?.part === 'large' && m.axis === n.axis) out.push([m, -1, d]);
           }
         }
         for (const [du, dv] of [[1, 1], [1, -1], [-1, 1], [-1, -1]]) {
@@ -196,7 +208,7 @@ export class Kinetics {
             if (!d) m.phase = n.phase;
             else {
               const tn = localAngle(d, n.axis), t0 = (tn - n.phase) / n.rel;
-              m.phase = tn + Math.PI + Math.PI / teeth(m) - m.rel * t0;
+              m.phase = localAngle([-d[0], -d[1], -d[2]], m.axis) + Math.PI / teeth(m) - m.rel * t0;
             }
             queue.push(m);
           } else if (loose ? Math.abs(Math.abs(m.rel) - Math.abs(want)) > 1e-6 : Math.abs(m.rel - want) > 1e-6) net.jammed = true;
@@ -268,6 +280,7 @@ export class Kinetics {
           : net.parts.some((n) => n.part === 'windmill') ? 'No power: a windmill needs clear space all round its sails'
             : net.parts.some((n) => n.motor) ? 'No power: the electric motor needs electricity'
             : net.parts.some((n) => n.part === 'engine') ? 'No power: the steam engine needs fuel, and water beside it'
+            : net.parts.length === 1 && (net.root.part === 'gear' || net.root.part === 'large') ? MESH_HINT
             : 'No power: connect a water wheel, windmill or steam engine';
       } else {
         const base = Math.abs(sources[0].rel);
@@ -464,6 +477,8 @@ export class Kinetics {
   }
 }
 
+// (v44) what a gear on its own is told, so it's clear where gears have to go to mesh
+const MESH_HINT = 'Not meshing: small gears mesh side by side (or at a corner, axles at right angles), a large gear with a small one diagonally, and two large gears with one gap between';
 const fmt = (v) => (Math.round(v * 100) / 100).toString();
 const teeth = (n) => (n.part === 'large' ? 16 : 8);
 // The angle, in a part's own spinning frame, of the direction d (across its axle): see addMesh's rotations.

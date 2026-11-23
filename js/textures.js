@@ -3529,3 +3529,62 @@ ITEM_PAINTERS[BANDAGE] = (ctx) => {
   for (let y = 4; y < 12; y++) for (let x = 2; x < 14; x++) px(ctx, x, y, (x + y) % 3 === 0 ? [226, 222, 210] : [246, 244, 236]);
   rect(ctx, 6, 6, 4, 4, [230, 60, 50]); rect(ctx, 7, 5, 2, 6, [230, 60, 50]); rect(ctx, 5, 7, 6, 2, [230, 60, 50]);
 };
+
+// ---------- v44: the glider ----------
+import { GLIDER } from './blocks.js';
+ITEM_PAINTERS[GLIDER] = (ctx) => {
+  // a wide wing of red and cream cloth over a wooden frame
+  for (let x = 0; x < 16; x++) {
+    const sag = Math.round(Math.abs(x - 7.5) / 3);
+    for (let y = 3 + sag; y < 8 + sag - (x < 2 || x > 13 ? 2 : 0); y++) px(ctx, x, y, (x >> 2) % 2 ? [236, 226, 200] : [206, 58, 48]);
+  }
+  rect(ctx, 1, 4, 14, 1, [120, 80, 44]); // the spar
+  for (const [x0, x1] of [[5, 7], [10, 8]]) for (let i = 0; i < 6; i++) px(ctx, Math.round(x0 + (x1 - x0) * i / 5), 8 + i, [110, 74, 40]); // struts
+  rect(ctx, 6, 13, 4, 1, [110, 74, 40]); // the bar
+};
+
+// ---------- v44: coral, coral fans, sea grass and kelp ----------
+const CORAL_COLS = [[220, 70, 70], [236, 200, 60], [70, 120, 230], [236, 120, 190]];
+CORAL_COLS.forEach((c, i) => {
+  P[T.CORAL + i] = (t) => { // knobbly living stone, pitted with polyps
+    for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+      const pit = ((x * 7 + y * 13 + i * 5) % 9 === 0) || ((x * 3 + y * 5) % 11 === 0);
+      t.set(x, y, t.vary(pit ? [c[0] * 0.55, c[1] * 0.55, c[2] * 0.55] : (x + y * 2) % 7 === 0 ? [Math.min(255, c[0] + 40), Math.min(255, c[1] + 40), Math.min(255, c[2] + 40)] : c, 0.12));
+    }
+  };
+  P[T.CORAL_FAN + i] = (t) => { // a branching fan on a short stalk
+    for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) t.set(x, y, [0, 0, 0], 0);
+    const branch = (x, y, dx, len) => { for (let k = 0; k < len; k++) { t.set(Math.round(x + dx * k), y - k, t.vary(c, 0.15)); } };
+    branch(7, 15, 0, 6); branch(7, 10, -0.6, 7); branch(8, 10, 0.6, 7); branch(7, 12, -1, 5); branch(8, 12, 1, 5);
+    branch(5, 7, -0.3, 5); branch(10, 7, 0.3, 5); branch(7, 9, 0.1, 8);
+    for (const [x, y] of [[2, 7], [13, 7], [4, 2], [11, 2], [7, 1], [3, 5], [12, 5]]) t.set(x, y, [Math.min(255, c[0] + 50), Math.min(255, c[1] + 50), Math.min(255, c[2] + 50)]);
+  };
+});
+P[T.SEA_GRASS] = (t) => { // thin wavy blades
+  for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) t.set(x, y, [0, 0, 0], 0);
+  for (const [bx, h, ph] of [[2, 10, 0], [5, 15, 1.3], [8, 12, 2.1], [11, 14, 0.7], [13, 8, 2.8]]) {
+    for (let k = 0; k < h; k++) t.set(Math.round(bx + Math.sin(k * 0.45 + ph) * 1.2), 15 - k, t.vary(k > h - 3 ? [110, 190, 90] : [50, 140, 60], 0.12));
+  }
+};
+P[T.KELP] = (t) => { // a brown-green strand with broad leaves to each side
+  for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) t.set(x, y, [0, 0, 0], 0);
+  for (let y = 0; y < TILE; y++) {
+    const cx = 7 + Math.round(Math.sin(y * 0.4) * 0.8);
+    t.set(cx, y, t.vary([80, 100, 36], 0.1)); t.set(cx + 1, y, t.vary([90, 112, 40], 0.1));
+    if (y % 5 === 1) for (let k = 1; k < 5; k++) { t.set(cx - k, y + (k >> 1), t.vary([100, 130, 44], 0.12)); t.set(cx - k, y + 1 + (k >> 1), t.vary([86, 116, 40], 0.12)); }
+    if (y % 5 === 3) for (let k = 2; k < 6; k++) { t.set(cx + k, y + (k >> 1), t.vary([100, 130, 44], 0.12)); t.set(cx + k, y + 1 + (k >> 1), t.vary([86, 116, 40], 0.12)); }
+  }
+};
+import { DRIED_KELP } from './blocks.js';
+ITEM_PAINTERS[DRIED_KELP] = (ctx) => {
+  for (let k = 0; k < 11; k++) { rect(ctx, 3 + k, 4 + Math.round(Math.sin(k * 0.7) * 1.5) + (k >> 1), 2, 3, k % 3 ? [50, 62, 30] : [70, 84, 40]); }
+};
+
+// ---------- v44: the record player ----------
+P[T.RECORD] = (t) => { // a black disc with grooves and a red label
+  for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+    const d = Math.hypot(x - 7.5, y - 7.5);
+    t.set(x, y, d < 0.8 ? [20, 20, 20] : d < 2.2 ? [200, 50, 40] : Math.round(d * 2) % 3 === 0 ? [44, 44, 48] : [18, 18, 22]);
+  }
+};
+P[T.TURNTABLE] = (t) => { t.fill([70, 70, 76], 0.08); for (let y = 6; y < 10; y++) for (let x = 6; x < 10; x++) t.set(x, y, [150, 150, 160]); };

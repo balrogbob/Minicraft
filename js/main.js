@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { Viewmodel, Avatar, LOOKS, randomLook } from './held.js';
+import { Viewmodel, Avatar, LOOKS, randomLook, gliderGroup, lightColour } from './held.js';
 import { Ripples } from './ripples.js';
 import { FarLand, FAR_REACH } from './farland.js';
 import { Net } from './net.js';
@@ -73,6 +73,7 @@ import { MiniMap } from './minimap.js';
 import { Frames, isDisplay } from './frames.js';
 import { Crows } from './birds.js';
 import { Critters } from './critters.js';
+import { SeaLife } from './sealife.js';
 import { Weather } from './weather.js';
 import { Bees } from './bees.js';
 import { Paintings, paintingCells } from './paintings.js';
@@ -80,7 +81,7 @@ import { Logic } from './logic.js';
 
 // v2 = the 16k x 16k streaming world (player state here, edited chunks in IndexedDB).
 // v1 = the old 128 x 128 world, migrated into the middle of the big world on first launch.
-const GAME_VERSION = '43'; // shown in the menu; bump with each release
+const GAME_VERSION = '44'; // shown in the menu; bump with each release
 const SAVE_KEY = 'minicraft-save-v2';
 const LEGACY_SAVE_KEY = 'minicraft-save-v1';
 const SETTINGS_KEY = 'minicraft-settings-v1';
@@ -304,9 +305,22 @@ function updateMe(dt) {
   const speed = Math.hypot(player.vel.x, player.vel.z);
   const swimming = player.inWater && !player.onGround && !riding && !ridingMob;
   avatar.root.visible = !dead && (photoMode || viewMode > 0);
-  if (avatar.root.visible) avatar.update(dt, { pos: player.pos, yaw: player.yaw, pitch: player.pitch, speed, swimming, onGround: player.onGround, light });
+  if (avatar.root.visible) avatar.update(dt, { pos: player.pos, yaw: player.yaw, pitch: player.pitch, speed, swimming, onGround: player.onGround, gliding: player.gliding, light });
+  // (v44) in first person, the glider's wing and bar over and in front of you
+  fpGlider.visible = player.gliding && !avatar.root.visible && !dead;
+  if (fpGlider.visible) {
+    const e = player.eye;
+    fpGlider.position.set(e.x - Math.sin(player.yaw) * 0.3, e.y + 0.82, e.z - Math.cos(player.yaw) * 0.3); // (just overhead, the bar in your hands)
+    fpGlider.rotation.set(0, player.yaw, 0);
+    lightColour(fpGliderMat.color, light);
+  }
   viewmodel.update(dt, { moving: Math.min(1, speed / 4.3), onGround: player.onGround, swimming, aspect: camera.aspect, light });
 }
+const fpGliderMat = new THREE.MeshBasicMaterial({ vertexColors: true });
+const fpGlider = gliderGroup(fpGliderMat, []);
+fpGlider.visible = false;
+fpGlider.traverse((o) => { o.userData.noShadow = true; });
+scene.add(fpGlider);
 const mobs = new MobManager(scene, sound);
 const arrows = new ArrowManager(scene, sound);
 const fishing = new Fishing(scene, sound);
@@ -466,6 +480,8 @@ const vehicles = new Vehicles(scene); // boats and balloons
 const ripples = new Ripples(scene); // (v38: rings, wakes and spray on the water)
 const crows = new Crows(scene); // after ripe wheat (see birds.js)
 const critters = new Critters(scene, sound); // owls, bats and fireflies
+const sealife = new SeaLife(scene, sound); // (v44) fish, jellyfish, turtles and dolphins
+sealife.onSting = () => { damage(1, 'stung by a jellyfish'); toast('Ouch! A jellyfish sting'); };
 let riding = null; // the minecart you're sitting in
 const minimap = new MiniMap($('map'), atlasCanvas);
 const frames = new Frames(scene, icons); // what's shown in each item frame
@@ -657,7 +673,7 @@ async function startWorld(save, opts = {}) {
     const drops = dropsFor(fruit ? fruit.bare : LEAVES, 0);
     if (drops.length) giveDrops(drops);
   };
-  mobs.reset(world); bees.clear(); crows.clear(); critters.clear(); fires.clear(); hearths.clear(); smoke.clear(); fireworks.clear(); exitPhotoMode(); clearChestMark(); openGates.clear(); lockJobs.length = 0; piles.length = 0; mangers.clear(); clearRocks(); strikeIn = 20; catGiftDay = -1; bellDay = -1; villageGrowth = new Map(); shownSeason = -1;
+  mobs.reset(world); bees.clear(); crows.clear(); critters.clear(); sealife.clear(); fires.clear(); hearths.clear(); smoke.clear(); fireworks.clear(); exitPhotoMode(); clearChestMark(); openGates.clear(); lockJobs.length = 0; piles.length = 0; mangers.clear(); clearRocks(); strikeIn = 20; catGiftDay = -1; bellDay = -1; villageGrowth = new Map(); shownSeason = -1;
   kinetics.clear();
   kinetics.load(save?.kinetics);
   beltStart = null;
@@ -1112,6 +1128,9 @@ function updateHealth(dt, wasGround, prevY) {
   // falling: track the highest point since leaving the ground (including where this step started)
   if (riding || ridingMob || boarded || zipping || seated || player.flying || player.thrusting || player.hovering || player.inWater || player.inLava || player.climbing || player.onGround && wasGround) fallTop = null;
   if (!player.onGround && !player.inWater) fallTop = Math.max(fallTop ?? prevY, prevY, player.pos.y);
+  // (v44) under a glider a landing only hurts as much as your speed down: count the fall from the height a
+  // drop to that speed would take
+  if (player.gliding) fallTop = player.pos.y + (player.vel.y < 0 ? player.vel.y ** 2 / 56 : 0);
   else if (player.onGround && !wasGround && fallTop === null && !player.inWater) fallTop = prevY;
   if (player.onGround && !wasGround && fallTop !== null) {
     const fall = fallTop - player.pos.y;
@@ -2954,6 +2973,28 @@ function tickMending(dt) {
   if (changed) inventory.onChange();
 }
 
+// (v44) The glider: worn in place of a chestplate (see Player.glide). Rising air lifts it: strongly over fire
+// and lava (and up a chimney over a lit fireplace), gently over sand warmed by the sun.
+let gliderWas = false;
+function tickGlider(dt) {
+  player.glider = armour[1] === GLIDER && !riding && !ridingMob && !boarded && !zipping && !seated;
+  if (player.gliding !== gliderWas) { sound.place('wool'); gliderWas = player.gliding; if (player.gliding) achieve('glider'); }
+  let lift = 0;
+  if (player.gliding) {
+    const x = Math.floor(player.pos.x), z = Math.floor(player.pos.z), y0 = Math.floor(player.pos.y);
+    for (let d = 1; d <= 24 && y0 - d > 0; d++) {
+      const id = world.get(x, y0 - d, z);
+      if (id === AIR || BLOCKS[id]?.chimney) continue;
+      const def = BLOCKS[id], hot = id === FIRE || id === LAVA || (def?.lit && (def.station || def.hearth || def.engine || def.name === "Cooking Pot"));
+      if (hot) { lift = 6.5 * (1 - (d - 1) / 26); break; }
+      if (world.isWater(x, y0 - d, z)) break;
+      const sandy = id === SAND || id === SANDSTONE;
+      if (sandy && sky.light > 0.6 && !(weather.level > 0.3)) lift = 2.0 * (1 - d / 30); // (a warm sunny day)
+      break;
+    }
+  }
+  player.updraft += (lift - player.updraft) * Math.min(1, dt * (lift > player.updraft ? 2 : 3));
+}
 function tickBatteryGear(dt) {
   tickMending(dt);
   tickRadiation(dt);
@@ -2963,6 +3004,7 @@ function tickBatteryGear(dt) {
   if (jet && player.thrusting && !drawCharge(jet, CHARGE_USE.jetpack * dt)) toast('Your jetpack has run flat', 1500);
   if (jet) armourWear[1] = jet.wear ?? 0;
   player.jetpack = !!jet && hasCharge(jet);
+  tickGlider(dt);
   // a portable lamp that's switched on lights the way from anywhere in your inventory
   const lamp = inventory.slots.find((s) => s?.id === PORTABLE_LAMP && s.on);
   let shine = 0;
@@ -4167,6 +4209,8 @@ function placeInner() {
     if (BLOCKS[tid].logic && !(held && isBlock(held.id))) { useLogic(tx, ty, tz, BLOCKS[tid]); return; }
     if (BLOCKS[tid].switch === 'button') { setSwitch(tx, ty, tz, true); pressedButtons.set(lampKey(tx, ty, tz), 1.5); return; }
     if (isFrame(tid)) { useFrame(tx, ty, tz, held); return; }
+    if (isRecordPlayer(tid) && !(held && isBlock(held.id))) { useRecordPlayer(tx, ty, tz, tid); return; }
+    if (isStand(tid) && !(held && isBlock(held.id) && !ITEMS[held.id]?.armour)) { useStand(tx, ty, tz); return; }
     if (isDisplay(tid) && target.ny === 1 && (frames.get(tx, ty, tz) || (held && !isBlock(held.id)))) { useDisplay(tx, ty, tz, held); return; }
     if (isChair(tid) && !(held && isBlock(held.id))) { sitOn(tx, ty, tz); return; }
     if (potOf(tid) >= 0 && usePot(tx, ty, tz, tid, held)) return;
@@ -4374,6 +4418,11 @@ function placeInner() {
     // torches need a solid block to stand on or hang from, and can't go underwater or on ceilings
     if (there !== AIR || target.ny < 0 || !BLOCKS[target.id].solid || isTorch(target.id)) return;
     if (target.ny === 0) id = TORCH_WALL_W + WALL_TORCH_DIRS.findIndex(([dx, dz]) => dx === -target.nx && dz === -target.nz);
+  } else if (isWetId(id)) {
+    // (v44) sea plants go underwater, on the bottom (kelp can also go on top of kelp)
+    if (there !== WATER) { toast('Plant it underwater'); return; }
+    const t = BLOCKS[target.id];
+    if (target.ny !== 1 || !((t.solid && !t.transparent) || (id === KELP && target.id === KELP))) { toast('Plant it on the bottom'); return; }
   } else if (isWheat(id) || isCrop(id)) {
     // seeds go on top of grass or dirt
     if (there !== AIR || target.ny !== 1 || (target.id !== GRASS && target.id !== DIRT)) { toast('Plant seeds on top of grass or dirt'); return; }
@@ -4519,7 +4568,8 @@ function placeInner() {
     if (there !== AIR || !world.isSolid(x, y - 1, z)) { toast(`${BLOCKS[id].name}s need something solid underneath`); return; }
   } else {
     // chairs face you; curtains hang across your line of sight
-    if ([CHAIR, SCARECROW, COOK_POT, OVEN, SMELTER, BLAST_SMELTER, CRUSHER, PULVERIZER, E_SMELTER, CHEST, IRON_CHEST, SAW, TRIP_HAMMER, LEAD_CHEST, FREEZER, ARC_FURNACE, MARKET_STALL, FIREPLACE, SNOWMAN, KILN, WASHER].includes(id)) id += facingTowardPlayer(x, z); // the front faces you
+    if (id === ARMOUR_STAND && world.get(x, y + 1, z) !== AIR) { toast('An armour stand needs room above it'); return; }
+    if ([CHAIR, ARMOUR_STAND, SCARECROW, COOK_POT, OVEN, SMELTER, BLAST_SMELTER, CRUSHER, PULVERIZER, E_SMELTER, CHEST, IRON_CHEST, SAW, TRIP_HAMMER, LEAD_CHEST, FREEZER, ARC_FURNACE, MARKET_STALL, FIREPLACE, SNOWMAN, KILN, WASHER].includes(id)) id += facingTowardPlayer(x, z); // the front faces you
     else if (id === DRILL) id += player.pitch < -0.75 ? 4 : (facingTowardPlayer(x, z) + 2) % 4; // drills the way you're looking
     else if (id === ITEM_COUNTER) id += ((facingTowardPlayer(x, z) + 2) % 4) * 2; // passes things on the way you're looking
     else if ([OBSERVER, GAUGE, HARVESTER, EJECTOR, TREE_FELLER, PLANTER, BREAKER, PLACER, QUARRY].includes(id)) id += (facingTowardPlayer(x, z) + 2) % 4; // looks (or reaps) the way you're looking
@@ -4553,7 +4603,8 @@ function kineticVariant(id) {
   const k = BLOCKS[id].kinetic;
   let axis = target.nx ? 0 : target.ny ? 1 : 2;
   const other = BLOCKS[target.id].kinetic;
-  if (other && other.axis !== axis) axis = other.axis;
+  // (not a gearbox or engine: those have no axle; sneak to keep the tapped face's axle, for a gear at a corner)
+  if (other && other.axis >= 0 && other.axis !== axis && !controls.down) axis = other.axis;
   if (k.part === 'wheel' || k.part === 'windmill') {
     if (axis === 1) { const look = player.lookDir(); axis = Math.abs(look.x) > Math.abs(look.z) ? 0 : 2; }
     return (k.part === 'wheel' ? WATER_WHEEL : WINDMILL) + (axis === 2 ? 1 : 0);
@@ -4846,11 +4897,11 @@ function updateBreaking(dt) {
   if (breakState.tick <= 0) { sound.dig(BLOCKS[target.id].sound); breakState.tick = 0.24; swingArm(); }
   if (breakState.progress >= 1) {
     const hit = target;
-    net.capture++;
+    net.capture++; beginUndo();
     try {
       breakBlock(target.x, target.y, target.z);
       if (held === ELECTRIC_DRILL) drillAround(hit);
-    } finally { net.capture--; }
+    } finally { net.capture--; endUndo(); }
     breakState.key = ''; breakState.progress = 0;
     crack.visible = false;
     target = null;
@@ -4907,6 +4958,7 @@ function breakBlock(x, y, z) {
   if (isSign(id)) signs.remove(x, y, z);
   if (isSign(id) || isBed(id)) { dropWaypoint(x, y, z); dropWaypoint(...bedPartnerOr(x, y, z, id)); }
   if (isFrame(id) || isDisplay(id)) { const item = frames.remove(x, y, z); if (item) drops.push([item, 1]); }
+  if (isStand(id)) drops.push(...standDrops(x, y, z));
   if (id === ZIP_POST) drops.push(...unlinkZips(x, y, z));
   if (id === LIGHTHOUSE_LAMP) beaconSpots.delete(`${x},${y},${z}`);
   if (stationKind(id)) loose.spill(stations.removeStacks(x, y, z), x, y, z); // whatever was inside spills out
@@ -5227,7 +5279,7 @@ const KV = {
   },
   frame: {
     entries: () => frames.items,
-    apply: (k, v) => { if (Number.isInteger(v) && v > 0) frames.items.set(k, v); else frames.items.delete(k); return frames.items.get(k); },
+    apply: (k, v) => { if ((Number.isInteger(v) && v > 0) || (typeof v === 'string' && v[0] === 'A' && v.length < 4000)) frames.items.set(k, v); else frames.items.delete(k); return frames.items.get(k); },
   },
 };
 const kvKey = (v) => (v === undefined || v === null ? '' : JSON.stringify(v));
@@ -5305,7 +5357,7 @@ function tickNet(dt) {
   const p = player.pos;
   net.update(dt, net.live && activeSlot === MP_SLOT && !dead ? {
     pos: p, yaw: player.yaw, pitch: player.pitch, held: inventory.heldId(), speed: Math.hypot(player.vel.x, player.vel.z),
-    swimming: player.inWater && !player.onGround, onGround: player.onGround,
+    swimming: player.inWater && !player.onGround, onGround: player.onGround, gliding: player.gliding,
   } : null, (pos) => {
     const x = Math.floor(pos.x), y = Math.min(H - 1, Math.max(0, Math.floor(pos.y + 1.2))), z = Math.floor(pos.z);
     return { sun: lightUniforms.uDay.value * skyBrightness(world.skyAt(x, y, z)), torch: lightBrightness(world.lightAt(x, y, z)) * lightUniforms.uFlicker.value, ambient: lightUniforms.uAmbient.value };
@@ -5373,7 +5425,7 @@ $('btn-mode').addEventListener('click', () => {
 $('fov').value = settings.fov;
 let sprintFov = 0; // (v41: the view widens a little while you sprint)
 function tickSprintFov(dt) {
-  const want = player.sprinting && Math.hypot(player.vel.x, player.vel.z) > 3 ? 1 : 0;
+  const want = player.gliding ? Math.min(1.5, Math.hypot(player.vel.x, player.vel.z, player.vel.y) / 12) : player.sprinting && Math.hypot(player.vel.x, player.vel.z) > 3 ? 1 : 0;
   const was = sprintFov;
   sprintFov += (want - sprintFov) * Math.min(1, dt * 8);
   if (Math.abs(sprintFov - was) > 1e-4) { camera.fov = settings.fov * (1 + 0.1 * sprintFov); camera.updateProjectionMatrix(); }
@@ -5536,6 +5588,7 @@ downBtn.addEventListener('touchcancel', setDown(false), { passive: false });
 downBtn.addEventListener('mousedown', setDown(true));
 downBtn.addEventListener('mouseup', setDown(false));
 $('btn-fly').addEventListener('click', () => toggleFly());
+$('btn-undo').addEventListener('click', () => undoEdit());
 $('map').addEventListener('click', () => { if (!paused) openMap(); });
 
 // ---------- init ----------
@@ -5553,7 +5606,7 @@ controls = null;
     if (controls && !paused && !dead) controls.grabMouse();
   });
   controls = new Controls($('touch-layer'), player, {
-    place: () => { swingArm(); net.capture++; try { return place(); } finally { net.capture--; } },
+    place: () => { swingArm(); net.capture++; beginUndo(); try { return place(); } finally { net.capture--; endUndo(); } },
     openChat,
     toggleView: () => { if (photoMode || dead) return; viewMode = (viewMode + 1) % 3; toast(VIEW_NAMES[viewMode], 1000); },
     selectSlot,
@@ -5599,6 +5652,8 @@ function applyCreative() {
   inventory.infinite = creative;
   if (!creative) player.flying = false;
   $('btn-fly').classList.toggle('hidden', !creative);
+  $('btn-undo').classList.toggle('hidden', !creative);
+  if (!creative) undoStack.length = 0;
   $('btn-fly').classList.toggle('on', player.flying);
   $('btn-down').classList.toggle('hidden', !player.flying);
   $('btn-mode').textContent = `Game mode: ${creative ? 'Creative' : 'Survival'}`;
@@ -7147,7 +7202,96 @@ window.addEventListener('keydown', (e) => {
   if (e.code === 'F2') { e.preventDefault(); if (photoMode) exitPhotoMode(); else if (!paused) enterPhotoMode(); }
   else if (photoMode && e.code === 'Escape') exitPhotoMode();
   else if (photoMode && (e.code === 'Enter' || e.code === 'KeyP')) snapPhoto();
+  else if (e.code === 'KeyZ' && (e.ctrlKey || e.metaKey) && !e.shiftKey && creative && !paused) { e.preventDefault(); undoEdit(); }
 });
+
+// ---------- v44: the record player, the armour stand and creative undo ----------
+// Tap a record player for the next record (and past the last one to stop it).
+function useRecordPlayer(x, y, z, id) {
+  const k = (BLOCKS[id].record + 1) % (RECORD_MOODS.length + 1);
+  world.setBlock(x, y, z, RECORD_PLAYER + k);
+  sound.click();
+  toast(k ? `Record player: "${RECORD_NAMES[k - 1]}"` : 'Record player: stopped', 1800);
+  recordTimer = 0;
+}
+// The nearest record player playing within earshot: { mood, gain } for the music, or null. (Looked for now and then.)
+let recordTimer = 0, recordFound = null;
+const RECORD_REACH = 24;
+function recordNear(dt) {
+  if ((recordTimer -= dt) > 0) return recordFound && { ...recordFound, gain: recordGain(recordFound) };
+  recordTimer = 1.5;
+  const px = Math.floor(player.pos.x), py = Math.floor(player.pos.y), pz = Math.floor(player.pos.z);
+  let best = null, bestD = RECORD_REACH;
+  for (let y = py - 8; y <= py + 8; y++) for (let z = pz - RECORD_REACH; z <= pz + RECORD_REACH; z++) for (let x = px - RECORD_REACH; x <= px + RECORD_REACH; x++) {
+    const id = world.get(x, y, z);
+    if (id <= RECORD_PLAYER || !isRecordPlayer(id)) continue;
+    const d = Math.hypot(x + 0.5 - player.pos.x, y + 0.5 - player.pos.y, z + 0.5 - player.pos.z);
+    if (d < bestD) { bestD = d; best = { x: x + 0.5, y: y + 0.5, z: z + 0.5, mood: RECORD_MOODS[BLOCKS[id].record - 1] }; }
+  }
+  recordFound = best;
+  return best && { ...best, gain: recordGain(best) };
+}
+function recordGain(r) {
+  const d = Math.hypot(r.x - player.pos.x, r.y - player.pos.y, r.z - player.pos.z);
+  return Math.max(0, Math.min(1, 1.15 - d / RECORD_REACH));
+}
+
+// An armour stand's armour: [[id, wear, enchantments] or null] for each piece (helmet, chestplate, leggings,
+// boots, shield), kept with the item frames (as a string, so it's shared in multiplayer like them).
+function standGear(x, y, z) {
+  const v = frames.get(x, y, z);
+  try { const a = typeof v === 'string' && v[0] === 'A' ? JSON.parse(v.slice(1)) : null; if (Array.isArray(a)) return [0, 1, 2, 3, 4].map((i) => a[i] ?? null); } catch { /* (none) */ }
+  return [null, null, null, null, null];
+}
+function useStand(x, y, z) {
+  const gear = standGear(x, y, z);
+  if (gear.every((g) => !g) && armour.every((a) => !a)) { toast('Wear some armour, then tap the stand to hang it up', 2000); return; }
+  const mine = armour.map((id, i) => (id ? [id, armourWear[i] ?? 0, armourEnch[i] ?? null] : null));
+  for (let i = 0; i < 5; i++) {
+    const g = gear[i];
+    armour[i] = g?.[0] ?? null; armourWear[i] = g?.[1] ?? 0; armourEnch[i] = g?.[2] ?? null;
+  }
+  frames.set(x, y, z, mine.some(Boolean) ? 'A' + JSON.stringify(mine) : 0);
+  inventory.onChange();
+  sound.pop();
+  toast(`You swap armour with the stand · armour ${Math.round(armourShare() * 100)}%`, 1800);
+}
+function standDrops(x, y, z) {
+  const gear = standGear(x, y, z);
+  frames.remove(x, y, z);
+  return gear.filter(Boolean).map(([id]) => [id, 1]);
+}
+
+// Creative undo: the blocks each tap or break of yours changes are noted (old blocks first), and Ctrl+Z (or the
+// undo button) puts back the last lot. Only in creative mode; up to 64 steps.
+const undoStack = [];
+let undoRec = null, undoDepth = 0;
+function beginUndo() { if (creative && !undoDepth++) undoRec = []; }
+function endUndo() {
+  if (!creative || --undoDepth > 0) { undoDepth = Math.max(0, undoDepth); return; }
+  undoDepth = 0;
+  if (undoRec?.length) { undoStack.push(undoRec); if (undoStack.length > 64) undoStack.shift(); }
+  undoRec = null;
+}
+{
+  const set = World.prototype.setBlock;
+  World.prototype.setBlock = function (x, y, z, id) {
+    if (undoRec && this === world && !this.flowing && !netApplying && undoRec.length < 40000) {
+      const old = this.get(x, y, z);
+      if (old !== id) undoRec.push([x, y, z, old]);
+    }
+    set.call(this, x, y, z, id);
+  };
+}
+function undoEdit() {
+  if (!creative) return;
+  const step = undoStack.pop();
+  if (!step) { toast('Nothing to undo', 1200); return; }
+  net.capture++;
+  try { for (let i = step.length - 1; i >= 0; i--) { const [x, y, z, id] = step[i]; world.setBlock(x, y, z, id); } } finally { net.capture--; }
+  sound.click();
+  toast(`Undone (${step.length} block${step.length === 1 ? '' : 's'}) · ${undoStack.length} more`, 1200);
+}
 
 // ---------- v28 E: fine crops, festival shows, special trades ----------
 // A ripe crop sometimes comes up fine: one in sixteen as a rule, one in five from soil beans have fed, a bit
@@ -7673,6 +7817,11 @@ function stepGame(now, dt) {
         night: Math.max(0, Math.min(1, (0.55 - lightUniforms.uDay.value) * 2.5)), dusk: hours > 18.3 && hours < 20.5,
         season: seasonOf(day), raining: weather.raining, light: Math.max(lightUniforms.uDay.value, lightUniforms.uAmbient.value),
       });
+      const tmp = world.generator?.temp?.(player.pos.x / 360, player.pos.z / 360, 2) ?? 0;
+      sealife.update(dt, world, player, {
+        night: Math.max(0, Math.min(1, (0.55 - lightUniforms.uDay.value) * 2.5)), warm: tmp > -0.05, swimming: !!player.inWater,
+        light: Math.max(lightUniforms.uDay.value, lightUniforms.uAmbient.value) * (player.eyeInWater ? 0.8 : 1),
+      });
     }
     tickPets(dt);
     tickFuses(dt);
@@ -7757,7 +7906,7 @@ function stepGame(now, dt) {
   world.raining = weather.raining && biome !== 'desert';
   world.daylight = sky.light; // (v34: drying racks)
   sound.weather(paused ? 0 : weather.level, weather.kind);
-  if (worldReady) music.update(dt, paused ? null : musicMood(dt));
+  if (worldReady) music.update(dt, paused ? null : musicMood(dt), paused ? null : recordNear(dt));
   const before = sky.time;
   if (world && worldReady) { tickBeams(paused ? 0 : dt); sky.mist = mistNow(); }
   sky.update(paused ? 0 : dt, eye, lightUniforms.uDay, player.eyeInWater);
@@ -7822,7 +7971,7 @@ window.minicraft = {
   arrows, fishing, kinetics, electric, lightUniforms, bees, catchAt, seasonOf, applySeason, set day(v) { day = v; applySeason(); }, frames, signalAt, setSwitch, logic, machines, carts, minimap, signs, armour, damage, placeRail, getInCart, getOutOfCart,
   get riding() { return riding; }, explode, lightFuse, fuses, clockTime, compassText, place, editSign, closeSign, openInventory, closeInventory, chestMove, lamps, tickLamps, sleepUntilMorning, stations, openStation, closeStation,
   get caneToday() { return caneToday; }, get creative() { return creative; }, set creative(v) { creative = v; applyCreative(); }, toggleFly, wand, useWand, get achieved() { return achieved; }, achieve, worldMap, openMap, closeMap, openGuide, switchSlot, store, saveGame, renderWorlds, openWorlds, exportSlot, get target() { return target; }, set target(v) { target = v; }, applyKeys, renderKeys, camera, get controls() { return controls; }, loose, throwHeld, get waypoints() { return waypoints; }, toggleWaypoint, sortSlots, quickStack, dropMeteor, get meteors() { return meteors; }, weather, openTrade, closeTrade, mountMob, dismount, get ridingMob() { return ridingMob; }, effects, armourWear, useAnvil, rollLoot, settings,
-  get bedSpawn() { return bedSpawn; }, fertilise, openJournal, closeJournal, get packs() { return packs; }, radiationAt, vehicles, boardVehicle, leaveVehicle, get boarded() { return boarded; }, get seated() { return seated; }, crows, onInvSlot, onStationSlot, quickMoveInv, quickMoveStation, usedIn, itemTipHTML, critters, tickPets, get catGiftDay() { return catGiftDay; }, get villageGrowth() { return villageGrowth; }, notePlanting, tickPuzzles, airPumpNear, useStable, stableNear, horseLabel, logistics, openLogistics, closeLogistics, placeOrder, get lpOpen() { return lpOpen; }, music, musicMood, get guideDone() { return guideDone; }, get guideClaimed() { return guideClaimed; }, tickGuidebook, openGuidebook, closeGuidebook, claimGoal, goalMet, fineChance, fineHarvest, showProduce, foodContest, specialTrades, catchAt, stockStable, tickStables, mangers, openSaddlebags, honeyAt, apiculture, scoopHive, beeEnv, fitUpgrade, piles, lightCharcoalPile, tickPiles, searchChests, takeFromChest, markChest, get chestMark() { return chestMark; }, enterPhotoMode, exitPhotoMode, snapPhoto, get photoMode() { return photoMode; }, photoCam, get lastPhoto() { return lastPhoto; }, tickStalactites, loosenStalactite, fallingRocks, shaking, workLock, findLock, tickLocks, openGates, lockJobs, hangRopeLadder, layBridge, rollUpRope, fireworks, ringBell, requestFor, festivalToday, repOf, addRep, tradeCost, tickFestival, villageEntry, hearths, tickHearths, feedHearth, chimneyTop, smoke, renderPins, togglePin, lightning, igniteAt, fires, tickFires, tickStorm, growVillage, buildVillageHouse, stallPrice, tickStalls, tickVillages, set catGiftDay(v) { catGiftDay = v; }, get places() { return places; }, get treasures() { return treasures; }, readTreasureMap, tickTreasure, beams, tickBeams, beaconSpots: () => beaconSpots, mistNow, tickSnow, tickExplore, sitOn, standUp, useDisplay, zips, linkZip, startZip, get zipping() { return zipping; }, burnCoal, get health() { return health; }, set health(v) { health = v; }, paintings, placeSwitchRail, signalAt, ailments, armourEnch, openAltar, lairNear, useBed, eat, drinkTea,
+  get bedSpawn() { return bedSpawn; }, fertilise, openJournal, closeJournal, get packs() { return packs; }, radiationAt, vehicles, boardVehicle, leaveVehicle, get boarded() { return boarded; }, get seated() { return seated; }, crows, onInvSlot, onStationSlot, quickMoveInv, quickMoveStation, usedIn, itemTipHTML, critters, tickPets, sealife, useRecordPlayer, recordNear, useStand, undoEdit, undoStack, get catGiftDay() { return catGiftDay; }, get villageGrowth() { return villageGrowth; }, notePlanting, tickPuzzles, airPumpNear, useStable, stableNear, horseLabel, logistics, openLogistics, closeLogistics, placeOrder, get lpOpen() { return lpOpen; }, music, musicMood, get guideDone() { return guideDone; }, get guideClaimed() { return guideClaimed; }, tickGuidebook, openGuidebook, closeGuidebook, claimGoal, goalMet, fineChance, fineHarvest, showProduce, foodContest, specialTrades, catchAt, stockStable, tickStables, mangers, openSaddlebags, honeyAt, apiculture, scoopHive, beeEnv, fitUpgrade, piles, lightCharcoalPile, tickPiles, searchChests, takeFromChest, markChest, get chestMark() { return chestMark; }, enterPhotoMode, exitPhotoMode, snapPhoto, get photoMode() { return photoMode; }, photoCam, get lastPhoto() { return lastPhoto; }, tickStalactites, loosenStalactite, fallingRocks, shaking, workLock, findLock, tickLocks, openGates, lockJobs, hangRopeLadder, layBridge, rollUpRope, fireworks, ringBell, requestFor, festivalToday, repOf, addRep, tradeCost, tickFestival, villageEntry, hearths, tickHearths, feedHearth, chimneyTop, smoke, renderPins, togglePin, lightning, igniteAt, fires, tickFires, tickStorm, growVillage, buildVillageHouse, stallPrice, tickStalls, tickVillages, set catGiftDay(v) { catGiftDay = v; }, get places() { return places; }, get treasures() { return treasures; }, readTreasureMap, tickTreasure, beams, tickBeams, beaconSpots: () => beaconSpots, mistNow, tickSnow, tickExplore, sitOn, standUp, useDisplay, zips, linkZip, startZip, get zipping() { return zipping; }, burnCoal, get health() { return health; }, set health(v) { health = v; }, paintings, placeSwitchRail, signalAt, ailments, armourEnch, openAltar, lairNear, useBed, eat, drinkTea,
 };
 
 // ---------- v31: catching bees ----------
@@ -7849,6 +7998,7 @@ apiculture.onYoung = (x, y, z, sp, mate, kids) => {
 // ---------- v32: tree taps ----------
 import { CHOC_MOULD, CHOC_CAKE, CAKE_SLICES, MOULD_BARS, MELTED_CHOC, CHOC_BAR, MOULD_FILLS, mouldFill } from './blocks.js';
 import { FESTIVAL_FAVOURITES, contestScore, GUANO, BANDAGE, WHISKY, OLD_WHISKY } from './blocks.js';
+import { GLIDER, isWetId, KELP, RECORD_PLAYER, RECORD_MOODS, RECORD_NAMES, isRecordPlayer, ARMOUR_STAND, isStand } from './blocks.js';
 import { TREE_TAP, LATEX, MAX_LATEX, POLYMER_BOAT, DEMO_CHARGE, DETONATOR, DEMO_RADIUS, DETONATOR_LINKS, DETONATOR_RANGE } from './blocks.js';
 // Tapping a tree tap takes the latex in it.
 function useTap(x, y, z, tid) {

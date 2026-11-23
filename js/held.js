@@ -130,6 +130,22 @@ function shadedBox(w, h, d, color) {
   return g;
 }
 
+// (v44) A glider's wing, as a group of boxes drawn with `mat` (its geometries are pushed onto `geos`, to be
+// disposed with the rest): about 2.6 wide, its middle at the group's origin, with the bar hanging 1 below.
+export function gliderGroup(mat, geos) {
+  const g = new THREE.Group();
+  const add = (size, color, pos) => { const geo = shadedBox(...size, color); geos.push(geo); const m = new THREE.Mesh(geo, mat); m.position.set(...pos); g.add(m); return m; };
+  for (let i = 0; i < 5; i++) {
+    const m = add([0.54, 0.04, 0.95], i % 2 ? 0xece2c8 : 0xce3a30, [(i - 2) * 0.52, -Math.abs(i - 2) * 0.05, 0.05]);
+    m.rotation.z = (i - 2) * 0.05;
+  }
+  add([2.7, 0.06, 0.06], 0x78502c, [0, 0.01, -0.42]); // the spar along the front
+  add([0.05, 0.06, 1.0], 0x78502c, [0, 0.02, 0.05]); // the keel
+  for (const x of [-0.28, 0.28]) { const st = add([0.04, 1.0, 0.04], 0x6e4a28, [x * 0.7, -0.5, -0.05]); st.rotation.z = x > 0 ? 0.25 : -0.25; }
+  add([0.62, 0.04, 0.04], 0x6e4a28, [0, -0.98, -0.05]); // the bar you hold
+  return g;
+}
+
 // light where something is, as a colour: max(daylight x sunlight, warm torch light, ambient)
 export function lightColour(out, { sun, torch, ambient }) {
   return out.setRGB(Math.max(sun, torch, ambient), Math.max(sun, torch * 0.86, ambient), Math.max(sun, torch * 0.66, ambient));
@@ -305,7 +321,12 @@ export class Avatar {
     this.box(head, [0.04, 0.06, 0.02], dark, [-0.075, 0.24, -0.222]);
     this.box(head, [0.04, 0.06, 0.02], dark, [0.075, 0.24, -0.222]);
     this.box(head, [0.12, 0.03, 0.02], 0x8a4a3a, [0, 0.12, -0.212]);
-    this.parts = { legL, legR, armL, armR, head, hand };
+    // (v44) a glider, shown while it's open
+    const glider = gliderGroup(this.mat, this.geos);
+    glider.position.set(0, 2.9, 0.1); // (the bar just at your raised hands)
+    glider.visible = false;
+    this.body.add(glider);
+    this.parts = { legL, legR, armL, armR, head, hand, glider };
     this.heldShown = -1;
   }
 
@@ -327,7 +348,7 @@ export class Avatar {
   }
 
   // state: { pos, yaw, pitch, speed (blocks/s), swimming, onGround, light: { sun, torch, ambient } }
-  update(dt, { pos, yaw, pitch = 0, speed = 0, swimming = false, onGround = true, light }) {
+  update(dt, { pos, yaw, pitch = 0, speed = 0, swimming = false, onGround = true, gliding = false, light }) {
     if (this.heldShown !== this.heldId) this.buildHeld();
     const P = this.parts;
     this.root.position.copy(pos);
@@ -348,6 +369,17 @@ export class Avatar {
     P.armR.rotation.x = sw * 0.7 * (1 - this.swim) - (this.heldId ? 0.3 : 0) - chop * 1.6 + (-Math.PI - Math.sin(crawl) * 1.3) * this.swim * 0.8;
     P.armR.rotation.z = -chop * 0.3;
     P.head.rotation.x = -pitch * 0.8 + 1.0 * this.swim;
+    // (v44) gliding: hang from the bar, arms up, legs trailing
+    this.glide = (this.glide ?? 0) + ((gliding ? 1 : 0) - (this.glide ?? 0)) * Math.min(1, dt * 6);
+    P.glider.visible = this.glide > 0.5;
+    if (this.glide > 0.01) {
+      const k = this.glide;
+      P.armL.rotation.x += (-Math.PI * 0.92 - P.armL.rotation.x) * k;
+      P.armR.rotation.x += (-Math.PI * 0.92 - P.armR.rotation.x) * k;
+      P.legL.rotation.x *= 1 - k * 0.8; P.legR.rotation.x *= 1 - k * 0.8;
+      this.body.rotation.x += -0.35 * k;
+      P.glider.rotation.x = 0.35 * k; // (the wing stays level while you lean)
+    }
     lightColour(this.light, light);
     this.mat.color.copy(this.light);
     if (this.held) this.held.material.color.copy(this.light);

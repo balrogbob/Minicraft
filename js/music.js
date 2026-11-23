@@ -64,21 +64,26 @@ export class Music {
 
   get level() { return this.sound.muted ? 0 : this.sound.volume * this.volume * 0.8; }
 
-  // Call every frame with the mood that suits where the player is.
-  update(dt, mood) {
+  // Call every frame with the mood that suits where the player is. (v44) `record`: { mood, gain } while a record
+  // player is playing nearby: its music plays on and on (even with the music turned off), louder the closer you are.
+  update(dt, mood, record = null) {
     const c = this.sound.ctx;
     if (!c || c.state !== 'running') return;
     if (!this.out) this.setup();
     const p = this.piece;
-    this.out.gain.setTargetAtTime(this.level, c.currentTime, 0.3);
+    const gain = record ? (this.sound.muted ? 0 : this.sound.volume * 0.8 * Math.max(this.volume, 0.5) * record.gain) : this.level;
+    this.out.gain.setTargetAtTime(gain, c.currentTime, 0.3);
+    if (record) mood = record.mood;
     if (mood && MOODS[mood]) this.mood = mood;
-    if (this.volume <= 0) { this.piece = null; return; }
+    if (this.volume <= 0 && !record) { this.piece = null; return; }
     if (!p) {
-      if ((this.rest -= dt) <= 0) this.start(this.mood);
+      if (record || (this.rest -= dt) <= 0) { this.start(this.mood); this.piece.record = !!record; }
       return;
     }
+    // a record put on (or changed, or taken off): straight over to it, or back to the usual quiet
+    if (!p.fading && (record ? p.mood !== this.mood || !p.record : p.record)) this.fadeOut(record ? 0.2 : between(FIRST_REST));
     // somewhere quite different (into a cave, under water): let this piece go and start one that fits soon
-    if (p.mood !== this.mood && !p.fading && moodGap(p.mood, this.mood)) this.fadeOut(8 + Math.random() * 8);
+    else if (p.mood !== this.mood && !p.fading && moodGap(p.mood, this.mood)) this.fadeOut(8 + Math.random() * 8);
     this.schedule(c.currentTime + 0.6);
     if (c.currentTime >= p.end) { this.piece = null; this.rest = p.fading ? p.after : between(REST); }
   }

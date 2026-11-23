@@ -258,6 +258,7 @@ function block(id, o) {
     tap: o.tap ?? -1, // v32: a tree tap's latex level
     wireTex: o.wireTex ?? null, // v32: [off, on] tiles for a wire that isn't electrum
     bounce: o.bounce ?? 0, // v32: how high a bounce pad throws you (blocks/s), 0 for none
+    record: o.record ?? -1, wet: !!o.wet, // v44: a record player's record (0: none); a sea plant that stands in water
   };
 }
 
@@ -3393,4 +3394,73 @@ export const PLANT_MATTER = [SEEDS, SAPLING, LEAVES, SUGAR_CANE, CACTUS, CARROT,
 RECIPES.push(
   { out: [DISTILLERY, 1], in: [[COPPER_INGOT, 6], [BRICK, 3], [GLASS_BOTTLE, 1]], table: true, metal: COPPER_INGOT },
   { out: [BANDAGE, 3], in: [[WOOL, 1], [RUBBING_ALCOHOL, 1]], also: [[GLASS_BOTTLE, 1]] },
+);
+
+// ---------- v44: the glider ----------
+// Worn in place of a chestplate. Jump in mid-air to open it and glide: you fly the way you look (look down to
+// dive and gather speed, up to slow down and sink less) and warm air rising over fire and lava lifts you.
+export const GLIDER = 3243;
+ITEMS[GLIDER] = { name: 'Glider', stack: 1, armour: { piece: 1, points: 1, mat: 'glider' }, about: 'wear it in place of a chestplate, then jump in mid-air to open it and glide (sneak to fold it)' };
+RECIPES.push({ out: [GLIDER, 1], in: [[STICK, 6], [WOOL, 4], [LEATHER, 2]], table: true });
+
+// ---------- v44: the sea: coral reefs, sea grass and kelp ----------
+// Coral blocks grow in warm shallow seas; coral fans, sea grass and kelp grow underwater. Those three are
+// "wet": their cell is full of water too (you can swim through them, they hold back no water, and breaking
+// one leaves the water behind), so they can only be planted in water.
+export const CORAL = 1531; // 1531..1534: red, yellow, blue, pink coral
+export const CORAL_FAN = 1535; // 1535..1538: the fans, in the same colours
+export const SEA_GRASS = 1539, KELP = 1540;
+export const DRIED_KELP = 3244;
+export const CORALS = ['Red', 'Yellow', 'Blue', 'Pink'];
+export const isWetId = (id) => id >= CORAL_FAN && id <= KELP;
+Object.assign(T, { CORAL: 477, CORAL_FAN: 481, SEA_GRASS: 485, KELP: 486 }); // (477..480 coral, 481..484 fans)
+const wet = { ...plant, sound: 'water', wet: true };
+CORALS.forEach((c, i) => {
+  block(CORAL + i, { name: `${c} Coral`, tex: T.CORAL + i, hardness: 1, tool: 'pick', sound: 'stone' });
+  block(CORAL_FAN + i, { ...wet, name: `${c} Coral Fan`, tex: T.CORAL_FAN + i });
+  ITEMS[CORAL + i] = { name: `${c} Coral`, about: 'a block of living reef from a warm sea' };
+  ITEMS[CORAL_FAN + i] = { name: `${c} Coral Fan`, about: 'plant it underwater' };
+});
+block(SEA_GRASS, { ...wet, name: 'Sea Grass', tex: T.SEA_GRASS, drop: () => [[SEA_GRASS, Math.random() < 0.5 ? 1 : 0]] });
+block(KELP, { ...wet, name: 'Kelp', tex: T.KELP, grows: 'kelp' });
+ITEMS[SEA_GRASS] = { name: 'Sea Grass', about: 'plant it on the bottom of a pond or the sea' };
+ITEMS[KELP] = { name: 'Kelp', about: 'grows in tall strands up through the water; dry it on a drying rack to eat' };
+ITEMS[DRIED_KELP] = { name: 'Dried Kelp', food: 1, about: 'salty and chewy' };
+DRYING[KELP] = [DRIED_KELP, 40];
+
+
+// ---------- v44: the record player and the armour stand ----------
+// Tap a record player to put on a record: it plays music of one kind (day, night, cave, water, village, festival
+// or winter) over and over, loudest close by; tap it again for the next record, and again past the last to stop it.
+export const RECORD_PLAYER = 1541; // 1541: stopped; 1542..1548: playing a record (in RECORD_MOODS order)
+export const RECORD_MOODS = ['day', 'night', 'cave', 'water', 'village', 'festival', 'winter'];
+export const RECORD_NAMES = ['Morning Fields', 'Night Sky', 'Deep Caves', 'Under the Waves', 'Village Square', 'Festival Day', 'First Snow'];
+export const isRecordPlayer = (id) => id >= RECORD_PLAYER && id <= RECORD_PLAYER + RECORD_MOODS.length;
+Object.assign(T, { RECORD: 487, TURNTABLE: 488 });
+for (let k = 0; k <= RECORD_MOODS.length; k++) {
+  block(RECORD_PLAYER + k, {
+    ...furniture, name: 'Record Player', variantOf: k ? RECORD_PLAYER : 0, drop: RECORD_PLAYER, record: k,
+    model: [
+      [1, 0, 1, 15, 8, 15, T.PLANKS], // the cabinet
+      [2.5, 8, 2.5, 11.5, 8.6, 11.5, k ? T.RECORD : T.TURNTABLE], // the platter (and a record on it)
+      [12.5, 8, 11, 14, 10.5, 12.5, T.IRON], [13, 10, 4, 13.6, 10.6, 12, T.IRON], // the tone arm
+    ],
+    boxes: [[1, 0, 1, 15, 9, 15]],
+  });
+}
+ITEMS[RECORD_PLAYER] = { name: 'Record Player', about: 'tap it to put on a record (tap again for the next); music plays all the time near it' };
+// An armour stand holds a set of armour (and a shield): tap it to swap what it has with what you're wearing.
+export const ARMOUR_STAND = 1549; // 1549..1552, facing
+export const isStand = (id) => id >= ARMOUR_STAND && id < ARMOUR_STAND + 4;
+const STAND_MODEL = [
+  [3, 0, 3, 13, 1, 13, T.PLANKS], // the base
+  [7.25, 1, 7.25, 8.75, 26, 8.75, T.PLANKS], // the post
+  [3, 20, 7.25, 13, 21.5, 8.75, T.PLANKS], // the shoulders
+  [6.5, 26, 6.5, 9.5, 29, 9.5, T.PLANKS], // a knob for a head
+];
+for (let f = 0; f < 4; f++) block(ARMOUR_STAND + f, { ...furniture, name: 'Armour Stand', model: rotateModel(STAND_MODEL, f), variantOf: f ? ARMOUR_STAND : 0, drop: ARMOUR_STAND, facing: f, boxes: [[4, 0, 4, 12, 16, 12]] });
+ITEMS[ARMOUR_STAND] = { name: 'Armour Stand', about: 'tap it to swap your armour with what it holds' };
+RECIPES.push(
+  { out: [RECORD_PLAYER, 1], in: [[PLANKS, 4], [IRON_INGOT, 1], [COPPER_INGOT, 1]], table: true },
+  { out: [ARMOUR_STAND, 1], in: [[STICK, 6], [PLANKS, 2]], table: true },
 );

@@ -120,7 +120,7 @@ export class Net {
     if (!Array.isArray(s.p)) return;
     r.target.set(s.p[0], s.p[1], s.p[2]);
     if (!r.pos || r.pos.distanceToSquared(r.target) > 64) r.pos = r.target.clone(); // (a jump: just go there)
-    r.yaw = s.yaw; r.pitch = s.pitch; r.held = s.held | 0; r.sw = !!s.sw; r.sp = s.sp ?? 0; r.g = s.g !== false;
+    r.yaw = s.yaw; r.pitch = s.pitch; r.held = s.held | 0; r.sw = !!s.sw; r.sp = s.sp ?? 0; r.g = s.g !== false; r.gl = !!s.gl;
   }
 
   removeRemote(id) {
@@ -155,7 +155,7 @@ export class Net {
   clearRemotes() { for (const id of [...this.remotes.keys()]) this.removeRemote(id); }
 
   // every frame: move the others smoothly, and (ten times a second) tell the server where you are.
-  // me: { pos, yaw, pitch, held, swimming, speed, onGround }; lightAt(pos) -> { sun, torch, ambient }
+  // me: { pos, yaw, pitch, held, swimming, speed, onGround, gliding }; lightAt(pos) -> { sun, torch, ambient }
   update(dt, me, lightAt) {
     const k = 1 - Math.exp(-12 * dt);
     for (const r of this.remotes.values()) {
@@ -163,13 +163,13 @@ export class Net {
       r.pos.lerp(r.target, k);
       r.avatar.root.visible = true;
       r.avatar.setHeld(r.held);
-      r.avatar.update(dt, { pos: r.pos, yaw: r.yaw, pitch: r.pitch, speed: r.sp, swimming: r.sw, onGround: r.g, light: lightAt(r.pos) });
+      r.avatar.update(dt, { pos: r.pos, yaw: r.yaw, pitch: r.pitch, speed: r.sp, swimming: r.sw, onGround: r.g, gliding: r.gl, light: lightAt(r.pos) });
     }
     if (!this.live || !me) return;
     const now = performance.now(); // (real time: ten a second however slowly the game runs)
     if (now < this.sendTimer) return;
     this.sendTimer = now + 100;
-    const msg = { t: 'move', p: [+me.pos.x.toFixed(2), +me.pos.y.toFixed(2), +me.pos.z.toFixed(2)], yaw: +me.yaw.toFixed(3), pitch: +me.pitch.toFixed(3), held: me.held, sw: me.swimming, sp: +me.speed.toFixed(1), g: me.onGround };
+    const msg = { t: 'move', p: [+me.pos.x.toFixed(2), +me.pos.y.toFixed(2), +me.pos.z.toFixed(2)], yaw: +me.yaw.toFixed(3), pitch: +me.pitch.toFixed(3), held: me.held, sw: me.swimming, sp: +me.speed.toFixed(1), g: me.onGround, ...(me.gliding ? { gl: true } : {}) };
     const s = JSON.stringify(msg);
     if (s === this.lastSent && (this.quiet = (this.quiet ?? 0) + 1) % 10) return; // (standing still: once a second)
     this.lastSent = s;
