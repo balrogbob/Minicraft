@@ -310,7 +310,7 @@ function updateMe(dt) {
   fpGlider.visible = player.gliding && !avatar.root.visible && !dead;
   if (fpGlider.visible) {
     const e = player.eye;
-    fpGlider.position.set(e.x - Math.sin(player.yaw) * 1.3, e.y + 1.2, e.z - Math.cos(player.yaw) * 1.3); // (out ahead, so its edge and struts frame the view)
+    fpGlider.position.set(e.x - Math.sin(player.yaw) * 0.3, e.y + 0.82, e.z - Math.cos(player.yaw) * 0.3); // (just overhead, the bar in your hands)
     fpGlider.rotation.set(0, player.yaw, 0);
     lightColour(fpGliderMat.color, light);
   }
