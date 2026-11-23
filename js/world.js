@@ -1141,6 +1141,7 @@ export class World {
   // ---------- meshing ----------
 
   meshChunk(c, scene, materials) {
+    c.rev = (c.rev ?? 0) + 1; // (v46: tells the traced-lighting picture to copy this chunk again, see voxels.js)
     const geo = this.buildChunkGeometry(c);
     for (const kind of ['solid', 'water']) {
       const g = geo[kind];

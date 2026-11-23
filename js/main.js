@@ -3,7 +3,7 @@ import { Viewmodel, Avatar, LOOKS, randomLook, gliderGroup, lightColour } from '
 import { Ripples } from './ripples.js';
 import { FarLand, FAR_REACH } from './farland.js';
 import { Net } from './net.js';
-import { Graphics, GFX_DEFAULTS, GFX_NAMES, GFX_TOGGLES, SHADOW_LEVELS, GFX_PRESETS, PRESET_ORDER, PRESET_NAMES, MAX_TORCH_SHADOWS, gfxUniforms, GFX_FRAG_HEAD, GFX_SUN_TERM, GFX_WATER, GFX_VERT_HEAD, GFX_VERT_DECODE, GFX_VERT_SWAY, WATER_LAYER, LATE_LAYER } from './graphics.js';
+import { Graphics, GFX_DEFAULTS, GFX_NAMES, GFX_TOGGLES, SHADOW_LEVELS, TRACED_LEVELS, GFX_PRESETS, PRESET_ORDER, PRESET_NAMES, MAX_TORCH_SHADOWS, gfxUniforms, GFX_FRAG_HEAD, GFX_SUN_TERM, GFX_WATER, GFX_VERT_HEAD, GFX_VERT_DECODE, GFX_VERT_SWAY, WATER_LAYER, LATE_LAYER } from './graphics.js';
 import {
   BLOCKS, RECIPES, TABLE, AIR, WATER, TORCH, TORCH_WALL_W, WALL_TORCH_DIRS,
   GRASS, DIRT, SAND, CHURN, SUGAR_CANE, BREAD, ITEMS, BOW, ARROW, BUCKET,
@@ -41,6 +41,7 @@ import {
 } from './blocks.js';
 import { Smoke } from './smoke.js';
 import { Fireworks } from './fireworks.js';
+import { makePalette } from './voxels.js';
 import { createAtlas, createGlowMask, createIcons, createCrackCanvases, createWaterCanvas, createHudIcons, paintSeason, ATLAS_COLS } from './textures.js';
 import { World, CHUNK, WORLD_SIZE, chunkKey, skyBrightness, lightBrightness } from './world.js';
 import { localIndex, CHUNK_VOLUME, OLD_CHUNK_VOLUME, H, SEA_LEVEL, SNOW_LINE } from './terrain.js';
@@ -112,6 +113,7 @@ const settings = (() => {
   if (!s.look || typeof s.look !== 'object') s.look = randomLook(); // (v38: how your character looks)
   s.gfx = { ...GFX_DEFAULTS, ...(s.gfx && typeof s.gfx === 'object' ? s.gfx : {}) };
   s.gfx.torches = Math.max(0, Math.min(MAX_TORCH_SHADOWS, s.gfx.torches | 0));
+  s.gfx.traced = Math.max(0, Math.min(2, s.gfx.traced | 0));
   s.gfx.shafts = Math.max(0, Math.min(MAX_TORCH_SHADOWS, s.gfx.shafts | 0));
   s.gfx.torchRate = Math.max(1, Math.min(MAX_TORCH_SHADOWS, s.gfx.torchRate | 0 || 2));
   s.gfx.shadows = s.gfx.shadows === true ? 2 : Math.max(0, Math.min(2, s.gfx.shadows | 0)); // (v36 saved on/off)
@@ -202,10 +204,13 @@ function addTorchLight(mat, water = false) {
         '#include <color_fragment>\nvec3 baseC = diffuseColor.rgb;\nfloat hl = uHand.w * pow(clamp(1.0 - distance(vWorldP, uHand.xyz) / 13.0, 0.0, 1.0), 1.4);\n' + GFX_SUN_TERM +
         'diffuseColor.rgb *= max(max(max(sunT * sunC, vec3(uAmbient)), torchT), vec3(hl, hl * 0.96, hl * 0.86));\n' +
         // (v46) the sun's highlight on shiny things (metal, ice, glass), and on open ground wet with rain
-        (water ? '' : 'if (sunT > 0.02 && uSunStr > 0.0) { float shine = texture2D(uGlowMap, vMapUv).b; vec3 N = gfxNormal();\n' +
+        (water ? '' : '{ float shine = texture2D(uGlowMap, vMapUv).b; vec3 N = gfxNormal(); vec3 V = normalize(cameraPosition - vWorldP);\n' +
           'float wet = uWet * step(0.7, N.y) * smoothstep(0.85, 1.0, vSky) * smoothstep(0.35, 0.65, fract(sin(dot(floor(vWorldP.xz * 2.0), vec2(12.99, 78.23))) * 437.58) * 0.5 + 0.5 * sin(vWorldP.x * 0.7 + 1.3 * sin(vWorldP.z * 0.5)));\n' +
+          // (v46) with full traced lighting, shiny things and puddles mirror what's around them (the blocks, or the sky)
+          'if (uVoxOn > 1.5) { float rk = max(shine * 0.6, wet * 0.5); if (rk > 0.02) { float fr = 0.25 + 0.75 * pow(1.0 - max(dot(N, V), 0.0), 4.0);\n' +
+          '  diffuseColor.rgb = mix(diffuseColor.rgb, gfxVoxReflect(reflect(-V, N), N) * mix(vec3(1.0), baseC / max(vColor.rgb, vec3(0.2)), shine * 0.6), rk * fr); } }\n' +
           'float k = max(shine, wet * 0.8);\n' +
-          'if (k > 0.0) { vec3 V = normalize(cameraPosition - vWorldP); float s = pow(max(dot(N, normalize(uSunDir + V)), 0.0), mix(28.0, 90.0, shine)); diffuseColor.rgb += min(sunC * s * k * sunT * uSunStr, vec3(0.7)); } }\n') +
+          'if (k > 0.0 && sunT > 0.02 && uSunStr > 0.0) { float s = pow(max(dot(N, normalize(uSunDir + V)), 0.0), mix(28.0, 90.0, shine)); diffuseColor.rgb += min(sunC * s * k * sunT * uSunStr, vec3(0.7)); } }\n') +
         (water ? '' : 'if (vGlow > 0.5) { vec2 gm = texture2D(uGlowMap, vMapUv).rg; vec3 glowC = baseC / max(vColor.rgb, vec3(0.25)); diffuseColor.rgb = mix(diffuseColor.rgb, max(diffuseColor.rgb, glowC * (1.7 + 0.25 * uFlicker + gm.y * (1.6 + 0.6 * uFlicker))), gm.x); }\n') + (water ? GFX_WATER : ''));
   };
 }
@@ -224,6 +229,9 @@ addTorchLight(waterMat, true);
 const materials = { solid: material, water: waterMat };
 // optional fancy graphics: shadows, bloom, water (see graphics.js)
 const gfx = new Graphics(renderer, settings.gfx);
+// (v46) traced lighting: the world, and each block's colour, for the 3D picture of the blocks around you
+gfx.voxWorld = () => world;
+gfx.voxPalette = makePalette(atlasCanvas);
 // (v46) sunlight through stained glass takes on its colour (its leading still casts a shadow): see graphics.js
 gfx.glass = {
   material, first: TILES.STAINED, count: COLORS.length, cols: ATLAS_COLS,
@@ -266,7 +274,7 @@ function findWaterLevel(dt) {
   for (const [y, v] of votes) if (v > most) { most = v; best = y; }
   gfx.waterY = best === null ? null : best + 0.875; // (the surface sits a little below the block top)
 }
-gfx.onFail = (key) => { goCustom(); settings.gfx[key] = key === 'torches' || key === 'shadows' || key === 'shafts' ? 0 : false; saveSettings(); updateGfxLabels(); toast(`${GFX_NAMES[key]} doesn't work on this device — turned off`, 4000); };
+gfx.onFail = (key) => { goCustom(); settings.gfx[key] = key === 'torches' || key === 'shadows' || key === 'shafts' || key === 'traced' ? 0 : false; saveSettings(); updateGfxLabels(); toast(`${GFX_NAMES[key]} doesn't work on this device — turned off`, 4000); };
 
 const sky = new Sky(scene);
 const farLand = new FarLand(scene, null, lightUniforms.uDay); // (v41: the land past the loaded chunks)
@@ -5533,6 +5541,7 @@ updateLookButtons();
 function updateGfxLabels() {
   const g = settings.gfx;
   $('btn-gfx-shadows').textContent = `Sun shadows: ${SHADOW_LEVELS[g.shadows]}`;
+  $('btn-gfx-traced').textContent = `Traced lighting: ${TRACED_LEVELS[g.traced]}`;
   $('torch-shadows').value = g.torches;
   $('torch-shadows-label').textContent = `Torch shadows: ${g.torches ? `nearest ${g.torches}` : 'off'}`;
   $('torch-shafts').value = g.shafts;
@@ -5589,6 +5598,7 @@ if (settings.gfxPreset === 'auto') applyPreset('auto', true);
 $('torch-shadows').addEventListener('input', (e) => { goCustom(); settings.gfx.torches = +e.target.value; gfx.set('torches', settings.gfx.torches); updateGfxLabels(); saveSettings(); });
 $('torch-shafts').addEventListener('input', (e) => { goCustom(); settings.gfx.shafts = +e.target.value; gfx.set('shafts', settings.gfx.shafts); updateGfxLabels(); saveSettings(); });
 $('torch-rate').addEventListener('input', (e) => { goCustom(); settings.gfx.torchRate = +e.target.value; gfx.set('torchRate', settings.gfx.torchRate); updateGfxLabels(); saveSettings(); });
+$('btn-gfx-traced').addEventListener('click', () => { goCustom(); settings.gfx.traced = (settings.gfx.traced + 1) % 3; gfx.set('traced', settings.gfx.traced); updateGfxLabels(); saveSettings(); });
 $('btn-gfx-shadows').addEventListener('click', () => { goCustom(); settings.gfx.shadows = (settings.gfx.shadows + 1) % 3; gfx.set('shadows', settings.gfx.shadows); updateGfxLabels(); saveSettings(); });
 for (const key of GFX_TOGGLES) {
   $(`btn-gfx-${key}`)?.addEventListener('click', () => { goCustom(); settings.gfx[key] = !settings.gfx[key]; gfx.set(key, settings.gfx[key]); updateGfxLabels(); saveSettings(); });

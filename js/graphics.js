@@ -12,33 +12,38 @@
 //   reflections - water mirrors the world above it (the scene drawn again, upside down)
 //   ripple     - the view wobbles while your head is under water
 //   bounce     - (v46) colour bleed: lit surfaces tint the darker ones beside them a little
+//   traced (0-2) - (v46) light traced through a 3D picture of the blocks around you: exact block shadows from
+//                 the sun and soft shade in corners (1), plus how much sky each spot sees and reflections in shiny
+//                 things and puddles (2)
 //   shafts (0-50) - (v46) the nearest lights shine through the air: beams through windows, gaps and bars,
 //                 shadows of pillars cut through the glow (marched through the torch shadow pictures)
 //   mirrors    - (v46) mirror blocks show the world live (the scene drawn again from your eye's mirror image)
 // Torch light itself is flood-filled block by block, so it never shines through walls; torch shadows
 // only add the sharper shadows of things standing in the light (pillars, mobs, machines, furniture).
 import * as THREE from 'three';
+import { VoxelVolume, emptyVolume, VOX } from './voxels.js';
 
 export const GFX_DEFAULTS = {
   shadows: 0, torches: 0, torchRate: 2, bloom: false, water: false, reflections: false, refraction: false, caustics: false,
-  godrays: false, sway: false, ripple: false, torchDay: false, mirrors: false, bounce: false, shafts: 0,
+  godrays: false, sway: false, ripple: false, torchDay: false, mirrors: false, bounce: false, shafts: 0, traced: 0,
 };
 export const MAX_TORCH_SHADOWS = 50;
 export const GFX_TOGGLES = ['torchDay', 'bloom', 'godrays', 'sway', 'water', 'reflections', 'mirrors', 'bounce', 'refraction', 'caustics', 'ripple'];
 export const GFX_NAMES = {
   shadows: 'Sun shadows', torches: 'Torch shadows', bloom: 'Bloom', water: 'Fancy water', refraction: 'Water refraction', caustics: 'Water caustics',
   godrays: 'God rays', sway: 'Swaying leaves and plants', reflections: 'Water reflections', ripple: 'Underwater ripple',
-  torchDay: 'Torch shadows by day', mirrors: 'Live mirrors', bounce: 'Colour bleed', shafts: 'Torch light shafts',
+  torchDay: 'Torch shadows by day', mirrors: 'Live mirrors', bounce: 'Colour bleed', shafts: 'Torch light shafts', traced: 'Traced lighting',
 };
 export const SHADOW_LEVELS = ['off', 'low', 'high'];
+export const TRACED_LEVELS = ['off', 'shadows and shade', 'full'];
 // v38: quick presets for the fancy graphics. 'auto' starts at medium and steps up or down to keep the game
 // smooth; changing any single setting makes it 'custom'.
 export const GFX_PRESETS = {
   off: { ...GFX_DEFAULTS },
   low: { ...GFX_DEFAULTS, water: true, sway: true, ripple: true },
   medium: { ...GFX_DEFAULTS, shadows: 1, torches: 3, torchRate: 1, bloom: true, water: true, caustics: true, sway: true, ripple: true, mirrors: true },
-  high: { shadows: 2, torches: 8, torchRate: 2, shafts: 2, bloom: true, water: true, reflections: true, refraction: true, caustics: true, godrays: true, sway: true, ripple: true, mirrors: true, bounce: true },
-  ultra: { shadows: 2, torches: 24, torchRate: 6, shafts: 6, bloom: true, water: true, reflections: true, refraction: true, caustics: true, godrays: true, sway: true, ripple: true, mirrors: true, bounce: true },
+  high: { shadows: 2, torches: 8, torchRate: 2, shafts: 2, traced: 0, bloom: true, water: true, reflections: true, refraction: true, caustics: true, godrays: true, sway: true, ripple: true, mirrors: true, bounce: true },
+  ultra: { shadows: 2, torches: 24, torchRate: 6, shafts: 6, traced: 2, bloom: true, water: true, reflections: true, refraction: true, caustics: true, godrays: true, sway: true, ripple: true, mirrors: true, bounce: true },
 };
 export const PRESET_ORDER = ['off', 'low', 'medium', 'high', 'ultra'];
 export const PRESET_NAMES = { off: 'Off', low: 'Low', medium: 'Medium', high: 'High', ultra: 'Ultra', auto: 'Auto', custom: 'Custom' };
@@ -92,6 +97,11 @@ export const gfxUniforms = {
   uReflH: { value: 0 },
   uReflMat: { value: new THREE.Matrix4() },
   uReflTex: { value: null },
+  uVox: { value: emptyVolume() }, // (v46: traced lighting, see voxels.js)
+  uVoxPal: { value: null },
+  uVoxO: { value: new THREE.Vector3() },
+  uVoxOn: { value: 0 },
+  uVoxStr: { value: 0 },
 };
 
 // vertex shader: decode the flags packed into the sky attribute (sky + 2 x by-water + 4 x sway + 16 x glows
@@ -158,6 +168,11 @@ uniform float uReflect;
 uniform float uReflH;
 uniform mat4 uReflMat;
 uniform sampler2D uReflTex;
+uniform highp usampler3D uVox;
+uniform sampler2D uVoxPal;
+uniform vec3 uVoxO;
+uniform float uVoxOn;
+uniform float uVoxStr;
 varying float vWet;
 vec3 gfxNormal() {
   vec3 n = normalize(cross(dFdx(vWorldP), dFdy(vWorldP)));
@@ -268,17 +283,85 @@ float gfxCaustic(vec3 wp) {
   float b = abs(sin(r.x * 2.7 - t * 0.6) + sin(r.y * 2.5 + t * 1.2));
   return (1.0 - smoothstep(0.0, 0.55, a)) * 0.6 + (1.0 - smoothstep(0.0, 0.55, b)) * 0.6;
 }
+// (v46) traced lighting: the blocks around you as a 3D picture of block ids (see voxels.js), and a palette giving
+// each id its colour and whether light passes it. Walk a ray through it block by block: 2 = hit a block (t = how
+// far, hn = the face it hit, hp = its palette entry), 1 = left the traced area or the world, 0 = ran out of steps
+int gfxVoxMarch(vec3 o, vec3 d, int steps, out float t, out vec3 hn, out vec4 hp) {
+  ivec3 c = ivec3(floor(o));
+  vec3 s = sign(d);
+  ivec3 st = ivec3(s);
+  vec3 dd = 1.0 / max(abs(d), vec3(1e-6));
+  vec3 tm = (s * (vec3(c) - o) + s * 0.5 + 0.5) * dd;
+  t = 0.0; hn = vec3(0.0); hp = vec4(0.0);
+  for (int i = 0; i < 96; i++) {
+    if (i >= steps) return 0;
+    if (tm.x < tm.y && tm.x < tm.z) { c.x += st.x; t = tm.x; tm.x += dd.x; hn = vec3(-s.x, 0.0, 0.0); }
+    else if (tm.y < tm.z) { c.y += st.y; t = tm.y; tm.y += dd.y; hn = vec3(0.0, -s.y, 0.0); }
+    else { c.z += st.z; t = tm.z; tm.z += dd.z; hn = vec3(0.0, 0.0, -s.z); }
+    vec3 rel = vec3(c) - uVoxO;
+    if (c.y < 0 || c.y >= ${VOX} || rel.x < 0.0 || rel.z < 0.0 || rel.x >= ${VOX}.0 || rel.z >= ${VOX}.0) return 1;
+    uint id = texelFetch(uVox, ivec3(c.x & ${VOX - 1}, c.z & ${VOX - 1}, c.y), 0).r;
+    if (id == 0u) continue;
+    hp = texelFetch(uVoxPal, ivec2(int(id & 63u), int(id >> 6u)), 0);
+    if (hp.a > 0.5) return 2;
+  }
+  return 0;
+}
+// how much the traced lighting counts here: fading out towards the edge of the traced area, so there's no line
+float gfxVoxFade() {
+  vec2 r = abs(vWorldP.xz - uVoxO.xz - ${VOX / 2}.0);
+  return 1.0 - smoothstep(${VOX / 2 - 22}.0, ${VOX / 2 - 4}.0, max(r.x, r.y));
+}
+// sunlight: is there a block between here and the sun? (exact block shadows, as far as the traced area goes)
+float gfxVoxSun(vec3 n) {
+  if (dot(n, uSunDir) <= 0.0) return 0.0;
+  float t; vec3 hn; vec4 hp;
+  return gfxVoxMarch(vWorldP + n * 0.02, uSunDir, 80, t, hn, hp) == 2 ? 0.0 : 1.0;
+}
+// how open this spot is: x = to blocks close by (ambient occlusion), y = to the sky (full: rays that head up and get
+// out, or go a long way without hitting anything). Five rays: straight out and four leaning round it
+vec2 gfxVoxAmb(vec3 n) {
+  vec3 a = abs(n.y) < 0.9 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0);
+  vec3 tu = normalize(cross(n, a)), tv = cross(n, tu), o = vWorldP + n * 0.02;
+  float ao = 0.0, sky = 0.0, sw = 0.0, t; vec3 hn; vec4 hp;
+  bool full = uVoxOn > 1.5;
+  for (int i = 0; i < 5; i++) {
+    vec3 d = i == 0 ? n : normalize(n + (i == 1 ? tu : i == 2 ? -tu : i == 3 ? tv : -tv) * 1.1);
+    int r = gfxVoxMarch(o, d, full ? 24 : 6, t, hn, hp);
+    ao += r == 2 ? smoothstep(0.0, 2.5, t) : 1.0;
+    float up = max(d.y, 0.0) + 0.15;
+    sky += (r == 2 ? smoothstep(3.0, 22.0, t) : 1.0) * up; sw += up;
+  }
+  return vec2(ao / 5.0, full ? sky / sw : 1.0);
+}
+// what a shiny surface sees along R: the block it meets (its colour, lit roughly) or the sky
+vec3 gfxVoxReflect(vec3 R, vec3 n) {
+  float t; vec3 hn; vec4 hp;
+  int r = gfxVoxMarch(vWorldP + n * 0.02, R, 64, t, hn, hp);
+  if (r != 2) return uSkyCol;
+  vec3 col = pow(hp.rgb, vec3(2.2));
+  float glow = mod(floor(hp.a * 255.0 + 0.5), 128.0) / 120.0;
+  float lit = uSunStr * (0.3 + 0.7 * max(dot(hn, uSunDir), 0.0)) * (hn.y < -0.5 ? 0.4 : 1.0) + 0.05;
+  return col * (lit + glow * 1.6);
+}
 `;
 
 // replaces the plain "daylight x sunlight" term
 export const GFX_SUN_TERM = `
 float sunT = uDay * vSky;
-if (uShadowStr > 0.0 && sunT > 0.0) sunT *= 1.0 - uShadowStr * (1.0 - gfxShadow(gfxNormal()));
+float gfxSunVis = 1.0, gfxSunK = 0.0;
+if (uShadowStr > 0.0 && sunT > 0.0) { gfxSunVis = gfxShadow(gfxNormal()); gfxSunK = uShadowStr; }
+float gfxVF = uVoxOn > 0.5 ? gfxVoxFade() : 0.0;
+if (uVoxStr > 0.0 && sunT > 0.0 && gfxVF > 0.0) { gfxSunVis = min(gfxSunVis, mix(1.0, gfxVoxSun(gfxNormal()), gfxVF)); gfxSunK = max(gfxSunK, uVoxStr); } // (v46: traced)
+sunT *= 1.0 - gfxSunK * (1.0 - gfxSunVis);
+vec2 gfxAmb = vec2(1.0);
+if (gfxVF > 0.0) { gfxAmb = mix(vec2(1.0), gfxVoxAmb(gfxNormal()), gfxVF); sunT *= mix(1.0, gfxAmb.x, 0.55) * mix(1.0, gfxAmb.y, 0.6); }
 vec3 sunC = vec3(1.0);
 if (uGlassOn > 0.5 && sunT > 0.0) sunC = gfxGlass(gfxNormal());
 if (uCaustics > 0.0 && vWet > 0.5) sunT *= 1.0 + gfxCaustic(vWorldP) * (0.25 + 0.75 * uSunStr);
 vec3 torchT = vTorchC * uFlicker;
 if (uTorchCount > 0 && torchT.r + torchT.g + torchT.b > 0.03) torchT *= gfxTorchShadow(gfxNormal());
+torchT *= mix(1.0, gfxAmb.x, 0.45);
 `;
 
 // water surface: runs after the light, only in the water material
@@ -560,6 +643,9 @@ export class Graphics {
     this.clipPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
     this.scanT = 0;
     this.rr = 0;
+    this.voxels = null;
+    this.voxWorld = null; // set by the game: () => the world (for traced lighting)
+    this.voxPalette = null; // ...and the palette of block colours (see voxels.js)
     this.findLights = null; // set by the game: (n) => nearest lights not in sunlight, [{ x, y, z, r }]
   }
 
@@ -576,12 +662,14 @@ export class Graphics {
     const lightsWas = this.torchN();
     if (key === 'torches' || key === 'shafts') o[key] = Math.max(0, Math.min(MAX_TORCH_SHADOWS, on | 0));
     else if (key === 'torchRate') o.torchRate = Math.max(1, Math.min(MAX_TORCH_SHADOWS, on | 0));
+    else if (key === 'traced') o.traced = Math.max(0, Math.min(2, on | 0));
     else if (key === 'shadows') o.shadows = Math.max(0, Math.min(2, on === true ? 2 : on | 0));
     else o[key] = !!on;
     if (key === 'shadows' && o.shadows !== was) this.freeShadows();
     if (this.torchN() !== lightsWas) this.freeTorches(); // (the picture is sized for the count)
     if (!o.bloom && !o.refraction && !o.godrays && !o.ripple && !o.bounce && !o.shafts) this.freeTargets();
     if (!o.reflections) this.freeReflections();
+    if (!o.traced) this.freeVoxels();
     this.scanT = 0;
   }
 
@@ -604,6 +692,10 @@ export class Graphics {
     U.uGlassOn.value = 0;
     if (o.shadows && sun > 0.01) {
       try { this.renderShadows(scene, camera); U.uShadowStr.value = 0.5 * sun; U.uGlassOn.value = this.glassRT ? 1 : 0; } catch (err) { this.fail(err, 'shadows'); this.freeShadows(); }
+    }
+    U.uVoxOn.value = 0; U.uVoxStr.value = 0;
+    if (o.traced && this.voxWorld?.() && this.voxPalette) {
+      try { this.renderVoxels(camera, sun); } catch (err) { this.fail(err, 'traced'); this.freeVoxels(); }
     }
     U.uTorchCount.value = 0;
     this.shaftCount = 0;
@@ -629,7 +721,7 @@ export class Graphics {
   // an effect that breaks on this computer is switched off rather than spoiling every frame
   fail(err, key) {
     this.lastError = err;
-    this.opts[key] = key === 'torches' || key === 'shadows' || key === 'shafts' ? 0 : false;
+    this.opts[key] = key === 'torches' || key === 'shadows' || key === 'shafts' || key === 'traced' ? 0 : false;
     this.onFail?.(key, err);
   }
 
@@ -773,6 +865,26 @@ void main() {
       casters.length = 0;
       for (const o of shown) o.visible = false;
     }
+  }
+
+  // ---------- traced lighting ----------
+
+  renderVoxels(camera, sun) {
+    const U = gfxUniforms;
+    if (!this.voxels) { this.voxels = new VoxelVolume(this.renderer); U.uVox.value = this.voxels.tex; }
+    U.uVoxPal.value = this.voxPalette;
+    this.voxels.update(this.voxWorld(), camera.position.x, camera.position.z);
+    U.uVoxO.value.copy(this.voxels.origin);
+    U.uVoxOn.value = this.opts.traced;
+    U.uVoxStr.value = 0.5 * sun;
+  }
+
+  freeVoxels() {
+    if (!this.voxels) return;
+    this.voxels.dispose();
+    this.voxels = null;
+    gfxUniforms.uVox.value = emptyVolume();
+    gfxUniforms.uVoxOn.value = 0; gfxUniforms.uVoxStr.value = 0;
   }
 
   // ---------- torch shadows ----------

@@ -80,6 +80,14 @@ turn any off again if the game gets slow (☰ → Performance info shows the fra
   and pillars and furniture cut dark gaps through the glow. Each light takes its colour (a blue glow lamp
   gives blue beams). They use the same shadow pictures as torch shadows (those are drawn for the shafts'
   lights even with torch shadows off), and show best at night and underground. High lights 2, Ultra 6.
+- **Traced lighting** (off / shadows and shade / full): the game keeps a 3D copy of the blocks within about
+  64 blocks of you on the graphics card and follows light through it block by block. **Shadows and shade**
+  gives every block an exact, sharp shadow from the sun (as far as the copy reaches, with no shadow picture
+  to run out of; animals and furniture still need Sun shadows for theirs) and soft shade in corners, under
+  overhangs and where blocks crowd in. **Full** adds how much of the sky each spot can see (a deep porch or
+  a narrow alley is dimmer than open ground) and real reflections: metal blocks, ice, glass, obsidian and
+  puddles after rain mirror the blocks around them, or the sky. It fades out towards the edge of the copy.
+  This is the heaviest setting: Ultra turns on Full, the other presets leave it off.
 - **Distance fog** (on by default): the world fades into the sky towards the edge of what's loaded. Turn it
   off for a clear view all the way out (the edge of the world then shows). Under water it's always murky.
 - **Bloom**: bright things glow a little past their edges: lava, lamps, torch flames, the sky behind trees, sun
@@ -1831,6 +1839,8 @@ guide to how everything works.
   **blocks** of every metal (9 ingots each, and back);
   **Torch light shafts** (a slider in ☰ → Graphics: light hanging in the air around the nearest lights, cut into
   beams by bars, doorways and pillars);
+  **Traced lighting** (exact block shadows from the sun, shade in corners, sky light and reflections, traced
+  through a 3D copy of the blocks around you);
   placing a gearbox or electric motor no longer turns it into a clutch or solar panel; a metal recipe
   (like the iron-banded chest) shows once you have that metal's plates, or everything it needs, not only its ingots.
 - **Version 45**: gears mesh at corners (axles at right angles) and large gears mesh in pairs; a **Distance
