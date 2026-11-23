@@ -17,8 +17,23 @@ import {
 } from './blocks.js';
 
 export const CHUNK = 16;
-export const H = 64;
-export const SEA_LEVEL = 24;
+export const H = 128; // (v43: was 64; worlds made before then keep their old ground, with 64 more blocks above)
+// v43: the terrain profile. "Classic" worlds (made before v43) have the sea at 24 and mountains to 50; "tall"
+// worlds have the same land lifted 32 blocks, with 32 more blocks of deep rock, caves and ore under it, and
+// mountains that climb to over 110. One world is played at a time, so these are set by the Generator when the
+// world starts, and every other file reads them as they are now (they are live bindings).
+export const DEEP_TALL = 32;
+export let TALL = false, DEEP = 0, SEA_LEVEL = 24, SNOW_LINE = 46;
+let LAVA_LEVEL = 6; // deep cave floors at or below this height are flooded with lava
+let CAVE_LAKE_LEVEL = 13; // in some cave systems, everything up to here is flooded with water
+export function setTerrainProfile(tall) {
+  TALL = !!tall; DEEP = TALL ? DEEP_TALL : 0;
+  SEA_LEVEL = 24 + DEEP; SNOW_LINE = TALL ? 92 : 46;
+  LAVA_LEVEL = TALL ? 8 : 6; CAVE_LAKE_LEVEL = TALL ? 22 : 13;
+}
+// Old saves (and imported files) hold chunks 64 blocks high: they fit at the bottom of a taller chunk as they
+// are (y is the top part of the index), with air above.
+export const OLD_CHUNK_VOLUME = 16 * 16 * 64;
 export const WORLD_CHUNKS = 1024; // 1024 x 1024 chunks
 export const WORLD_SIZE = CHUNK * WORLD_CHUNKS; // 16384 x 16384 blocks
 export const CHUNK_VOLUME = CHUNK * CHUNK * H;
@@ -108,15 +123,12 @@ const TREE_CHANCE = 0.014;
 const MARGIN = 3;
 // Pockets of gravel in the rock are rolled after the ores (so they didn't move any ore).
 const VEIN_KINDS = [...ORES, { id: GRAVEL, y: [4, 52], chance: 0.02, big: true }];
-const SNOW_LINE = 46; // mountain tops this high are capped with snow
-const LAVA_LEVEL = 6; // deep cave floors at or below this height are flooded with lava
 const DUNGEON_CHANCE = 0.025; // chunks with a dungeon room deep underground
 const LAIR_CHANCE = { tomb: 0.03, crypt: 0.03, fortress: 0.012 }; // chunks with a desert tomb, ice crypt or deep fortress
 const COCOA_TREE_CHANCE = 0.18; // (v33) trees in cocoa land that are cocoa trees
 const FRUIT_TREE_CHANCE = 0.07; // temperate trees that are apple, cherry or orange trees
 const LIGHTHOUSE_CHANCE = 0.12; // coastal chunks with a lighthouse
 const GEODE_CHANCE = 0.045; // chunks with a crystal geode in the rock
-const CAVE_LAKE_LEVEL = 13; // in some cave systems, everything up to here is flooded with water
 const HIVE_CHANCE = 0.08; // temperate trees with a bee hive under their leaves
 const VILLAGE_REGION = 64; // villages: at most one in each 64 x 64 block region...
 const VILLAGE_CHANCE = 0.09; // ...in about this share of them
@@ -136,8 +148,10 @@ const VILLAGE_NAMES = ['Ashford', 'Brindle', 'Cobblewick', 'Dunmere', 'Elderby',
 // what a village grows beside its wheat
 const VILLAGE_CROPS = [CARROT_CROP, POTATO_CROP, ONION_CROP, BEAN_CROP, TOMATO_CROP, HERB_CROP];
 export class Generator {
-  constructor(seed) {
+  constructor(seed, tall = false) {
     this.seed = seed | 0;
+    this.tall = !!tall;
+    setTerrainProfile(this.tall);
     const r = mulberry32(seed);
     this.n1 = makePerlin(r); this.n2 = makePerlin(r); this.n3 = makePerlin(r);
     const r2 = mulberry32(seed ^ 0x2c1b3c6d);
@@ -170,7 +184,7 @@ export class Generator {
     const cont = this.n1(x / 70, z / 70, 4);
     const land = cont * 34;
     const detail = this.n2(x / 18, z / 18, 2) * 3;
-    const mountain = Math.max(0, this.n3(x / 80, z / 80, 3)) * 30 * Math.min(1, Math.max(0, cont * 5));
+    const mountain = Math.max(0, this.n3(x / 80, z / 80, 3)) * (TALL ? 80 : 30) * Math.min(1, Math.max(0, cont * 5));
     let h = Math.round(SEA_LEVEL + 4 + land + detail + mountain);
     // rivers carve a valley down to just below sea level, with sloping banks
     if (h > SEA_LEVEL - 3) {
@@ -180,8 +194,12 @@ export class Generator {
         h = Math.round(bed + (h - bed) * smoothstep((r - 0.009) / 0.036));
       }
     }
-    return Math.max(6, Math.min(H - 14, h));
+    return TALL ? Math.max(DEEP + 6, Math.min(H - 12, h)) : Math.max(6, Math.min(50, h));
   }
+
+  // (v43) The height in a classic world that this one stands for, for things placed by depth (ores): a tall
+  // world's extra rock spreads the deep layers out, and above sea level it's the same land, lifted.
+  depthOf(y) { return !TALL ? y : y <= SEA_LEVEL ? y * 24 / SEA_LEVEL : y - DEEP; }
 
   // What the top few blocks of a lake or sea bed are made of: mostly sand, with patches of gravel, and
   // of clay in the shallows.
@@ -224,7 +242,7 @@ export class Generator {
     for (let k = 0; k < n; k++) for (let j = 0; j < ny; j++) for (let i = 0; i < n; i++) {
       const gx = cx * n + i, gy = j, gz = cz * n + k;
       let roll = hash3(this.seed ^ 0x51ed270b, gx, gy, gz);
-      const midY = gy * VEIN_CELL + 2;
+      const midY = this.depthOf(gy * VEIN_CELL + 2);
       for (const o of VEIN_KINDS) {
         if (midY < o.y[0] || midY > o.y[1]) continue;
         if (roll < o.chance) {
@@ -286,7 +304,7 @@ export class Generator {
     }
 
     // saltpetre: a white crust on bare stone where caves (or cliffs) open up, in this chunk's own cells
-    for (let y = 3; y < 44; y++) for (let lz = 0; lz < CHUNK; lz++) for (let lx = 0; lx < CHUNK; lx++) {
+    for (let y = 3; y < 44 + DEEP; y++) for (let lz = 0; lz < CHUNK; lz++) for (let lx = 0; lx < CHUNK; lx++) {
       const i = localIndex(lx, y, lz);
       if (data[i] !== STONE) continue;
       const open = (dx, dy, dz) => {
@@ -399,7 +417,7 @@ export class Generator {
     let base = H;
     for (let dz = -7; dz <= 7; dz += 7) for (let dx = -7; dx <= 7; dx += 7) base = Math.min(base, this.height(x + dx, z + dz));
     if (base <= SEA_LEVEL + 1 || this.nearVillage(x, z)) return null;
-    const top = Math.min(H - 6, base + 11);
+    const top = Math.min(TALL ? H - 6 : 58, base + 11); // (classic worlds: as when they were 64 high)
     return { x, z, y: top - 2, base, top };
   }
   volcano(data, cx, cz, hAt) {
@@ -576,8 +594,8 @@ export class Generator {
     const x0 = cx * CHUNK, z0 = cz * CHUNK;
     let hi = 0;
     for (let z = z0 + 2; z <= z0 + 14; z += 2) for (let x = x0 + 2; x <= x0 + 14; x += 2) hi = Math.max(hi, this.height(x, z));
-    if (hi > 40 || this.nearVillage(x0 + 8, z0 + 8)) return null;
-    const top = 51 + Math.floor(r(114) * 4);
+    if (hi > 40 + DEEP || this.nearVillage(x0 + 8, z0 + 8)) return null;
+    const top = (TALL ? 100 : 51) + Math.floor(r(114) * 4);
     const perms = [[0, 1, 2], [0, 2, 1], [1, 0, 2], [1, 2, 0], [2, 0, 1], [2, 1, 0]];
     const order = perms[Math.floor(r(115) * 6)];
     return {
@@ -655,7 +673,7 @@ export class Generator {
     const R = 3.6 + r(94);
     const x0 = cx * CHUNK, z0 = cz * CHUNK;
     const ground = Math.min(hAt(x0 + lx, z0 + lz), hAt(x0 + lx - 4, z0 + lz), hAt(x0 + lx + 4, z0 + lz), hAt(x0 + lx, z0 + lz - 4), hAt(x0 + lx, z0 + lz + 4));
-    const top = Math.min(30, ground - R - 3);
+    const top = Math.min(30 + DEEP, ground - R - 3);
     if (top < 8) return;
     const cy = 7 + Math.floor(r(95) * (top - 7));
     const span = Math.ceil(R);
@@ -685,7 +703,7 @@ export class Generator {
     if (rx >= 1 && rz >= 1 && rx < WORLD_SIZE / VILLAGE_REGION - 1 && rz < WORLD_SIZE / VILLAGE_REGION - 1 && r(1) < VILLAGE_CHANCE) {
       const x = rx * VILLAGE_REGION + 20 + Math.floor(r(2) * 24), z = rz * VILLAGE_REGION + 20 + Math.floor(r(3) * 24);
       const y = this.height(x, z), biome = this.biomeAt(x, z);
-      if (biome !== 'tundra' && y > SEA_LEVEL + 1 && y < 44) {
+      if (biome !== 'tundra' && y > SEA_LEVEL + 1 && y < 44 + DEEP) {
         v = { x, y, z, biome, houses: [], farm: null, name: VILLAGE_NAMES[Math.floor(r(9) * VILLAGE_NAMES.length)] };
         const n = 3 + Math.floor(r(4) * 3), base = r(5) * Math.PI * 2;
         const flat = (hx, hz, rx2, rz2, hy) => {
@@ -824,7 +842,7 @@ export class Generator {
     const x0 = cx * CHUNK, z0 = cz * CHUNK;
     let h = H;
     for (let z = z0 + 3; z <= z0 + 13; z++) for (let x = x0 + 3; x <= x0 + 13; x++) h = Math.min(h, this.height(x, z));
-    const top = Math.min(h - 12, 34);
+    const top = Math.min(h - 12, 34 + DEEP);
     if (top < 10) return null;
     const y0 = 8 + Math.floor(hash3(this.seed ^ 0x1d2c3b4a, cx, 78, cz) * (top - 8));
     return { x: x0 + 8, y: y0 + 1, z: z0 + 8, y0 };
@@ -867,7 +885,7 @@ export class Generator {
     if (!kind) return null;
     let h = H;
     for (let z = z0 + 3; z <= z0 + 13; z++) for (let x = x0 + 3; x <= x0 + 13; x++) h = Math.min(h, this.height(x, z));
-    const y0 = kind === 'fortress' ? 3 : Math.min(h - 11, 30);
+    const y0 = kind === 'fortress' ? 3 : Math.min(h - 11, 30 + DEEP);
     if (y0 < 3 || (kind !== 'fortress' && y0 < 10)) return null;
     return { kind, x: x0 + 8, y: y0 + 1, z: z0 + 8, y0 };
   }

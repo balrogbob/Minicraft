@@ -3,7 +3,7 @@
 // It is redrawn a few rows at a time, so it costs little each frame.
 import { BLOCKS, AIR, isWaterId } from './blocks.js';
 import { TILE, ATLAS_COLS } from './textures.js';
-import { H, SEA_LEVEL } from './terrain.js';
+import { H, SEA_LEVEL, TALL } from './terrain.js';
 
 const R = 64, SIZE = R * 2;
 const ROWS_PER_FRAME = 16;
@@ -127,7 +127,7 @@ export class MiniMap {
       } else {
         const base = this.colorOf(id);
         // higher ground is lighter; a rise from the west gets a highlight, a drop a shadow
-        let k = 0.8 + (y - SEA_LEVEL) * 0.012;
+        let k = 0.8 + (y - SEA_LEVEL) * (TALL ? 0.007 : 0.012);
         if (prevTop >= 0) k += Math.sign(y - prevTop) * 0.12;
         k = Math.min(1.35, Math.max(0.55, k));
         rgb = [base[0] * k, base[1] * k, base[2] * k];

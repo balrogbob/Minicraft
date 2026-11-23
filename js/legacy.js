@@ -2,7 +2,9 @@
 // world became 16k x 16k. It rebuilds the old terrain exactly from the old seed and
 // generator version, so the player's saved edits can be applied on top of it.
 import { AIR, GRASS, DIRT, STONE, LOG, LEAVES, SAND, COAL_ORE, BEDROCK, WATER } from './blocks.js';
-import { mulberry32, makePerlin, SEA_LEVEL } from './terrain.js';
+import { mulberry32, makePerlin } from './terrain.js';
+
+const SEA_LEVEL = 24; // (as it was)
 
 export const LEGACY_W = 128;
 const W = LEGACY_W, H = 64;

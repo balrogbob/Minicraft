@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { Viewmodel, Avatar, LOOKS, randomLook } from './held.js';
 import { Ripples } from './ripples.js';
+import { FarLand, FAR_REACH } from './farland.js';
 import { Net } from './net.js';
 import { Graphics, GFX_DEFAULTS, GFX_NAMES, GFX_TOGGLES, SHADOW_LEVELS, GFX_PRESETS, PRESET_ORDER, PRESET_NAMES, MAX_TORCH_SHADOWS, gfxUniforms, GFX_FRAG_HEAD, GFX_SUN_TERM, GFX_WATER, GFX_VERT_HEAD, GFX_VERT_DECODE, GFX_VERT_SWAY, WATER_LAYER, LATE_LAYER } from './graphics.js';
 import {
@@ -42,8 +43,8 @@ import { Smoke } from './smoke.js';
 import { Fireworks } from './fireworks.js';
 import { createAtlas, createGlowMask, createIcons, createCrackCanvases, createWaterCanvas, createHudIcons, paintSeason } from './textures.js';
 import { World, CHUNK, WORLD_SIZE, chunkKey, skyBrightness, lightBrightness } from './world.js';
-import { localIndex, CHUNK_VOLUME, H, SEA_LEVEL } from './terrain.js';
-import { ChunkStore } from './store.js';
+import { localIndex, CHUNK_VOLUME, OLD_CHUNK_VOLUME, H, SEA_LEVEL, SNOW_LINE } from './terrain.js';
+import { ChunkStore, toBlocks } from './store.js';
 import { buildLegacyWorld, LEGACY_W } from './legacy.js';
 import { Sky, DAY_LENGTH } from './sky.js';
 import { Sound } from './sound.js';
@@ -79,7 +80,7 @@ import { Logic } from './logic.js';
 
 // v2 = the 16k x 16k streaming world (player state here, edited chunks in IndexedDB).
 // v1 = the old 128 x 128 world, migrated into the middle of the big world on first launch.
-const GAME_VERSION = '41'; // shown in the menu; bump with each release
+const GAME_VERSION = '43'; // shown in the menu; bump with each release
 const SAVE_KEY = 'minicraft-save-v2';
 const LEGACY_SAVE_KEY = 'minicraft-save-v1';
 const SETTINGS_KEY = 'minicraft-settings-v1';
@@ -100,7 +101,7 @@ function writeSave(obj, slot = activeSlot) {
 }
 // Settings live apart from the world so they survive "New world".
 const settings = (() => {
-  const defaults = { gfxPreset: 'custom', sens: 6, volume: 70, music: 50, viewDistance: 6, perf: false, difficulty: 'worrying', wear: true, favs: [], pins: [], slot: 0, fov: 72, keys: {}, tips: true, doubleTap: true, gfx: {} };
+  const defaults = { farLand: true, gfxPreset: 'custom', sens: 6, volume: 70, music: 50, viewDistance: 6, perf: false, difficulty: 'worrying', wear: true, favs: [], pins: [], slot: 0, fov: 72, keys: {}, tips: true, doubleTap: true, gfx: {} };
   let s;
   try { s = { ...defaults, ...JSON.parse(localStorage.getItem(SETTINGS_KEY)) }; } catch { s = { ...defaults }; }
   s.slot = Math.max(0, Math.min(SLOT_COUNT - 1, s.slot | 0));
@@ -242,6 +243,7 @@ function findWaterLevel(dt) {
 gfx.onFail = (key) => { goCustom(); settings.gfx[key] = key === 'torches' || key === 'shadows' ? 0 : false; saveSettings(); updateGfxLabels(); toast(`${GFX_NAMES[key]} doesn't work on this device — turned off`, 4000); };
 
 const sky = new Sky(scene);
+const farLand = new FarLand(scene, null, lightUniforms.uDay); // (v41: the land past the loaded chunks)
 const sound = new Sound();
 const music = new Music(sound); // (v29)
 sound.volume = settings.volume / 100;
@@ -261,12 +263,14 @@ scene.add(avatar.root);
 // v38: multiplayer (see net.js, and server/server.js)
 const net = new Net({ scene, atlas, icons: icons.canvases, ITEMS, on: {
   welcome: (m) => mpWelcome(m), block: (x, y, z, id) => mpBlock(x, y, z, id), chat: (name, text, mine) => addChat(name, text, mine),
-  host: (me, name) => { if (me && weather.timer > 1e6) weather.timer = 120 + Math.random() * 300; addChat(null, me ? 'You are now the host: your game keeps the time and weather for everyone' : `${name ?? 'Someone'} is now the host`); clockTimer = 0; },
+  host: (me, name) => { if (me && weather.timer > 1e6) weather.timer = 120 + Math.random() * 300; addChat(null, me ? 'You are now the host: your game keeps the time and weather for everyone' : `${name ?? 'Someone'} is now the host`); clockTimer = 0; renderMp(); },
   clock: (c) => applyClock(c),
   kv: (ch, k, v) => applyKv(ch, k, v),
   mobs: (from, l, g) => { if (worldReady && activeSlot === MP_SLOT) mobs.netIn(from, l, g); },
   drop: (m) => netDrop(m), got: (u) => netGot(u), gone: (u) => netGone(u), beds: (n, of, go) => netBeds(n, of, go),
   join: (name) => addChat(null, `${name} joined`), leave: (name) => addChat(null, `${name} left`), status: (st, why) => mpStatus(st, why),
+  pvp: (on, by) => { addChat(null, on ? `${by ?? 'The host'} turned PvP on: players can hurt each other` : `${by ?? 'The host'} turned PvP off`); renderMp(); },
+  hit: (m, r) => netHit(m, r),
 } });
 let viewMode = 0; // 0 first person, 1 behind you, 2 facing you
 const VIEW_NAMES = ['First person', 'Third person (behind)', 'Third person (front)'];
@@ -364,6 +368,7 @@ const inventory = new Inventory();
 let paused = true;
 let target = null; // raycast hit
 let targetMob = null; // { mob, t } when the crosshair is on an animal (closer than any block)
+let targetPlayer = null; // { id, r, t } when it's on another player, and PvP is on (v41)
 let targetCart = null; // { cart, t } when the crosshair is on a minecart
 const breakState = { key: '', progress: 0 };
 let openedAt = null; // the station block (crafting table or churn) tapped to open crafting
@@ -580,9 +585,11 @@ function newSeed() { return (Math.random() * 2 ** 31) | 0; }
 function applyViewDistance() {
   const r = settings.viewDistance;
   if (world) world.renderDistance = r;
-  sky.fogFar = r * CHUNK;
-  sky.fogNear = sky.fogFar * 0.55;
-  camera.far = Math.max(160, r * CHUNK + 48);
+  // (with distant land on, the fog moves out to where it ends, and the loaded chunks are clear to their edge)
+  farLand.on = settings.farLand !== false;
+  sky.fogFar = r * CHUNK + (farLand.on ? FAR_REACH : 0);
+  sky.fogNear = farLand.on ? r * CHUNK * 0.8 : sky.fogFar * 0.55;
+  camera.far = Math.max(160, sky.fogFar + 48);
   camera.updateProjectionMatrix();
   $('view-label').textContent = `View distance: ${r * CHUNK} blocks`;
 }
@@ -638,7 +645,8 @@ async function startWorld(save, opts = {}) {
   if (world) world.dispose(scene);
   if (!save) await store.clear();
   const seed = save?.seed ?? newSeed();
-  world = new World(seed, store);
+  world = new World(seed, store, save ? !!save.tall : true); // (v43: new worlds are tall; older saves stay classic)
+  farLand.setGenerator(world.generator);
   world.onError = reportError;
   // leaves falling from a tree you just cut drop their saplings and sticks to you, if you're nearby
   world.onLeafDecay = (x, y, z, was) => {
@@ -808,6 +816,7 @@ function saveGame() {
   world.saveChunks();
   return writeSave({
     seed: world.seed,
+    ...(world.tall ? { tall: true } : {}),
     ...(activeSlot === MP_SLOT ? { mpWorld: net.worldId } : {}),
     inv: inventory.serialize(),
     player: { x: player.pos.x, y: player.pos.y, z: player.pos.z, yaw: player.yaw, pitch: player.pitch },
@@ -1006,7 +1015,7 @@ let starvingWarned = false;
 function updateHunger(dt) {
   if (creative) { hunger = MAX_HUNGER; player.speedMul = 1; return false; }
   const moving = Math.hypot(player.vel.x, player.vel.z) > 0.5;
-  const rate = (1 / 80 + (moving ? 1 / 40 : 0) + (controls.breaking ? 1 / 50 : 0)) * (poisoned > 0 ? 4 : 1) *
+  const rate = (1 / 80 + (moving ? 1 / 40 : 0) + (moving && player.sprinting ? 1 / 25 : 0) + (controls.breaking ? 1 / 50 : 0)) * (poisoned > 0 ? 4 : 1) *
     (effects.fed > 0 ? 0.5 : 1) * (ailments.heat >= 1 ? 2 : 1);
   hunger = Math.max(0, hunger - rate * dt);
   // starving: you can only stagger along until you eat something; the cold slows you too
@@ -2096,6 +2105,30 @@ function swatBat() {
 critters.onGuano = (pos, swatted) => loose.spawn({ id: GUANO, count: swatted ? 1 + Math.floor(Math.random() * 2) : 1 }, pos, { x: 0, y: swatted ? 1 : 0, z: 0 }, swatted ? 0.3 : 0);
 // Tap the animal under the crosshair with whatever is in hand: milk a yak, pluck a duck,
 // shear an alpaca, fill a bucket with newt slime, or just bump it.
+// v41: hitting another player (PvP on): what's in your hand decides how hard, as with creatures. Their game
+// takes the hit (and its armour and shield have their say); the server checks you're close enough.
+function hitPlayer() {
+  if (!targetPlayer || !net.pvp) return;
+  const now = performance.now();
+  if (now - lastSwing < (isSword(inventory.heldId()) ? 300 : 450)) return;
+  lastSwing = now;
+  swingArm();
+  const held = inventory.held();
+  const dmg = (WEAPON_DAMAGE[inventory.heldId()] ?? ITEMS[inventory.heldId()]?.tool?.damage ?? 1) + (hasEnch(held, 'keen') ? 3 : 0);
+  const d = player.lookDir(), h = Math.hypot(d.x, d.z) || 1;
+  net.send({ t: 'hit', to: targetPlayer.id, dmg, k: [+(d.x / h * 7).toFixed(2), +(d.z / h * 7).toFixed(2)] });
+  wearOutHeld(1);
+}
+function netHit(m, r) {
+  if (dead || activeSlot !== MP_SLOT) return;
+  const from = r?.pos ?? player.pos;
+  if (shieldBlocks(from, m.dmg)) return;
+  damage(armoured(m.dmg), `Beaten by ${m.name}`);
+  player.kx += m.k?.[0] ?? 0; player.kz += m.k?.[1] ?? 0;
+  if (player.onGround) player.vel.y = Math.max(player.vel.y, 4);
+  if (dead) net.send({ t: 'slain', by: m.id });
+}
+
 function hitMob() {
   if (!targetMob) return;
   if (targetMob.mob.spec.hostile) {
@@ -4071,6 +4104,7 @@ function placeInner() {
   if (held?.id === GRAPPLE && target?.id === ZIP_POST) { startZip(target.x, target.y, target.z); return; }
   if (held?.id === CABLE_CAR && target?.id === ZIP_POST) { startZip(target.x, target.y, target.z, true); return; }
   if (swatBat()) return;
+  if (targetPlayer) { hitPlayer(); return; }
   if (targetMob) { hitMob(); return; }
   if (held?.id === LOCOMOTIVE && target && isRail(target.id)) {
     if (carts.add(world, target.x, target.y, target.z, player.lookDir(), false, true)) {
@@ -4777,6 +4811,12 @@ function updateBreaking(dt) {
   if (!controls.breaking) breakState.mobCooldown = 0.5;
   breakState.mobCooldown = Math.max(0, breakState.mobCooldown - dt);
   if (controls.breaking && !breakState.mobCooldown && swatBat()) { breakState.mobCooldown = 0.5; breakState.key = ''; breakState.progress = 0; crack.visible = false; return; }
+  if (controls.breaking && targetPlayer) {
+    if (!breakState.mobCooldown) { hitPlayer(); breakState.mobCooldown = 0.5; }
+    breakState.key = ''; breakState.progress = 0;
+    crack.visible = false;
+    return;
+  }
   if (controls.breaking && targetMob) {
     if (!breakState.mobCooldown) { hitMob(); breakState.mobCooldown = 0.5; }
     breakState.key = ''; breakState.progress = 0;
@@ -5058,6 +5098,10 @@ function renderMp() {
   $('btn-mp-join').classList.toggle('hidden', net.live);
   $('btn-mp-leave').classList.toggle('hidden', !on);
   $('btn-chat').classList.toggle('hidden', !net.live);
+  const pv = $('btn-mp-pvp');
+  pv.classList.toggle('hidden', !net.live);
+  pv.textContent = `PvP (players can hurt each other): ${net.pvp ? 'on' : 'off'}${net.isHost ? '' : ' (the host decides)'}`;
+  pv.disabled = !net.isHost;
   const names = [...net.remotes.values()].map((r) => r.name);
   $('mp-players').textContent = net.live ? (names.length ? `Also here: ${names.join(', ')}` : 'Nobody else is here yet') : '';
 }
@@ -5076,14 +5120,15 @@ $('btn-mp-join').addEventListener('click', () => {
   net.connect(url, settings.mpName || 'Player', settings.look);
 });
 $('btn-mp-leave').addEventListener('click', () => mpLeave());
+$('btn-mp-pvp').addEventListener('click', () => { if (net.isHost) net.send({ t: 'pvp', on: !net.pvp }); });
 async function mpWelcome(m) {
   saveGame(); await world?.saveChunks();
   const key = saveKeyOf(MP_SLOT);
   let save = loadSave(key);
-  if (!save || save.seed !== m.seed || save.mpWorld !== m.world) {
+  if (!save || save.seed !== m.seed || save.mpWorld !== m.world || !!save.tall !== !!m.tall) {
     try { localStorage.removeItem(key); } catch { /* storage unavailable */ }
     await store.clear(MP_SLOT);
-    save = { seed: m.seed, mpWorld: m.world };
+    save = { seed: m.seed, mpWorld: m.world, ...(m.tall ? { tall: true } : {}) };
   }
   worldReady = false;
   activeSlot = MP_SLOT; store.setSlot(MP_SLOT);
@@ -5326,8 +5371,15 @@ $('btn-mode').addEventListener('click', () => {
   saveGame();
 });
 $('fov').value = settings.fov;
+let sprintFov = 0; // (v41: the view widens a little while you sprint)
+function tickSprintFov(dt) {
+  const want = player.sprinting && Math.hypot(player.vel.x, player.vel.z) > 3 ? 1 : 0;
+  const was = sprintFov;
+  sprintFov += (want - sprintFov) * Math.min(1, dt * 8);
+  if (Math.abs(sprintFov - was) > 1e-4) { camera.fov = settings.fov * (1 + 0.1 * sprintFov); camera.updateProjectionMatrix(); }
+}
 function applyFov() {
-  camera.fov = settings.fov;
+  camera.fov = settings.fov * (1 + 0.1 * sprintFov);
   camera.updateProjectionMatrix();
   $('fov-label').textContent = `Field of view: ${settings.fov}°`;
 }
@@ -5442,6 +5494,9 @@ $('view').addEventListener('input', (e) => {
   applyViewDistance();
   saveSettings();
 });
+const farLabel = () => { $('btn-far').textContent = `Distant land: ${settings.farLand !== false ? 'on' : 'off'}`; };
+farLabel();
+$('btn-far').addEventListener('click', () => { settings.farLand = settings.farLand === false; applyViewDistance(); farLabel(); saveSettings(); });
 $('sens').value = settings.sens;
 $('sens').addEventListener('input', (e) => { settings.sens = +e.target.value; controls.lookSens = settings.sens / 1000; saveSettings(); });
 $('music').value = settings.music;
@@ -5665,7 +5720,7 @@ function tickProgress(dt) {
   if (METAL_PICKS.some(has)) achieve('metalpick');
   if (has(CRYSTAL_SHARD)) achieve('diamond');
   if (player.pos.y < 10) achieve('deep');
-  if (player.pos.y > 46) achieve('peak');
+  if (player.pos.y > SNOW_LINE) achieve('peak'); // (v43: where the snow starts, in either kind of world)
   if (startPos && Math.hypot(player.pos.x - startPos.x, player.pos.z - startPos.z) > 1000) achieve('far');
   if (day >= 7) achieve('week');
   tickGuidebook();
@@ -5913,7 +5968,7 @@ function musicMood(dt) {
   const v = world.generator.nearestVillage(x, z, 1);
   const nearVillage = v && Math.hypot(v.x - e.x, v.z - e.z) < 56;
   moodNow = player.eyeInWater ? 'water'
-    : !(world.skyAt(x, y, z) > 0) && y < 26 ? 'cave'
+    : !(world.skyAt(x, y, z) > 0) && y < SEA_LEVEL + 2 ? 'cave'
     : nearVillage && festivalToday() ? 'festival'
     : nearVillage && !sky.isNight ? 'village'
     : sky.isNight ? 'night'
@@ -6180,7 +6235,7 @@ $('import-file').addEventListener('change', async (e) => {
   if (slotSummary(n) && !confirm(`Replace World ${n + 1} with the imported world?`)) return;
   let chunks;
   try {
-    chunks = file.chunks.filter(([k, d]) => Number.isFinite(k) && typeof d === 'string').map(([k, d]) => [k, fromB64(d)]).filter(([, d]) => d.length === CHUNK_VOLUME);
+    chunks = file.chunks.filter(([k, d]) => Number.isFinite(k) && typeof d === 'string').map(([k, d]) => [k, fromB64(d)]).filter(([, d]) => d.length === CHUNK_VOLUME || d.length === OLD_CHUNK_VOLUME).map(([k, d]) => [k, toBlocks(d)]);
   } catch { toast('That world file is damaged', 2500); return; }
   if (n === settings.slot) { worldReady = false; await world?.saveChunks(); }
   await store.clear(n);
@@ -7358,7 +7413,7 @@ function notePlanting(x, y, z, id) {
 // Some spells of rain are thunderstorms: lightning strikes the ground now and then within sight, lights up the
 // sky, and can set trees alight; the thunder follows a moment later. Up in the mountains rain falls as hail,
 // which stings if your head's bare.
-const HAIL_HEIGHT = 50;
+const HAIL_HEIGHT = () => SEA_LEVEL + 26; // (v43: by sea level, as tall worlds sit higher)
 let strikeIn = 20, hailIn = 3, flashLevel = 0;
 const fires = new Map(); // "x,y,z" -> seconds left burning
 
@@ -7551,6 +7606,7 @@ function frame(now) {
     if (openStationAt && (stationRefresh -= dt) <= 0) { stationRefresh = 0.15; renderStation(); }
   } catch (err) { reportError(err); }
   try { world.update(player.pos.x, player.pos.z, scene, materials, 6, dt); } catch (err) { reportError(err); }
+  farLand.update(player.pos, Math.floor(player.pos.x / CHUNK), Math.floor(player.pos.z / CHUNK), settings.viewDistance);
   gfx.sunDir.copy(sky.sunDir); gfx.overcast = weather?.overcast ?? 0; gfx.underwater = !!player.eyeInWater;
   try { findWaterLevel(dt); } catch (err) { reportError(err); }
   gfx.render(scene, camera);
@@ -7590,14 +7646,16 @@ function stepGame(now, dt) {
       { day: lightUniforms.uDay.value, flicker: lightUniforms.uFlicker.value, ambient: lightUniforms.uAmbient.value });
     vehicles.update(dt, world, boarded && { v: boarded, moveX: controls.moveX, moveZ: controls.moveZ, jump: controls.jump, down: controls.down, yaw: player.yaw },
       { day: lightUniforms.uDay.value, flicker: lightUniforms.uFlicker.value, ambient: lightUniforms.uAmbient.value }, { fuel: burnCoal });
+    player.sprinting = false; // (until player.update says otherwise: not while riding, seated or carried)
     if (riding) followCart();
     else if (boarded) followVehicle();
     else if (seated) followSeat();
     else if (zipping) tickZip(dt);
     else if (ridingMob) followMount();
     else if (tickGrapple(dt) || tickLift(dt)) { /* carried by the hook or a lift */ }
-    else player.update(dt, { moveX: controls.moveX, moveZ: controls.moveZ, jump: controls.jump, down: controls.down });
+    else player.update(dt, { moveX: controls.moveX, moveZ: controls.moveZ, jump: controls.jump, down: controls.down, sprint: controls.sprint && (creative || hunger > 6) });
     if (player.pos.y < -20) respawn();
+    tickSprintFov(dt);
     playMovementSounds(dt, wasGround, wasWater, fallSpeed);
     world.tickWater(dt);
     world.tickPlants(dt);
@@ -7694,7 +7752,7 @@ function stepGame(now, dt) {
   const biome = world.generator.biomeAt(Math.floor(player.pos.x), Math.floor(player.pos.z));
   // in winter it snows rather than rains in temperate land
   weather.update(paused ? 0 : dt, eye, biome === 'temperate' && seasonOf(day) === 3 ? 'tundra' : biome, world.skyAt(Math.floor(eye.x), Math.min(H - 1, Math.floor(eye.y) + 1), Math.floor(eye.z)),
-    eye.y > HAIL_HEIGHT, Math.cos(sky.time * Math.PI * 2), sky.light);
+    eye.y > HAIL_HEIGHT(), Math.cos(sky.time * Math.PI * 2), sky.light);
   sky.weather = { overcast: weather.overcast, level: weather.level, kind: weather.kind };
   world.raining = weather.raining && biome !== 'desert';
   world.daylight = sky.light; // (v34: drying racks)
@@ -7726,6 +7784,10 @@ function stepGame(now, dt) {
   // whichever is closer wins: an animal in front of a block, or a block in front of an animal
   if (targetMob && target && target.t < targetMob.t) targetMob = null;
   if (targetMob) target = null;
+  // (another player, with PvP on: when nothing else is closer)
+  targetPlayer = !paused && !photoMode && net.live && net.pvp && !riding && !boarded ? net.raycast(eye, look, REACH) : null;
+  if (targetPlayer && [target, targetMob, targetCart, targetVehicle].some((o) => o && o.t < targetPlayer.t)) targetPlayer = null;
+  if (targetPlayer) target = targetMob = targetCart = targetVehicle = null;
   if (photoMode) target = targetMob = targetCart = targetVehicle = null;
   if (target) {
     highlight.visible = true;
@@ -7750,7 +7812,7 @@ if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').ca
 
 // expose for debugging in the console
 window.minicraft = {
-  gfx, highlight, get target() { return target; }, viewmodel, avatar, swingArm, ripples, waterSurfaceAt, net, ownsSpot, get activeSlot() { return activeSlot; }, mpLeave, pendingEdits, get viewMode() { return viewMode; },
+  gfx, highlight, get target() { return target; }, get controls() { return controls; }, farLand, viewmodel, avatar, swingArm, ripples, waterSurfaceAt, net, ownsSpot, get activeSlot() { return activeSlot; }, mpLeave, pendingEdits, get viewMode() { return viewMode; },
   get world() { return world; }, player, inventory, saveGame, sky, sound, breakBlock, mobs,
   get hunger() { return hunger; }, set hunger(v) { hunger = v; renderHunger(); },
   get day() { return day; },
