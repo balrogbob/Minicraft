@@ -73,6 +73,7 @@ import { MiniMap } from './minimap.js';
 import { Frames, isDisplay } from './frames.js';
 import { Crows } from './birds.js';
 import { Critters } from './critters.js';
+import { SeaLife } from './sealife.js';
 import { Weather } from './weather.js';
 import { Bees } from './bees.js';
 import { Paintings, paintingCells } from './paintings.js';
@@ -479,6 +480,8 @@ const vehicles = new Vehicles(scene); // boats and balloons
 const ripples = new Ripples(scene); // (v38: rings, wakes and spray on the water)
 const crows = new Crows(scene); // after ripe wheat (see birds.js)
 const critters = new Critters(scene, sound); // owls, bats and fireflies
+const sealife = new SeaLife(scene, sound); // (v44) fish, jellyfish, turtles and dolphins
+sealife.onSting = () => { damage(1, 'stung by a jellyfish'); toast('Ouch! A jellyfish sting'); };
 let riding = null; // the minecart you're sitting in
 const minimap = new MiniMap($('map'), atlasCanvas);
 const frames = new Frames(scene, icons); // what's shown in each item frame
@@ -670,7 +673,7 @@ async function startWorld(save, opts = {}) {
     const drops = dropsFor(fruit ? fruit.bare : LEAVES, 0);
     if (drops.length) giveDrops(drops);
   };
-  mobs.reset(world); bees.clear(); crows.clear(); critters.clear(); fires.clear(); hearths.clear(); smoke.clear(); fireworks.clear(); exitPhotoMode(); clearChestMark(); openGates.clear(); lockJobs.length = 0; piles.length = 0; mangers.clear(); clearRocks(); strikeIn = 20; catGiftDay = -1; bellDay = -1; villageGrowth = new Map(); shownSeason = -1;
+  mobs.reset(world); bees.clear(); crows.clear(); critters.clear(); sealife.clear(); fires.clear(); hearths.clear(); smoke.clear(); fireworks.clear(); exitPhotoMode(); clearChestMark(); openGates.clear(); lockJobs.length = 0; piles.length = 0; mangers.clear(); clearRocks(); strikeIn = 20; catGiftDay = -1; bellDay = -1; villageGrowth = new Map(); shownSeason = -1;
   kinetics.clear();
   kinetics.load(save?.kinetics);
   beltStart = null;
@@ -4413,6 +4416,11 @@ function placeInner() {
     // torches need a solid block to stand on or hang from, and can't go underwater or on ceilings
     if (there !== AIR || target.ny < 0 || !BLOCKS[target.id].solid || isTorch(target.id)) return;
     if (target.ny === 0) id = TORCH_WALL_W + WALL_TORCH_DIRS.findIndex(([dx, dz]) => dx === -target.nx && dz === -target.nz);
+  } else if (isWetId(id)) {
+    // (v44) sea plants go underwater, on the bottom (kelp can also go on top of kelp)
+    if (there !== WATER) { toast('Plant it underwater'); return; }
+    const t = BLOCKS[target.id];
+    if (target.ny !== 1 || !((t.solid && !t.transparent) || (id === KELP && target.id === KELP))) { toast('Plant it on the bottom'); return; }
   } else if (isWheat(id) || isCrop(id)) {
     // seeds go on top of grass or dirt
     if (there !== AIR || target.ny !== 1 || (target.id !== GRASS && target.id !== DIRT)) { toast('Plant seeds on top of grass or dirt'); return; }
@@ -7712,6 +7720,11 @@ function stepGame(now, dt) {
         night: Math.max(0, Math.min(1, (0.55 - lightUniforms.uDay.value) * 2.5)), dusk: hours > 18.3 && hours < 20.5,
         season: seasonOf(day), raining: weather.raining, light: Math.max(lightUniforms.uDay.value, lightUniforms.uAmbient.value),
       });
+      const tmp = world.generator?.temp?.(player.pos.x / 360, player.pos.z / 360, 2) ?? 0;
+      sealife.update(dt, world, player, {
+        night: Math.max(0, Math.min(1, (0.55 - lightUniforms.uDay.value) * 2.5)), warm: tmp > -0.05, swimming: !!player.inWater,
+        light: Math.max(lightUniforms.uDay.value, lightUniforms.uAmbient.value) * (player.eyeInWater ? 0.8 : 1),
+      });
     }
     tickPets(dt);
     tickFuses(dt);
@@ -7861,7 +7874,7 @@ window.minicraft = {
   arrows, fishing, kinetics, electric, lightUniforms, bees, catchAt, seasonOf, applySeason, set day(v) { day = v; applySeason(); }, frames, signalAt, setSwitch, logic, machines, carts, minimap, signs, armour, damage, placeRail, getInCart, getOutOfCart,
   get riding() { return riding; }, explode, lightFuse, fuses, clockTime, compassText, place, editSign, closeSign, openInventory, closeInventory, chestMove, lamps, tickLamps, sleepUntilMorning, stations, openStation, closeStation,
   get caneToday() { return caneToday; }, get creative() { return creative; }, set creative(v) { creative = v; applyCreative(); }, toggleFly, wand, useWand, get achieved() { return achieved; }, achieve, worldMap, openMap, closeMap, openGuide, switchSlot, store, saveGame, renderWorlds, openWorlds, exportSlot, get target() { return target; }, set target(v) { target = v; }, applyKeys, renderKeys, camera, get controls() { return controls; }, loose, throwHeld, get waypoints() { return waypoints; }, toggleWaypoint, sortSlots, quickStack, dropMeteor, get meteors() { return meteors; }, weather, openTrade, closeTrade, mountMob, dismount, get ridingMob() { return ridingMob; }, effects, armourWear, useAnvil, rollLoot, settings,
-  get bedSpawn() { return bedSpawn; }, fertilise, openJournal, closeJournal, get packs() { return packs; }, radiationAt, vehicles, boardVehicle, leaveVehicle, get boarded() { return boarded; }, get seated() { return seated; }, crows, onInvSlot, onStationSlot, quickMoveInv, quickMoveStation, usedIn, itemTipHTML, critters, tickPets, get catGiftDay() { return catGiftDay; }, get villageGrowth() { return villageGrowth; }, notePlanting, tickPuzzles, airPumpNear, useStable, stableNear, horseLabel, logistics, openLogistics, closeLogistics, placeOrder, get lpOpen() { return lpOpen; }, music, musicMood, get guideDone() { return guideDone; }, get guideClaimed() { return guideClaimed; }, tickGuidebook, openGuidebook, closeGuidebook, claimGoal, goalMet, fineChance, fineHarvest, showProduce, foodContest, specialTrades, catchAt, stockStable, tickStables, mangers, openSaddlebags, honeyAt, apiculture, scoopHive, beeEnv, fitUpgrade, piles, lightCharcoalPile, tickPiles, searchChests, takeFromChest, markChest, get chestMark() { return chestMark; }, enterPhotoMode, exitPhotoMode, snapPhoto, get photoMode() { return photoMode; }, photoCam, get lastPhoto() { return lastPhoto; }, tickStalactites, loosenStalactite, fallingRocks, shaking, workLock, findLock, tickLocks, openGates, lockJobs, hangRopeLadder, layBridge, rollUpRope, fireworks, ringBell, requestFor, festivalToday, repOf, addRep, tradeCost, tickFestival, villageEntry, hearths, tickHearths, feedHearth, chimneyTop, smoke, renderPins, togglePin, lightning, igniteAt, fires, tickFires, tickStorm, growVillage, buildVillageHouse, stallPrice, tickStalls, tickVillages, set catGiftDay(v) { catGiftDay = v; }, get places() { return places; }, get treasures() { return treasures; }, readTreasureMap, tickTreasure, beams, tickBeams, beaconSpots: () => beaconSpots, mistNow, tickSnow, tickExplore, sitOn, standUp, useDisplay, zips, linkZip, startZip, get zipping() { return zipping; }, burnCoal, get health() { return health; }, set health(v) { health = v; }, paintings, placeSwitchRail, signalAt, ailments, armourEnch, openAltar, lairNear, useBed, eat, drinkTea,
+  get bedSpawn() { return bedSpawn; }, fertilise, openJournal, closeJournal, get packs() { return packs; }, radiationAt, vehicles, boardVehicle, leaveVehicle, get boarded() { return boarded; }, get seated() { return seated; }, crows, onInvSlot, onStationSlot, quickMoveInv, quickMoveStation, usedIn, itemTipHTML, critters, tickPets, sealife, get catGiftDay() { return catGiftDay; }, get villageGrowth() { return villageGrowth; }, notePlanting, tickPuzzles, airPumpNear, useStable, stableNear, horseLabel, logistics, openLogistics, closeLogistics, placeOrder, get lpOpen() { return lpOpen; }, music, musicMood, get guideDone() { return guideDone; }, get guideClaimed() { return guideClaimed; }, tickGuidebook, openGuidebook, closeGuidebook, claimGoal, goalMet, fineChance, fineHarvest, showProduce, foodContest, specialTrades, catchAt, stockStable, tickStables, mangers, openSaddlebags, honeyAt, apiculture, scoopHive, beeEnv, fitUpgrade, piles, lightCharcoalPile, tickPiles, searchChests, takeFromChest, markChest, get chestMark() { return chestMark; }, enterPhotoMode, exitPhotoMode, snapPhoto, get photoMode() { return photoMode; }, photoCam, get lastPhoto() { return lastPhoto; }, tickStalactites, loosenStalactite, fallingRocks, shaking, workLock, findLock, tickLocks, openGates, lockJobs, hangRopeLadder, layBridge, rollUpRope, fireworks, ringBell, requestFor, festivalToday, repOf, addRep, tradeCost, tickFestival, villageEntry, hearths, tickHearths, feedHearth, chimneyTop, smoke, renderPins, togglePin, lightning, igniteAt, fires, tickFires, tickStorm, growVillage, buildVillageHouse, stallPrice, tickStalls, tickVillages, set catGiftDay(v) { catGiftDay = v; }, get places() { return places; }, get treasures() { return treasures; }, readTreasureMap, tickTreasure, beams, tickBeams, beaconSpots: () => beaconSpots, mistNow, tickSnow, tickExplore, sitOn, standUp, useDisplay, zips, linkZip, startZip, get zipping() { return zipping; }, burnCoal, get health() { return health; }, set health(v) { health = v; }, paintings, placeSwitchRail, signalAt, ailments, armourEnch, openAltar, lairNear, useBed, eat, drinkTea,
 };
 
 // ---------- v31: catching bees ----------
@@ -7888,7 +7901,7 @@ apiculture.onYoung = (x, y, z, sp, mate, kids) => {
 // ---------- v32: tree taps ----------
 import { CHOC_MOULD, CHOC_CAKE, CAKE_SLICES, MOULD_BARS, MELTED_CHOC, CHOC_BAR, MOULD_FILLS, mouldFill } from './blocks.js';
 import { FESTIVAL_FAVOURITES, contestScore, GUANO, BANDAGE, WHISKY, OLD_WHISKY } from './blocks.js';
-import { GLIDER } from './blocks.js';
+import { GLIDER, isWetId, KELP } from './blocks.js';
 import { TREE_TAP, LATEX, MAX_LATEX, POLYMER_BOAT, DEMO_CHARGE, DETONATOR, DEMO_RADIUS, DETONATOR_LINKS, DETONATOR_RANGE } from './blocks.js';
 // Tapping a tree tap takes the latex in it.
 function useTap(x, y, z, tid) {

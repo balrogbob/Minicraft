@@ -3401,3 +3401,29 @@ RECIPES.push(
 export const GLIDER = 3243;
 ITEMS[GLIDER] = { name: 'Glider', stack: 1, armour: { piece: 1, points: 1, mat: 'glider' }, about: 'wear it in place of a chestplate, then jump in mid-air to open it and glide (sneak to fold it)' };
 RECIPES.push({ out: [GLIDER, 1], in: [[STICK, 6], [WOOL, 4], [LEATHER, 2]], table: true });
+
+// ---------- v44: the sea: coral reefs, sea grass and kelp ----------
+// Coral blocks grow in warm shallow seas; coral fans, sea grass and kelp grow underwater. Those three are
+// "wet": their cell is full of water too (you can swim through them, they hold back no water, and breaking
+// one leaves the water behind), so they can only be planted in water.
+export const CORAL = 1531; // 1531..1534: red, yellow, blue, pink coral
+export const CORAL_FAN = 1535; // 1535..1538: the fans, in the same colours
+export const SEA_GRASS = 1539, KELP = 1540;
+export const DRIED_KELP = 3244;
+export const CORALS = ['Red', 'Yellow', 'Blue', 'Pink'];
+export const isWetId = (id) => id >= CORAL_FAN && id <= KELP;
+Object.assign(T, { CORAL: 477, CORAL_FAN: 481, SEA_GRASS: 485, KELP: 486 }); // (477..480 coral, 481..484 fans)
+const wet = { ...plant, sound: 'water', wet: true };
+CORALS.forEach((c, i) => {
+  block(CORAL + i, { name: `${c} Coral`, tex: T.CORAL + i, hardness: 1, tool: 'pick', sound: 'stone' });
+  block(CORAL_FAN + i, { ...wet, name: `${c} Coral Fan`, tex: T.CORAL_FAN + i });
+  ITEMS[CORAL + i] = { name: `${c} Coral`, about: 'a block of living reef from a warm sea' };
+  ITEMS[CORAL_FAN + i] = { name: `${c} Coral Fan`, about: 'plant it underwater' };
+});
+block(SEA_GRASS, { ...wet, name: 'Sea Grass', tex: T.SEA_GRASS, drop: () => [[SEA_GRASS, Math.random() < 0.5 ? 1 : 0]] });
+block(KELP, { ...wet, name: 'Kelp', tex: T.KELP, grows: 'kelp' });
+ITEMS[SEA_GRASS] = { name: 'Sea Grass', about: 'plant it on the bottom of a pond or the sea' };
+ITEMS[KELP] = { name: 'Kelp', about: 'grows in tall strands up through the water; dry it on a drying rack to eat' };
+ITEMS[DRIED_KELP] = { name: 'Dried Kelp', food: 1, about: 'salty and chewy' };
+DRYING[KELP] = [DRIED_KELP, 40];
+

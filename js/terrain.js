@@ -14,6 +14,7 @@ import {
   BASALT, BOOKSHELF, TUNGSTEN_ORE, URANIUM_ORE, LOG as MAST,
   LIGHTHOUSE_LAMP, PAINTED_PLANKS, COLORS, LADDER, FENCE, CLAY_BRICKS,
   SEA_BRICK, SEA_LANTERN, VAULT_GATE, SKY_STONE, LEVER, PRESSURE_PLATE, dyedWool,
+  CORAL, CORAL_FAN, SEA_GRASS, KELP,
 } from './blocks.js';
 
 export const CHUNK = 16;
@@ -186,6 +187,8 @@ export class Generator {
     const detail = this.n2(x / 18, z / 18, 2) * 3;
     const mountain = Math.max(0, this.n3(x / 80, z / 80, 3)) * (TALL ? 80 : 30) * Math.min(1, Math.max(0, cont * 5));
     let h = Math.round(SEA_LEVEL + 4 + land + detail + mountain);
+    // (v44) in tall worlds the open sea, far from land, falls away into deep ocean
+    if (TALL && cont < -0.17) h -= Math.round(smoothstep((-0.17 - cont) / 0.16) * 30);
     // rivers carve a valley down to just below sea level, with sloping banks
     if (h > SEA_LEVEL - 3) {
       const r = this.riverAt(x, z);
@@ -194,7 +197,38 @@ export class Generator {
         h = Math.round(bed + (h - bed) * smoothstep((r - 0.009) / 0.036));
       }
     }
-    return TALL ? Math.max(DEEP + 6, Math.min(H - 12, h)) : Math.max(6, Math.min(50, h));
+    return TALL ? Math.max(14, Math.min(H - 12, h)) : Math.max(6, Math.min(50, h));
+  }
+
+  // (v44) Life on the sea floor: coral reefs in warm shallow seas, meadows of sea grass on the sandy
+  // bottom, and forests of kelp in deeper or cooler water (never under ice).
+  seabed(data, x0, z0, hAt) {
+    for (let lz = 0; lz < CHUNK; lz++) for (let lx = 0; lx < CHUNK; lx++) {
+      const x = x0 + lx, z = z0 + lz, h = hAt(x, z), depth = SEA_LEVEL - h;
+      if (depth < 2 || data[localIndex(lx, h + 1, lz)] !== WATER) continue;
+      const floor = BLOCKS[data[localIndex(lx, h, lz)]];
+      if (!floor?.solid || floor.transparent) continue;
+      const t = this.temp(x / 360, z / 360, 2);
+      if (t < -0.2) continue; // (frozen seas)
+      const r = hash3(this.seed ^ 0x2c0ffee, x, 41, z);
+      const put = (y, id) => { if (y < SEA_LEVEL && data[localIndex(lx, y, lz)] === WATER) { data[localIndex(lx, y, lz)] = id; return true; } return false; };
+      if (t > -0.05 && depth >= 3 && depth <= 14 && this.plants(x / 30 + 200, z / 30, 2) > 0.12) {
+        // a reef: mounds of coral, mostly one colour to a patch, with fans growing on them
+        const colour = (this.plants(x / 13 + 300, z / 13, 1) > 0 ? 2 : 0) + (this.plants(x / 13 + 700, z / 13 + 90, 1) > 0 ? 1 : 0);
+        const mound = Math.min(depth - 2, Math.round(Math.max(0, this.plants(x / 5 + 500, z / 5, 1) + 0.3) * 4));
+        data[localIndex(lx, h, lz)] = CORAL + colour;
+        let top = h;
+        for (let k = 1; k <= mound; k++) if (put(h + k, CORAL + ((colour + (r < 0.15 ? 1 : 0)) & 3))) top = h + k;
+        if (r < 0.45) put(top + 1, CORAL_FAN + ((colour + (r < 0.12 ? 2 : 0)) & 3));
+        else if (r < 0.6) put(top + 1, SEA_GRASS);
+      } else if (depth >= 6 && (t < 0.1 || depth >= 12) && this.plants(x / 20 + 400, z / 20, 2) > 0.05 && r < (depth > 22 ? 0.1 : 0.22)) {
+        // kelp, up to a few blocks short of the surface (and no more than about 20 blocks tall)
+        const len = Math.max(2, Math.min(depth - 2 - Math.floor(hash3(this.seed ^ 0x6e1b, x, 42, z) * depth * 0.4), 8 + Math.floor(hash3(this.seed ^ 0x6e1c, x, 43, z) * 14)));
+        for (let k = 1; k <= len; k++) put(h + k, KELP);
+      } else if (depth <= 12 && this.plants(x / 16 + 600, z / 16, 2) > -0.05 && r < 0.35) {
+        put(h + 1, SEA_GRASS);
+      }
+    }
   }
 
   // (v43) The height in a classic world that this one stands for, for things placed by depth (ores): a tall
@@ -357,6 +391,8 @@ export class Generator {
       const i = localIndex(hx, hy, hz);
       if (data[i] === AIR) data[i] = BEE_HIVE + (hash3(this.seed ^ 0x4b1d3c2a, x, 7, z) < 0.5 ? MAX_HONEY : 1);
     }
+
+    this.seabed(data, x0, z0, hAt);
 
     // wild plants: patches of ripe wheat on lowland grass, sugar cane on shores right next to water
     for (let lz = 0; lz < CHUNK; lz++) for (let lx = 0; lx < CHUNK; lx++) {

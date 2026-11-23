@@ -329,6 +329,21 @@ honeycomb. Honeycomb and a bottle in the cauldron make **honey tea**, which keep
 Underground there are flooded caverns, caverns lit by **glowcap mushrooms** (cook three with butter in the
 oven for mushroom stew) and **geodes** lined with **crystal**: break it for crystal shards.
 
+### The sea
+
+- In tall worlds the open sea, far from land, falls away into **deep ocean**, 40 blocks deep in places.
+- Warm, shallow seas have **coral reefs**: mounds of **red, yellow, blue and pink coral** (mine it with a
+  pickaxe) with **coral fans** growing on them. Meadows of **sea grass** cover the sandy bottom, and forests of
+  **kelp** climb up through deeper and cooler water. Frozen seas have none.
+- Coral fans, sea grass and kelp grow **underwater** only: their cell is full of water, so you swim through them
+  and break them without letting the water out. Plant them on the sea bed (or kelp on top of kelp). Kelp grows
+  slowly upward until it is two blocks short of the surface.
+- Dry kelp on a **drying rack** to make **dried kelp**, a salty snack.
+- The sea is full of life: **schools of fish** dart round the reefs (bright ones in warm water, silver in cold)
+  and scatter when you swim at them; **sea turtles** paddle over warm shallows; **dolphins** swim beside you over
+  the deep ocean and leap clear of the water; and **jellyfish** drift in open water, glowing at night. Don't
+  touch a jellyfish: it stings.
+
 ### Caves
 
 - Big caverns now have **stalactites** hanging from the roof and **stalagmites** rising from the floor. Watch
@@ -1841,6 +1856,7 @@ guide to how everything works.
 | `js/apiculture.js` | Bee breeding: queens at work in bee houses, combs, young bees and mutations |
 | `js/birds.js` | Crows that come down to eat ripe wheat, and the scarecrows that keep them off |
 | `js/critters.js` | Owls, bats and fireflies |
+| `js/sealife.js` | Fish, jellyfish, sea turtles and dolphins |
 | `js/paintings.js` | Paintings: the pictures and the panels that show them |
 | `js/sky.js` | Day/night cycle: sky colour, fog, sun, moon, stars, world brightness |
 | `js/farland.js` | Distant land: a blocky sketch of the terrain past the loaded chunks, built from the generator a few tiles at a time |

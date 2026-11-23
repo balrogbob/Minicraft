@@ -3542,3 +3542,40 @@ ITEM_PAINTERS[GLIDER] = (ctx) => {
   for (const [x0, x1] of [[5, 7], [10, 8]]) for (let i = 0; i < 6; i++) px(ctx, Math.round(x0 + (x1 - x0) * i / 5), 8 + i, [110, 74, 40]); // struts
   rect(ctx, 6, 13, 4, 1, [110, 74, 40]); // the bar
 };
+
+// ---------- v44: coral, coral fans, sea grass and kelp ----------
+const CORAL_COLS = [[220, 70, 70], [236, 200, 60], [70, 120, 230], [236, 120, 190]];
+CORAL_COLS.forEach((c, i) => {
+  P[T.CORAL + i] = (t) => { // knobbly living stone, pitted with polyps
+    for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+      const pit = ((x * 7 + y * 13 + i * 5) % 9 === 0) || ((x * 3 + y * 5) % 11 === 0);
+      t.set(x, y, t.vary(pit ? [c[0] * 0.55, c[1] * 0.55, c[2] * 0.55] : (x + y * 2) % 7 === 0 ? [Math.min(255, c[0] + 40), Math.min(255, c[1] + 40), Math.min(255, c[2] + 40)] : c, 0.12));
+    }
+  };
+  P[T.CORAL_FAN + i] = (t) => { // a branching fan on a short stalk
+    for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) t.set(x, y, [0, 0, 0], 0);
+    const branch = (x, y, dx, len) => { for (let k = 0; k < len; k++) { t.set(Math.round(x + dx * k), y - k, t.vary(c, 0.15)); } };
+    branch(7, 15, 0, 6); branch(7, 10, -0.6, 7); branch(8, 10, 0.6, 7); branch(7, 12, -1, 5); branch(8, 12, 1, 5);
+    branch(5, 7, -0.3, 5); branch(10, 7, 0.3, 5); branch(7, 9, 0.1, 8);
+    for (const [x, y] of [[2, 7], [13, 7], [4, 2], [11, 2], [7, 1], [3, 5], [12, 5]]) t.set(x, y, [Math.min(255, c[0] + 50), Math.min(255, c[1] + 50), Math.min(255, c[2] + 50)]);
+  };
+});
+P[T.SEA_GRASS] = (t) => { // thin wavy blades
+  for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) t.set(x, y, [0, 0, 0], 0);
+  for (const [bx, h, ph] of [[2, 10, 0], [5, 15, 1.3], [8, 12, 2.1], [11, 14, 0.7], [13, 8, 2.8]]) {
+    for (let k = 0; k < h; k++) t.set(Math.round(bx + Math.sin(k * 0.45 + ph) * 1.2), 15 - k, t.vary(k > h - 3 ? [110, 190, 90] : [50, 140, 60], 0.12));
+  }
+};
+P[T.KELP] = (t) => { // a brown-green strand with broad leaves to each side
+  for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) t.set(x, y, [0, 0, 0], 0);
+  for (let y = 0; y < TILE; y++) {
+    const cx = 7 + Math.round(Math.sin(y * 0.4) * 0.8);
+    t.set(cx, y, t.vary([80, 100, 36], 0.1)); t.set(cx + 1, y, t.vary([90, 112, 40], 0.1));
+    if (y % 5 === 1) for (let k = 1; k < 5; k++) { t.set(cx - k, y + (k >> 1), t.vary([100, 130, 44], 0.12)); t.set(cx - k, y + 1 + (k >> 1), t.vary([86, 116, 40], 0.12)); }
+    if (y % 5 === 3) for (let k = 2; k < 6; k++) { t.set(cx + k, y + (k >> 1), t.vary([100, 130, 44], 0.12)); t.set(cx + k, y + 1 + (k >> 1), t.vary([86, 116, 40], 0.12)); }
+  }
+};
+import { DRIED_KELP } from './blocks.js';
+ITEM_PAINTERS[DRIED_KELP] = (ctx) => {
+  for (let k = 0; k < 11; k++) { rect(ctx, 3 + k, 4 + Math.round(Math.sin(k * 0.7) * 1.5) + (k >> 1), 2, 3, k % 3 ? [50, 62, 30] : [70, 84, 40]); }
+};
