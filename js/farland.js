@@ -5,7 +5,7 @@
 
 import * as THREE from 'three';
 import { CHUNK, SEA_LEVEL, SNOW_LINE } from './terrain.js';
-import { gfxUniforms, GFX_PT_HEAD } from './graphics.js';
+import { gfxUniforms, GFX_PT_HEAD, GFX_CLOUD } from './graphics.js';
 
 const FAR_CELL = 4; // blocks per step
 const TILE = 64; // blocks per tile (a mesh each)
@@ -36,10 +36,11 @@ export class FarLand {
     this.material.onBeforeCompile = (shader) => {
       shader.uniforms.uDay = dayU; shader.uniforms.uInner = this.uInner; shader.uniforms.uCentre = this.uCentre;
       shader.uniforms.uPTPass = gfxUniforms.uPTPass; shader.uniforms.uPTFar = gfxUniforms.uPTFar;
+      shader.uniforms.uCloudMap = gfxUniforms.uCloudMap; shader.uniforms.uCloud = gfxUniforms.uCloud; shader.uniforms.uSunDir = gfxUniforms.uSunDir;
       shader.vertexShader = 'varying vec3 vFarP;\n' + shader.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\nvFarP = (modelMatrix * vec4(position, 1.0)).xyz;');
-      shader.fragmentShader = 'uniform float uDay;\nuniform float uInner;\nuniform vec2 uCentre;\nvarying vec3 vFarP;\n' + GFX_PT_HEAD + shader.fragmentShader
+      shader.fragmentShader = 'uniform float uDay;\nuniform float uInner;\nuniform vec2 uCentre;\nvarying vec3 vFarP;\nuniform vec3 uSunDir;\n' + GFX_PT_HEAD + GFX_CLOUD + shader.fragmentShader
         .replace('#include <clipping_planes_fragment>', '#include <clipping_planes_fragment>\nvec2 farD = abs(vFarP.xz - uCentre);\nif (max(farD.x, farD.y) < uInner) discard; // (the real chunks are here)')
-        .replace('#include <color_fragment>', '#include <color_fragment>\nvec3 farC = diffuseColor.rgb;\ndiffuseColor.rgb *= max(uDay, 0.03);')
+        .replace('#include <color_fragment>', '#include <color_fragment>\nvec3 farC = diffuseColor.rgb;\ndiffuseColor.rgb *= max(uDay, 0.03);\nif (uCloud.w > 0.0) diffuseColor.rgb *= 1.0 - 0.6 * uCloud.w * gfxCloud(vFarP, uSunDir) * smoothstep(0.02, 0.25, uSunDir.y); // (v47: cloud shadows)')
         // (v46: path tracing's plain pictures, see graphics.js)
         .replace('#include <dithering_fragment>', '#include <dithering_fragment>\nif (uPTPass > 0.5) { vec3 fn = normalize(cross(dFdx(vFarP), dFdy(vFarP))); if (dot(fn, cameraPosition - vFarP) < 0.0) fn = -fn; gl_FragColor = gfxPTOut(farC, vFarP, fn, 0.0, 0.0); }');
     };

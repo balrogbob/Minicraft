@@ -114,8 +114,14 @@ Only the parts that shine glow: the green flecks in uranium ore, not the stone a
 drift across the sky, warm at sunrise and sunset, dim at night and grey when the weather turns.
 Shiny things catch the sun: metal machines, ice, glass and obsidian show a glint where the sun reflects off
 them towards you. After rain the ground stays wet for a while, and puddle patches on the open ground glint too.
-- **God rays**: when you look towards the sun, shafts of light stream out around whatever hides it
-  (trees, hills, gaps in a wall); strongest near sunrise and sunset.
+- **God rays** (off / classic / volumetric): **classic** streams shafts of light out around whatever hides the
+  sun when you look towards it (trees, hills, gaps in a wall); it is cheap, good for slower computers.
+  **Volumetric** lights the air itself from the sun's shadow picture, so you see beams from any angle: down
+  through holes in a roof, through windows into a dark hall, between trees and into cave mouths, coloured
+  where they come through stained glass and broken up under passing clouds. It needs Sun shadows (with them
+  off it falls back to classic). Both are strongest near sunrise and sunset. High uses classic, Ultra volumetric.
+- **Cloud shadows**: the drifting clouds shade the land under them, soft-edged, moving with the wind (on from
+  Medium up).
 - **Swaying leaves and plants**: leaves stir and flowers, grass and crops bend in the wind (tall plants like
   sugar cane bend as one, from the root).
 - **Fancy water**: moving waves, reflections of the sky that get stronger as you look across the water, and
@@ -1846,6 +1852,9 @@ guide to how everything works.
 
 ## Version history
 
+- **Version 47**: **volumetric god rays** (a third God rays setting: sunbeams in the air through roofs,
+  windows and trees, from any angle, coloured by stained glass; classic stays for slower computers);
+  **Cloud shadows**;
 - **Version 46**: **mirrors** (live reflections, joined across a wall of them; a **Live mirrors** switch in
   ☰ → Graphics), **security cameras** and **monitors** (joined into big screens, each tuned to a camera);
   light through **stained glass** takes on its colour (torch light always, sunlight with sun shadows on);

@@ -3,7 +3,7 @@ import { Viewmodel, Avatar, LOOKS, randomLook, gliderGroup, lightColour } from '
 import { Ripples } from './ripples.js';
 import { FarLand, FAR_REACH } from './farland.js';
 import { Net } from './net.js';
-import { Graphics, GFX_DEFAULTS, GFX_NAMES, GFX_TOGGLES, SHADOW_LEVELS, TRACED_LEVELS, GFX_PRESETS, PRESET_ORDER, PRESET_NAMES, MAX_TORCH_SHADOWS, gfxUniforms, GFX_FRAG_HEAD, GFX_SUN_TERM, GFX_WATER, GFX_VERT_HEAD, GFX_VERT_DECODE, GFX_VERT_SWAY, WATER_LAYER, LATE_LAYER } from './graphics.js';
+import { Graphics, GFX_DEFAULTS, GFX_NAMES, GFX_TOGGLES, SHADOW_LEVELS, TRACED_LEVELS, GODRAY_LEVELS, GFX_PRESETS, PRESET_ORDER, PRESET_NAMES, MAX_TORCH_SHADOWS, gfxUniforms, GFX_FRAG_HEAD, GFX_SUN_TERM, GFX_WATER, GFX_VERT_HEAD, GFX_VERT_DECODE, GFX_VERT_SWAY, WATER_LAYER, LATE_LAYER } from './graphics.js';
 import {
   BLOCKS, RECIPES, TABLE, AIR, WATER, TORCH, TORCH_WALL_W, WALL_TORCH_DIRS,
   GRASS, DIRT, SAND, CHURN, SUGAR_CANE, BREAD, ITEMS, BOW, ARROW, BUCKET,
@@ -114,6 +114,7 @@ const settings = (() => {
   s.gfx = { ...GFX_DEFAULTS, ...(s.gfx && typeof s.gfx === 'object' ? s.gfx : {}) };
   s.gfx.torches = Math.max(0, Math.min(MAX_TORCH_SHADOWS, s.gfx.torches | 0));
   s.gfx.traced = Math.max(0, Math.min(2, s.gfx.traced | 0));
+  s.gfx.godrays = Math.max(0, Math.min(2, s.gfx.godrays | 0)); // (v47: was on/off; on is classic)
   s.gfx.shafts = Math.max(0, Math.min(MAX_TORCH_SHADOWS, s.gfx.shafts | 0));
   s.gfx.torchRate = Math.max(1, Math.min(MAX_TORCH_SHADOWS, s.gfx.torchRate | 0 || 2));
   s.gfx.shadows = s.gfx.shadows === true ? 2 : Math.max(0, Math.min(2, s.gfx.shadows | 0)); // (v36 saved on/off)
@@ -283,7 +284,7 @@ function findWaterLevel(dt) {
   for (const [y, v] of votes) if (v > most) { most = v; best = y; }
   gfx.waterY = best === null ? null : best + 0.875; // (the surface sits a little below the block top)
 }
-gfx.onFail = (key) => { goCustom(); settings.gfx[key] = key === 'torches' || key === 'shadows' || key === 'shafts' || key === 'traced' ? 0 : false; saveSettings(); updateGfxLabels(); toast(`${GFX_NAMES[key]} doesn't work on this device — turned off`, 4000); };
+gfx.onFail = (key) => { goCustom(); settings.gfx[key] = key === 'torches' || key === 'shadows' || key === 'shafts' || key === 'traced' || key === 'godrays' ? 0 : false; saveSettings(); updateGfxLabels(); toast(`${GFX_NAMES[key]} doesn't work on this device — turned off`, 4000); };
 
 const sky = new Sky(scene);
 const farLand = new FarLand(scene, null, lightUniforms.uDay); // (v41: the land past the loaded chunks)
@@ -5551,6 +5552,7 @@ function updateGfxLabels() {
   const g = settings.gfx;
   $('btn-gfx-shadows').textContent = `Sun shadows: ${SHADOW_LEVELS[g.shadows]}`;
   $('btn-gfx-traced').textContent = `Traced lighting: ${TRACED_LEVELS[g.traced]}`;
+  $('btn-gfx-godrays').textContent = `God rays: ${GODRAY_LEVELS[g.godrays | 0]}`;
   $('torch-shadows').value = g.torches;
   $('torch-shadows-label').textContent = `Torch shadows: ${g.torches ? `nearest ${g.torches}` : 'off'}`;
   $('torch-shafts').value = g.shafts;
@@ -5608,6 +5610,7 @@ $('torch-shadows').addEventListener('input', (e) => { goCustom(); settings.gfx.t
 $('torch-shafts').addEventListener('input', (e) => { goCustom(); settings.gfx.shafts = +e.target.value; gfx.set('shafts', settings.gfx.shafts); updateGfxLabels(); saveSettings(); });
 $('torch-rate').addEventListener('input', (e) => { goCustom(); settings.gfx.torchRate = +e.target.value; gfx.set('torchRate', settings.gfx.torchRate); updateGfxLabels(); saveSettings(); });
 $('btn-gfx-traced').addEventListener('click', () => { goCustom(); settings.gfx.traced = (settings.gfx.traced + 1) % 3; gfx.set('traced', settings.gfx.traced); updateGfxLabels(); saveSettings(); });
+$('btn-gfx-godrays').addEventListener('click', () => { goCustom(); settings.gfx.godrays = ((settings.gfx.godrays | 0) + 1) % 3; gfx.set('godrays', settings.gfx.godrays); updateGfxLabels(); saveSettings(); });
 $('btn-gfx-shadows').addEventListener('click', () => { goCustom(); settings.gfx.shadows = (settings.gfx.shadows + 1) % 3; gfx.set('shadows', settings.gfx.shadows); updateGfxLabels(); saveSettings(); });
 for (const key of GFX_TOGGLES) {
   $(`btn-gfx-${key}`)?.addEventListener('click', () => { if (key !== 'pathtrace') goCustom(); settings.gfx[key] = !settings.gfx[key]; gfx.set(key, settings.gfx[key]); updateGfxLabels(); saveSettings(); });
@@ -7848,7 +7851,7 @@ function frame(now) {
   } catch (err) { reportError(err); }
   try { world.update(player.pos.x, player.pos.z, scene, materials, 6, dt); } catch (err) { reportError(err); }
   farLand.update(player.pos, Math.floor(player.pos.x / CHUNK), Math.floor(player.pos.z / CHUNK), settings.viewDistance);
-  gfx.sunDir.copy(sky.sunDir); gfx.overcast = weather?.overcast ?? 0; gfx.underwater = !!player.eyeInWater;
+  gfx.sunDir.copy(sky.sunDir); gfx.clouds = sky.cloudInfo(); gfx.overcast = weather?.overcast ?? 0; gfx.underwater = !!player.eyeInWater;
   // (v46) the ground gets wet while it rains and dries off slowly after (it glints in the sun, see addTorchLight)
   const wetU = lightUniforms.uWet;
   wetU.value = Math.max(0, Math.min(1, wetU.value + dt * (weather?.raining && weather.kind === 'rain' ? 0.05 : -0.008)));

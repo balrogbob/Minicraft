@@ -7,7 +7,11 @@
 //   caustics   - rippling light on blocks under sunlit water
 //   torch shadows (0-50) - the nearest lights that aren't in sunlight cast shadows too
 //   torchDay   - (v40) ...and the ones in sunlight as well (their shadows show in shade: under roofs, in doorways)
-//   godrays    - shafts of sunlight around things that hide the sun
+//   godrays (0-2) - shafts of sunlight around things that hide the sun: 1 classic (smeared out from the sun's
+//                 spot on the screen: cheap, only while you look towards the sun), 2 volumetric (v47: the air
+//                 along each view ray lit or shaded by the sun shadow picture: beams through windows, tree gaps
+//                 and cave mouths, from any angle, coloured by stained glass; needs sun shadows, else classic)
+//   clouds     - (v47) cloud shadows: the drifting clouds shade the ground under them
 //   sway       - leaves and plants move in the wind
 //   reflections - water mirrors the world above it (the scene drawn again, upside down)
 //   ripple     - the view wobbles while your head is under water
@@ -29,25 +33,26 @@ import { PathTracer } from './pathtrace.js';
 
 export const GFX_DEFAULTS = {
   shadows: 0, torches: 0, torchRate: 2, bloom: false, water: false, reflections: false, refraction: false, caustics: false,
-  godrays: false, sway: false, ripple: false, torchDay: false, mirrors: false, bounce: false, shafts: 0, traced: 0, pathtrace: false,
+  godrays: 0, sway: false, ripple: false, torchDay: false, mirrors: false, bounce: false, shafts: 0, traced: 0, pathtrace: false, clouds: false,
 };
 export const MAX_TORCH_SHADOWS = 50;
-export const GFX_TOGGLES = ['torchDay', 'bloom', 'godrays', 'sway', 'water', 'reflections', 'mirrors', 'bounce', 'refraction', 'caustics', 'ripple', 'pathtrace'];
+export const GFX_TOGGLES = ['torchDay', 'bloom', 'clouds', 'sway', 'water', 'reflections', 'mirrors', 'bounce', 'refraction', 'caustics', 'ripple', 'pathtrace'];
 export const GFX_NAMES = {
   shadows: 'Sun shadows', torches: 'Torch shadows', bloom: 'Bloom', water: 'Fancy water', refraction: 'Water refraction', caustics: 'Water caustics',
   godrays: 'God rays', sway: 'Swaying leaves and plants', reflections: 'Water reflections', ripple: 'Underwater ripple',
-  torchDay: 'Torch shadows by day', mirrors: 'Live mirrors', bounce: 'Colour bleed', shafts: 'Torch light shafts', traced: 'Traced lighting', pathtrace: 'Path tracing (WebGPU)',
+  torchDay: 'Torch shadows by day', clouds: 'Cloud shadows', mirrors: 'Live mirrors', bounce: 'Colour bleed', shafts: 'Torch light shafts', traced: 'Traced lighting', pathtrace: 'Path tracing (WebGPU)',
 };
 export const SHADOW_LEVELS = ['off', 'low', 'high'];
 export const TRACED_LEVELS = ['off', 'shadows and shade', 'full'];
+export const GODRAY_LEVELS = ['off', 'classic', 'volumetric'];
 // v38: quick presets for the fancy graphics. 'auto' starts at medium and steps up or down to keep the game
 // smooth; changing any single setting makes it 'custom'.
 export const GFX_PRESETS = {
   off: { ...GFX_DEFAULTS },
   low: { ...GFX_DEFAULTS, water: true, sway: true, ripple: true },
-  medium: { ...GFX_DEFAULTS, shadows: 1, torches: 3, torchRate: 1, bloom: true, water: true, caustics: true, sway: true, ripple: true, mirrors: true },
-  high: { shadows: 2, torches: 8, torchRate: 2, shafts: 2, traced: 0, bloom: true, water: true, reflections: true, refraction: true, caustics: true, godrays: true, sway: true, ripple: true, mirrors: true, bounce: true },
-  ultra: { shadows: 2, torches: 24, torchRate: 6, shafts: 6, traced: 2, bloom: true, water: true, reflections: true, refraction: true, caustics: true, godrays: true, sway: true, ripple: true, mirrors: true, bounce: true },
+  medium: { ...GFX_DEFAULTS, shadows: 1, torches: 3, torchRate: 1, bloom: true, water: true, caustics: true, sway: true, ripple: true, mirrors: true, clouds: true },
+  high: { shadows: 2, torches: 8, torchRate: 2, shafts: 2, traced: 0, bloom: true, water: true, reflections: true, refraction: true, caustics: true, godrays: 1, sway: true, ripple: true, mirrors: true, bounce: true, clouds: true },
+  ultra: { shadows: 2, torches: 24, torchRate: 6, shafts: 6, traced: 2, bloom: true, water: true, reflections: true, refraction: true, caustics: true, godrays: 2, sway: true, ripple: true, mirrors: true, bounce: true, clouds: true },
 };
 export const PRESET_ORDER = ['off', 'low', 'medium', 'high', 'ultra'];
 export const PRESET_NAMES = { off: 'Off', low: 'Low', medium: 'Medium', high: 'High', ultra: 'Ultra', auto: 'Auto', custom: 'Custom' };
@@ -108,7 +113,22 @@ export const gfxUniforms = {
   uVoxStr: { value: 0 },
   uPTPass: { value: 0 }, // (v46: path tracing: which picture of the scene is being drawn, see renderPathTraced)
   uPTFar: { value: 1000 },
+  uCloudMap: { value: null }, // (v47) cloud shadows: the sky's cloud pattern, and (drift, blocks across, height, strength)
+  uCloud: { value: new THREE.Vector4(0, 512, 136, 0) },
 };
+// (v47) how much cloud is between p and the sun: 0 clear .. 1 under a cloud (soft-edged: 5 taps)
+export const GFX_CLOUD = `
+uniform sampler2D uCloudMap;
+uniform vec4 uCloud;
+float gfxCloud(vec3 p, vec3 sd) {
+  if (uCloud.w <= 0.0 || sd.y < 0.04 || p.y > uCloud.z) return 0.0;
+  vec3 q = p + sd * ((uCloud.z - p.y) / sd.y);
+  vec2 uv = vec2(q.x - uCloud.x, -q.z) / uCloud.y, t = vec2(3.5 / uCloud.y, 0.0);
+  float c = texture2D(uCloudMap, uv).a * 0.4 + (texture2D(uCloudMap, uv + t).a + texture2D(uCloudMap, uv - t).a
+    + texture2D(uCloudMap, uv + t.yx).a + texture2D(uCloudMap, uv - t.yx).a) * 0.15;
+  return min(c / 0.92, 1.0);
+}
+`;
 
 // (v46) path tracing draws the scene three times as plain pictures for pathtrace.js to light: 1 the colour of
 // everything (no light, no fog), 2 how far away each pixel is (24 bits over r, g, b), 3 which way it faces
@@ -208,7 +228,7 @@ if (uSway > 0.5 && swayK > 0.5) {
 
 // ---------- shader code for the world materials ----------
 
-export const GFX_FRAG_HEAD = GFX_PT_HEAD + `
+export const GFX_FRAG_HEAD = GFX_PT_HEAD + GFX_CLOUD + `
 uniform float uTime;
 uniform vec3 uSunDir;
 uniform float uSunStr;
@@ -424,6 +444,7 @@ if (uShadowStr > 0.0 && sunT > 0.0) { gfxSunVis = gfxShadow(gfxNormal()); gfxSun
 float gfxVF = uVoxOn > 0.5 ? gfxVoxFade() : 0.0;
 if (uVoxStr > 0.0 && sunT > 0.0 && gfxVF > 0.0) { gfxSunVis = min(gfxSunVis, mix(1.0, gfxVoxSun(gfxNormal()), gfxVF)); gfxSunK = max(gfxSunK, uVoxStr); } // (v46: traced)
 sunT *= 1.0 - gfxSunK * (1.0 - gfxSunVis);
+if (uCloud.w > 0.0 && sunT > 0.0) sunT *= 1.0 - uCloud.w * gfxCloud(vWorldP, uSunDir); // (v47)
 vec2 gfxAmb = vec2(1.0);
 if (gfxVF > 0.0) { gfxAmb = mix(vec2(1.0), gfxVoxAmb(gfxNormal()), gfxVF); sunT *= mix(1.0, gfxAmb.x, 0.55) * mix(1.0, gfxAmb.y, 0.6); }
 vec3 sunC = vec3(1.0);
@@ -545,6 +566,42 @@ void main() {
   for (int i = 0; i < 40; i++) { acc += glow(uv) * w; w *= 0.96; uv += step1; }
   gl_FragColor = vec4(vec3(acc / 40.0), 1.0);
 }`;
+// (v47) volumetric sun shafts: march the view ray through the air, asking the sun shadow picture at each step
+// whether sunlight reaches it (and through what colour of stained glass, and under how much cloud); light seen
+// mostly towards the sun, a little all round
+const SUNVOL_FRAG = `uniform sampler2D tDepth; uniform mat4 uInvProj; uniform mat4 uCamWorld; uniform vec3 uCamPos;
+uniform sampler2D uShadowMap; uniform mat4 uShadowMat; uniform sampler2D uGlassMap; uniform float uGlassOn;
+uniform vec3 uSunDir; uniform float uLen;
+${GFX_CLOUD}
+varying vec2 vUv;
+void main() {
+  float z = texture2D(tDepth, vUv).r;
+  vec4 v = uInvProj * vec4(vUv * 2.0 - 1.0, z * 2.0 - 1.0, 1.0);
+  vec3 wp = (uCamWorld * vec4(v.xyz / v.w, 1.0)).xyz;
+  vec3 ray = wp - uCamPos;
+  float len = min(length(ray), uLen);
+  vec3 dir = ray / max(length(ray), 0.0001);
+  float stepL = len / 32.0;
+  float jit = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
+  vec3 acc = vec3(0.0);
+  for (int s = 0; s < 32; s++) {
+    vec3 p = uCamPos + dir * ((float(s) + jit) * stepL);
+    vec3 sp = (uShadowMat * vec4(p, 1.0)).xyz;
+    vec3 lit = vec3(1.0);
+    if (sp.x > 0.0 && sp.y > 0.0 && sp.x < 1.0 && sp.y < 1.0 && sp.z < 1.0) {
+      lit *= step(sp.z - 0.0015, texture2D(uShadowMap, sp.xy).r);
+      if (uGlassOn > 0.5) { vec4 g = texture2D(uGlassMap, sp.xy); if (sp.z - 0.004 > g.a) lit *= g.rgb; }
+    }
+    acc += lit * (1.0 - 0.85 * gfxCloud(p, uSunDir));
+  }
+  float mu = max(dot(dir, uSunDir), 0.0);
+  float phase = 0.6 + 3.0 * pow(mu, 8.0) + 2.0 * pow(mu, 60.0);
+  // (shown mostly where the ray also passes through shade: beams in a dark hall or under trees stand out, while
+  // open sunny air only gets a light haze towards the sun, not a grey wash over everything)
+  float litF = dot(acc, vec3(0.333)) / 32.0;
+  vec3 x = acc * stepL * phase * 0.06 * (0.1 + 0.9 * (1.0 - litF));
+  gl_FragColor = vec4(0.5 * (1.0 - exp(-x)), 1.0);
+}`;
 // (v46) light shafts: march the view ray through the air near the nearest lights, adding the light each
 // step gets from them (looked up in their shadow pictures, so walls, bars and pillars cut beams out of it)
 const SHAFT_FRAG = `uniform sampler2D tDepth; uniform mat4 uInvProj; uniform mat4 uCamWorld; uniform vec3 uCamPos;
@@ -614,7 +671,7 @@ void main() {
   }
   if (uShaft > 0.0) c += texture2D(tShaft, uv).rgb * uShaft; // (v46: torch light shafts)
   if (uBloom > 0.0) c += (texture2D(tB1, uv).rgb * 0.7 + texture2D(tB2, uv).rgb * 0.9) * uBloom;
-  if (uGod > 0.0) c += texture2D(tGod, uv).r * uGod * uGodCol;
+  if (uGod > 0.0) c += texture2D(tGod, uv).rgb * uGod * uGodCol; // (classic: grey; volumetric: stained glass colours)
   gl_FragColor = vec4(toSRGB(c), 1.0);
 }`;
 
@@ -687,6 +744,13 @@ export class Graphics {
     this.shaftCount = 0;
     this.sunNow = 0;
     this.godMat = pass(GOD_FRAG, { tDepth: { value: null }, uSun: { value: new THREE.Vector2() }, uAspect: { value: 1 } });
+    this.sunVolMat = pass(SUNVOL_FRAG, {
+      tDepth: { value: null }, uInvProj: { value: new THREE.Matrix4() }, uCamWorld: { value: new THREE.Matrix4() }, uCamPos: { value: new THREE.Vector3() },
+      uShadowMap: G.uShadowMap, uShadowMat: G.uShadowMat, uGlassMap: G.uGlassMap, uGlassOn: G.uGlassOn, uSunDir: G.uSunDir, uLen: { value: 40 },
+      uCloudMap: G.uCloudMap, uCloud: G.uCloud,
+    });
+    this.godMode = 0;
+    this.clouds = null; // set by the game each frame: { map, drift, span, y, shown } (sky.js), for cloud shadows
     this.underwater = false;
     this.waterY = null; // set by the game: height of the water surface around the player, for reflections
     this.frame = 0;
@@ -749,6 +813,7 @@ export class Graphics {
     if (key === 'torches' || key === 'shafts') o[key] = Math.max(0, Math.min(MAX_TORCH_SHADOWS, on | 0));
     else if (key === 'torchRate') o.torchRate = Math.max(1, Math.min(MAX_TORCH_SHADOWS, on | 0));
     else if (key === 'traced') o.traced = Math.max(0, Math.min(2, on | 0));
+    else if (key === 'godrays') o.godrays = Math.max(0, Math.min(2, on | 0)); // (true from older saves: classic)
     else if (key === 'shadows') o.shadows = Math.max(0, Math.min(2, on === true ? 2 : on | 0));
     else o[key] = !!on;
     if (key === 'shadows' && o.shadows !== was) this.freeShadows();
@@ -774,6 +839,12 @@ export class Graphics {
     U.uFancyWater.value = o.water ? 1 : 0;
     U.uCaustics.value = o.caustics ? 1 : 0;
     U.uSway.value = o.sway ? 1 : 0;
+    const cl = this.clouds;
+    U.uCloud.value.w = 0;
+    if (o.clouds && cl?.map && cl.shown) {
+      U.uCloudMap.value = cl.map;
+      U.uCloud.value.set(cl.drift, cl.span, cl.y, 0.5 * (1 - this.overcast));
+    }
     this.frame++;
     // (v46) path tracing takes over the whole frame
     if (this.pt?.failed) { const err = this.pt.failed; this.freePT(); this.fail(err, 'pathtrace'); }
@@ -814,14 +885,23 @@ export class Graphics {
   // an effect that breaks on this computer is switched off rather than spoiling every frame
   fail(err, key) {
     this.lastError = err;
-    this.opts[key] = key === 'torches' || key === 'shadows' || key === 'shafts' || key === 'traced' ? 0 : false;
+    this.opts[key] = key === 'torches' || key === 'shadows' || key === 'shafts' || key === 'traced' || key === 'godrays' ? 0 : false;
     if (key === 'pathtrace') this.freePT();
     this.onFail?.(key, err);
   }
 
   // how strong the god rays are this frame (0 = none): the sun must be up and in front of you
   godStrength(camera) {
+    this.godMode = 0;
     if (!this.opts.godrays || this.underwater) return 0;
+    const up0 = THREE.MathUtils.smoothstep(this.sunDir.y, -0.04, 0.12) * (1 - 0.85 * this.overcast);
+    // (volumetric when asked for and there's a sun shadow picture this frame to march through; else classic)
+    if (this.opts.godrays === 2 && gfxUniforms.uShadowStr.value > 0 && this.shadowRT) {
+      this.godMode = 2;
+      const low = 1 + 0.8 * (1 - THREE.MathUtils.smoothstep(this.sunDir.y, 0.1, 0.6));
+      return up0 * low * this.sunNow;
+    }
+    this.godMode = 1;
     const fwd = camera.getWorldDirection(new THREE.Vector3());
     const facing = THREE.MathUtils.smoothstep(fwd.dot(this.sunDir), 0.2, 0.75);
     const up = THREE.MathUtils.smoothstep(this.sunDir.y, -0.04, 0.12) * (1 - 0.85 * this.overcast);
@@ -1415,7 +1495,18 @@ void main() {
       blur(c1, c2, 2, 0); blur(c2, c1, 0, 2);
       bloom = 0.65;
     }
-    if (godrays > 0) {
+    if (godrays > 0 && this.godMode === 2) {
+      const vm = this.sunVolMat.uniforms;
+      vm.tDepth.value = this.rtMain.depthTexture;
+      vm.uInvProj.value.copy(camera.projectionMatrixInverse);
+      vm.uCamWorld.value.copy(camera.matrixWorld);
+      vm.uCamPos.value.setFromMatrixPosition(camera.matrixWorld);
+      vm.uLen.value = gfxUniforms.uShadowRange.value * 0.95;
+      this.blit(this.sunVolMat, this.god);
+      const tmp = this.shaft[1]; // (free until the torch shafts are drawn, below)
+      this.blurMat.uniforms.tSrc.value = this.god.texture; this.blurMat.uniforms.uDir.value.set(1 / this.god.width, 0); this.blit(this.blurMat, tmp);
+      this.blurMat.uniforms.tSrc.value = tmp.texture; this.blurMat.uniforms.uDir.value.set(0, 1 / this.god.height); this.blit(this.blurMat, this.god);
+    } else if (godrays > 0) {
       const sp = this.sunDir.clone().multiplyScalar(100).add(camera.getWorldPosition(new THREE.Vector3())).project(camera);
       this.godMat.uniforms.tDepth.value = this.rtMain.depthTexture;
       this.godMat.uniforms.uSun.value.set(sp.x * 0.5 + 0.5, sp.y * 0.5 + 0.5);

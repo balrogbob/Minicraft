@@ -216,4 +216,12 @@ export class Sky {
     if (light < 0.5) cc.setRGB(Math.max(cc.r, sk.r * 1.25 + 0.004), Math.max(cc.g, sk.g * 1.25 + 0.004), Math.max(cc.b, sk.b * 1.2 + 0.004));
     cl.material.opacity = 0.85 + 0.15 * oc;
   }
+
+  // (v47) for cloud shadows (graphics.js): the cover pattern, how far it has drifted, how many blocks one
+  // repeat of it spans, the layer's height, and whether it's showing
+  cloudInfo() {
+    const i = this.cloudI ??= { map: this.clouds.material.map, drift: 0, span: CLOUD_N * CLOUD_PX, y: CLOUD_Y, shown: false };
+    i.drift = this.cloudDrift; i.shown = this.clouds.visible;
+    return i;
+  }
 }
