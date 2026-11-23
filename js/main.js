@@ -2982,7 +2982,7 @@ function tickGlider(dt) {
     for (let d = 1; d <= 24 && y0 - d > 0; d++) {
       const id = world.get(x, y0 - d, z);
       if (id === AIR || BLOCKS[id]?.chimney) continue;
-      const hot = id === FIRE || id === LAVA || BLOCKS[id]?.lit || BLOCKS[id]?.fire;
+      const def = BLOCKS[id], hot = id === FIRE || id === LAVA || (def?.lit && (def.station || def.hearth || def.engine || def.name === "Cooking Pot"));
       if (hot) { lift = 6.5 * (1 - (d - 1) / 26); break; }
       if (world.isWater(x, y0 - d, z)) break;
       const sandy = id === SAND || id === SANDSTONE;
