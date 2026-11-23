@@ -81,7 +81,7 @@ import { Logic } from './logic.js';
 
 // v2 = the 16k x 16k streaming world (player state here, edited chunks in IndexedDB).
 // v1 = the old 128 x 128 world, migrated into the middle of the big world on first launch.
-const GAME_VERSION = '44'; // shown in the menu; bump with each release
+const GAME_VERSION = '45'; // shown in the menu; bump with each release
 const SAVE_KEY = 'minicraft-save-v2';
 const LEGACY_SAVE_KEY = 'minicraft-save-v1';
 const SETTINGS_KEY = 'minicraft-settings-v1';
@@ -102,7 +102,7 @@ function writeSave(obj, slot = activeSlot) {
 }
 // Settings live apart from the world so they survive "New world".
 const settings = (() => {
-  const defaults = { farLand: true, gfxPreset: 'custom', sens: 6, volume: 70, music: 50, viewDistance: 6, perf: false, difficulty: 'worrying', wear: true, favs: [], pins: [], slot: 0, fov: 72, keys: {}, tips: true, doubleTap: true, gfx: {} };
+  const defaults = { farLand: true, fog: true, gfxPreset: 'custom', sens: 6, volume: 70, music: 50, viewDistance: 6, perf: false, difficulty: 'worrying', wear: true, favs: [], pins: [], slot: 0, fov: 72, keys: {}, tips: true, doubleTap: true, gfx: {} };
   let s;
   try { s = { ...defaults, ...JSON.parse(localStorage.getItem(SETTINGS_KEY)) }; } catch { s = { ...defaults }; }
   s.slot = Math.max(0, Math.min(SLOT_COUNT - 1, s.slot | 0));
@@ -148,7 +148,7 @@ const material = new THREE.MeshBasicMaterial({ map: atlas, vertexColors: true, a
 // on a block like uranium ore, only its bright flecks (and not tiles plain blocks share, like a shrine's bricks)
 const glowMask = (() => {
   const modes = new Map(), plain = new Set();
-  const put = (t, m) => { if (t != null && modes.get(t) !== 'all') modes.set(t, m); };
+  const put = (t, m) => { if (t != null && modes.get(t) !== 'all' && modes.get(t) !== 'fire') modes.set(t, m); };
   for (const def of BLOCKS) {
     if (!def) continue;
     const faces = [def.top, def.side, def.bottom, def.front];
@@ -156,9 +156,13 @@ const glowMask = (() => {
     if (def.model) {
       for (const [, , , , , , tiles, glow] of def.model) if (glow) for (const t of typeof tiles === 'number' ? [tiles] : Object.values(tiles)) put(t, 'all');
     } else if (def.shape) put(def.shape === 'torch' ? def.top : def.side, 'all');
-    else for (const t of faces) put(t, def.liquid || def.sound === 'glass' ? 'all' : 'parts');
+    else {
+      // (v45) the fire in a lit oven, smelter or kiln front glows, flame and embers, so it blooms
+      if (def.lit && def.front != null) modes.set(def.front, 'fire');
+      for (const t of faces) put(t, def.liquid || def.sound === 'glass' ? 'all' : 'parts');
+    }
   }
-  for (const [t, m] of modes) if (m === 'parts' && plain.has(t)) modes.delete(t);
+  for (const [t, m] of modes) if (m === 'parts' && plain.has(t)) modes.delete(t); // ('fire' fronts are only ever lit blocks')
   const tex = new THREE.CanvasTexture(createGlowMask(atlasCanvas, modes));
   tex.magFilter = tex.minFilter = THREE.NearestFilter; tex.generateMipmaps = false;
   return tex;
@@ -181,12 +185,13 @@ function addTorchLight(mat, water = false) {
       .replace('#include <color_vertex>', '#include <color_vertex>\nfloat tintI = floor(torch * 0.5);\nvTorchC = (torch - tintI * 2.0) * uTints[int(tintI)];\n' + GFX_VERT_DECODE + 'vWorldP = (modelMatrix * vec4(position, 1.0)).xyz;')
       .replace('#include <begin_vertex>', '#include <begin_vertex>\n' + GFX_VERT_SWAY);
     // (v40: the bright parts of things that give off light, like a torch's flame or a lamp's glass, glow: brighter
-    // than anything lit, by day too, and bright enough to bloom)
+    // than anything lit, by day too, and bright enough to bloom. v45: from the texture's own colour, not the face's
+    // shading, so a torch's flame glows the same on all four sides)
     shader.fragmentShader = 'uniform sampler2D uGlowMap;\nuniform float uDay;\nuniform float uFlicker;\nuniform float uAmbient;\nuniform vec4 uHand;\nvarying vec3 vTorchC;\nvarying float vSky;\nvarying vec3 vWorldP;\nvarying float vGlow;\n' + GFX_FRAG_HEAD + shader.fragmentShader
       .replace('#include <color_fragment>',
         '#include <color_fragment>\nvec3 baseC = diffuseColor.rgb;\nfloat hl = uHand.w * pow(clamp(1.0 - distance(vWorldP, uHand.xyz) / 13.0, 0.0, 1.0), 1.4);\n' + GFX_SUN_TERM +
         'diffuseColor.rgb *= max(max(vec3(max(sunT, uAmbient)), torchT), vec3(hl, hl * 0.96, hl * 0.86));\n' +
-        (water ? '' : 'if (vGlow > 0.5) { float gm = texture2D(uGlowMap, vMapUv).r; diffuseColor.rgb = mix(diffuseColor.rgb, max(diffuseColor.rgb, baseC * (1.7 + 0.25 * uFlicker)), gm); }\n') + (water ? GFX_WATER : ''));
+        (water ? '' : 'if (vGlow > 0.5) { vec2 gm = texture2D(uGlowMap, vMapUv).rg; vec3 glowC = baseC / max(vColor.rgb, vec3(0.25)); diffuseColor.rgb = mix(diffuseColor.rgb, max(diffuseColor.rgb, glowC * (1.7 + 0.25 * uFlicker + gm.y * (1.6 + 0.6 * uFlicker))), gm.x); }\n') + (water ? GFX_WATER : ''));
   };
 }
 addTorchLight(material);
@@ -305,7 +310,10 @@ function updateMe(dt) {
   const speed = Math.hypot(player.vel.x, player.vel.z);
   const swimming = player.inWater && !player.onGround && !riding && !ridingMob;
   avatar.root.visible = !dead && (photoMode || viewMode > 0);
-  if (avatar.root.visible) avatar.update(dt, { pos: player.pos, yaw: player.yaw, pitch: player.pitch, speed, swimming, onGround: player.onGround, gliding: player.gliding, light });
+  // in first person your body is hidden but still casts its shadow (sun and torches)
+  const fpShadow = !dead && !avatar.root.visible;
+  gfx.shadowOnly = fpShadow ? [avatar.root] : [];
+  if (avatar.root.visible || fpShadow) avatar.update(dt, { pos: player.pos, yaw: player.yaw, pitch: player.pitch, speed, swimming, onGround: player.onGround, gliding: player.gliding, light });
   // (v44) in first person, the glider's wing and bar over and in front of you
   fpGlider.visible = player.gliding && !avatar.root.visible && !dead;
   if (fpGlider.visible) {
@@ -384,7 +392,8 @@ let target = null; // raycast hit
 let targetMob = null; // { mob, t } when the crosshair is on an animal (closer than any block)
 let targetPlayer = null; // { id, r, t } when it's on another player, and PvP is on (v41)
 let targetCart = null; // { cart, t } when the crosshair is on a minecart
-const breakState = { key: '', progress: 0 };
+const breakState = { key: '', progress: 0, pause: 0 };
+const BREAK_PAUSE = 0.25; // seconds between blocks while breaking is held (survival)
 let openedAt = null; // the station block (crafting table or churn) tapped to open crafting
 const MAX_HUNGER = 20;
 let hunger = MAX_HUNGER; // 0..20; each bread-loaf icon on the bar is 2 points
@@ -605,6 +614,7 @@ function applyViewDistance() {
   farLand.on = settings.farLand !== false;
   sky.fogFar = r * CHUNK + (farLand.on ? FAR_REACH : 0);
   sky.fogNear = farLand.on ? r * CHUNK * 0.8 : sky.fogFar * 0.55;
+  sky.distanceFog = settings.fog !== false;
   camera.far = Math.max(160, sky.fogFar + 48);
   camera.updateProjectionMatrix();
   $('view-label').textContent = `View distance: ${r * CHUNK} blocks`;
@@ -1815,8 +1825,9 @@ function renderStation() {
   }
   $('st-flame').style.opacity = st.burn > 0 ? String(0.35 + 0.65 * (st.burn / (st.burnMax || 1))) : '0.12';
   const fuelLeft = st.burn > 1e-9 ? ` (fuel for ${+st.burn.toFixed(1)} more)` : '';
+  const hot = !r && stations.tooHotFor(st);
   $('st-status').textContent = r ? (st.burn > 1e-9 || (st.fuel && isFuel(st.fuel.id)) ? `Making ${itemName(r.out[0]).toLowerCase()}…${fuelLeft}` : 'Needs fuel') :
-    `Put ingredients in${fuelLeft}`;
+    hot ? `${itemName(hot.out[0])} needs more heat: smelt it in a blast smelter` : `Put ingredients in${fuelLeft}`;
 }
 
 // Chest buttons: move everything in the backpack (not the hotbar) into the chest, or take it all out.
@@ -4875,6 +4886,9 @@ function updateBreaking(dt) {
     return;
   }
   if (controls.breaking && inventory.heldId() === COPY_WAND) { resetWand(); crack.visible = false; return; } // holding the wand still clears it
+  if (!controls.breaking) breakState.pause = 0; // (let go and press again to start at once)
+  // survival: a short pause after a block breaks before the next starts, so holding on doesn't dig the one behind it by accident
+  if (breakState.pause > 0) { breakState.pause -= dt; crack.visible = false; return; }
   if (!controls.breaking || !target) {
     breakState.key = ''; breakState.progress = 0; breakState.tick = 0;
     crack.visible = false;
@@ -4902,7 +4916,8 @@ function updateBreaking(dt) {
       breakBlock(target.x, target.y, target.z);
       if (held === ELECTRIC_DRILL) drillAround(hit);
     } finally { net.capture--; endUndo(); }
-    breakState.key = ''; breakState.progress = 0;
+    breakState.key = ''; breakState.progress = 0; breakState.tick = 0;
+    if (!creative) breakState.pause = BREAK_PAUSE;
     crack.visible = false;
     target = null;
     return;
@@ -5548,6 +5563,10 @@ $('view').addEventListener('input', (e) => {
 });
 const farLabel = () => { $('btn-far').textContent = `Distant land: ${settings.farLand !== false ? 'on' : 'off'}`; };
 farLabel();
+// v45: distance fog can be turned off (the far edge of the world then shows; underwater still closes in)
+const fogLabel = () => { $('btn-fog').textContent = `Distance fog: ${settings.fog !== false ? 'on' : 'off'}`; };
+fogLabel();
+$('btn-fog').addEventListener('click', () => { settings.fog = settings.fog === false; applyViewDistance(); fogLabel(); saveSettings(); });
 $('btn-far').addEventListener('click', () => { settings.farLand = settings.farLand === false; applyViewDistance(); farLabel(); saveSettings(); });
 $('sens').value = settings.sens;
 $('sens').addEventListener('input', (e) => { settings.sens = +e.target.value; controls.lookSens = settings.sens / 1000; saveSettings(); });

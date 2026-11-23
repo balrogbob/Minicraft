@@ -278,9 +278,15 @@ export class Controls {
     window.addEventListener('keydown', (e) => {
       if (this.capture) { e.preventDefault(); const f = this.capture; this.capture = null; f(e.code); return; }
       if (e.target?.tagName === 'TEXTAREA' || e.target?.tagName === 'INPUT') return; // typing on a sign
-      if (e.code === this.binds.inventory) { this.hooks.toggleInventory(); return; }
-      if (e.code === this.binds.map) { this.hooks.toggleMap?.(); return; }
-      if (e.code === this.binds.guidebook) { this.hooks.toggleGuidebook?.(); return; }
+      // closing a window with its key takes the mouse back for looking about, as its ✕ does
+      const toggle = (f) => {
+        const was = this.hooks.isPaused();
+        f?.();
+        if (was && !this.hooks.isPaused() && matchMedia('(pointer: fine)').matches) this.grabMouse();
+      };
+      if (e.code === this.binds.inventory) { toggle(this.hooks.toggleInventory); return; }
+      if (e.code === this.binds.map) { toggle(this.hooks.toggleMap); return; }
+      if (e.code === this.binds.guidebook) { toggle(this.hooks.toggleGuidebook); return; }
       if (e.code === this.binds.view) { this.hooks.toggleView?.(); return; }
       if (this.hooks.isPaused()) return;
       if (e.code === this.binds.chat) { e.preventDefault(); this.hooks.openChat?.(); return; }

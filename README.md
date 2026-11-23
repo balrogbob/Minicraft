@@ -61,7 +61,7 @@ with, each has its own switch, and they are remembered between games. Turn on th
 turn any off again if the game gets slow (☰ → Performance info shows the frame rate).
 
 - **Sun shadows** (off / low / high): the sun casts soft shadows from blocks, trees, animals and machines within about 44
-  blocks of you. They lengthen towards evening, fade under clouds and go at night. (Torch and lamp light
+  blocks of you (and from you, in first person too). They lengthen towards evening, fade under clouds and go at night. (Torch and lamp light
   doesn't need these: it spreads block by block, so it already stops at walls.) **Low** is for mid-range
   machines: a smaller shadow picture over about 32 blocks, harder edges, redrawn every other frame.
 - **Torch shadows** (a slider, off or 1 to 50): the nearest few torches, lanterns, lamps and other lights
@@ -72,6 +72,8 @@ turn any off again if the game gets slow (☰ → Performance info shows the fra
   sets how many lights get their shadows redrawn each frame, in turn (new lights are drawn at once):
   higher keeps shadows of moving animals smooth, lower is faster. **Torch shadows by day** counts the lights
   out in the sun too, so their shadows show in shady places by day (under roofs, in doorways).
+- **Distance fog** (on by default): the world fades into the sky towards the edge of what's loaded. Turn it
+  off for a clear view all the way out (the edge of the world then shows). Under water it's always murky.
 - **Bloom**: bright things glow a little past their edges: lava, lamps, torch flames, the sky behind trees, sun
   glints.
 
@@ -689,9 +691,9 @@ high (gold, 1–16 here, is found from about 2 up to 37), and above 24 it's 32 h
 | Iron ore | 4–44 | copper-class | iron ingot |
 | Silver ore | 2–22 | iron-class | silver ingot |
 | Gold ore | 1–16 | iron-class | gold ingot |
-| Tungsten ore | 1–9 (deep) | stainless steel | tungsten ingot |
+| Tungsten ore | 1–9 (deep) | stainless steel | tungsten ingot (blast smelter or hotter) |
 | Nickel ore | 4–36 | copper-class | nickel ingot |
-| Uranium ore | 1–14 (deep) | stainless steel | uranium ingot (for fuel rods) |
+| Uranium ore | 1–14 (deep) | stainless steel | uranium ingot (for fuel rods; blast smelter or hotter) |
 
 Alloys, made in the smelter (coal or charcoal here is an ingredient, not the fuel):
 
@@ -701,8 +703,8 @@ Alloys, made in the smelter (coal or charcoal here is an ingredient, not the fue
 | 4 Aluminium bronze ingots | 1 aluminium + 3 copper |
 | 2 Electrum ingots | 1 silver + 1 gold |
 | 4 Cupronickel ingots | 3 copper + 1 nickel |
-| 1 Steel ingot | 1 iron + 1 coal or charcoal |
-| 2 Stainless steel ingots | 1 zinc + 1 iron + 1 coal or charcoal |
+| 1 Steel ingot | 1 iron + 1 coal or charcoal (blast smelter or hotter) |
+| 2 Stainless steel ingots | 1 zinc + 1 iron + 1 coal or charcoal (blast smelter or hotter) |
 
 Metal tools are made at a crafting table like stone ones: pickaxe or axe = 3 ingots + 2 sticks,
 shovel = 1 ingot + 2 sticks. Their recipes show up once you carry that metal.
@@ -729,8 +731,8 @@ something is cooking, so whatever's left of a piece waits for the next job.
 | Station | Makes |
 | --- | --- |
 | Oven (6 cobblestone + 2 sand) | bread, cookies, cake, baked fish (see Food above), clay ball → brick, buffalo hide → leather |
-| Smelter (8 cobblestone) | cobblestone → stone, sand → glass (flint dust + sand → 2 glass), log → charcoal, ores and ore dust → ingots, alloys (see above), clay ball → brick, fire clay → fire brick |
-| Blast smelter (smelter + 8 fire bricks) | everything the smelter does, twice as fast on the same fuel |
+| Smelter (8 cobblestone) | cobblestone → stone, sand → glass (flint dust + sand → 2 glass), log → charcoal, ores and ore dust → ingots, alloys (see above; not steel, stainless steel, tungsten or uranium, which need more heat), clay ball → brick, fire clay → fire brick |
+| Blast smelter (smelter + 8 fire bricks) | everything the smelter does, twice as fast on the same fuel, and hot enough for steel, stainless steel, tungsten and uranium |
 | Rock crusher | see **Water power and the rock crusher** below; no fuel, it's driven by a water wheel |
 | Millstone, saw, trip hammer | see **More machines** below |
 
@@ -1219,8 +1221,8 @@ These build on the machines you already have:
 - Tap an **electric lamp** to have it come on only while it has a signal: a lever, a button, or a **daylight
   sensor** (3 glass, 2 copper, copper wire), which signals at night (or in the dark under a roof). Tap the sensor
   to have it signal by day instead.
-- The **electric smelter** (a smelter, 4 stainless steel, 4 electrum wire) smelts everything the smelter does with
-  no fuel, at twice the speed with all the power it wants (8).
+- The **electric smelter** (a smelter, 4 stainless steel, 4 electrum wire) smelts everything the blast smelter does
+  (steel, tungsten and uranium too) with no fuel, at twice the speed with all the power it wants (8).
 
 #### Automation
 
@@ -1252,7 +1254,7 @@ These build on the machines you already have:
 
 #### Uranium and the reactor
 
-**Uranium ore** is found deep down (Y 1–14) and needs a stainless steel pickaxe. Smelt it (or crush it first) for
+**Uranium ore** is found deep down (Y 1–14) and needs a stainless steel pickaxe. Smelt it in a blast smelter (or crush it first) for
 uranium ingots: 3 uranium and 2 stainless steel make a **fuel rod**, which lasts 10 minutes in a reactor.
 
 The **reactor** (8 stainless steel, 8 lead, 2 tungsten, 2 generators, 2 glass) holds up to 4 fuel rods and makes
@@ -1776,6 +1778,12 @@ guide to how everything works.
 
 ## Version history
 
+- **Version 45**: gears mesh at corners (axles at right angles) and large gears mesh in pairs; a **Distance
+  fog** switch in ☰ → Graphics; your own shadow in first person; in survival a short pause after each block
+  breaks while you hold on, so you don't dig the one behind it by accident; closing a window with its key
+  (E, M, G) takes the mouse back for looking, as its ✕ does; steel, stainless steel, tungsten and uranium need a blast
+  smelter (or an electric smelter or arc furnace), not a plain smelter; a torch's flame glows the same on all four sides,
+  and the fire in a lit oven, smelter or kiln glows (and blooms) like a flame.
 - **Version 44**: the **glider** (wear it, jump in mid-air to open it, ride warm air over fires and lava);
   the sea comes alive: deep ocean in tall worlds, coral reefs, sea grass and kelp, schools of fish, jellyfish,
   sea turtles and dolphins; the **record player**; the **armour stand**; and **undo** in creative mode.

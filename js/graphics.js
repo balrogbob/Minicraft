@@ -416,6 +416,7 @@ export class Graphics {
     this.bias = new THREE.Matrix4().set(0.5, 0, 0, 0.5, 0, 0.5, 0, 0.5, 0, 0, 0.5, 0.5, 0, 0, 0, 1);
     this.size = new THREE.Vector2();
     this.casters = [];
+    this.shadowOnly = []; // (objects hidden from view but still drawn into shadows)
     // torch shadows
     this.lightU = { value: new THREE.Vector4() };
     this.distMats = new WeakMap();
@@ -554,6 +555,9 @@ export class Graphics {
   withCasters(scene, cache, make, draw) {
     const r = this.renderer, casters = this.casters;
     casters.length = 0;
+    // things drawn only into shadows (v45: your own body in first person, so you see your shadow)
+    const shown = this.shadowOnly.filter((o) => !o.visible);
+    for (const o of shown) o.visible = true;
     scene.traverseVisible((obj) => {
       if (!obj.isMesh) return;
       const m = Array.isArray(obj.material) ? obj.material[0] : obj.material;
@@ -572,6 +576,7 @@ export class Graphics {
       scene.background = bg; scene.fog = fog;
       for (let i = 0; i < casters.length; i += 2) casters[i].material = casters[i + 1];
       casters.length = 0;
+      for (const o of shown) o.visible = false;
     }
   }
 
