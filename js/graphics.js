@@ -149,10 +149,12 @@ vec2 gfxOct(vec3 n) {
   if (n.y < 0.0) e = (1.0 - abs(n.zx)) * vec2(n.x >= 0.0 ? 1.0 : -1.0, n.z >= 0.0 ? 1.0 : -1.0);
   return e * 0.5 + 0.5;
 }
+// (v47) b: glow 0-31, + 32 x shine (0 matt, 1 glassy: ice, glass, obsidian, 2 metal, 3 wet ground), + 128 if it moves
+float gfxPTShine = 0.0;
 vec4 gfxPTOut(vec3 albedo, vec3 wp, vec3 n, float emit, float moving) {
   if (uPTPass < 1.5) return vec4(gfxSRGB(albedo), 1.0);
   if (uPTPass < 2.5) return vec4(gfxPackDist(distance(wp, cameraPosition)), 1.0);
-  return vec4(gfxOct(n), (floor(clamp(emit, 0.0, 1.0) * 127.0 + 0.5) + moving * 128.0) / 255.0, 1.0);
+  return vec4(gfxOct(n), (floor(clamp(emit, 0.0, 1.0) * 31.0 + 0.5) + gfxPTShine * 32.0 + moving * 128.0) / 255.0, 1.0);
 }
 `;
 // ...and everything that isn't the world's blocks is drawn into those pictures with this
@@ -1121,7 +1123,7 @@ void main() {
     if (world) pt.updateWorld(world, cp.x, cp.z);
     pt.updateMobs(this.ptObjects?.() ?? [], cp);
     const now = performance.now();
-    if (now >= this.ptLightT) { this.ptLightT = now + 250; pt.setLights(this.findLights?.(32) ?? []); }
+    if (now >= this.ptLightT) { this.ptLightT = now + 250; pt.setLights(this.findPTLights?.(64) ?? this.findLights?.(32) ?? []); }
     // none of the other effects: the light is all traced
     U.uShadowStr.value = 0; U.uGlassOn.value = 0; U.uTorchCount.value = 0; U.uVoxOn.value = 0; U.uVoxStr.value = 0;
     U.uReflect.value = 0; U.uRefract.value = 0; this.shaftCount = 0;

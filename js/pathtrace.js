@@ -19,7 +19,7 @@ import { chunkKey, World } from './world.js';
 import { BLOCKS, isWaterId, isLeaves, LAVA } from './blocks.js';
 
 const VOX = 128, COLS = VOX / CHUNK, COL_U16 = CHUNK * CHUNK * H;
-const MAX_MOBS = 48, MAX_CELLS = 1 << 21, MAX_LIGHTS = 32, MOB_GRID = 64;
+const MAX_MOBS = 48, MAX_CELLS = 1 << 21, MAX_LIGHTS = 64, MOB_GRID = 64;
 const PER_FRAME = 8; // chunk columns copied in each frame
 const MAX_MASKS = 2048; // different part-block shapes
 
@@ -97,8 +97,9 @@ fn loadDist(t: texture_2d<f32>, p: vec2u) -> f32 {
   let d = f32(c.r * 65536u + c.g * 256u + c.b) / 16777215.0;
   return select(d * u.far, -1.0, d > 0.99999);
 }
-// the third picture's b: how much it glows (0-127) + 128 for things that move
-fn glowOf(b: f32) -> f32 { return f32(u32(round(b * 255.0)) & 127u) / 127.0; }
+// the third picture's b: how much it glows (0-31) + 32 x how shiny (0-3) + 128 for things that move
+fn glowOf(b: f32) -> f32 { return f32(u32(round(b * 255.0)) & 31u) / 31.0; }
+fn shineOf(b: f32) -> u32 { return (u32(round(b * 255.0)) >> 5u) & 3u; }
 fn moves(b: f32) -> bool { return u32(round(b * 255.0)) >= 128u; }
 fn sgn(v: f32) -> f32 { return select(-1.0, 1.0, v >= 0.0); }
 fn octDec(e0: vec2f) -> vec3f {
@@ -118,7 +119,7 @@ fn srcPixel(g: vec2u) -> vec2u { return min(g * 2u + vec2u(u.frame & 1u, (u.fram
 
 const TRACE = COMMON + /* wgsl */`
 struct Mob { mn: vec3f, cell: f32, dims: vec3u, off: u32 };
-struct Light { pos: vec3f, reach: f32, col: vec3f, pad: f32 };
+struct Light { pos: vec3f, reach: f32, col: vec3f, size: f32 }; // (size: how wide it shines from: a torch's flame, a pool of lava)
 struct Hit { t: f32, n: vec3f, col: vec3f, emit: f32, kind: u32, tr: vec3f };
 @group(0) @binding(1) var gDepth: texture_2d<f32>;
 @group(0) @binding(2) var gNorm: texture_2d<f32>;
@@ -128,6 +129,7 @@ struct Hit { t: f32, n: vec3f, col: vec3f, emit: f32, kind: u32, tr: vec3f };
 @group(0) @binding(6) var<storage, read> cells: array<u32>;
 @group(0) @binding(7) var<storage, read> lights: array<Light>;
 @group(0) @binding(8) var outIrr: texture_storage_2d<rgba16float, write>;
+@group(0) @binding(9) var outSpec: texture_storage_2d<rgba16float, write>;
 
 var<private> seed: u32;
 fn pcg(v: u32) -> u32 { let s = v * 747796405u + 2891336453u; let w = ((s >> ((s >> 28u) + 4u)) ^ s) * 277803737u; return (w >> 22u) ^ w; }
@@ -288,6 +290,15 @@ fn cosDir(n: vec3f) -> vec3f {
   return normalize(tu * (cos(ph) * r) + tv * (sin(ph) * r) + n * sqrt(1.0 - r2));
 }
 fn skyRad(d: vec3f) -> vec3f { return u.skyCol * (0.35 + 0.65 * clamp(d.y, 0.0, 1.0)) * 0.75; }
+// light from one of the nearby lights reaching a spot at p (o: just off it) facing n (any way, for n = 0)
+fn lightAt(L: Light, p: vec3f, o: vec3f, n: vec3f) -> vec3f {
+  var v = L.pos + (vec3f(rnd(), rnd(), rnd()) - 0.5) * L.size - p;
+  let dl = length(v); v = v / dl;
+  let ndl = select(dot(n, v), 1.0, dot(n, n) < 0.5);
+  if (dl >= L.reach || ndl <= 0.0) { return vec3f(0.0); }
+  let k = 1.0 - dl / L.reach;
+  return L.col * reach(o, v, max(dl - 0.75, 0.0)) * (k * k * ndl);
+}
 // sunlight reaching a spot facing n (soft: the sun is a small disc, not a point)
 fn sunAt(o: vec3f, n: vec3f) -> vec3f {
   let nds = dot(n, u.sunDir);
@@ -296,19 +307,85 @@ fn sunAt(o: vec3f, n: vec3f) -> vec3f {
   return u.sunCol * reach(o, sj, 220.0) * (u.sunStr * nds);
 }
 
+// what is seen along d from o: the sky (and the sun's disc), or the thing it meets, lit roughly (sun, sky, glow)
+fn radiance(o: vec3f, d: vec3f) -> vec3f {
+  let h = traceAll(o, d, 96u, 120.0);
+  if (h.kind == 0u) {
+    let sunDisc = select(0.0, 6.0, dot(d, u.sunDir) > 0.9993) * u.sunStr;
+    return (skyRad(d) * 1.25 + u.sunCol * sunDisc) * h.tr;
+  }
+  let hp = o + d * h.t + h.n * 0.03;
+  return h.tr * h.col * (h.emit * u.glowK + sunAt(hp, h.n) + u.skyCol * 0.3 * max(h.n.y * 0.5 + 0.5, 0.2) + vec3f(u.ambient));
+}
+// the first water surface along the ray (its distance), or -1 (and none with your eye already in water)
+fn firstWater(o: vec3f, d: vec3f, tMax: f32) -> f32 {
+  var c = vec3i(floor(o));
+  if (kindOf(voxId(c)) == 5u) { return -1.0; }
+  let s = sign(d); let st = vec3i(s);
+  let dd = 1.0 / max(abs(d), vec3f(1e-6));
+  var tm = (s * (vec3f(c) - o) + s * 0.5 + 0.5) * dd;
+  var t = 0.0;
+  for (var i = 0u; i < 128u; i++) {
+    if (tm.x < tm.y && tm.x < tm.z) { c.x += st.x; t = tm.x; tm.x += dd.x; }
+    else if (tm.y < tm.z) { c.y += st.y; t = tm.y; tm.y += dd.y; }
+    else { c.z += st.z; t = tm.z; tm.z += dd.z; }
+    if (t >= tMax) { break; }
+    let id = voxId(c);
+    if (id == 0xffffffffu) { break; }
+    let k = kindOf(id);
+    if (k == 5u) { return t; }
+    if (k == 1u || k == 6u) { break; }
+  }
+  return -1.0;
+}
+// light caught in the air along the view ray up to len away: sunbeams (seen mostly looking towards the sun) and the
+// glow round lamps and lava. The sunbeams show fully only against things in shade (shade = 1: the far end of the ray
+// is out of the sun), so they stand out in a dark hall or under trees while open sunny air only takes a light haze,
+// not a grey wash (the fog does the rest). Murkier under water.
+fn inscatter(o: vec3f, d: vec3f, len: f32, shade: f32) -> vec3f {
+  if (len <= 0.5) { return vec3f(0.0); }
+  let under = kindOf(voxId(vec3i(floor(o)))) == 5u;
+  let dens = select(0.08, 0.12, under);
+  var sun = vec3f(0.0);
+  var glow = vec3f(0.0);
+  let mu = max(dot(d, u.sunDir), 0.0);
+  let phase = 0.6 + 3.0 * pow(mu, 8.0) + 2.0 * pow(mu, 60.0);
+  if (u.sunStr > 0.0) {
+    for (var i = 0u; i < 4u; i++) {
+      let p = o + d * ((f32(i) + rnd()) * 0.25 * len);
+      let sj = normalize(u.sunDir + (vec3f(rnd(), rnd(), rnd()) - 0.5) * 0.035);
+      sun += reach(p, sj, 120.0);
+    }
+  }
+  if (u.nLights > 0u) {
+    let p = o + d * (rnd() * len);
+    let L = lights[min(u32(rnd() * f32(u.nLights)), u.nLights - 1u)];
+    glow = lightAt(L, p, p, vec3f(0.0)) * f32(u.nLights);
+  }
+  var s = u.sunCol * sun * (0.25 * len * dens * phase * u.sunStr * (0.12 + 0.88 * shade)) + glow * (len * 0.012);
+  if (under) { s *= vec3f(0.35, 0.8, 0.9); }
+  return s;
+}
+
 @compute @workgroup_size(8, 8)
 fn main(@builtin(global_invocation_id) gid: vec3u) {
   if (gid.x >= u.half.x || gid.y >= u.half.y) { return; }
   let px = srcPixel(gid.xy);
   seed = pcg(gid.x * 1973u + gid.y * 9277u + u.frame * 26699u);
   let dist = loadDist(gDepth, px);
-  if (dist < 0.0) { textureStore(outIrr, gid.xy, vec4f(0.0, 0.0, 0.0, -1.0)); return; }
-  let wp = u.camPos + rayDir(px) * dist;
+  let rd = rayDir(px);
+  if (dist < 0.0) { // (the sky: no surface to light, but there can be light in the air in front of it)
+    textureStore(outIrr, gid.xy, vec4f(0.0, 0.0, 0.0, -1.0));
+    textureStore(outSpec, gid.xy, vec4f(min(inscatter(u.camPos, rd, 64.0, 0.0), vec3f(24.0)), 1.0));
+    return;
+  }
+  let wp = u.camPos + rd * dist;
   let ne = textureLoad(gNorm, px, 0);
   let N = octDec(ne.rg);
   // (creatures are traced as small cells, a little bigger than their drawn shape: start clear of them)
   let o = wp + N * select(0.03, 0.12, moves(ne.b));
-  var irr = vec3f(u.ambient) + sunAt(o, N);
+  let sunHere = sunAt(o, N);
+  var irr = vec3f(u.ambient) + sunHere;
   // one bounce (or the sky)
   let D = cosDir(N);
   let h = traceAll(o, D, 72u, 90.0);
@@ -317,18 +394,34 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
     let hp = o + D * h.t + h.n * 0.03;
     irr += h.tr * h.col * (h.emit * u.glowK + sunAt(hp, h.n) + u.skyCol * 0.3 + vec3f(u.ambient));
   }
-  // one of the nearby lights, picked at random (and counted for all of them)
-  if (u.nLights > 0u) {
+  // two of the nearby lights (torches, lamps, pools of lava), picked at random and counted for all of them
+  for (var j = 0u; j < min(u.nLights, 2u); j++) {
     let L = lights[min(u32(rnd() * f32(u.nLights)), u.nLights - 1u)];
-    var v = L.pos + (vec3f(rnd(), rnd(), rnd()) - 0.5) * 0.3 - wp;
-    let dl = length(v); v = v / dl;
-    let ndl = dot(N, v);
-    if (dl < L.reach && ndl > 0.0) {
-      let k = 1.0 - dl / L.reach;
-      irr += L.col * reach(o, v, dl - 0.75) * (k * k * 1.0 * ndl * f32(u.nLights));
-    }
+    irr += lightAt(L, wp, o, N) * (f32(u.nLights) / f32(min(u.nLights, 2u)));
   }
   textureStore(outIrr, gid.xy, vec4f(min(irr, vec3f(24.0)), dist));
+  // (v47) what shiny things mirror, and the light caught in the air on the way here
+  var spec = inscatter(u.camPos, rd, min(dist, 64.0), select(1.0, 0.0, dot(sunHere, vec3f(1.0)) > 0.001));
+  let sh = shineOf(ne.b);
+  if (sh != 0u) {
+    var R = reflect(rd, N);
+    if (sh == 2u) { R = normalize(R + (vec3f(rnd(), rnd(), rnd()) - 0.5) * 0.06); } // (metal: a little blurred)
+    if (dot(R, N) > 0.0) {
+      let F = select(select(0.04, 0.02, sh == 3u) + 0.96 * pow(1.0 - max(dot(-rd, N), 0.0), 5.0), 0.6, sh == 2u);
+      spec += radiance(o, R) * (F * select(1.0, 0.7, sh == 3u));
+    }
+  }
+  // the water surface in front of it, if any: it mirrors what's above it (more the more slanting you look)
+  let wt = firstWater(u.camPos, rd, min(dist, 96.0));
+  if (wt > 0.0) {
+    let wpos = u.camPos + rd * wt;
+    let ph = f32(u.frame) * 0.04;
+    let Nw = normalize(vec3f(sin(wpos.x * 1.3 + ph) * 0.03 + sin(wpos.z * 2.1 - ph * 1.4) * 0.02, 1.0, cos(wpos.z * 1.7 + ph * 1.2) * 0.03 + cos(wpos.x * 2.6 + ph) * 0.02));
+    let Rw = reflect(rd, Nw);
+    let F = 0.02 + 0.98 * pow(1.0 - max(-rd.y, 0.0), 5.0);
+    if (Rw.y > 0.0) { spec += radiance(wpos + vec3f(0.0, 0.02, 0.0), Rw) * F; }
+  }
+  textureStore(outSpec, gid.xy, vec4f(min(spec, vec3f(24.0)), 1.0));
 }
 `;
 
@@ -338,11 +431,22 @@ const TEMPORAL = COMMON + /* wgsl */`
 @group(0) @binding(3) var histD: texture_2d<f32>;
 @group(0) @binding(4) var outH: texture_storage_2d<rgba16float, write>;
 @group(0) @binding(5) var outD: texture_storage_2d<rgba16float, write>;
+@group(0) @binding(6) var curS: texture_2d<f32>;
+@group(0) @binding(7) var histS: texture_2d<f32>;
+@group(0) @binding(8) var outS: texture_storage_2d<rgba16float, write>;
 @compute @workgroup_size(8, 8)
 fn main(@builtin(global_invocation_id) gid: vec3u) {
   if (gid.x >= u.half.x || gid.y >= u.half.y) { return; }
   let c = textureLoad(cur, gid.xy, 0);
-  if (c.a < 0.0) { textureStore(outH, gid.xy, vec4f(0.0)); textureStore(outD, gid.xy, vec4f(-1.0)); return; }
+  let cs = textureLoad(curS, gid.xy, 0).rgb;
+  if (c.a < 0.0) {
+    textureStore(outH, gid.xy, vec4f(0.0)); textureStore(outD, gid.xy, vec4f(-1.0));
+    // (the sky: light in the air, kept in the same pixel for a few frames)
+    let hs = textureLoad(histS, gid.xy, 0);
+    textureStore(outS, gid.xy, vec4f(select(mix(hs.rgb, cs, 0.25), cs, u.reset != 0u || hs.a > 0.0), -1.0));
+    return;
+  }
+  var accS = cs;
   let wp = u.camPos + rayDir(srcPixel(gid.xy)) * c.a;
   var acc = c.rgb; var n = 1.0;
   let clip = u.prevVP * vec4f(wp, 1.0);
@@ -357,11 +461,13 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
         let h = textureLoad(hist, q, 0);
         n = min(h.a + 1.0, 20.0);
         acc = mix(h.rgb, c.rgb, 1.0 / n);
+        accS = mix(textureLoad(histS, q, 0).rgb, cs, 1.0 / min(n, 8.0)); // (reflections move with you: kept less long)
       }
     }
   }
   textureStore(outH, gid.xy, vec4f(acc, n));
   textureStore(outD, gid.xy, vec4f(c.a));
+  textureStore(outS, gid.xy, vec4f(accS, 1.0));
 }
 `;
 
@@ -404,6 +510,7 @@ const COMPOSITE = COMMON + /* wgsl */`
 @group(0) @binding(4) var irr: texture_2d<f32>;
 @group(0) @binding(5) var dep: texture_2d<f32>;
 @group(0) @binding(6) var gHand: texture_2d<f32>;
+@group(0) @binding(7) var specT: texture_2d<f32>;
 @vertex fn vs(@builtin(vertex_index) i: u32) -> @builtin(position) vec4f {
   let p = vec2f(f32((i << 1u) & 2u), f32(i & 2u));
   return vec4f(p * 2.0 - 1.0, 0.0, 1.0);
@@ -418,13 +525,16 @@ fn toSRGB(c0: vec3f) -> vec3f { let c = clamp(c0, vec3f(0.0), vec3f(1.0)); retur
   }
   let alb = textureLoad(gAlb, p, 0).rgb;
   let dist = loadDist(gDepth, p);
-  if (dist < 0.0) { return vec4f(alb, 1.0); } // (the sky, the sun, the clouds: as drawn)
+  if (dist < 0.0) { // (the sky, the sun, the clouds: as drawn, and any light in the air in front of them)
+    let sp = textureLoad(specT, min(p / 2u, u.half - 1u), 0).rgb;
+    return vec4f(toSRGB(toLin(alb) + sp), 1.0);
+  }
   let ne = textureLoad(gNorm, p, 0);
   let n = octDec(ne.rg);
   // the light: from the four nearest half-size pixels, those at about the same distance and facing counting most
   let hp = (vec2f(p) - 0.5) * 0.5;
   let b = vec2i(floor(hp)); let f = hp - floor(hp);
-  var l = vec3f(0.0); var ws = 0.0;
+  var l = vec3f(0.0); var ws = 0.0; var sp = vec3f(0.0);
   for (var k = 0; k < 4; k++) {
     let o = vec2i(k & 1, k >> 1);
     let q = clamp(b + o, vec2i(0), vec2i(u.half) - 1);
@@ -433,10 +543,14 @@ fn toSRGB(c0: vec3f) -> vec3f { let c = clamp(c0, vec3f(0.0), vec3f(1.0)); retur
     let nq = octDec(textureLoad(gNorm, srcPixel(vec2u(q)), 0).rg);
     let w = (wb + 0.01) * select(0.0, 1.0, dq > 0.0) * exp(-abs(dq - dist) / (0.03 * dist + 0.05)) * pow(max(dot(nq, n), 0.0), 8.0);
     l += textureLoad(irr, vec2u(q), 0).rgb * w; ws += w;
+    sp += textureLoad(specT, vec2u(q), 0).rgb * w;
   }
-  if (ws < 1e-4) { l = vec3f(u.ambient + 0.3 * u.sunStr); } else { l /= ws; }
+  if (ws < 1e-4) { l = vec3f(u.ambient + 0.3 * u.sunStr); sp = vec3f(0.0); } else { l /= ws; sp /= ws; }
   let a = toLin(alb);
-  var c = a * l + a * glowOf(ne.b) * u.glowK;
+  let metal = shineOf(ne.b) == 2u;
+  // (metal mirrors in its own colour, and shows less of its own colour lit)
+  if (metal) { sp *= mix(vec3f(1.0), a / max(max(a.r, max(a.g, a.b)), 0.05), 0.7); }
+  var c = a * l * select(1.0, 0.55, metal) + a * glowOf(ne.b) * u.glowK + sp;
   c = c / (1.0 + max(max(c.r, max(c.g, c.b)) - 0.85, 0.0) * 0.6); // (a soft shoulder: no hard clipping in bright sun)
   // fog as the usual picture has it: by depth straight ahead, mixed in after the colour is made ready for the screen
   let depth = dist * dot(rayDir(p), u.camFwd);
@@ -520,20 +634,21 @@ export class PathTracer {
     const half = () => d.createTexture({ size: [this.hw, this.hh], format: 'rgba16float', usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING });
     this.g = [full(), full(), full(), full()];
     this.cur = half(); this.hist = [half(), half()]; this.histD = [half(), half()]; this.filt = [half(), half()];
-    this.textures = [...this.g, this.cur, ...this.hist, ...this.histD, ...this.filt];
+    this.curS = half(); this.histS = [half(), half()]; // (v47: reflections and light in the air)
+    this.textures = [...this.g, this.cur, ...this.hist, ...this.histD, ...this.filt, this.curS, ...this.histS];
     if (this.headless) { this.out = d.createTexture({ size: [w, h], format: 'rgba8unorm', usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC }); this.textures.push(this.out); }
     const v = (t) => t.createView();
     const bg = (p, entries) => d.createBindGroup({ layout: p.getBindGroupLayout(0), entries: entries.map((r, i) => ({ binding: i, resource: r })) });
     const U = { buffer: this.uBuf };
-    this.bTrace = bg(this.pTrace, [U, v(this.g[1]), v(this.g[2]), { buffer: this.voxBuf }, { buffer: this.palBuf }, { buffer: this.mobBuf }, { buffer: this.cellBuf }, { buffer: this.lightGpu }, v(this.cur)]);
-    this.bTemporal = [0, 1].map((k) => bg(this.pTemporal, [U, v(this.cur), v(this.hist[k]), v(this.histD[k]), v(this.hist[1 - k]), v(this.histD[1 - k])]));
+    this.bTrace = bg(this.pTrace, [U, v(this.g[1]), v(this.g[2]), { buffer: this.voxBuf }, { buffer: this.palBuf }, { buffer: this.mobBuf }, { buffer: this.cellBuf }, { buffer: this.lightGpu }, v(this.cur), v(this.curS)]);
+    this.bTemporal = [0, 1].map((k) => bg(this.pTemporal, [U, v(this.cur), v(this.hist[k]), v(this.histD[k]), v(this.hist[1 - k]), v(this.histD[1 - k]), v(this.curS), v(this.histS[k]), v(this.histS[1 - k])]));
     // the blur: history -> filt0 -> filt1 -> filt0 (steps 1, 2, 4)
     this.bAtrous = [0, 1].map((k) => [
       bg(this.pAtrous, [U, v(this.hist[1 - k]), v(this.histD[1 - k]), v(this.g[2]), v(this.filt[0]), { buffer: this.steps[0] }]),
       bg(this.pAtrous, [U, v(this.filt[0]), v(this.histD[1 - k]), v(this.g[2]), v(this.filt[1]), { buffer: this.steps[1] }]),
       bg(this.pAtrous, [U, v(this.filt[1]), v(this.histD[1 - k]), v(this.g[2]), v(this.filt[0]), { buffer: this.steps[2] }]),
     ]);
-    this.bComp = [0, 1].map((k) => bg(this.pComp, [U, v(this.g[0]), v(this.g[1]), v(this.g[2]), v(this.filt[0]), v(this.histD[1 - k]), v(this.g[3])]));
+    this.bComp = [0, 1].map((k) => bg(this.pComp, [U, v(this.g[0]), v(this.g[1]), v(this.g[2]), v(this.filt[0]), v(this.histD[1 - k]), v(this.g[3]), v(this.histS[1 - k])]));
     this.havePrev = false;
   }
 
@@ -680,7 +795,7 @@ export class PathTracer {
     const n = Math.min(MAX_LIGHTS, list.length);
     for (let i = 0; i < n; i++) {
       const l = list[i], c = l.c ?? [1, 0.86, 0.66];
-      this.lightBuf.set([l.x, l.y, l.z, l.r, c[0], c[1], c[2], 0], i * 8);
+      this.lightBuf.set([l.x, l.y, l.z, l.r, c[0], c[1], c[2], l.size ?? 0.3], i * 8);
     }
     this.nLights = n;
     if (n) this.device.queue.writeBuffer(this.lightGpu, 0, this.lightBuf, 0, n * 8);

@@ -102,7 +102,12 @@ turn any off again if the game gets slow (☰ → Performance info shows the fra
   no effect while it's on. It needs a strong graphics card. If the browser has no WebGPU, or it fails, it turns
   itself off with a message. Not in any preset. Part blocks (slabs, stairs, fences, walls, panes, plants,
   torches) cast shadows at their real shape; sunlight and torch light pass through glass (stained glass colours
-  it), through water (fading and turning blue-green the deeper it goes) and dappled through leaves.
+  it), through water (fading and turning blue-green the deeper it goes) and dappled through leaves. Lava and
+  the lights within 32 blocks (in the sun or not) all light what's round them: a lava pool lights a whole cave
+  orange. Metal blocks, ice, glass, obsidian, wet ground after rain and the surface of water mirror what's round
+  them (metal in its own colour; water more the more slanting you look across it). Light hangs in the air:
+  sunbeams through a hole in a roof or a window into a dark hall, the glow round lamps and over lava, and murkier
+  under water.
 - **Distance fog** (on by default): the world fades into the sky towards the edge of what's loaded. Turn it
   off for a clear view all the way out (the edge of the world then shows). Under water it's always murky.
 - **Bloom**: bright things glow a little past their edges: lava, lamps, torch flames, the sky behind trees, sun
@@ -1854,7 +1859,9 @@ guide to how everything works.
 
 - **Version 47**: **volumetric god rays** (a third God rays setting: sunbeams in the air through roofs,
   windows and trees, from any angle, coloured by stained glass; classic stays for slower computers);
-  **Cloud shadows**;
+  **Cloud shadows**; path tracing: lava and every nearby light (in the sun too) light what's round them,
+  reflections on metal, ice, glass, wet ground and water, and light in the air (sunbeams, the glow round lamps
+  and lava).
 - **Version 46**: **mirrors** (live reflections, joined across a wall of them; a **Live mirrors** switch in
   ☰ → Graphics), **security cameras** and **monitors** (joined into big screens, each tuned to a camera);
   light through **stained glass** takes on its colour (torch light always, sunlight with sun shadows on);

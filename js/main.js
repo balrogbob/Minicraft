@@ -217,6 +217,9 @@ function addTorchLight(mat, water = false) {
       // which way it faces and how much it glows; see renderPathTraced in graphics.js)
       .replace('#include <dithering_fragment>', '#include <dithering_fragment>\n' +
         'if (uPTPass > 0.5) { float ptE = vGlow > 0.5 ? texture2D(uGlowMap, vMapUv).r : 0.0;\n' +
+        // (v47: and how shiny it is, for path-traced reflections: metal, glassy, or a wet patch of open ground after rain)
+        (water ? '' : '  float ptS = texture2D(uGlowMap, vMapUv).b; vec3 ptN = gfxNormal(); gfxPTShine = ptS > 0.8 ? 2.0 : ptS > 0.3 ? 1.0 : 0.0;\n' +
+          '  if (gfxPTShine < 0.5 && uWet > 0.0 && ptN.y > 0.7 && vSky > 0.85 && uWet * (fract(sin(dot(floor(vWorldP.xz * 2.0), vec2(12.99, 78.23))) * 437.58) * 0.5 + 0.5 * sin(vWorldP.x * 0.7 + 1.3 * sin(vWorldP.z * 0.5))) > 0.45) gfxPTShine = 3.0;\n') +
         '  gl_FragColor = gfxPTOut(baseC / max(vColor.rgb, vec3(0.05)), vWorldP, gfxNormal(), ptE, 0.0); if (uPTPass < 1.5) gl_FragColor.a = diffuseColor.a; }');
   };
   mat.userData.ptWorld = true;
@@ -259,6 +262,32 @@ gfx.findLights = (n) => {
     if (!def || !(def.light >= 6) || def.liquid) continue;
     if (!gfx.opts.torchDay && day * world.skyAt(x, y, z) / 15 > 0.35) continue; // drowned out by daylight (unless shadows by day are on)
     found.push({ x: x + 0.5, y: y + 0.55, z: z + 0.5, r: def.light + 1, c: TINTS[def.tint] ?? TINTS[0], d: (x - px) ** 2 + (y - py) ** 2 + (z - pz) ** 2 });
+  }
+  found.sort((a, b) => a.d - b.d);
+  return found.slice(0, n);
+};
+// (v47) path tracing's lights: every light within 32 blocks, in sun or not, and the open tops of lava as lights too,
+// gathered into patches 4 blocks across (a patch's light is as wide as the patch and stronger the more lava it holds)
+gfx.findPTLights = (n) => {
+  if (!world || !player) return [];
+  const px = Math.floor(player.pos.x), py = Math.floor(player.pos.y + 1), pz = Math.floor(player.pos.z);
+  const found = [], R = 32, V = 14, lava = new Map();
+  for (let y = py - V; y <= py + V; y++) for (let x = px - R; x <= px + R; x++) for (let z = pz - R; z <= pz + R; z++) {
+    const id = world.get(x, y, z);
+    if (id === AIR) continue;
+    const def = BLOCKS[id];
+    if (!def || !(def.light >= 6)) continue;
+    if (def.liquid) {
+      if (id !== LAVA || world.get(x, y + 1, z) === LAVA) continue;
+      const k = `${x >> 2},${y >> 2},${z >> 2}`, p = lava.get(k);
+      if (p) { p.x += x; p.y += y; p.z += z; p.n++; } else lava.set(k, { x, y, z, n: 1 });
+      continue;
+    }
+    found.push({ x: x + 0.5, y: y + 0.55, z: z + 0.5, r: def.light + 1, c: TINTS[def.tint] ?? TINTS[0], size: 0.3, d: (x - px) ** 2 + (y - py) ** 2 + (z - pz) ** 2 });
+  }
+  for (const p of lava.values()) {
+    const x = p.x / p.n + 0.5, y = p.y / p.n + 1.0, z = p.z / p.n + 0.5, k = Math.min(2.4, 0.9 + p.n / 8);
+    found.push({ x, y, z, r: 10 + Math.min(5, Math.sqrt(p.n) * 1.2), c: [1.0 * k, 0.42 * k, 0.12 * k], size: 3.5, d: (x - px) ** 2 + (y - py) ** 2 + (z - pz) ** 2 });
   }
   found.sort((a, b) => a.d - b.d);
   return found.slice(0, n);
