@@ -1029,6 +1029,15 @@ lights the room beyond it red, and a lamp boxed in blue glass gives blue light. 
 sunlight through a stained-glass window or roof throws patches of its colours across the floor and walls.
 The glass's leading (its dark edge) still casts a thin shadow.
 
+### Metal blocks
+
+Every metal that comes as ingots also packs into a solid **block of** that metal: 9 ingots at a crafting
+table make one (iron, copper, tin, lead, zinc, aluminium, silver, gold, tungsten, bronze, electrum,
+stainless steel, steel, aluminium bronze, nickel, cupronickel, uranium, invar and starsteel). Build with
+them (they catch the sun like polished metal), or use them to store a lot of a metal in one slot: a block
+breaks back down into 9 ingots anywhere, no table needed. A metal's blocks show in the recipe list once
+you have some of that metal.
+
 ### Building and decorating
 
 - **Sit** on a chair: tap it with an empty hand (or anything that isn't a block). Move or jump to stand up.
@@ -1814,6 +1823,7 @@ guide to how everything works.
   light through **stained glass** takes on its colour (torch light always, sunlight with sun shadows on);
   softer sun shadow edges the farther a shadow falls (high sun shadows); sun glints on metal, ice and glass,
   and on wet ground after rain; a **Colour bleed** switch in ☰ → Graphics;
+  **blocks** of every metal (9 ingots each, and back);
   placing a gearbox or electric motor no longer turns it into a clutch or solar panel; a metal recipe
   (like the iron-banded chest) shows once you have that metal's plates, or everything it needs, not only its ingots.
 - **Version 45**: gears mesh at corners (axles at right angles) and large gears mesh in pairs; a **Distance

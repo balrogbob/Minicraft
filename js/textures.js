@@ -3134,7 +3134,7 @@ ITEM_PAINTERS[HONEYED_APPLE] = (ctx) => {
 };
 
 // ---------- v32: rubber and polymers ----------
-import { LATEX, RUBBER, HIDE_GLUE, POLYMER_PELLETS, POLYMER_SHEET } from './blocks.js';
+import { LATEX, RUBBER, HIDE_GLUE, POLYMER_PELLETS, POLYMER_SHEET, METAL_BLOCKS } from './blocks.js';
 // a tree tap's little bucket: staves with an iron hoop; and the latex in it
 P[T.TAP_SIDE] = (t) => {
   for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
@@ -3628,3 +3628,18 @@ P[T.MONITOR_SCREEN] = (t) => { // a dark screen in a thin bezel (screens.js draw
   }
   t.set(13, 14, [60, 200, 90]); // (the power light)
 };
+
+// ---------- v46: metal blocks ----------
+// a polished plate in the ingot's colour: lit top-left edge, shaded bottom-right, a rivet in each corner and
+// a soft diagonal sheen across the face
+METAL_BLOCKS.forEach((ingot, i) => {
+  P[T.METAL_BLOCK + i] = (t) => {
+    const c = METAL_COLORS[ingot], hi = c.map((v) => Math.min(255, Math.round(v * 1.18 + 12))), lo = dim(c, 0.62);
+    for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+      const edge = x === 0 || y === 0 ? hi : x === TILE - 1 || y === TILE - 1 ? lo : null;
+      const sheen = Math.max(0, 1 - Math.abs(x - y - 1) / 3) * 0.12;
+      t.set(x, y, edge ?? t.vary(c.map((v) => Math.min(255, Math.round(v * (0.94 + sheen)))), 0.025));
+    }
+    for (const [x, y] of [[2, 2], [13, 2], [2, 13], [13, 13]]) { t.set(x, y, lo); t.set(x - 1, y - 1, hi); }
+  };
+});

@@ -171,6 +171,7 @@ const glowMask = (() => {
     else if (/^(ICE|PACKED_ICE|GLASS|CRYSTAL|OBSIDIAN|CAMERA_LENS|MONITOR_SCREEN)$/.test(k)) shine.set(t, 0.6);
   }
   for (let i = 0; i < COLORS.length; i++) shine.set(TILES.STAINED + i, 0.6);
+  for (let i = 0; i < METAL_BLOCKS.length; i++) shine.set(TILES.METAL_BLOCK + i, 1);
   const tex = new THREE.CanvasTexture(createGlowMask(atlasCanvas, modes, shine));
   tex.magFilter = tex.minFilter = THREE.NearestFilter; tex.generateMipmaps = false;
   return tex;
@@ -8085,7 +8086,7 @@ apiculture.onYoung = (x, y, z, sp, mate, kids) => {
 import { CHOC_MOULD, CHOC_CAKE, CAKE_SLICES, MOULD_BARS, MELTED_CHOC, CHOC_BAR, MOULD_FILLS, mouldFill } from './blocks.js';
 import { FESTIVAL_FAVOURITES, contestScore, GUANO, BANDAGE, WHISKY, OLD_WHISKY } from './blocks.js';
 import { GLIDER, isWetId, KELP, RECORD_PLAYER, RECORD_MOODS, RECORD_NAMES, isRecordPlayer, ARMOUR_STAND, isStand } from './blocks.js';
-import { MIRROR, CAMERA, MONITOR, isCamera, isMonitor, T as TILES, plateOf, PLATES } from './blocks.js';
+import { MIRROR, CAMERA, MONITOR, METAL_BLOCKS, isCamera, isMonitor, T as TILES, plateOf, PLATES } from './blocks.js';
 import { Screens } from './screens.js';
 import { TREE_TAP, LATEX, MAX_LATEX, POLYMER_BOAT, DEMO_CHARGE, DETONATOR, DEMO_RADIUS, DETONATOR_LINKS, DETONATOR_RANGE } from './blocks.js';
 // Tapping a tree tap takes the latex in it.

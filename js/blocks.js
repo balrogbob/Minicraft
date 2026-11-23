@@ -3517,3 +3517,22 @@ RECIPES.push(
   { out: [CAMERA, 1], in: [[IRON_INGOT, 2], [GLASS, 1], [COPPER_INGOT, 1]], table: true, metal: IRON_INGOT },
   { out: [MONITOR, 1], in: [[IRON_INGOT, 2], [GLASS, 2], [COPPER_INGOT, 1]], table: true, metal: IRON_INGOT },
 );
+
+// ---------- v46: metal blocks ----------
+// 9 ingots pack into a solid block of that metal (for building, or to keep a big store of it in one slot), and a
+// block breaks back down into 9 ingots at any time.
+export const METAL_BLOCK = 1585; // 1585..1603: + the metal's place in METAL_BLOCKS
+export const METAL_BLOCKS = [IRON_INGOT, COPPER_INGOT, TIN_INGOT, LEAD_INGOT, ZINC_INGOT, ALUMINIUM_INGOT, SILVER_INGOT,
+  GOLD_INGOT, TUNGSTEN_INGOT, BRONZE_INGOT, ELECTRUM_INGOT, STAINLESS_INGOT, STEEL_INGOT, AL_BRONZE_INGOT, NICKEL_INGOT,
+  CUPRONICKEL_INGOT, URANIUM_INGOT, INVAR_INGOT, STARSTEEL_INGOT];
+T.METAL_BLOCK = 494; // 494..512, one per metal
+export const isMetalBlock = (id) => id >= METAL_BLOCK && id < METAL_BLOCK + METAL_BLOCKS.length;
+METAL_BLOCKS.forEach((ingot, i) => {
+  const name = `Block of ${ITEMS[ingot].name.replace(/ Ingot$/, '')}`;
+  block(METAL_BLOCK + i, { name, tex: T.METAL_BLOCK + i, hardness: 4, tool: 'pick', sound: 'metal' });
+  ITEMS[METAL_BLOCK + i] = { name, about: '9 ingots packed into a block: build with it, or break it back into 9 ingots' };
+  RECIPES.push(
+    { out: [METAL_BLOCK + i, 1], in: [[ingot, 9]], table: true, metal: ingot },
+    { out: [ingot, 9], in: [[METAL_BLOCK + i, 1]], metal: METAL_BLOCK + i },
+  );
+});
