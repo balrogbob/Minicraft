@@ -75,6 +75,11 @@ turn any off again if the game gets slow (☰ → Performance info shows the fra
   sets how many lights get their shadows redrawn each frame, in turn (new lights are drawn at once):
   higher keeps shadows of moving animals smooth, lower is faster. **Torch shadows by day** counts the lights
   out in the sun too, so their shadows show in shady places by day (under roofs, in doorways).
+- **Torch light shafts** (a slider, off or 1 to 50): the nearest few lights shine through the air around
+  them, so you see their light hang in a dark room: beams fan out through iron bars, a doorway or a window,
+  and pillars and furniture cut dark gaps through the glow. Each light takes its colour (a blue glow lamp
+  gives blue beams). They use the same shadow pictures as torch shadows (those are drawn for the shafts'
+  lights even with torch shadows off), and show best at night and underground. High lights 2, Ultra 6.
 - **Distance fog** (on by default): the world fades into the sky towards the edge of what's loaded. Turn it
   off for a clear view all the way out (the edge of the world then shows). Under water it's always murky.
 - **Bloom**: bright things glow a little past their edges: lava, lamps, torch flames, the sky behind trees, sun
@@ -1824,6 +1829,8 @@ guide to how everything works.
   softer sun shadow edges the farther a shadow falls (high sun shadows); sun glints on metal, ice and glass,
   and on wet ground after rain; a **Colour bleed** switch in ☰ → Graphics;
   **blocks** of every metal (9 ingots each, and back);
+  **Torch light shafts** (a slider in ☰ → Graphics: light hanging in the air around the nearest lights, cut into
+  beams by bars, doorways and pillars);
   placing a gearbox or electric motor no longer turns it into a clutch or solar panel; a metal recipe
   (like the iron-banded chest) shows once you have that metal's plates, or everything it needs, not only its ingots.
 - **Version 45**: gears mesh at corners (axles at right angles) and large gears mesh in pairs; a **Distance

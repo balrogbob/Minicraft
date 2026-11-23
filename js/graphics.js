@@ -12,6 +12,8 @@
 //   reflections - water mirrors the world above it (the scene drawn again, upside down)
 //   ripple     - the view wobbles while your head is under water
 //   bounce     - (v46) colour bleed: lit surfaces tint the darker ones beside them a little
+//   shafts (0-50) - (v46) the nearest lights shine through the air: beams through windows, gaps and bars,
+//                 shadows of pillars cut through the glow (marched through the torch shadow pictures)
 //   mirrors    - (v46) mirror blocks show the world live (the scene drawn again from your eye's mirror image)
 // Torch light itself is flood-filled block by block, so it never shines through walls; torch shadows
 // only add the sharper shadows of things standing in the light (pillars, mobs, machines, furniture).
@@ -19,14 +21,14 @@ import * as THREE from 'three';
 
 export const GFX_DEFAULTS = {
   shadows: 0, torches: 0, torchRate: 2, bloom: false, water: false, reflections: false, refraction: false, caustics: false,
-  godrays: false, sway: false, ripple: false, torchDay: false, mirrors: false, bounce: false,
+  godrays: false, sway: false, ripple: false, torchDay: false, mirrors: false, bounce: false, shafts: 0,
 };
 export const MAX_TORCH_SHADOWS = 50;
 export const GFX_TOGGLES = ['torchDay', 'bloom', 'godrays', 'sway', 'water', 'reflections', 'mirrors', 'bounce', 'refraction', 'caustics', 'ripple'];
 export const GFX_NAMES = {
   shadows: 'Sun shadows', torches: 'Torch shadows', bloom: 'Bloom', water: 'Fancy water', refraction: 'Water refraction', caustics: 'Water caustics',
   godrays: 'God rays', sway: 'Swaying leaves and plants', reflections: 'Water reflections', ripple: 'Underwater ripple',
-  torchDay: 'Torch shadows by day', mirrors: 'Live mirrors', bounce: 'Colour bleed',
+  torchDay: 'Torch shadows by day', mirrors: 'Live mirrors', bounce: 'Colour bleed', shafts: 'Torch light shafts',
 };
 export const SHADOW_LEVELS = ['off', 'low', 'high'];
 // v38: quick presets for the fancy graphics. 'auto' starts at medium and steps up or down to keep the game
@@ -35,8 +37,8 @@ export const GFX_PRESETS = {
   off: { ...GFX_DEFAULTS },
   low: { ...GFX_DEFAULTS, water: true, sway: true, ripple: true },
   medium: { ...GFX_DEFAULTS, shadows: 1, torches: 3, torchRate: 1, bloom: true, water: true, caustics: true, sway: true, ripple: true, mirrors: true },
-  high: { shadows: 2, torches: 8, torchRate: 2, bloom: true, water: true, reflections: true, refraction: true, caustics: true, godrays: true, sway: true, ripple: true, mirrors: true, bounce: true },
-  ultra: { shadows: 2, torches: 24, torchRate: 6, bloom: true, water: true, reflections: true, refraction: true, caustics: true, godrays: true, sway: true, ripple: true, mirrors: true, bounce: true },
+  high: { shadows: 2, torches: 8, torchRate: 2, shafts: 2, bloom: true, water: true, reflections: true, refraction: true, caustics: true, godrays: true, sway: true, ripple: true, mirrors: true, bounce: true },
+  ultra: { shadows: 2, torches: 24, torchRate: 6, shafts: 6, bloom: true, water: true, reflections: true, refraction: true, caustics: true, godrays: true, sway: true, ripple: true, mirrors: true, bounce: true },
 };
 export const PRESET_ORDER = ['off', 'low', 'medium', 'high', 'ultra'];
 export const PRESET_NAMES = { off: 'Off', low: 'Low', medium: 'Medium', high: 'High', ultra: 'Ultra', auto: 'Auto', custom: 'Custom' };
@@ -390,9 +392,51 @@ void main() {
   for (int i = 0; i < 40; i++) { acc += glow(uv) * w; w *= 0.96; uv += step1; }
   gl_FragColor = vec4(vec3(acc / 40.0), 1.0);
 }`;
+// (v46) light shafts: march the view ray through the air near the nearest lights, adding the light each
+// step gets from them (looked up in their shadow pictures, so walls, bars and pillars cut beams out of it)
+const SHAFT_FRAG = `uniform sampler2D tDepth; uniform mat4 uInvProj; uniform mat4 uCamWorld; uniform vec3 uCamPos;
+uniform vec4 uTorchL[${MAX_TORCH_SHADOWS}]; uniform vec3 uShaftC[${MAX_TORCH_SHADOWS}]; uniform int uShaftCount;
+uniform sampler2D uTorchMap; uniform vec2 uTorchTexel; uniform vec2 uTorchTile; uniform mat3 uFaceRot[6]; uniform float uFaceScale;
+varying vec2 vUv;
+float vis(float slot, vec3 L, float d, float reach) {
+  vec3 a = abs(L);
+  int f = a.x >= a.y && a.x >= a.z ? (L.x > 0.0 ? 0 : 1) : a.y >= a.z ? (L.y > 0.0 ? 2 : 3) : (L.z > 0.0 ? 4 : 5);
+  vec3 p = uFaceRot[f] * L;
+  vec2 uv = clamp(p.xy / -p.z * uFaceScale * 0.5 + 0.5, 0.0, 1.0);
+  float row = floor(slot / ${TORCH_ROW}.0);
+  vec2 lo = vec2((slot - row * ${TORCH_ROW}.0) * 6.0 + float(f), row) * uTorchTile;
+  vec2 c = clamp(lo + uv * uTorchTile, lo + uTorchTexel, lo + uTorchTile - uTorchTexel);
+  return step((d - 0.05) / reach, texture2D(uTorchMap, c).r);
+}
+void main() {
+  float z = texture2D(tDepth, vUv).r;
+  vec4 v = uInvProj * vec4(vUv * 2.0 - 1.0, z * 2.0 - 1.0, 1.0);
+  vec3 wp = (uCamWorld * vec4(v.xyz / v.w, 1.0)).xyz;
+  vec3 ray = wp - uCamPos;
+  float len = min(length(ray), 40.0);
+  vec3 dir = ray / max(length(ray), 0.0001);
+  float stepL = len / 28.0;
+  // (a fixed per-pixel offset along the ray, so the steps don't show as rings; the blur after smooths it)
+  float jit = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
+  vec3 acc = vec3(0.0);
+  for (int s = 0; s < 28; s++) {
+    vec3 p = uCamPos + dir * ((float(s) + jit) * stepL);
+    for (int i = 0; i < ${MAX_TORCH_SHADOWS}; i++) {
+      if (i >= uShaftCount) break;
+      vec4 l = uTorchL[i];
+      float slot = floor(l.w / 32.0), reach = l.w - slot * 32.0;
+      vec3 L = p - l.xyz;
+      float d = length(L);
+      if (d >= reach) continue;
+      float k = 1.0 - d / reach;
+      acc += uShaftC[i] * (k * k * k / (1.0 + d * d * 0.25)) * vis(slot, L, d, reach);
+    }
+  }
+  gl_FragColor = vec4(acc * stepL * 0.035, 1.0);
+}`;
 const FINAL_FRAG = `uniform sampler2D tSrc; uniform sampler2D tB1; uniform sampler2D tB2; uniform float uBloom;
 uniform sampler2D tGod; uniform float uGod; uniform vec3 uGodCol; uniform float uRipple; uniform float uTime;
-uniform sampler2D tBounce; uniform float uBounce;
+uniform sampler2D tBounce; uniform float uBounce; uniform sampler2D tShaft; uniform float uShaft;
 varying vec2 vUv;
 vec3 toSRGB(vec3 c) {
   c = clamp(c, 0.0, 1.0);
@@ -410,6 +454,7 @@ void main() {
     vec3 tint = min(b / max(lb, 0.02), vec3(2.0)); // (the neighbours' hue, brightness taken out)
     c *= mix(vec3(1.0), tint, 0.3 * uBounce * (1.0 - 0.4 * smoothstep(0.3, 0.9, l))); // (tints, never washes out: a red wall stays red, the floor by it goes pink)
   }
+  if (uShaft > 0.0) c += texture2D(tShaft, uv).rgb * uShaft; // (v46: torch light shafts)
   if (uBloom > 0.0) c += (texture2D(tB1, uv).rgb * 0.7 + texture2D(tB2, uv).rgb * 0.9) * uBloom;
   if (uGod > 0.0) c += texture2D(tGod, uv).r * uGod * uGodCol;
   gl_FragColor = vec4(toSRGB(c), 1.0);
@@ -471,9 +516,18 @@ export class Graphics {
     this.blurMat = pass(BLUR_FRAG, { tSrc: { value: null }, uDir: { value: new THREE.Vector2() } });
     this.finalMat = pass(FINAL_FRAG, {
       tSrc: { value: null }, tB1: { value: null }, tB2: { value: null }, uBloom: { value: 0 },
-      tGod: { value: null }, uGod: { value: 0 }, tBounce: { value: null }, uBounce: { value: 0 }, uGodCol: { value: new THREE.Color(1, 0.88, 0.62) }, uRipple: { value: 0 }, uTime: gfxUniforms.uTime,
+      tGod: { value: null }, uGod: { value: 0 }, tBounce: { value: null }, uBounce: { value: 0 }, tShaft: { value: null }, uShaft: { value: 0 }, uGodCol: { value: new THREE.Color(1, 0.88, 0.62) }, uRipple: { value: 0 }, uTime: gfxUniforms.uTime,
     });
     this.bounceMat = pass(BOUNCE_FRAG, { tSrc: { value: null }, tDepth: { value: null }, uNear: { value: 0.1 }, uFar: { value: 100 }, uProj: { value: 1 }, uAspect: { value: 1 } });
+    const G = gfxUniforms;
+    this.shaftC = Array.from({ length: MAX_TORCH_SHADOWS }, () => new THREE.Vector3());
+    this.shaftMat = pass(SHAFT_FRAG, {
+      tDepth: { value: null }, uInvProj: { value: new THREE.Matrix4() }, uCamWorld: { value: new THREE.Matrix4() }, uCamPos: { value: new THREE.Vector3() },
+      uTorchL: G.uTorchL, uShaftC: { value: this.shaftC }, uShaftCount: { value: 0 }, uTorchMap: G.uTorchMap, uTorchTexel: G.uTorchTexel,
+      uTorchTile: G.uTorchTile, uFaceRot: G.uFaceRot, uFaceScale: G.uFaceScale,
+    });
+    this.shaftCount = 0;
+    this.sunNow = 0;
     this.godMat = pass(GOD_FRAG, { tDepth: { value: null }, uSun: { value: new THREE.Vector2() }, uAspect: { value: 1 } });
     this.underwater = false;
     this.waterY = null; // set by the game: height of the water surface around the player, for reflections
@@ -519,13 +573,14 @@ export class Graphics {
 
   set(key, on) {
     const o = this.opts, was = o[key];
-    if (key === 'torches') o.torches = Math.max(0, Math.min(MAX_TORCH_SHADOWS, on | 0));
+    const lightsWas = this.torchN();
+    if (key === 'torches' || key === 'shafts') o[key] = Math.max(0, Math.min(MAX_TORCH_SHADOWS, on | 0));
     else if (key === 'torchRate') o.torchRate = Math.max(1, Math.min(MAX_TORCH_SHADOWS, on | 0));
     else if (key === 'shadows') o.shadows = Math.max(0, Math.min(2, on === true ? 2 : on | 0));
     else o[key] = !!on;
     if (key === 'shadows' && o.shadows !== was) this.freeShadows();
-    if (key === 'torches' && o.torches !== was) this.freeTorches(); // (the picture is sized for the count)
-    if (!o.bloom && !o.refraction && !o.godrays && !o.ripple && !o.bounce) this.freeTargets();
+    if (this.torchN() !== lightsWas) this.freeTorches(); // (the picture is sized for the count)
+    if (!o.bloom && !o.refraction && !o.godrays && !o.ripple && !o.bounce && !o.shafts) this.freeTargets();
     if (!o.reflections) this.freeReflections();
     this.scanT = 0;
   }
@@ -538,6 +593,7 @@ export class Graphics {
     U.uTime.value = (performance.now() / 1000) % 3600;
     U.uSunDir.value.copy(this.sunDir);
     const sun = THREE.MathUtils.smoothstep(this.sunDir.y, 0.02, 0.25) * (1 - 0.9 * this.overcast);
+    this.sunNow = sun;
     U.uSunStr.value = sun;
     if (scene.fog) U.uSkyCol.value.copy(scene.fog.color);
     U.uFancyWater.value = o.water ? 1 : 0;
@@ -550,8 +606,9 @@ export class Graphics {
       try { this.renderShadows(scene, camera); U.uShadowStr.value = 0.5 * sun; U.uGlassOn.value = this.glassRT ? 1 : 0; } catch (err) { this.fail(err, 'shadows'); this.freeShadows(); }
     }
     U.uTorchCount.value = 0;
-    if (o.torches > 0) {
-      try { this.renderTorches(scene); } catch (err) { this.fail(err, 'torches'); this.freeTorches(); }
+    this.shaftCount = 0;
+    if (this.torchN() > 0) {
+      try { this.renderTorches(scene, camera); } catch (err) { this.fail(err, o.torches ? 'torches' : 'shafts'); this.freeTorches(); }
     }
     U.uReflect.value = 0;
     if (o.reflections && this.waterY !== null && !this.underwater && camera.position.y > this.waterY + 0.3) { // (v38: not with your eye at the surface: the mirror view went wrong there)
@@ -559,7 +616,8 @@ export class Graphics {
     }
     U.uRefract.value = 0;
     const godrays = this.godStrength(camera);
-    if (!o.bloom && !o.refraction && !godrays && !o.bounce && !(o.ripple && this.underwater)) { r.render(scene, camera); return; }
+    if (this.underwater) this.shaftCount = 0;
+    if (!o.bloom && !o.refraction && !godrays && !o.bounce && !this.shaftCount && !(o.ripple && this.underwater)) { r.render(scene, camera); return; }
     try { this.renderPost(scene, camera, godrays); } catch (err) {
       this.fail(err, o.refraction ? 'refraction' : o.bloom ? 'bloom' : o.godrays ? 'godrays' : 'ripple');
       r.setRenderTarget(null);
@@ -571,7 +629,7 @@ export class Graphics {
   // an effect that breaks on this computer is switched off rather than spoiling every frame
   fail(err, key) {
     this.lastError = err;
-    this.opts[key] = key === 'torches' || key === 'shadows' ? 0 : false;
+    this.opts[key] = key === 'torches' || key === 'shadows' || key === 'shafts' ? 0 : false;
     this.onFail?.(key, err);
   }
 
@@ -719,8 +777,11 @@ void main() {
 
   // ---------- torch shadows ----------
 
-  renderTorches(scene) {
-    const r = this.renderer, n = this.opts.torches, U = gfxUniforms;
+  // how many lights get shadow pictures: enough for the torch shadows and the light shafts
+  torchN() { return Math.max(this.opts.torches, this.opts.shafts); }
+
+  renderTorches(scene, camera) {
+    const r = this.renderer, n = this.torchN(), U = gfxUniforms;
     const now = performance.now() / 1000;
     // every so often, look for the nearest lights; keep the ones we already have where possible
     if (now >= this.scanT && this.findLights) {
@@ -790,14 +851,20 @@ void main() {
         }
       });
     }
-    // hand the ready lights to the world shader
+    // hand the ready lights to the shaders, nearest first: the world shader shades with the nearest few (torch
+    // shadows), the light shafts shine from the nearest few (shafts)
+    const cp = camera.position;
+    const ready = this.slots.filter((s) => s.ready).sort((a, b) => ((a.x - cp.x) ** 2 + (a.y - cp.y) ** 2 + (a.z - cp.z) ** 2) - ((b.x - cp.x) ** 2 + (b.y - cp.y) ** 2 + (b.z - cp.z) ** 2));
     let c = 0;
-    for (const s of this.slots) {
-      if (!s.ready || c >= MAX_TORCH_SHADOWS) continue;
+    for (const s of ready) {
+      if (c >= MAX_TORCH_SHADOWS) break;
       U.uTorchL.value[c].set(s.x, s.y, s.z, s.row * 32 + s.r);
+      const col = s.c ?? [1, 0.86, 0.66];
+      this.shaftC[c].set(col[0], col[1], col[2]);
       c++;
     }
-    U.uTorchCount.value = c;
+    U.uTorchCount.value = Math.min(c, this.opts.torches);
+    this.shaftCount = Math.min(c, this.opts.shafts);
   }
 
   freeTorches() {
@@ -883,6 +950,7 @@ void main() {
     this.rtRefr = mk(w, h, false);
     this.god = mk(w >> 1, h >> 1, false);
     this.bounce = [mk(w >> 1, h >> 1, false), mk(w >> 1, h >> 1, false)];
+    this.shaft = [mk(w >> 1, h >> 1, false), mk(w >> 1, h >> 1, false)];
     this.b1 = [mk(w >> 1, h >> 1, false), mk(w >> 1, h >> 1, false)];
     this.b2 = [mk(w >> 2, h >> 2, false), mk(w >> 2, h >> 2, false)];
     gfxUniforms.uResolution.value.set(w, h);
@@ -891,8 +959,8 @@ void main() {
 
   freeTargets() {
     this.rtMain?.depthTexture?.dispose();
-    for (const t of [this.rtMain, this.rtRefr, this.god, ...(this.b1 ?? []), ...(this.b2 ?? []), ...(this.bounce ?? [])]) t?.dispose();
-    this.rtMain = this.rtRefr = this.god = this.b1 = this.b2 = this.bounce = null;
+    for (const t of [this.rtMain, this.rtRefr, this.god, ...(this.b1 ?? []), ...(this.b2 ?? []), ...(this.bounce ?? []), ...(this.shaft ?? [])]) t?.dispose();
+    this.rtMain = this.rtRefr = this.god = this.b1 = this.b2 = this.bounce = this.shaft = null;
     gfxUniforms.uRefrTex.value = null;
   }
 
@@ -965,7 +1033,22 @@ void main() {
       this.blurMat.uniforms.tSrc.value = p2.texture; this.blurMat.uniforms.uDir.value.set(0, 1 / p1.height); this.blit(this.blurMat, p1);
       bounce = 1;
     }
+    let shaft = 0;
+    if (this.shaftCount > 0) {
+      const sm = this.shaftMat.uniforms, [s1, s2] = this.shaft;
+      sm.tDepth.value = this.rtMain.depthTexture;
+      sm.uInvProj.value.copy(camera.projectionMatrixInverse);
+      sm.uCamWorld.value.copy(camera.matrixWorld);
+      sm.uCamPos.value.setFromMatrixPosition(camera.matrixWorld);
+      sm.uShaftCount.value = this.shaftCount;
+      this.blit(this.shaftMat, s1);
+      this.blurMat.uniforms.tSrc.value = s1.texture; this.blurMat.uniforms.uDir.value.set(1 / s1.width, 0); this.blit(this.blurMat, s2);
+      this.blurMat.uniforms.tSrc.value = s2.texture; this.blurMat.uniforms.uDir.value.set(0, 1 / s1.height); this.blit(this.blurMat, s1);
+      shaft = 1 - 0.75 * this.sunNow; // (they show best in the dark)
+    }
     const f = this.finalMat.uniforms;
+    f.tShaft.value = this.shaft[0].texture;
+    f.uShaft.value = shaft;
     f.tBounce.value = this.bounce[0].texture;
     f.uBounce.value = bounce;
     f.tSrc.value = this.rtMain.texture;

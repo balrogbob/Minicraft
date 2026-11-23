@@ -112,6 +112,7 @@ const settings = (() => {
   if (!s.look || typeof s.look !== 'object') s.look = randomLook(); // (v38: how your character looks)
   s.gfx = { ...GFX_DEFAULTS, ...(s.gfx && typeof s.gfx === 'object' ? s.gfx : {}) };
   s.gfx.torches = Math.max(0, Math.min(MAX_TORCH_SHADOWS, s.gfx.torches | 0));
+  s.gfx.shafts = Math.max(0, Math.min(MAX_TORCH_SHADOWS, s.gfx.shafts | 0));
   s.gfx.torchRate = Math.max(1, Math.min(MAX_TORCH_SHADOWS, s.gfx.torchRate | 0 || 2));
   s.gfx.shadows = s.gfx.shadows === true ? 2 : Math.max(0, Math.min(2, s.gfx.shadows | 0)); // (v36 saved on/off)
   return s;
@@ -239,7 +240,7 @@ gfx.findLights = (n) => {
     const def = BLOCKS[id];
     if (!def || !(def.light >= 6) || def.liquid) continue;
     if (!gfx.opts.torchDay && day * world.skyAt(x, y, z) / 15 > 0.35) continue; // drowned out by daylight (unless shadows by day are on)
-    found.push({ x: x + 0.5, y: y + 0.55, z: z + 0.5, r: def.light + 1, d: (x - px) ** 2 + (y - py) ** 2 + (z - pz) ** 2 });
+    found.push({ x: x + 0.5, y: y + 0.55, z: z + 0.5, r: def.light + 1, c: TINTS[def.tint] ?? TINTS[0], d: (x - px) ** 2 + (y - py) ** 2 + (z - pz) ** 2 });
   }
   found.sort((a, b) => a.d - b.d);
   return found.slice(0, n);
@@ -265,7 +266,7 @@ function findWaterLevel(dt) {
   for (const [y, v] of votes) if (v > most) { most = v; best = y; }
   gfx.waterY = best === null ? null : best + 0.875; // (the surface sits a little below the block top)
 }
-gfx.onFail = (key) => { goCustom(); settings.gfx[key] = key === 'torches' || key === 'shadows' ? 0 : false; saveSettings(); updateGfxLabels(); toast(`${GFX_NAMES[key]} doesn't work on this device — turned off`, 4000); };
+gfx.onFail = (key) => { goCustom(); settings.gfx[key] = key === 'torches' || key === 'shadows' || key === 'shafts' ? 0 : false; saveSettings(); updateGfxLabels(); toast(`${GFX_NAMES[key]} doesn't work on this device — turned off`, 4000); };
 
 const sky = new Sky(scene);
 const farLand = new FarLand(scene, null, lightUniforms.uDay); // (v41: the land past the loaded chunks)
@@ -5534,6 +5535,8 @@ function updateGfxLabels() {
   $('btn-gfx-shadows').textContent = `Sun shadows: ${SHADOW_LEVELS[g.shadows]}`;
   $('torch-shadows').value = g.torches;
   $('torch-shadows-label').textContent = `Torch shadows: ${g.torches ? `nearest ${g.torches}` : 'off'}`;
+  $('torch-shafts').value = g.shafts;
+  $('torch-shafts-label').textContent = `Torch light shafts: ${g.shafts ? `nearest ${g.shafts}` : 'off'}`;
   $('torch-rate').value = g.torchRate;
   $('torch-rate-label').textContent = `Torch shadows redrawn per frame: ${g.torchRate}`;
   for (const key of GFX_TOGGLES) { const b = $(`btn-gfx-${key}`); if (b) b.textContent = `${GFX_NAMES[key]}: ${g[key] ? 'on' : 'off'}`; }
@@ -5584,6 +5587,7 @@ function tickAutoGfx(dt) {
 updatePresetLabel();
 if (settings.gfxPreset === 'auto') applyPreset('auto', true);
 $('torch-shadows').addEventListener('input', (e) => { goCustom(); settings.gfx.torches = +e.target.value; gfx.set('torches', settings.gfx.torches); updateGfxLabels(); saveSettings(); });
+$('torch-shafts').addEventListener('input', (e) => { goCustom(); settings.gfx.shafts = +e.target.value; gfx.set('shafts', settings.gfx.shafts); updateGfxLabels(); saveSettings(); });
 $('torch-rate').addEventListener('input', (e) => { goCustom(); settings.gfx.torchRate = +e.target.value; gfx.set('torchRate', settings.gfx.torchRate); updateGfxLabels(); saveSettings(); });
 $('btn-gfx-shadows').addEventListener('click', () => { goCustom(); settings.gfx.shadows = (settings.gfx.shadows + 1) % 3; gfx.set('shadows', settings.gfx.shadows); updateGfxLabels(); saveSettings(); });
 for (const key of GFX_TOGGLES) {
