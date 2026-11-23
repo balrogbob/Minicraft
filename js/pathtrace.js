@@ -15,11 +15,67 @@
 //               as the frame (so the hand you hold things in still draws on top)
 import * as THREE from 'three';
 import { CHUNK, H } from './terrain.js';
-import { chunkKey } from './world.js';
+import { chunkKey, World } from './world.js';
+import { BLOCKS, isWaterId, isLeaves, LAVA } from './blocks.js';
 
 const VOX = 128, COLS = VOX / CHUNK, COL_U16 = CHUNK * CHUNK * H;
 const MAX_MOBS = 48, MAX_CELLS = 1 << 21, MAX_LIGHTS = 32, MOB_GRID = 64;
 const PER_FRAME = 8; // chunk columns copied in each frame
+const MAX_MASKS = 2048; // different part-block shapes
+
+// What each block is to light, for the tracer (see shapeOf in TRACE): solid cubes, glass, water, leaves,
+// fences/walls/panes (joined in the shader), and everything else that is part of a block (slabs, stairs,
+// torches, plants, machines and furniture) as an 8 x 8 x 8 grid of filled cells, from the same boxes the game
+// uses for aiming at it. Returns { shape: Uint32Array(4096), masks: Uint32Array (16 per mask) }.
+export function blockShapes() {
+  const shape = new Uint32Array(4096), masks = [], seen = new Map();
+  const fake = { get: () => 0 }; // (a world with nothing around: a stair on its own, no corners)
+  const addMask = (bits) => {
+    const key = bits.join(',');
+    if (!seen.has(key)) { if (masks.length >= MAX_MASKS) return -1; seen.set(key, masks.length); masks.push(bits); }
+    return seen.get(key);
+  };
+  const raster = (boxes) => {
+    const bits = new Array(16).fill(0);
+    let any = false;
+    for (const b of boxes) {
+      const lo = [], hi = [];
+      for (let a = 0; a < 3; a++) {
+        let x0 = b[a], x1 = b[a + 3];
+        if (x1 - x0 < 1) { const m = (x0 + x1) / 2; x0 = m - 0.5; x1 = m + 0.5; } // (flat parts still count)
+        lo.push(Math.max(0, Math.floor(x0 / 2 + 1e-6))); hi.push(Math.min(7, Math.ceil(x1 / 2 - 1e-6) - 1));
+      }
+      for (let k = lo[2]; k <= hi[2]; k++) for (let j = lo[1]; j <= hi[1]; j++) for (let i = lo[0]; i <= hi[0]; i++) {
+        const bit = i + j * 8 + k * 64;
+        bits[bit >> 5] |= 1 << (bit & 31); any = true;
+      }
+    }
+    return any ? bits.map((v) => v >>> 0) : null;
+  };
+  for (let id = 1; id < Math.min(BLOCKS.length, 4096); id++) {
+    const d = BLOCKS[id];
+    if (!d) continue;
+    if (d.liquid) { shape[id] = id === LAVA ? 1 : isWaterId(id) ? 5 : 5; continue; }
+    if (isLeaves(id)) { shape[id] = 6; continue; }
+    if (d.shape === 'fence' || d.shape === 'wall' || d.shape === 'pane') {
+      const [t0, t1] = d.shape === 'fence' ? [6, 10] : d.shape === 'wall' ? [4, 12] : [7, 9];
+      const fam = d.shape === 'fence' ? 0 : d.shape === 'wall' ? 1 : 2, tint = d.shape === 'pane' && d.sound === 'glass' ? 1 : 0;
+      shape[id] = 3 | (t0 << 4) | (t1 << 9) | (tint << 14) | (fam << 15);
+      continue;
+    }
+    let boxes = null;
+    if (d.stair) boxes = World.prototype.stairModel.call(fake, 0, 0, 0, d).map((b) => b.slice(0, 6));
+    else if (d.model) boxes = d.model.map((b) => b.slice(0, 6));
+    else if (d.shape === 'cross') boxes = Array.from({ length: 8 }, (_, i) => [i * 2, 0, i * 2, i * 2 + 2, 13, i * 2 + 2]).concat(Array.from({ length: 8 }, (_, i) => [i * 2, 0, 14 - i * 2, i * 2 + 2, 13, 16 - i * 2]));
+    else if (d.boxes || (d.shape && d.shape !== 'cube')) boxes = World.prototype.pickBoxes.call(fake, 0, 0, 0, id);
+    if (!boxes) { shape[id] = d.transparent && d.sound === 'glass' ? 4 : 1; continue; } // (a whole cube)
+    const bits = raster(boxes), m = bits ? addMask(bits) : -1;
+    shape[id] = m < 0 ? 0 : 2 | (m << 4);
+  }
+  const flat = new Uint32Array(Math.max(1, masks.length) * 16);
+  masks.forEach((b, i) => flat.set(b, i * 16));
+  return { shape, masks: flat };
+}
 
 const COMMON = /* wgsl */`
 struct U {
@@ -63,7 +119,7 @@ fn srcPixel(g: vec2u) -> vec2u { return min(g * 2u + vec2u(u.frame & 1u, (u.fram
 const TRACE = COMMON + /* wgsl */`
 struct Mob { mn: vec3f, cell: f32, dims: vec3u, off: u32 };
 struct Light { pos: vec3f, reach: f32, col: vec3f, pad: f32 };
-struct Hit { t: f32, n: vec3f, col: vec3f, emit: f32, kind: u32 };
+struct Hit { t: f32, n: vec3f, col: vec3f, emit: f32, kind: u32, tr: vec3f };
 @group(0) @binding(1) var gDepth: texture_2d<f32>;
 @group(0) @binding(2) var gNorm: texture_2d<f32>;
 @group(0) @binding(3) var<storage, read> vox: array<u32>;
@@ -87,8 +143,65 @@ fn voxId(c: vec3i) -> u32 {
   let w = vox[i >> 1u];
   return select(w & 0xffffu, w >> 16u, (i & 1u) == 1u);
 }
+// what each block is to light (pal[4096 + id]): kind in the low 4 bits
+//   0 nothing, 1 a solid cube, 2 a part block (bits 4+: which 8 x 8 x 8 mask, from pal[8192 + 16 x mask]),
+//   3 a fence, wall or pane (bits 4-8, 9-13: its post's sides in 16ths; 14: tinted (glass); 15-16: which kind,
+//   joining its own kind and solid cubes), 4 glass (light through it takes its colour), 5 water, 6 leaves
+fn shapeOf(id: u32) -> u32 { return pal[4096u + (id & 4095u)]; }
+fn kindOf(id: u32) -> u32 { return shapeOf(id) & 15u; }
+// the light through glass of colour p: its colour, as bright as can be (clear glass lets most through)
+fn glassTint(p: u32) -> vec3f { let c = unpack(p); return clamp(c / max(max(c.r, max(c.g, c.b)), 0.05), vec3f(0.0), vec3f(1.0)) * 0.85; }
+// is a cell of a part block filled? 0 no, 1 yes, 2 tinted glass
+fn partCell(sh: u32, q: vec3i, jb: u32) -> u32 {
+  if ((sh & 15u) == 2u) {
+    let bit = u32(q.x + q.y * 8 + q.z * 64);
+    return (pal[8192u + (sh >> 4u) * 16u + (bit >> 5u)] >> (bit & 31u)) & 1u;
+  }
+  let t0 = f32((sh >> 4u) & 31u); let t1 = f32((sh >> 9u) & 31u);
+  let a = f32(q.x * 2); let b = f32(q.z * 2);
+  let inX = a < t1 && a + 2.0 > t0; let inZ = b < t1 && b + 2.0 > t0;
+  let on = (inX && inZ) || (inZ && (((jb & 1u) != 0u && a + 2.0 > t1) || ((jb & 2u) != 0u && a < t0)))
+    || (inX && (((jb & 4u) != 0u && b + 2.0 > t1) || ((jb & 8u) != 0u && b < t0)));
+  return select(0u, 1u + ((sh >> 14u) & 1u), on);
+}
+// which sides a fence, wall or pane at c joins (+x, -x, +z, -z)
+fn joinsAt(c: vec3i, sh: u32) -> u32 {
+  var jb = 0u;
+  let ds = array<vec3i, 4>(vec3i(1, 0, 0), vec3i(-1, 0, 0), vec3i(0, 0, 1), vec3i(0, 0, -1));
+  for (var k = 0u; k < 4u; k++) {
+    let id = voxId(c + ds[k]);
+    if (id == 0xffffffffu || id == 0u) { continue; }
+    let ns = shapeOf(id); let nk = ns & 15u;
+    if (nk == 1u || nk == 4u || nk == 6u || (nk == 3u && ((ns >> 15u) & 3u) == ((sh >> 15u) & 3u))) { jb |= 1u << k; }
+  }
+  return jb;
+}
+// through a part block's cell, in steps of an 8th: the time it hits something solid (or -1); tinted glass on the
+// way colours tr
+fn marchPart(o: vec3f, d: vec3f, c: vec3i, tIn: f32, nIn: vec3f, sh: u32, tr: ptr<function, vec3f>, tint: vec3f, nOut: ptr<function, vec3f>) -> f32 {
+  let jb = select(0u, joinsAt(c, sh), (sh & 15u) == 3u);
+  let p = clamp((o + d * tIn - vec3f(c)) * 8.0, vec3f(0.001), vec3f(7.999));
+  var q = vec3i(floor(p));
+  let s = sign(d); let st = vec3i(s);
+  let dd = 1.0 / max(abs(d), vec3f(1e-6));
+  var tm = (s * (vec3f(q) - p) + s * 0.5 + 0.5) * dd; // (in 8ths of a block)
+  var n = nIn; var tc = 0.0; var tinted = false;
+  for (var i = 0; i < 24; i++) {
+    let f = partCell(sh, q, jb);
+    if (f == 1u) { *nOut = n; return tIn + tc / 8.0; }
+    if (f == 2u && !tinted) { *tr = *tr * tint; tinted = true; }
+    if (tm.x < tm.y && tm.x < tm.z) { q.x += st.x; tc = tm.x; tm.x += dd.x; n = vec3f(-s.x, 0.0, 0.0); }
+    else if (tm.y < tm.z) { q.y += st.y; tc = tm.y; tm.y += dd.y; n = vec3f(0.0, -s.y, 0.0); }
+    else { q.z += st.z; tc = tm.z; tm.z += dd.z; n = vec3f(0.0, 0.0, -s.z); }
+    if (any(q < vec3i(0)) || any(q > vec3i(7))) { break; }
+  }
+  return -1.0;
+}
+// along a ray through the blocks: the first solid thing it meets (h.tr: the light let through by glass, water
+// and leaves on the way)
 fn marchWorld(o: vec3f, d: vec3f, steps: u32) -> Hit {
   var h: Hit; h.kind = 0u; h.t = 1e9;
+  var tr = vec3f(1.0);
   var c = vec3i(floor(o));
   let s = sign(d); let st = vec3i(s);
   let dd = 1.0 / max(abs(d), vec3f(1e-6));
@@ -99,13 +212,23 @@ fn marchWorld(o: vec3f, d: vec3f, steps: u32) -> Hit {
     else if (tm.y < tm.z) { c.y += st.y; t = tm.y; tm.y += dd.y; n = vec3f(0.0, -s.y, 0.0); }
     else { c.z += st.z; t = tm.z; tm.z += dd.z; n = vec3f(0.0, 0.0, -s.z); }
     let id = voxId(c);
-    if (id == 0xffffffffu) { return h; }
+    if (id == 0xffffffffu) { break; }
     if (id == 0u) { continue; }
+    let sh = shapeOf(id); let kind = sh & 15u;
+    if (kind == 0u) { continue; }
     let p = pal[id & 4095u];
-    if (((p >> 24u) & 128u) == 0u) { continue; }
-    h.kind = 1u; h.t = t; h.n = n; h.col = unpack(p); h.emit = f32((p >> 24u) & 127u) / 120.0;
-    return h;
+    if (kind == 4u) { tr *= glassTint(p); continue; }
+    if (kind == 5u) { tr *= exp(-vec3f(0.30, 0.10, 0.06) * (min(tm.x, min(tm.y, tm.z)) - t)); continue; } // (deeper is darker, and bluer)
+    if (kind == 6u && rnd() < 0.3) { tr *= vec3f(0.55, 0.75, 0.4); continue; } // (some light gets through leaves, greened)
+    var hn = n; var th = t;
+    if (kind == 2u || kind == 3u) {
+      th = marchPart(o, d, c, t, n, sh, &tr, glassTint(p), &hn);
+      if (th < 0.0) { continue; }
+    }
+    h.kind = 1u; h.t = th; h.n = hn; h.col = unpack(p); h.emit = f32((p >> 24u) & 127u) / 120.0;
+    break;
   }
+  h.tr = tr;
   return h;
 }
 // creatures: each is a grid of small cells (0 = empty, else its colour; alpha 254 = glows)
@@ -145,14 +268,17 @@ fn marchMobs(o: vec3f, d: vec3f, tMax: f32) -> Hit {
 }
 fn traceAll(o: vec3f, d: vec3f, steps: u32, tMax: f32) -> Hit {
   let w = marchWorld(o, d, steps);
-  let m = marchMobs(o, d, select(tMax, w.t, w.kind == 1u));
-  if (m.kind == 2u) { return m; }
+  var m = marchMobs(o, d, select(tMax, w.t, w.kind == 1u));
+  if (m.kind == 2u) { m.tr = w.tr; return m; } // (near enough: glass beyond the creature counted too)
   return w;
 }
-fn occluded(o: vec3f, d: vec3f, tMax: f32) -> bool {
+// how much light gets from o along d to tMax away: 0 if something solid is in the way, coloured by glass
+// and water
+fn reach(o: vec3f, d: vec3f, tMax: f32) -> vec3f {
   let w = marchWorld(o, d, u32(min(tMax * 1.8 + 2.0, 200.0)));
-  if (w.kind == 1u && w.t < tMax) { return true; }
-  return marchMobs(o, d, tMax).kind == 2u;
+  if (w.kind == 1u && w.t < tMax) { return vec3f(0.0); }
+  if (marchMobs(o, d, tMax).kind == 2u) { return vec3f(0.0); }
+  return w.tr;
 }
 fn cosDir(n: vec3f) -> vec3f {
   let r1 = rnd(); let r2 = rnd();
@@ -167,8 +293,7 @@ fn sunAt(o: vec3f, n: vec3f) -> vec3f {
   let nds = dot(n, u.sunDir);
   if (u.sunStr <= 0.0 || nds <= 0.0) { return vec3f(0.0); }
   let sj = normalize(u.sunDir + (vec3f(rnd(), rnd(), rnd()) - 0.5) * 0.035);
-  if (occluded(o, sj, 220.0)) { return vec3f(0.0); }
-  return u.sunCol * (u.sunStr * nds);
+  return u.sunCol * reach(o, sj, 220.0) * (u.sunStr * nds);
 }
 
 @compute @workgroup_size(8, 8)
@@ -187,10 +312,10 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
   // one bounce (or the sky)
   let D = cosDir(N);
   let h = traceAll(o, D, 72u, 90.0);
-  if (h.kind == 0u) { irr += skyRad(D); }
+  if (h.kind == 0u) { irr += skyRad(D) * h.tr; }
   else {
     let hp = o + D * h.t + h.n * 0.03;
-    irr += h.col * (h.emit * u.glowK + sunAt(hp, h.n) + u.skyCol * 0.3 + vec3f(u.ambient));
+    irr += h.tr * h.col * (h.emit * u.glowK + sunAt(hp, h.n) + u.skyCol * 0.3 + vec3f(u.ambient));
   }
   // one of the nearby lights, picked at random (and counted for all of them)
   if (u.nLights > 0u) {
@@ -198,9 +323,9 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
     var v = L.pos + (vec3f(rnd(), rnd(), rnd()) - 0.5) * 0.3 - wp;
     let dl = length(v); v = v / dl;
     let ndl = dot(N, v);
-    if (dl < L.reach && ndl > 0.0 && !occluded(o, v, dl - 0.75)) {
+    if (dl < L.reach && ndl > 0.0) {
       let k = 1.0 - dl / L.reach;
-      irr += L.col * (k * k * 1.0 * ndl * f32(u.nLights));
+      irr += L.col * reach(o, v, dl - 0.75) * (k * k * 1.0 * ndl * f32(u.nLights));
     }
   }
   textureStore(outIrr, gid.xy, vec4f(min(irr, vec3f(24.0)), dist));
@@ -360,7 +485,7 @@ export class PathTracer {
     const S = GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC; // (COPY_SRC: so tests can read them back)
     this.uBuf = d.createBuffer({ size: 288, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
     this.voxBuf = d.createBuffer({ size: COLS * COLS * COL_U16 * 2, usage: S });
-    this.palBuf = d.createBuffer({ size: 4096 * 4, usage: S });
+    this.palBuf = d.createBuffer({ size: (8192 + MAX_MASKS * 16) * 4, usage: S }); // (colours, shapes, masks)
     this.mobBuf = d.createBuffer({ size: MAX_MOBS * 32, usage: S });
     this.cellBuf = d.createBuffer({ size: MAX_CELLS * 4, usage: S });
     this.lightGpu = d.createBuffer({ size: MAX_LIGHTS * 32, usage: S });
@@ -377,7 +502,13 @@ export class PathTracer {
     this.ready = true;
   }
 
-  setPalette(data) { this.device.queue.writeBuffer(this.palBuf, 0, data.buffer, data.byteOffset, 4096 * 4); }
+  setPalette(data) {
+    const q = this.device.queue, sh = blockShapes();
+    q.writeBuffer(this.palBuf, 0, data.buffer, data.byteOffset, 4096 * 4);
+    q.writeBuffer(this.palBuf, 4096 * 4, sh.shape);
+    q.writeBuffer(this.palBuf, 8192 * 4, sh.masks);
+    this.shapes = sh;
+  }
 
   resize(w, h) {
     if (w === this.w && h === this.h) return;
