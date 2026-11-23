@@ -1462,12 +1462,13 @@ function renderInventory() {
   const shown = RECIPES.filter((r) => favs.has(recipeKey(r))).concat(RECIPES.filter((r) => !favs.has(recipeKey(r))));
   let count = 0;
   shown.forEach((r) => {
-    if (r.metal && countOf(r.metal) <= 0) return; // metal tools only show up once you have that metal
+    const haveAll = r.in.every(([id, n]) => countOf(id) >= n) && (r.tools ?? []).every((id) => inventory.count(id) > 0);
+    // metal tools only show up once you have that metal (or its plates, or everything the recipe needs)
+    if (r.metal && countOf(r.metal) <= 0 && !haveAll && !idsOf(r.metal).some((id) => { const p = plateOf(id); return p >= PLATES && inventory.count(p) > 0; })) return;
     const fav = favs.has(recipeKey(r));
     if (favOnly && !fav) return;
     if (query && ![r.out[0], ...r.in.flatMap(([id]) => idsOf(id))].some((id) => itemName(id).toLowerCase().includes(query))) return;
     const stationOk = (!r.table || hasTable) && (!r.churn || hasChurn);
-    const haveAll = r.in.every(([id, n]) => countOf(id) >= n) && (r.tools ?? []).every((id) => inventory.count(id) > 0);
     const canMake = haveAll && stationOk && inventory.room(r.out[0]) >= r.out[1];
     if (canMakeOnly && !canMake) return;
     count++;
@@ -8068,7 +8069,7 @@ apiculture.onYoung = (x, y, z, sp, mate, kids) => {
 import { CHOC_MOULD, CHOC_CAKE, CAKE_SLICES, MOULD_BARS, MELTED_CHOC, CHOC_BAR, MOULD_FILLS, mouldFill } from './blocks.js';
 import { FESTIVAL_FAVOURITES, contestScore, GUANO, BANDAGE, WHISKY, OLD_WHISKY } from './blocks.js';
 import { GLIDER, isWetId, KELP, RECORD_PLAYER, RECORD_MOODS, RECORD_NAMES, isRecordPlayer, ARMOUR_STAND, isStand } from './blocks.js';
-import { MIRROR, CAMERA, MONITOR, isCamera, isMonitor, T as TILES } from './blocks.js';
+import { MIRROR, CAMERA, MONITOR, isCamera, isMonitor, T as TILES, plateOf, PLATES } from './blocks.js';
 import { Screens } from './screens.js';
 import { TREE_TAP, LATEX, MAX_LATEX, POLYMER_BOAT, DEMO_CHARGE, DETONATOR, DEMO_RADIUS, DETONATOR_LINKS, DETONATOR_RANGE } from './blocks.js';
 // Tapping a tree tap takes the latex in it.

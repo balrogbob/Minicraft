@@ -1806,7 +1806,8 @@ guide to how everything works.
 - **Version 46**: **mirrors** (live reflections, joined across a wall of them; a **Live mirrors** switch in
   ☰ → Graphics), **security cameras** and **monitors** (joined into big screens, each tuned to a camera);
   light through **stained glass** takes on its colour (torch light always, sunlight with sun shadows on);
-  placing a gearbox or electric motor no longer turns it into a clutch or solar panel.
+  placing a gearbox or electric motor no longer turns it into a clutch or solar panel; a metal recipe
+  (like the iron-banded chest) shows once you have that metal's plates, or everything it needs, not only its ingots.
 - **Version 45**: gears mesh at corners (axles at right angles) and large gears mesh in pairs; a **Distance
   fog** switch in ☰ → Graphics; your own shadow in first person; in survival a short pause after each block
   breaks while you hold on, so you don't dig the one behind it by accident; closing a window with its key
