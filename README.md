@@ -61,7 +61,7 @@ with, each has its own switch, and they are remembered between games. Turn on th
 turn any off again if the game gets slow (☰ → Performance info shows the frame rate).
 
 - **Sun shadows** (off / low / high): the sun casts soft shadows from blocks, trees, animals and machines within about 44
-  blocks of you. They lengthen towards evening, fade under clouds and go at night. (Torch and lamp light
+  blocks of you (and from you, in first person too). They lengthen towards evening, fade under clouds and go at night. (Torch and lamp light
   doesn't need these: it spreads block by block, so it already stops at walls.) **Low** is for mid-range
   machines: a smaller shadow picture over about 32 blocks, harder edges, redrawn every other frame.
 - **Torch shadows** (a slider, off or 1 to 50): the nearest few torches, lanterns, lamps and other lights
@@ -72,6 +72,8 @@ turn any off again if the game gets slow (☰ → Performance info shows the fra
   sets how many lights get their shadows redrawn each frame, in turn (new lights are drawn at once):
   higher keeps shadows of moving animals smooth, lower is faster. **Torch shadows by day** counts the lights
   out in the sun too, so their shadows show in shady places by day (under roofs, in doorways).
+- **Distance fog** (on by default): the world fades into the sky towards the edge of what's loaded. Turn it
+  off for a clear view all the way out (the edge of the world then shows). Under water it's always murky.
 - **Bloom**: bright things glow a little past their edges: lava, lamps, torch flames, the sky behind trees, sun
   glints.
 
@@ -1776,6 +1778,10 @@ guide to how everything works.
 
 ## Version history
 
+- **Version 45**: gears mesh at corners (axles at right angles) and large gears mesh in pairs; a **Distance
+  fog** switch in ☰ → Graphics; your own shadow in first person; in survival a short pause after each block
+  breaks while you hold on, so you don't dig the one behind it by accident; closing a window with its key
+  (E, M, G) takes the mouse back for looking, as its ✕ does.
 - **Version 44**: the **glider** (wear it, jump in mid-air to open it, ride warm air over fires and lava);
   the sea comes alive: deep ocean in tall worlds, coral reefs, sea grass and kelp, schools of fish, jellyfish,
   sea turtles and dolphins; the **record player**; the **armour stand**; and **undo** in creative mode.

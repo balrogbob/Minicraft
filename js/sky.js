@@ -167,7 +167,10 @@ export class Sky {
       this.scene.background = this.skyColor;
       this.scene.fog.color.copy(this.skyColor);
       const close = w.kind === 'sand' ? w.level * 0.75 : w.level * 0.3; // rain and snow shorten the view a little
-      this.scene.fog.near = this.fogNear * (1 - close); this.scene.fog.far = this.fogFar * (1 - close * 0.8);
+      // (distance fog off: the fog is pushed out past the end of the world, so the view stays clear)
+      const near = this.distanceFog === false ? this.fogFar * 4 : this.fogNear;
+      const far = this.distanceFog === false ? this.fogFar * 4 + 1 : this.fogFar;
+      this.scene.fog.near = near * (1 - close); this.scene.fog.far = far * (1 - close * 0.8);
       // morning valley mist (set by the game, 0..1): pale, and close in
       this.mistLevel = (this.mistLevel ?? 0) + ((this.mist ?? 0) - (this.mistLevel ?? 0)) * Math.min(1, dt * 0.5);
       const m = this.mistLevel;

@@ -81,7 +81,7 @@ import { Logic } from './logic.js';
 
 // v2 = the 16k x 16k streaming world (player state here, edited chunks in IndexedDB).
 // v1 = the old 128 x 128 world, migrated into the middle of the big world on first launch.
-const GAME_VERSION = '44'; // shown in the menu; bump with each release
+const GAME_VERSION = '45'; // shown in the menu; bump with each release
 const SAVE_KEY = 'minicraft-save-v2';
 const LEGACY_SAVE_KEY = 'minicraft-save-v1';
 const SETTINGS_KEY = 'minicraft-settings-v1';
@@ -102,7 +102,7 @@ function writeSave(obj, slot = activeSlot) {
 }
 // Settings live apart from the world so they survive "New world".
 const settings = (() => {
-  const defaults = { farLand: true, gfxPreset: 'custom', sens: 6, volume: 70, music: 50, viewDistance: 6, perf: false, difficulty: 'worrying', wear: true, favs: [], pins: [], slot: 0, fov: 72, keys: {}, tips: true, doubleTap: true, gfx: {} };
+  const defaults = { farLand: true, fog: true, gfxPreset: 'custom', sens: 6, volume: 70, music: 50, viewDistance: 6, perf: false, difficulty: 'worrying', wear: true, favs: [], pins: [], slot: 0, fov: 72, keys: {}, tips: true, doubleTap: true, gfx: {} };
   let s;
   try { s = { ...defaults, ...JSON.parse(localStorage.getItem(SETTINGS_KEY)) }; } catch { s = { ...defaults }; }
   s.slot = Math.max(0, Math.min(SLOT_COUNT - 1, s.slot | 0));
@@ -305,7 +305,10 @@ function updateMe(dt) {
   const speed = Math.hypot(player.vel.x, player.vel.z);
   const swimming = player.inWater && !player.onGround && !riding && !ridingMob;
   avatar.root.visible = !dead && (photoMode || viewMode > 0);
-  if (avatar.root.visible) avatar.update(dt, { pos: player.pos, yaw: player.yaw, pitch: player.pitch, speed, swimming, onGround: player.onGround, gliding: player.gliding, light });
+  // in first person your body is hidden but still casts its shadow (sun and torches)
+  const fpShadow = !dead && !avatar.root.visible;
+  gfx.shadowOnly = fpShadow ? [avatar.root] : [];
+  if (avatar.root.visible || fpShadow) avatar.update(dt, { pos: player.pos, yaw: player.yaw, pitch: player.pitch, speed, swimming, onGround: player.onGround, gliding: player.gliding, light });
   // (v44) in first person, the glider's wing and bar over and in front of you
   fpGlider.visible = player.gliding && !avatar.root.visible && !dead;
   if (fpGlider.visible) {
@@ -384,7 +387,8 @@ let target = null; // raycast hit
 let targetMob = null; // { mob, t } when the crosshair is on an animal (closer than any block)
 let targetPlayer = null; // { id, r, t } when it's on another player, and PvP is on (v41)
 let targetCart = null; // { cart, t } when the crosshair is on a minecart
-const breakState = { key: '', progress: 0 };
+const breakState = { key: '', progress: 0, pause: 0 };
+const BREAK_PAUSE = 0.25; // seconds between blocks while breaking is held (survival)
 let openedAt = null; // the station block (crafting table or churn) tapped to open crafting
 const MAX_HUNGER = 20;
 let hunger = MAX_HUNGER; // 0..20; each bread-loaf icon on the bar is 2 points
@@ -605,6 +609,7 @@ function applyViewDistance() {
   farLand.on = settings.farLand !== false;
   sky.fogFar = r * CHUNK + (farLand.on ? FAR_REACH : 0);
   sky.fogNear = farLand.on ? r * CHUNK * 0.8 : sky.fogFar * 0.55;
+  sky.distanceFog = settings.fog !== false;
   camera.far = Math.max(160, sky.fogFar + 48);
   camera.updateProjectionMatrix();
   $('view-label').textContent = `View distance: ${r * CHUNK} blocks`;
@@ -4875,6 +4880,9 @@ function updateBreaking(dt) {
     return;
   }
   if (controls.breaking && inventory.heldId() === COPY_WAND) { resetWand(); crack.visible = false; return; } // holding the wand still clears it
+  if (!controls.breaking) breakState.pause = 0; // (let go and press again to start at once)
+  // survival: a short pause after a block breaks before the next starts, so holding on doesn't dig the one behind it by accident
+  if (breakState.pause > 0) { breakState.pause -= dt; crack.visible = false; return; }
   if (!controls.breaking || !target) {
     breakState.key = ''; breakState.progress = 0; breakState.tick = 0;
     crack.visible = false;
@@ -4902,7 +4910,8 @@ function updateBreaking(dt) {
       breakBlock(target.x, target.y, target.z);
       if (held === ELECTRIC_DRILL) drillAround(hit);
     } finally { net.capture--; endUndo(); }
-    breakState.key = ''; breakState.progress = 0;
+    breakState.key = ''; breakState.progress = 0; breakState.tick = 0;
+    if (!creative) breakState.pause = BREAK_PAUSE;
     crack.visible = false;
     target = null;
     return;
@@ -5548,6 +5557,10 @@ $('view').addEventListener('input', (e) => {
 });
 const farLabel = () => { $('btn-far').textContent = `Distant land: ${settings.farLand !== false ? 'on' : 'off'}`; };
 farLabel();
+// v45: distance fog can be turned off (the far edge of the world then shows; underwater still closes in)
+const fogLabel = () => { $('btn-fog').textContent = `Distance fog: ${settings.fog !== false ? 'on' : 'off'}`; };
+fogLabel();
+$('btn-fog').addEventListener('click', () => { settings.fog = settings.fog === false; applyViewDistance(); fogLabel(); saveSettings(); });
 $('btn-far').addEventListener('click', () => { settings.farLand = settings.farLand === false; applyViewDistance(); farLabel(); saveSettings(); });
 $('sens').value = settings.sens;
 $('sens').addEventListener('input', (e) => { settings.sens = +e.target.value; controls.lookSens = settings.sens / 1000; saveSettings(); });
