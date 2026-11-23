@@ -68,18 +68,19 @@ export const STATION_KINDS = {
     recipes: [
       // alloys first (stainless steel before plain steel, as it needs the same plus zinc).
       // Coal here is an ingredient, separate from whatever is burning in the fuel slot.
-      { out: [STAINLESS_INGOT, 2], in: [[ZINC_INGOT, 1], [IRON_INGOT, 1], [COAL_OR_CHARCOAL, 1]], time: 8 },
-      { out: [STEEL_INGOT, 1], in: [[IRON_INGOT, 1], [COAL_OR_CHARCOAL, 1]], time: 6 },
+      // (v45: steel, stainless steel and tungsten need the heat of a blast smelter, or hotter: `hot`)
+      { out: [STAINLESS_INGOT, 2], in: [[ZINC_INGOT, 1], [IRON_INGOT, 1], [COAL_OR_CHARCOAL, 1]], time: 8, hot: true },
+      { out: [STEEL_INGOT, 1], in: [[IRON_INGOT, 1], [COAL_OR_CHARCOAL, 1]], time: 6, hot: true },
       { out: [BRONZE_INGOT, 4], in: [[COPPER_INGOT, 3], [TIN_INGOT, 1]], time: 6 },
       { out: [AL_BRONZE_INGOT, 4], in: [[ALUMINIUM_INGOT, 1], [COPPER_INGOT, 3]], time: 6 },
       { out: [ELECTRUM_INGOT, 2], in: [[SILVER_INGOT, 1], [GOLD_INGOT, 1]], time: 6 },
       { out: [CUPRONICKEL_INGOT, 4], in: [[COPPER_INGOT, 3], [NICKEL_INGOT, 1]], time: 6 },
       // ores into ingots
-      ...ORES.filter((o) => o.ingot).map((o) => ({ out: [o.ingot, 1], in: [[o.id, 1]], time: o.tier >= 5 ? 8 : 5, side: [[SLAG, 0.15]] })),
+      ...ORES.filter((o) => o.ingot).map((o) => ({ out: [o.ingot, 1], in: [[o.id, 1]], time: o.tier >= 5 ? 8 : 5, side: [[SLAG, 0.15]], hot: o.ingot === TUNGSTEN_INGOT })),
       // crushed ore: each dust is a whole ingot, so crushing first doubles what an ore gives
-      ...ORES.filter((o) => o.ingot).map((o) => ({ out: [o.ingot, 1], in: [[oreDust(o.id), 1]], time: o.tier >= 5 ? 6 : 4, side: [[SLAG, 0.05]] })),
+      ...ORES.filter((o) => o.ingot).map((o) => ({ out: [o.ingot, 1], in: [[oreDust(o.id), 1]], time: o.tier >= 5 ? 6 : 4, side: [[SLAG, 0.05]], hot: o.ingot === TUNGSTEN_INGOT })),
       // v28: dirty dust (straight from the crusher) smelts too, but four make only three ingots, and more slag
-      ...ORES.filter((o) => o.ingot).map((o) => ({ out: [o.ingot, 3], in: [[dirtyDust(o.id), 4]], time: o.tier >= 5 ? 18 : 12, side: [[SLAG, 0.4]] })),
+      ...ORES.filter((o) => o.ingot).map((o) => ({ out: [o.ingot, 3], in: [[dirtyDust(o.id), 4]], time: o.tier >= 5 ? 18 : 12, side: [[SLAG, 0.4]], hot: o.ingot === TUNGSTEN_INGOT })),
       { out: [STONE, 1], in: [[COBBLE, 1]], time: 4 },
       { out: [GLASS, 2], in: [[FLINT_DUST, 1], [SAND, 1]], time: 4 }, // flint dust helps sand melt into twice the glass
       { out: [GLASS, 1], in: [[SAND, 1]], time: 4 },
@@ -129,8 +130,11 @@ STATION_KINDS.hammer = {
     { out: [FILAMENT, 4], in: [[TUNGSTEN_INGOT, 1]], time: 10 }, // drawn out into fine wire
   ],
 };
-// The blast smelter: lined with fire bricks, it smelts everything the smelter does, twice as fast.
-STATION_KINDS.blast = { ...STATION_KINDS.smelter, name: 'Blast Smelter', speed: 2 };
+// The blast smelter: lined with fire bricks, it smelts everything the smelter does, twice as fast, and is hot
+// enough for steel, stainless steel and tungsten, which the plain smelter isn't (v45).
+const SMELT_ALL = STATION_KINDS.smelter.recipes;
+STATION_KINDS.smelter.recipes = SMELT_ALL.filter((r) => !r.hot);
+STATION_KINDS.blast = { ...STATION_KINDS.smelter, name: 'Blast Smelter', speed: 2, recipes: SMELT_ALL };
 // The cauldron: brews teas over a fire, from its water. Every two teas use up a level of water.
 STATION_KINDS.cauldron = {
   name: 'Cauldron', inputs: 2, water: true, noLit: true,
@@ -156,7 +160,7 @@ STATION_KINDS.pulverizer = {
 STATION_KINDS.charger = { name: 'Battery Charger', inputs: 1, holder: true, accepts: ELECTRIC_ITEMS, electric: true, recipes: [] };
 // The electric smelter smelts everything the smelter does with no fuel, on electricity (see electric.js):
 // at 2x speed with all the power it wants, slower when the grid's short.
-STATION_KINDS.esmelter = { ...STATION_KINDS.smelter, name: 'Electric Smelter', verb: 'Smelting', powered: true, electric: true };
+STATION_KINDS.esmelter = { ...STATION_KINDS.smelter, name: 'Electric Smelter', verb: 'Smelting', powered: true, electric: true, recipes: SMELT_ALL };
 // The arc furnace: smelts everything the smelter does at half the time (and at 2x with full power), and
 // makes alloys that need more heat than any fire gives.
 STATION_KINDS.arc = {
@@ -164,7 +168,7 @@ STATION_KINDS.arc = {
   recipes: [
     { out: [STARSTEEL_INGOT, 1], in: [[METEORIC_IRON, 2], [TUNGSTEN_INGOT, 1], [COAL_OR_CHARCOAL, 1]], time: 12 },
     { out: [INVAR_INGOT, 3], in: [[IRON_INGOT, 2], [NICKEL_INGOT, 1]], time: 6 },
-    ...STATION_KINDS.smelter.recipes.map((r) => ({ ...r, time: r.time / 2 })),
+    ...SMELT_ALL.map((r) => ({ ...r, time: r.time / 2 })),
   ],
 };
 // Chests just hold things.
@@ -323,6 +327,12 @@ export class Stations {
       return r;
     }
     return null;
+  }
+
+  // (v45) What a plain smelter holds the makings of but isn't hot enough for (steel, stainless steel, tungsten), or null.
+  tooHotFor(st) {
+    if (st.kind !== 'smelter') return null;
+    return SMELT_ALL.find((r) => r.hot && r.in.every(([id, n]) => this.count(st, id) >= n)) ?? null;
   }
 
   make(st, r) {

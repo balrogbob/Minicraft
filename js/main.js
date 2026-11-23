@@ -1825,8 +1825,9 @@ function renderStation() {
   }
   $('st-flame').style.opacity = st.burn > 0 ? String(0.35 + 0.65 * (st.burn / (st.burnMax || 1))) : '0.12';
   const fuelLeft = st.burn > 1e-9 ? ` (fuel for ${+st.burn.toFixed(1)} more)` : '';
+  const hot = !r && stations.tooHotFor(st);
   $('st-status').textContent = r ? (st.burn > 1e-9 || (st.fuel && isFuel(st.fuel.id)) ? `Making ${itemName(r.out[0]).toLowerCase()}…${fuelLeft}` : 'Needs fuel') :
-    `Put ingredients in${fuelLeft}`;
+    hot ? `${itemName(hot.out[0])} needs more heat: smelt it in a blast smelter` : `Put ingredients in${fuelLeft}`;
 }
 
 // Chest buttons: move everything in the backpack (not the hotbar) into the chest, or take it all out.
