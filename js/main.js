@@ -163,7 +163,15 @@ const glowMask = (() => {
     }
   }
   for (const [t, m] of modes) if (m === 'parts' && plain.has(t)) modes.delete(t); // ('fire' fronts are only ever lit blocks')
-  const tex = new THREE.CanvasTexture(createGlowMask(atlasCanvas, modes));
+  // (v46) the shiny tiles: metal, ice, glass, crystal (and obsidian), for the sun's highlight on them
+  const shine = new Map();
+  for (const [k, t] of Object.entries(TILES)) {
+    if (/_ORE|_CHEST_/.test(k)) continue;
+    if (/^(IRON|GOLD|STEEL|STAINLESS|COPPER|SILVER|BRONZE|TIN|LEAD|ZINC|ELECTRUM|NICKEL|TUNGSTEN|MIRROR_BACK)\b|^(IRON|GOLD|STEEL)/.test(k)) shine.set(t, 1);
+    else if (/^(ICE|PACKED_ICE|GLASS|CRYSTAL|OBSIDIAN|CAMERA_LENS|MONITOR_SCREEN)$/.test(k)) shine.set(t, 0.6);
+  }
+  for (let i = 0; i < COLORS.length; i++) shine.set(TILES.STAINED + i, 0.6);
+  const tex = new THREE.CanvasTexture(createGlowMask(atlasCanvas, modes, shine));
   tex.magFilter = tex.minFilter = THREE.NearestFilter; tex.generateMipmaps = false;
   return tex;
 })();
@@ -173,7 +181,7 @@ const glowMask = (() => {
 // daylight is a uniform set by the sky, so nights darken everything the sun reaches,
 // caves stay dark all day, and torches glow wherever they are.
 const AMBIENT = 0.03; // linear; just enough to make out cave walls without a torch
-const lightUniforms = { uGlowMap: { value: glowMask }, uHand: { value: new THREE.Vector4(0, 0, 0, 0) }, uDay: { value: 1 }, uFlicker: { value: 1 }, uAmbient: { value: AMBIENT }, uTints: { value: TINTS.map((c) => new THREE.Vector3(...c)) }, ...gfxUniforms };
+const lightUniforms = { uGlowMap: { value: glowMask }, uHand: { value: new THREE.Vector4(0, 0, 0, 0) }, uDay: { value: 1 }, uFlicker: { value: 1 }, uAmbient: { value: AMBIENT }, uTints: { value: TINTS.map((c) => new THREE.Vector3(...c)) }, uWet: { value: 0 }, ...gfxUniforms };
 function addTorchLight(mat, water = false) {
   // (sky also carries a "next to water" flag, +2, for caustics: see World.buildChunkGeometry)
   mat.customProgramCacheKey = () => (water ? 'world-water' : 'world-solid');
@@ -187,10 +195,15 @@ function addTorchLight(mat, water = false) {
     // (v40: the bright parts of things that give off light, like a torch's flame or a lamp's glass, glow: brighter
     // than anything lit, by day too, and bright enough to bloom. v45: from the texture's own colour, not the face's
     // shading, so a torch's flame glows the same on all four sides)
-    shader.fragmentShader = 'uniform sampler2D uGlowMap;\nuniform float uDay;\nuniform float uFlicker;\nuniform float uAmbient;\nuniform vec4 uHand;\nvarying vec3 vTorchC;\nvarying float vSky;\nvarying vec3 vWorldP;\nvarying float vGlow;\n' + GFX_FRAG_HEAD + shader.fragmentShader
+    shader.fragmentShader = 'uniform sampler2D uGlowMap;\nuniform float uWet;\nuniform float uDay;\nuniform float uFlicker;\nuniform float uAmbient;\nuniform vec4 uHand;\nvarying vec3 vTorchC;\nvarying float vSky;\nvarying vec3 vWorldP;\nvarying float vGlow;\n' + GFX_FRAG_HEAD + shader.fragmentShader
       .replace('#include <color_fragment>',
         '#include <color_fragment>\nvec3 baseC = diffuseColor.rgb;\nfloat hl = uHand.w * pow(clamp(1.0 - distance(vWorldP, uHand.xyz) / 13.0, 0.0, 1.0), 1.4);\n' + GFX_SUN_TERM +
         'diffuseColor.rgb *= max(max(max(sunT * sunC, vec3(uAmbient)), torchT), vec3(hl, hl * 0.96, hl * 0.86));\n' +
+        // (v46) the sun's highlight on shiny things (metal, ice, glass), and on open ground wet with rain
+        (water ? '' : 'if (sunT > 0.02 && uSunStr > 0.0) { float shine = texture2D(uGlowMap, vMapUv).b; vec3 N = gfxNormal();\n' +
+          'float wet = uWet * step(0.7, N.y) * smoothstep(0.85, 1.0, vSky) * smoothstep(0.35, 0.65, fract(sin(dot(floor(vWorldP.xz * 2.0), vec2(12.99, 78.23))) * 437.58) * 0.5 + 0.5 * sin(vWorldP.x * 0.7 + 1.3 * sin(vWorldP.z * 0.5)));\n' +
+          'float k = max(shine, wet * 0.8);\n' +
+          'if (k > 0.0) { vec3 V = normalize(cameraPosition - vWorldP); float s = pow(max(dot(N, normalize(uSunDir + V)), 0.0), mix(28.0, 90.0, shine)); diffuseColor.rgb += min(sunC * s * k * sunT * uSunStr, vec3(0.7)); } }\n') +
         (water ? '' : 'if (vGlow > 0.5) { vec2 gm = texture2D(uGlowMap, vMapUv).rg; vec3 glowC = baseC / max(vColor.rgb, vec3(0.25)); diffuseColor.rgb = mix(diffuseColor.rgb, max(diffuseColor.rgb, glowC * (1.7 + 0.25 * uFlicker + gm.y * (1.6 + 0.6 * uFlicker))), gm.x); }\n') + (water ? GFX_WATER : ''));
   };
 }
@@ -7812,6 +7825,9 @@ function frame(now) {
   try { world.update(player.pos.x, player.pos.z, scene, materials, 6, dt); } catch (err) { reportError(err); }
   farLand.update(player.pos, Math.floor(player.pos.x / CHUNK), Math.floor(player.pos.z / CHUNK), settings.viewDistance);
   gfx.sunDir.copy(sky.sunDir); gfx.overcast = weather?.overcast ?? 0; gfx.underwater = !!player.eyeInWater;
+  // (v46) the ground gets wet while it rains and dries off slowly after (it glints in the sun, see addTorchLight)
+  const wetU = lightUniforms.uWet;
+  wetU.value = Math.max(0, Math.min(1, wetU.value + dt * (weather?.raining && weather.kind === 'rain' ? 0.05 : -0.008)));
   try { findWaterLevel(dt); } catch (err) { reportError(err); }
   try { renderScreens(); } catch (err) { reportError(err); }
   gfx.render(scene, camera);

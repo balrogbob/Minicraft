@@ -64,7 +64,9 @@ turn any off again if the game gets slow (☰ → Performance info shows the fra
   blocks of you (and from you, in first person too). They lengthen towards evening, fade under clouds and go at night. (Torch and lamp light
   doesn't need these: it spreads block by block, so it already stops at walls.) **Low** is for mid-range
   machines: a smaller shadow picture over about 32 blocks, harder edges, redrawn every other frame.
-  Sunlight through stained glass comes out coloured (see Building).
+  Sunlight through stained glass comes out coloured (see Building). On **high** a shadow's edge is sharp where
+  it touches the thing casting it and grows softer the farther away it falls, as real shadows do: the top
+  of a tall tower throws a blurry patch, a fence post a crisp one.
 - **Torch shadows** (a slider, off or 1 to 50): the nearest few torches, lanterns, lamps and other lights
   cast shadows of their own: pillars, furniture, machines and animals standing in the light throw sharp
   shadows across the floor and walls. Lights out in the daytime sun are skipped (the sun drowns them out),
@@ -82,6 +84,8 @@ Whatever the settings, the bright parts of things that give off light (a torch's
 lamp, glowing mushrooms) glow: brighter than anything lit around them, so a torch looks lit even in full sun.
 Only the parts that shine glow: the green flecks in uranium ore, not the stone around them. Blocky white clouds
 drift across the sky, warm at sunrise and sunset, dim at night and grey when the weather turns.
+Shiny things catch the sun: metal machines, ice, glass and obsidian show a glint where the sun reflects off
+them towards you. After rain the ground stays wet for a while, and puddle patches on the open ground glint too.
 - **God rays**: when you look towards the sun, shafts of light stream out around whatever hides it
   (trees, hills, gaps in a wall); strongest near sunrise and sunset.
 - **Swaying leaves and plants**: leaves stir and flowers, grass and crops bend in the wind (tall plants like
@@ -93,6 +97,8 @@ drift across the sky, warm at sunrise and sunset, dim at night and grey when the
 - **Live mirrors**: mirror blocks show the world in front of them. Each flat wall of mirrors costs one more
   drawing of the world, at a quarter of the screen's pixels, and only the two nearest walls of mirrors in
   view are drawn. On from Medium up.
+- **Colour bleed**: lit surfaces tint those beside them a little, as light bouncing off them would: a white
+  floor goes pink beside a red wall, grass greens the bottom of a white house. On in High and Ultra.
 - **Water refraction**: you see the bottom through the water, bent by the waves.
 - **Water caustics**: rippling lines of light on blocks under sunlit water.
 - **Underwater ripple**: the view wobbles gently while your head is under water.
@@ -1806,6 +1812,8 @@ guide to how everything works.
 - **Version 46**: **mirrors** (live reflections, joined across a wall of them; a **Live mirrors** switch in
   ☰ → Graphics), **security cameras** and **monitors** (joined into big screens, each tuned to a camera);
   light through **stained glass** takes on its colour (torch light always, sunlight with sun shadows on);
+  softer sun shadow edges the farther a shadow falls (high sun shadows); sun glints on metal, ice and glass,
+  and on wet ground after rain; a **Colour bleed** switch in ☰ → Graphics;
   placing a gearbox or electric motor no longer turns it into a clutch or solar panel; a metal recipe
   (like the iron-banded chest) shows once you have that metal's plates, or everything it needs, not only its ingots.
 - **Version 45**: gears mesh at corners (axles at right angles) and large gears mesh in pairs; a **Distance

@@ -11,6 +11,7 @@
 //   sway       - leaves and plants move in the wind
 //   reflections - water mirrors the world above it (the scene drawn again, upside down)
 //   ripple     - the view wobbles while your head is under water
+//   bounce     - (v46) colour bleed: lit surfaces tint the darker ones beside them a little
 //   mirrors    - (v46) mirror blocks show the world live (the scene drawn again from your eye's mirror image)
 // Torch light itself is flood-filled block by block, so it never shines through walls; torch shadows
 // only add the sharper shadows of things standing in the light (pillars, mobs, machines, furniture).
@@ -18,14 +19,14 @@ import * as THREE from 'three';
 
 export const GFX_DEFAULTS = {
   shadows: 0, torches: 0, torchRate: 2, bloom: false, water: false, reflections: false, refraction: false, caustics: false,
-  godrays: false, sway: false, ripple: false, torchDay: false, mirrors: false,
+  godrays: false, sway: false, ripple: false, torchDay: false, mirrors: false, bounce: false,
 };
 export const MAX_TORCH_SHADOWS = 50;
-export const GFX_TOGGLES = ['torchDay', 'bloom', 'godrays', 'sway', 'water', 'reflections', 'mirrors', 'refraction', 'caustics', 'ripple'];
+export const GFX_TOGGLES = ['torchDay', 'bloom', 'godrays', 'sway', 'water', 'reflections', 'mirrors', 'bounce', 'refraction', 'caustics', 'ripple'];
 export const GFX_NAMES = {
   shadows: 'Sun shadows', torches: 'Torch shadows', bloom: 'Bloom', water: 'Fancy water', refraction: 'Water refraction', caustics: 'Water caustics',
   godrays: 'God rays', sway: 'Swaying leaves and plants', reflections: 'Water reflections', ripple: 'Underwater ripple',
-  torchDay: 'Torch shadows by day', mirrors: 'Live mirrors',
+  torchDay: 'Torch shadows by day', mirrors: 'Live mirrors', bounce: 'Colour bleed',
 };
 export const SHADOW_LEVELS = ['off', 'low', 'high'];
 // v38: quick presets for the fancy graphics. 'auto' starts at medium and steps up or down to keep the game
@@ -34,8 +35,8 @@ export const GFX_PRESETS = {
   off: { ...GFX_DEFAULTS },
   low: { ...GFX_DEFAULTS, water: true, sway: true, ripple: true },
   medium: { ...GFX_DEFAULTS, shadows: 1, torches: 3, torchRate: 1, bloom: true, water: true, caustics: true, sway: true, ripple: true, mirrors: true },
-  high: { shadows: 2, torches: 8, torchRate: 2, bloom: true, water: true, reflections: true, refraction: true, caustics: true, godrays: true, sway: true, ripple: true, mirrors: true },
-  ultra: { shadows: 2, torches: 24, torchRate: 6, bloom: true, water: true, reflections: true, refraction: true, caustics: true, godrays: true, sway: true, ripple: true, mirrors: true },
+  high: { shadows: 2, torches: 8, torchRate: 2, bloom: true, water: true, reflections: true, refraction: true, caustics: true, godrays: true, sway: true, ripple: true, mirrors: true, bounce: true },
+  ultra: { shadows: 2, torches: 24, torchRate: 6, bloom: true, water: true, reflections: true, refraction: true, caustics: true, godrays: true, sway: true, ripple: true, mirrors: true, bounce: true },
 };
 export const PRESET_ORDER = ['off', 'low', 'medium', 'high', 'ultra'];
 export const PRESET_NAMES = { off: 'Off', low: 'Low', medium: 'Medium', high: 'High', ultra: 'Ultra', auto: 'Auto', custom: 'Custom' };
@@ -69,6 +70,7 @@ export const gfxUniforms = {
   uShadowStr: { value: 0 },
   uShadowTexel: { value: 1 / 2048 },
   uShadowSoft: { value: 1 },
+  uShadowRange: { value: 44 }, // (v46) how many blocks the shadow picture reaches either side of you
   uShadowDepth: { value: SHADOW_BACK * 2 },
   uCaustics: { value: 0 },
   uFancyWater: { value: 0 },
@@ -135,6 +137,7 @@ uniform mat4 uShadowMat;
 uniform float uShadowStr;
 uniform float uShadowTexel;
 uniform float uShadowSoft;
+uniform float uShadowRange;
 uniform float uShadowDepth;
 uniform float uCaustics;
 uniform float uFancyWater;
@@ -158,6 +161,11 @@ vec3 gfxNormal() {
   vec3 n = normalize(cross(dFdx(vWorldP), dFdy(vWorldP)));
   return dot(n, cameraPosition - vWorldP) < 0.0 ? -n : n;
 }
+// points spread over a disc (for soft shadow edges)
+const vec2 GFX_DISC[16] = vec2[](
+  vec2(-0.94, -0.40), vec2(0.95, -0.77), vec2(-0.09, -0.93), vec2(0.34, 0.29), vec2(-0.92, 0.46), vec2(-0.82, 0.15),
+  vec2(-0.38, -0.88), vec2(-0.20, 0.32), vec2(0.97, 0.76), vec2(0.44, -0.97), vec2(0.54, 0.75), vec2(-0.26, 0.97),
+  vec2(0.79, 0.20), vec2(-0.20, -0.27), vec2(-0.55, -0.43), vec2(0.18, -0.48));
 // 1 = in sunlight, 0 = in shadow
 float gfxShadow(vec3 n) {
   float ndl = dot(n, uSunDir);
@@ -170,9 +178,21 @@ float gfxShadow(vec3 n) {
   float bias = (0.03 + 0.16 * (1.0 - clamp(ndl, 0.0, 1.0))) / uShadowDepth;
   float lit = 0.0;
   if (uShadowSoft > 0.5) {
-    for (int i = -1; i <= 1; i++) for (int j = -1; j <= 1; j++)
-      lit += step(p.z - bias, texture2D(uShadowMap, p.xy + vec2(float(i), float(j)) * uShadowTexel).r);
-    lit /= 9.0;
+    // (v46) soft edges that widen with distance: find how far the things casting the shadow are from this spot
+    // (the average depth of the blockers around it), then blur the edge by that much: a tree's shadow is soft at
+    // its far end and sharp where the trunk meets the ground
+    float a = fract(sin(dot(floor(gl_FragCoord.xy), vec2(12.9898, 78.233))) * 43758.5453) * 6.2832;
+    mat2 rot = mat2(cos(a), sin(a), -sin(a), cos(a));
+    float uvPerBlock = 0.5 / uShadowRange, zsum = 0.0, nb = 0.0;
+    for (int i = 0; i < 8; i++) {
+      float z = texture2D(uShadowMap, p.xy + rot * GFX_DISC[i * 2] * 1.6 * uvPerBlock).r;
+      if (z < p.z - bias) { zsum += z; nb += 1.0; }
+    }
+    if (nb < 0.5) return mix(1.0, facing, edge);
+    float dz = (p.z - zsum / nb) * uShadowDepth; // blocks from the blockers to here
+    float pen = max(clamp(dz * 0.035, 0.0, 1.3) * uvPerBlock, 1.5 * uShadowTexel);
+    for (int i = 0; i < 16; i++) lit += step(p.z - bias, texture2D(uShadowMap, p.xy + rot * GFX_DISC[i] * pen).r);
+    lit /= 16.0;
   } else { // (low quality: 4 taps)
     for (int i = 0; i < 4; i++)
       lit += step(p.z - bias, texture2D(uShadowMap, p.xy + (vec2(float(i - (i / 2) * 2), float(i / 2)) - 0.5) * uShadowTexel).r);
@@ -335,6 +355,27 @@ void main() {
 }`;
 // god rays: march from each pixel towards the sun, adding up the bright open sky near the sun that
 // is not hidden behind anything (from the depth picture: nothing drawn there)
+// (v46) colour bleed: the colour of the surfaces round each spot (within a block or two, and at about the same
+// depth, so nothing far behind counts), gathered at half size; the final picture adds a little of it to darker spots,
+// so a shaded corner by a sunlit red wall picks up some red
+const BOUNCE_FRAG = `uniform sampler2D tSrc; uniform sampler2D tDepth; uniform float uNear; uniform float uFar; uniform float uProj; uniform float uAspect;
+varying vec2 vUv;
+float lin(float d) { float z = d * 2.0 - 1.0; return 2.0 * uNear * uFar / (uFar + uNear - z * (uFar - uNear)); }
+void main() {
+  float d0 = lin(texture2D(tDepth, vUv).r);
+  if (d0 > uFar * 0.95) { gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0); return; }
+  float rad = clamp(1.8 * uProj / d0, 0.003, 0.12);
+  float rnd = fract(sin(dot(floor(gl_FragCoord.xy), vec2(12.9898, 78.233))) * 43758.5453) * 6.2832;
+  vec3 acc = vec3(0.0); float wsum = 0.0;
+  for (int i = 0; i < 12; i++) {
+    float a = float(i) * 2.39996 + rnd, r = sqrt((float(i) + 0.5) / 12.0) * rad;
+    vec2 uv = clamp(vUv + vec2(cos(a) / uAspect, sin(a)) * r, vec2(0.001), vec2(0.999));
+    float d = lin(texture2D(tDepth, uv).r);
+    float w = max(0.0, 1.0 - abs(d - d0) / 1.8);
+    acc += texture2D(tSrc, uv).rgb * w; wsum += w;
+  }
+  gl_FragColor = vec4(wsum > 0.0 ? acc / wsum : vec3(0.0), 1.0);
+}`;
 const GOD_FRAG = `uniform sampler2D tDepth; uniform vec2 uSun; uniform float uAspect;
 varying vec2 vUv;
 float glow(vec2 uv) {
@@ -351,6 +392,7 @@ void main() {
 }`;
 const FINAL_FRAG = `uniform sampler2D tSrc; uniform sampler2D tB1; uniform sampler2D tB2; uniform float uBloom;
 uniform sampler2D tGod; uniform float uGod; uniform vec3 uGodCol; uniform float uRipple; uniform float uTime;
+uniform sampler2D tBounce; uniform float uBounce;
 varying vec2 vUv;
 vec3 toSRGB(vec3 c) {
   c = clamp(c, 0.0, 1.0);
@@ -362,6 +404,12 @@ void main() {
     cos(uv.x * 19.0 + uTime * 1.7) + 0.5 * cos(uv.x * 37.0 + uTime * 2.6)) * 0.0035 * uRipple;
   uv = clamp(uv, vec2(0.001), vec2(0.999));
   vec3 c = texture2D(tSrc, uv).rgb;
+  if (uBounce > 0.0) { // (v46: colour bleed, mostly into the darker parts)
+    vec3 b = texture2D(tBounce, uv).rgb;
+    float l = dot(c, vec3(0.2126, 0.7152, 0.0722)), lb = dot(b, vec3(0.2126, 0.7152, 0.0722));
+    vec3 tint = min(b / max(lb, 0.02), vec3(2.0)); // (the neighbours' hue, brightness taken out)
+    c *= mix(vec3(1.0), tint, 0.3 * uBounce * (1.0 - 0.4 * smoothstep(0.3, 0.9, l))); // (tints, never washes out: a red wall stays red, the floor by it goes pink)
+  }
   if (uBloom > 0.0) c += (texture2D(tB1, uv).rgb * 0.7 + texture2D(tB2, uv).rgb * 0.9) * uBloom;
   if (uGod > 0.0) c += texture2D(tGod, uv).r * uGod * uGodCol;
   gl_FragColor = vec4(toSRGB(c), 1.0);
@@ -423,8 +471,9 @@ export class Graphics {
     this.blurMat = pass(BLUR_FRAG, { tSrc: { value: null }, uDir: { value: new THREE.Vector2() } });
     this.finalMat = pass(FINAL_FRAG, {
       tSrc: { value: null }, tB1: { value: null }, tB2: { value: null }, uBloom: { value: 0 },
-      tGod: { value: null }, uGod: { value: 0 }, uGodCol: { value: new THREE.Color(1, 0.88, 0.62) }, uRipple: { value: 0 }, uTime: gfxUniforms.uTime,
+      tGod: { value: null }, uGod: { value: 0 }, tBounce: { value: null }, uBounce: { value: 0 }, uGodCol: { value: new THREE.Color(1, 0.88, 0.62) }, uRipple: { value: 0 }, uTime: gfxUniforms.uTime,
     });
+    this.bounceMat = pass(BOUNCE_FRAG, { tSrc: { value: null }, tDepth: { value: null }, uNear: { value: 0.1 }, uFar: { value: 100 }, uProj: { value: 1 }, uAspect: { value: 1 } });
     this.godMat = pass(GOD_FRAG, { tDepth: { value: null }, uSun: { value: new THREE.Vector2() }, uAspect: { value: 1 } });
     this.underwater = false;
     this.waterY = null; // set by the game: height of the water surface around the player, for reflections
@@ -476,7 +525,7 @@ export class Graphics {
     else o[key] = !!on;
     if (key === 'shadows' && o.shadows !== was) this.freeShadows();
     if (key === 'torches' && o.torches !== was) this.freeTorches(); // (the picture is sized for the count)
-    if (!o.bloom && !o.refraction && !o.godrays && !o.ripple) this.freeTargets();
+    if (!o.bloom && !o.refraction && !o.godrays && !o.ripple && !o.bounce) this.freeTargets();
     if (!o.reflections) this.freeReflections();
     this.scanT = 0;
   }
@@ -510,7 +559,7 @@ export class Graphics {
     }
     U.uRefract.value = 0;
     const godrays = this.godStrength(camera);
-    if (!o.bloom && !o.refraction && !godrays && !(o.ripple && this.underwater)) { r.render(scene, camera); return; }
+    if (!o.bloom && !o.refraction && !godrays && !o.bounce && !(o.ripple && this.underwater)) { r.render(scene, camera); return; }
     try { this.renderPost(scene, camera, godrays); } catch (err) {
       this.fail(err, o.refraction ? 'refraction' : o.bloom ? 'bloom' : o.godrays ? 'godrays' : 'ripple');
       r.setRenderTarget(null);
@@ -545,6 +594,7 @@ export class Graphics {
       gfxUniforms.uShadowMap.value = this.shadowRT.depthTexture;
       gfxUniforms.uShadowTexel.value = 1 / q.res;
       gfxUniforms.uShadowSoft.value = q.soft;
+      gfxUniforms.uShadowRange.value = q.range;
       const sc = this.shadowCam;
       sc.left = sc.bottom = -q.range; sc.right = sc.top = q.range; sc.updateProjectionMatrix();
       this.shadowFrame = -1;
@@ -832,6 +882,7 @@ void main() {
     this.rtMain.depthTexture = new THREE.DepthTexture(w, h); // (god rays look for open sky in it)
     this.rtRefr = mk(w, h, false);
     this.god = mk(w >> 1, h >> 1, false);
+    this.bounce = [mk(w >> 1, h >> 1, false), mk(w >> 1, h >> 1, false)];
     this.b1 = [mk(w >> 1, h >> 1, false), mk(w >> 1, h >> 1, false)];
     this.b2 = [mk(w >> 2, h >> 2, false), mk(w >> 2, h >> 2, false)];
     gfxUniforms.uResolution.value.set(w, h);
@@ -840,8 +891,8 @@ void main() {
 
   freeTargets() {
     this.rtMain?.depthTexture?.dispose();
-    for (const t of [this.rtMain, this.rtRefr, this.god, ...(this.b1 ?? []), ...(this.b2 ?? [])]) t?.dispose();
-    this.rtMain = this.rtRefr = this.god = this.b1 = this.b2 = null;
+    for (const t of [this.rtMain, this.rtRefr, this.god, ...(this.b1 ?? []), ...(this.b2 ?? []), ...(this.bounce ?? [])]) t?.dispose();
+    this.rtMain = this.rtRefr = this.god = this.b1 = this.b2 = this.bounce = null;
     gfxUniforms.uRefrTex.value = null;
   }
 
@@ -902,7 +953,21 @@ void main() {
       this.godMat.uniforms.uAspect.value = this.rtMain.width / this.rtMain.height;
       this.blit(this.godMat, this.god);
     }
+    let bounce = 0;
+    if (o.bounce) {
+      const bm = this.bounceMat.uniforms, [p1, p2] = this.bounce;
+      bm.tSrc.value = this.rtMain.texture; bm.tDepth.value = this.rtMain.depthTexture;
+      bm.uNear.value = camera.near; bm.uFar.value = camera.far;
+      bm.uProj.value = 1 / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2));
+      bm.uAspect.value = this.rtMain.width / this.rtMain.height;
+      this.blit(this.bounceMat, p1);
+      this.blurMat.uniforms.tSrc.value = p1.texture; this.blurMat.uniforms.uDir.value.set(1 / p1.width, 0); this.blit(this.blurMat, p2);
+      this.blurMat.uniforms.tSrc.value = p2.texture; this.blurMat.uniforms.uDir.value.set(0, 1 / p1.height); this.blit(this.blurMat, p1);
+      bounce = 1;
+    }
     const f = this.finalMat.uniforms;
+    f.tBounce.value = this.bounce[0].texture;
+    f.uBounce.value = bounce;
     f.tSrc.value = this.rtMain.texture;
     f.tB1.value = this.b1[0].texture;
     f.tB2.value = this.b2[0].texture;

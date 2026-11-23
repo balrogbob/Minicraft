@@ -1468,7 +1468,7 @@ export function createAtlas() {
 // `modes` maps a tile to 'all' (the whole thing shines, like a lamp's glass: its bright pixels glow) or
 // 'parts' (only what stands out glows, like the green flecks in uranium ore, not the stone around them) or
 // 'fire' (the flame and embers in a lit oven's front).
-export function createGlowMask(atlas, modes) {
+export function createGlowMask(atlas, modes, shine = new Map()) {
   const c = document.createElement('canvas');
   c.width = atlas.width; c.height = atlas.height;
   const src = atlas.getContext('2d').getImageData(0, 0, atlas.width, atlas.height).data;
@@ -1494,6 +1494,16 @@ export function createGlowMask(atlas, modes) {
         : mode === 'fire' ? ss(0.72, 0.86, fire) * ss(0.4, 0.65, hi)
         : ss(med + 0.2, med + 0.5, k) * ss(0.4, 0.7, hi);
       out.data[i] = Math.round(m * 255); out.data[i + 1] = mode === 'fire' ? out.data[i] : 0; out.data[i + 3] = 255; // (green: glow extra bright, so embers bloom too)
+    }
+  }
+  // (v46, blue: how shiny it is, for the sun's highlight on metal, ice and glass; brighter pixels shinier)
+  for (const [tile, v] of shine) {
+    const x0 = (tile % ATLAS_COLS) * TILE, y0 = Math.floor(tile / ATLAS_COLS) * TILE;
+    for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+      const i = ((y0 + y) * atlas.width + x0 + x) * 4;
+      if (src[i + 3] < 128) continue;
+      const hi = Math.max(src[i], src[i + 1], src[i + 2]) / 255;
+      out.data[i + 2] = Math.round(v * ss(0.15, 0.75, hi) * 255); out.data[i + 3] = 255;
     }
   }
   c.getContext('2d').putImageData(out, 0, 0);
