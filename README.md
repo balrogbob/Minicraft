@@ -64,6 +64,9 @@ turn any off again if the game gets slow (☰ → Performance info shows the fra
   blocks of you (and from you, in first person too). They lengthen towards evening, fade under clouds and go at night. (Torch and lamp light
   doesn't need these: it spreads block by block, so it already stops at walls.) **Low** is for mid-range
   machines: a smaller shadow picture over about 32 blocks, harder edges, redrawn every other frame.
+  Sunlight through stained glass comes out coloured (see Building). On **high** a shadow's edge is sharp where
+  it touches the thing casting it and grows softer the farther away it falls, as real shadows do: the top
+  of a tall tower throws a blurry patch, a fence post a crisp one.
 - **Torch shadows** (a slider, off or 1 to 50): the nearest few torches, lanterns, lamps and other lights
   cast shadows of their own: pillars, furniture, machines and animals standing in the light throw sharp
   shadows across the floor and walls. Lights out in the daytime sun are skipped (the sun drowns them out),
@@ -72,6 +75,33 @@ turn any off again if the game gets slow (☰ → Performance info shows the fra
   sets how many lights get their shadows redrawn each frame, in turn (new lights are drawn at once):
   higher keeps shadows of moving animals smooth, lower is faster. **Torch shadows by day** counts the lights
   out in the sun too, so their shadows show in shady places by day (under roofs, in doorways).
+- **Torch light shafts** (a slider, off or 1 to 50): the nearest few lights shine through the air around
+  them, so you see their light hang in a dark room: beams fan out through iron bars, a doorway or a window,
+  and pillars and furniture cut dark gaps through the glow. Each light takes its colour (a blue glow lamp
+  gives blue beams). They use the same shadow pictures as torch shadows (those are drawn for the shafts'
+  lights even with torch shadows off), and show best at night and underground. High lights 2, Ultra 6.
+- **Traced lighting** (off / shadows and shade / full): the game keeps a 3D copy of the blocks within about
+  64 blocks of you on the graphics card and follows light through it block by block. **Shadows and shade**
+  gives every block an exact, sharp shadow from the sun (as far as the copy reaches, with no shadow picture
+  to run out of; animals and furniture still need Sun shadows for theirs) and soft shade in corners, under
+  overhangs and where blocks crowd in. **Full** adds how much of the sky each spot can see (a deep porch or
+  a narrow alley is dimmer than open ground) and real reflections: metal blocks, ice, glass, obsidian and
+  puddles after rain mirror the blocks around them, or the sky. It fades out towards the edge of the copy.
+  This is the heaviest setting: Ultra turns on Full, the other presets leave it off.
+- **Path tracing (WebGPU)** (off / on; only in browsers with WebGPU, such as recent Chrome and Edge): all the
+  light is traced, the way films are made, instead of the shortcuts above. Sunlight (or moonlight) and its
+  shadows, light from the sky, light bounced off the blocks around (a sunlit red wall tints the floor beside
+  it, light spills round corners into a doorway) and the light of the nearest 32 torches, lanterns and lamps,
+  each with its true shadow, all come from rays followed through the blocks around you. Animals, monsters,
+  villagers and you are traced at their real shape, not as boxes: each is rebuilt every frame from its posed
+  model as a grid of small cells (a 16th of a block), so a horse's legs cast four thin shadows while it walks,
+  and your own body still casts its shadow in first person. Each frame traces every other pixel; the light of
+  earlier frames is kept for the same spots and blurred along each surface, so it is grainy for a moment after
+  something changes and settles while you look. It takes over the whole picture: the other settings that change
+  light (shadows, torch shadows and shafts, traced lighting, colour bleed, bloom, god rays, water effects) have
+  no effect while it's on. It needs a strong graphics card. If the browser has no WebGPU, or it fails, it turns
+  itself off with a message. Not in any preset. Not yet traced: shadows of part blocks (slabs, stairs, fences,
+  plants, torches); light through glass and water.
 - **Distance fog** (on by default): the world fades into the sky towards the edge of what's loaded. Turn it
   off for a clear view all the way out (the edge of the world then shows). Under water it's always murky.
 - **Bloom**: bright things glow a little past their edges: lava, lamps, torch flames, the sky behind trees, sun
@@ -81,6 +111,8 @@ Whatever the settings, the bright parts of things that give off light (a torch's
 lamp, glowing mushrooms) glow: brighter than anything lit around them, so a torch looks lit even in full sun.
 Only the parts that shine glow: the green flecks in uranium ore, not the stone around them. Blocky white clouds
 drift across the sky, warm at sunrise and sunset, dim at night and grey when the weather turns.
+Shiny things catch the sun: metal machines, ice, glass and obsidian show a glint where the sun reflects off
+them towards you. After rain the ground stays wet for a while, and puddle patches on the open ground glint too.
 - **God rays**: when you look towards the sun, shafts of light stream out around whatever hides it
   (trees, hills, gaps in a wall); strongest near sunrise and sunset.
 - **Swaying leaves and plants**: leaves stir and flowers, grass and crops bend in the wind (tall plants like
@@ -89,6 +121,11 @@ drift across the sky, warm at sunrise and sunset, dim at night and grey when the
   glints of sunlight.
 - **Water reflections**: the water mirrors the hills, trees and buildings above it (the world is drawn a
   second time, upside down, at half size). Works on the water around you at the height most of it is.
+- **Live mirrors**: mirror blocks show the world in front of them. Each flat wall of mirrors costs one more
+  drawing of the world, at a quarter of the screen's pixels, and only the two nearest walls of mirrors in
+  view are drawn. On from Medium up.
+- **Colour bleed**: lit surfaces tint those beside them a little, as light bouncing off them would: a white
+  floor goes pink beside a red wall, grass greens the bottom of a white house. On in High and Ultra.
 - **Water refraction**: you see the bottom through the water, bent by the waves.
 - **Water caustics**: rippling lines of light on blocks under sunlit water.
 - **Underwater ripple**: the view wobbles gently while your head is under water.
@@ -96,7 +133,7 @@ drift across the sky, warm at sunrise and sunset, dim at night and grey when the
 If an effect doesn't work on your device it is switched off by itself, with a message.
 
 **Graphics preset** at the top sets them all at once: **Off**, **Low** (water and swaying only), **Medium**
-(low-cost sun shadows, 3 torch shadows, bloom, caustics), **High** (everything, 8 torch shadows) or **Ultra**
+(low-cost sun shadows, 3 torch shadows, bloom, caustics, live mirrors), **High** (everything, 8 torch shadows) or **Ultra**
 (24 torch shadows, more redrawn each frame). **Auto** starts at Medium and steps down a level when the game
 drops below 40 frames a second, or up when it stays smooth (and won't climb back to a level that was too
 slow). Changing any one effect yourself makes it **Custom**.
@@ -941,6 +978,22 @@ An **armour stand** faces you when you place it and needs room above it. Tap it 
 your shield) with what it holds: hang a set up, put on another, and swap back whenever you like. Wear and
 enchantments stay with each piece. Break the stand and its armour drops.
 
+A **mirror** (2 glass and a silver ingot make 2) hangs flat on the side of a block. Mirrors hung side by side in
+the same wall join into one big mirror. With **Live mirrors** on (☰ → Graphics) a mirror shows the world in
+front of it, you included (in first person too). With it off, a mirror shows a plain silvery sheen.
+
+A **security camera** (2 iron ingots, glass and a copper ingot) hangs on the side of a block or stands on top of
+one. On a wall it looks straight out; standing on a block, it looks the way you were looking when you put it
+down. Tap it to tilt it down a step (straight ahead, down, well down, then back).
+
+A **monitor** (2 iron ingots, 2 glass and a copper ingot) is a full block whose screen faces you. Tap it to
+watch the nearest camera; tap again for the next nearest, and so on, then off after the last. A toast says
+which camera it's on and how far away. Monitors side by side or stacked in the same wall join into one big
+screen showing one wide picture, so a wall of them makes a control room for a whole factory. Any monitor in
+the screen tunes all of it. A camera that's broken, or too far away to be loaded, shows **NO SIGNAL**.
+Cameras need no power. Screens you can see are redrawn in turn, one each frame, at a low resolution. In
+multiplayer everyone sees what each monitor is tuned to.
+
 ### Storage, ladders and signs
 
 | Make | Recipe (crafting table) |
@@ -997,6 +1050,20 @@ a sign with a dye to colour its writing.
 panes** in any of the ten colours. Light rooms with an iron **lantern** (it hangs when placed under a block),
 a gold **chandelier**, or **glow lamps** (crystal shards, stained glass and a torch) that cast light in their
 own colour. Hang a **painting** on a wall: it picks the biggest of eight pictures that fits the space.
+
+Light that shines through **stained glass** (blocks or panes) takes on its colour. A torch behind red glass
+lights the room beyond it red, and a lamp boxed in blue glass gives blue light. With **Sun shadows** on,
+sunlight through a stained-glass window or roof throws patches of its colours across the floor and walls.
+The glass's leading (its dark edge) still casts a thin shadow.
+
+### Metal blocks
+
+Every metal that comes as ingots also packs into a solid **block of** that metal: 9 ingots at a crafting
+table make one (iron, copper, tin, lead, zinc, aluminium, silver, gold, tungsten, bronze, electrum,
+stainless steel, steel, aluminium bronze, nickel, cupronickel, uranium, invar and starsteel). Build with
+them (they catch the sun like polished metal), or use them to store a lot of a metal in one slot: a block
+breaks back down into 9 ingots anywhere, no table needed. A metal's blocks show in the recipe list once
+you have some of that metal.
 
 ### Building and decorating
 
@@ -1778,6 +1845,20 @@ guide to how everything works.
 
 ## Version history
 
+- **Version 46**: **mirrors** (live reflections, joined across a wall of them; a **Live mirrors** switch in
+  ☰ → Graphics), **security cameras** and **monitors** (joined into big screens, each tuned to a camera);
+  light through **stained glass** takes on its colour (torch light always, sunlight with sun shadows on);
+  softer sun shadow edges the farther a shadow falls (high sun shadows); sun glints on metal, ice and glass,
+  and on wet ground after rain; a **Colour bleed** switch in ☰ → Graphics;
+  **blocks** of every metal (9 ingots each, and back);
+  **Torch light shafts** (a slider in ☰ → Graphics: light hanging in the air around the nearest lights, cut into
+  beams by bars, doorways and pillars);
+  **Traced lighting** (exact block shadows from the sun, shade in corners, sky light and reflections, traced
+  through a 3D copy of the blocks around you);
+  **Path tracing (WebGPU)** (sun, sky, bounced light and the nearest lights all traced, with animals and you
+  traced at your real shape);
+  placing a gearbox or electric motor no longer turns it into a clutch or solar panel; a metal recipe
+  (like the iron-banded chest) shows once you have that metal's plates, or everything it needs, not only its ingots.
 - **Version 45**: gears mesh at corners (axles at right angles) and large gears mesh in pairs; a **Distance
   fog** switch in ☰ → Graphics; your own shadow in first person; in survival a short pause after each block
   breaks while you hold on, so you don't dig the one behind it by accident; closing a window with its key

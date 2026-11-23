@@ -1468,7 +1468,7 @@ export function createAtlas() {
 // `modes` maps a tile to 'all' (the whole thing shines, like a lamp's glass: its bright pixels glow) or
 // 'parts' (only what stands out glows, like the green flecks in uranium ore, not the stone around them) or
 // 'fire' (the flame and embers in a lit oven's front).
-export function createGlowMask(atlas, modes) {
+export function createGlowMask(atlas, modes, shine = new Map()) {
   const c = document.createElement('canvas');
   c.width = atlas.width; c.height = atlas.height;
   const src = atlas.getContext('2d').getImageData(0, 0, atlas.width, atlas.height).data;
@@ -1494,6 +1494,16 @@ export function createGlowMask(atlas, modes) {
         : mode === 'fire' ? ss(0.72, 0.86, fire) * ss(0.4, 0.65, hi)
         : ss(med + 0.2, med + 0.5, k) * ss(0.4, 0.7, hi);
       out.data[i] = Math.round(m * 255); out.data[i + 1] = mode === 'fire' ? out.data[i] : 0; out.data[i + 3] = 255; // (green: glow extra bright, so embers bloom too)
+    }
+  }
+  // (v46, blue: how shiny it is, for the sun's highlight on metal, ice and glass; brighter pixels shinier)
+  for (const [tile, v] of shine) {
+    const x0 = (tile % ATLAS_COLS) * TILE, y0 = Math.floor(tile / ATLAS_COLS) * TILE;
+    for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+      const i = ((y0 + y) * atlas.width + x0 + x) * 4;
+      if (src[i + 3] < 128) continue;
+      const hi = Math.max(src[i], src[i + 1], src[i + 2]) / 255;
+      out.data[i + 2] = Math.round(v * ss(0.15, 0.75, hi) * 255); out.data[i + 3] = 255;
     }
   }
   c.getContext('2d').putImageData(out, 0, 0);
@@ -3124,7 +3134,7 @@ ITEM_PAINTERS[HONEYED_APPLE] = (ctx) => {
 };
 
 // ---------- v32: rubber and polymers ----------
-import { LATEX, RUBBER, HIDE_GLUE, POLYMER_PELLETS, POLYMER_SHEET } from './blocks.js';
+import { LATEX, RUBBER, HIDE_GLUE, POLYMER_PELLETS, POLYMER_SHEET, METAL_BLOCKS } from './blocks.js';
 // a tree tap's little bucket: staves with an iron hoop; and the latex in it
 P[T.TAP_SIDE] = (t) => {
   for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
@@ -3594,3 +3604,42 @@ P[T.RECORD] = (t) => { // a black disc with grooves and a red label
   }
 };
 P[T.TURNTABLE] = (t) => { t.fill([70, 70, 76], 0.08); for (let y = 6; y < 10; y++) for (let x = 6; x < 10; x++) t.set(x, y, [150, 150, 160]); };
+
+// ---------- v46: mirrors, security cameras and monitors ----------
+P[T.MIRROR_BACK] = (t) => { // the silvered glass (the mirror's picture is drawn over it by screens.js)
+  for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+    const streak = ((x + y) % 7 === 0 || (x + y) % 7 === 1) && x > 1 && y > 1 && x < 14 && y < 14;
+    t.set(x, y, t.vary(streak ? [220, 228, 236] : [168, 182, 196], 0.03));
+  }
+};
+P[T.CAMERA_BODY] = (t) => { t.fill([206, 208, 204], 0.04); for (let x = 0; x < TILE; x++) { t.set(x, 0, [150, 152, 150]); t.set(x, 15, [150, 152, 150]); } };
+P[T.CAMERA_LENS] = (t) => {
+  for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+    const d = Math.hypot(x - 7.5, y - 7.5);
+    t.set(x, y, d < 2 ? [60, 90, 140] : d < 5.5 ? [16, 18, 24] : [40, 42, 46]);
+  }
+  t.set(6, 6, [200, 220, 255]);
+};
+P[T.MONITOR_SIDE] = (t) => { t.fill([52, 54, 60], 0.05); for (let y = 2; y < 14; y += 3) for (let x = 4; x < 12; x++) t.set(x, y, [36, 38, 42]); };
+P[T.MONITOR_SCREEN] = (t) => { // a dark screen in a thin bezel (screens.js draws the picture over it)
+  for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+    const edge = x === 0 || y === 0 || x === 15 || y === 15;
+    t.set(x, y, edge ? [52, 54, 60] : t.vary([14, 20, 26], 0.04));
+  }
+  t.set(13, 14, [60, 200, 90]); // (the power light)
+};
+
+// ---------- v46: metal blocks ----------
+// a polished plate in the ingot's colour: lit top-left edge, shaded bottom-right, a rivet in each corner and
+// a soft diagonal sheen across the face
+METAL_BLOCKS.forEach((ingot, i) => {
+  P[T.METAL_BLOCK + i] = (t) => {
+    const c = METAL_COLORS[ingot], hi = c.map((v) => Math.min(255, Math.round(v * 1.18 + 12))), lo = dim(c, 0.62);
+    for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+      const edge = x === 0 || y === 0 ? hi : x === TILE - 1 || y === TILE - 1 ? lo : null;
+      const sheen = Math.max(0, 1 - Math.abs(x - y - 1) / 3) * 0.12;
+      t.set(x, y, edge ?? t.vary(c.map((v) => Math.min(255, Math.round(v * (0.94 + sheen)))), 0.025));
+    }
+    for (const [x, y] of [[2, 2], [13, 2], [2, 13], [13, 13]]) { t.set(x, y, lo); t.set(x - 1, y - 1, hi); }
+  };
+});

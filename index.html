@@ -212,7 +212,10 @@
           <p class="hint"><b>Fancy graphics</b> — for strong computers; turn off any that make the game slow.</p>
           <button class="btn wide" id="btn-gfx-preset">Graphics preset: Custom</button>
           <button class="btn wide" id="btn-gfx-shadows">Sun shadows: off</button>
+          <button class="btn wide" id="btn-gfx-traced">Traced lighting: off</button>
+          <button class="btn wide" id="btn-gfx-pathtrace">Path tracing (WebGPU): off</button>
           <label class="slider"><span id="torch-shadows-label">Torch shadows: off</span> <input type="range" id="torch-shadows" min="0" max="50" step="1" value="0" /></label>
+          <label class="slider"><span id="torch-shafts-label">Torch light shafts: off</span> <input type="range" id="torch-shafts" min="0" max="50" step="1" value="0" /></label>
           <label class="slider"><span id="torch-rate-label">Torch shadows redrawn per frame: 2</span> <input type="range" id="torch-rate" min="1" max="50" step="1" value="2" /></label>
           <button class="btn wide" id="btn-far">Distant land: on</button>
           <button class="btn wide" id="btn-fog">Distance fog: on</button>
@@ -222,6 +225,8 @@
           <button class="btn wide" id="btn-gfx-sway">Swaying leaves and plants: off</button>
           <button class="btn wide" id="btn-gfx-water">Fancy water: off</button>
           <button class="btn wide" id="btn-gfx-reflections">Water reflections: off</button>
+          <button class="btn wide" id="btn-gfx-mirrors">Live mirrors: off</button>
+          <button class="btn wide" id="btn-gfx-bounce">Colour bleed: off</button>
           <button class="btn wide" id="btn-gfx-refraction">Water refraction: off</button>
           <button class="btn wide" id="btn-gfx-caustics">Water caustics: off</button>
           <button class="btn wide" id="btn-gfx-ripple">Underwater ripple: off</button>

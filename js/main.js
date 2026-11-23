@@ -3,7 +3,7 @@ import { Viewmodel, Avatar, LOOKS, randomLook, gliderGroup, lightColour } from '
 import { Ripples } from './ripples.js';
 import { FarLand, FAR_REACH } from './farland.js';
 import { Net } from './net.js';
-import { Graphics, GFX_DEFAULTS, GFX_NAMES, GFX_TOGGLES, SHADOW_LEVELS, GFX_PRESETS, PRESET_ORDER, PRESET_NAMES, MAX_TORCH_SHADOWS, gfxUniforms, GFX_FRAG_HEAD, GFX_SUN_TERM, GFX_WATER, GFX_VERT_HEAD, GFX_VERT_DECODE, GFX_VERT_SWAY, WATER_LAYER, LATE_LAYER } from './graphics.js';
+import { Graphics, GFX_DEFAULTS, GFX_NAMES, GFX_TOGGLES, SHADOW_LEVELS, TRACED_LEVELS, GFX_PRESETS, PRESET_ORDER, PRESET_NAMES, MAX_TORCH_SHADOWS, gfxUniforms, GFX_FRAG_HEAD, GFX_SUN_TERM, GFX_WATER, GFX_VERT_HEAD, GFX_VERT_DECODE, GFX_VERT_SWAY, WATER_LAYER, LATE_LAYER } from './graphics.js';
 import {
   BLOCKS, RECIPES, TABLE, AIR, WATER, TORCH, TORCH_WALL_W, WALL_TORCH_DIRS,
   GRASS, DIRT, SAND, CHURN, SUGAR_CANE, BREAD, ITEMS, BOW, ARROW, BUCKET,
@@ -41,7 +41,8 @@ import {
 } from './blocks.js';
 import { Smoke } from './smoke.js';
 import { Fireworks } from './fireworks.js';
-import { createAtlas, createGlowMask, createIcons, createCrackCanvases, createWaterCanvas, createHudIcons, paintSeason } from './textures.js';
+import { makePalette } from './voxels.js';
+import { createAtlas, createGlowMask, createIcons, createCrackCanvases, createWaterCanvas, createHudIcons, paintSeason, ATLAS_COLS } from './textures.js';
 import { World, CHUNK, WORLD_SIZE, chunkKey, skyBrightness, lightBrightness } from './world.js';
 import { localIndex, CHUNK_VOLUME, OLD_CHUNK_VOLUME, H, SEA_LEVEL, SNOW_LINE } from './terrain.js';
 import { ChunkStore, toBlocks } from './store.js';
@@ -81,7 +82,7 @@ import { Logic } from './logic.js';
 
 // v2 = the 16k x 16k streaming world (player state here, edited chunks in IndexedDB).
 // v1 = the old 128 x 128 world, migrated into the middle of the big world on first launch.
-const GAME_VERSION = '45'; // shown in the menu; bump with each release
+const GAME_VERSION = '46'; // shown in the menu; bump with each release
 const SAVE_KEY = 'minicraft-save-v2';
 const LEGACY_SAVE_KEY = 'minicraft-save-v1';
 const SETTINGS_KEY = 'minicraft-settings-v1';
@@ -112,6 +113,8 @@ const settings = (() => {
   if (!s.look || typeof s.look !== 'object') s.look = randomLook(); // (v38: how your character looks)
   s.gfx = { ...GFX_DEFAULTS, ...(s.gfx && typeof s.gfx === 'object' ? s.gfx : {}) };
   s.gfx.torches = Math.max(0, Math.min(MAX_TORCH_SHADOWS, s.gfx.torches | 0));
+  s.gfx.traced = Math.max(0, Math.min(2, s.gfx.traced | 0));
+  s.gfx.shafts = Math.max(0, Math.min(MAX_TORCH_SHADOWS, s.gfx.shafts | 0));
   s.gfx.torchRate = Math.max(1, Math.min(MAX_TORCH_SHADOWS, s.gfx.torchRate | 0 || 2));
   s.gfx.shadows = s.gfx.shadows === true ? 2 : Math.max(0, Math.min(2, s.gfx.shadows | 0)); // (v36 saved on/off)
   return s;
@@ -163,7 +166,16 @@ const glowMask = (() => {
     }
   }
   for (const [t, m] of modes) if (m === 'parts' && plain.has(t)) modes.delete(t); // ('fire' fronts are only ever lit blocks')
-  const tex = new THREE.CanvasTexture(createGlowMask(atlasCanvas, modes));
+  // (v46) the shiny tiles: metal, ice, glass, crystal (and obsidian), for the sun's highlight on them
+  const shine = new Map();
+  for (const [k, t] of Object.entries(TILES)) {
+    if (/_ORE|_CHEST_/.test(k)) continue;
+    if (/^(IRON|GOLD|STEEL|STAINLESS|COPPER|SILVER|BRONZE|TIN|LEAD|ZINC|ELECTRUM|NICKEL|TUNGSTEN|MIRROR_BACK)\b|^(IRON|GOLD|STEEL)/.test(k)) shine.set(t, 1);
+    else if (/^(ICE|PACKED_ICE|GLASS|CRYSTAL|OBSIDIAN|CAMERA_LENS|MONITOR_SCREEN)$/.test(k)) shine.set(t, 0.6);
+  }
+  for (let i = 0; i < COLORS.length; i++) shine.set(TILES.STAINED + i, 0.6);
+  for (let i = 0; i < METAL_BLOCKS.length; i++) shine.set(TILES.METAL_BLOCK + i, 1);
+  const tex = new THREE.CanvasTexture(createGlowMask(atlasCanvas, modes, shine));
   tex.magFilter = tex.minFilter = THREE.NearestFilter; tex.generateMipmaps = false;
   return tex;
 })();
@@ -173,7 +185,7 @@ const glowMask = (() => {
 // daylight is a uniform set by the sky, so nights darken everything the sun reaches,
 // caves stay dark all day, and torches glow wherever they are.
 const AMBIENT = 0.03; // linear; just enough to make out cave walls without a torch
-const lightUniforms = { uGlowMap: { value: glowMask }, uHand: { value: new THREE.Vector4(0, 0, 0, 0) }, uDay: { value: 1 }, uFlicker: { value: 1 }, uAmbient: { value: AMBIENT }, uTints: { value: TINTS.map((c) => new THREE.Vector3(...c)) }, ...gfxUniforms };
+const lightUniforms = { uGlowMap: { value: glowMask }, uHand: { value: new THREE.Vector4(0, 0, 0, 0) }, uDay: { value: 1 }, uFlicker: { value: 1 }, uAmbient: { value: AMBIENT }, uTints: { value: TINTS.map((c) => new THREE.Vector3(...c)) }, uWet: { value: 0 }, ...gfxUniforms };
 function addTorchLight(mat, water = false) {
   // (sky also carries a "next to water" flag, +2, for caustics: see World.buildChunkGeometry)
   mat.customProgramCacheKey = () => (water ? 'world-water' : 'world-solid');
@@ -187,12 +199,26 @@ function addTorchLight(mat, water = false) {
     // (v40: the bright parts of things that give off light, like a torch's flame or a lamp's glass, glow: brighter
     // than anything lit, by day too, and bright enough to bloom. v45: from the texture's own colour, not the face's
     // shading, so a torch's flame glows the same on all four sides)
-    shader.fragmentShader = 'uniform sampler2D uGlowMap;\nuniform float uDay;\nuniform float uFlicker;\nuniform float uAmbient;\nuniform vec4 uHand;\nvarying vec3 vTorchC;\nvarying float vSky;\nvarying vec3 vWorldP;\nvarying float vGlow;\n' + GFX_FRAG_HEAD + shader.fragmentShader
+    shader.fragmentShader = 'uniform sampler2D uGlowMap;\nuniform float uWet;\nuniform float uDay;\nuniform float uFlicker;\nuniform float uAmbient;\nuniform vec4 uHand;\nvarying vec3 vTorchC;\nvarying float vSky;\nvarying vec3 vWorldP;\nvarying float vGlow;\n' + GFX_FRAG_HEAD + shader.fragmentShader
       .replace('#include <color_fragment>',
         '#include <color_fragment>\nvec3 baseC = diffuseColor.rgb;\nfloat hl = uHand.w * pow(clamp(1.0 - distance(vWorldP, uHand.xyz) / 13.0, 0.0, 1.0), 1.4);\n' + GFX_SUN_TERM +
-        'diffuseColor.rgb *= max(max(vec3(max(sunT, uAmbient)), torchT), vec3(hl, hl * 0.96, hl * 0.86));\n' +
-        (water ? '' : 'if (vGlow > 0.5) { vec2 gm = texture2D(uGlowMap, vMapUv).rg; vec3 glowC = baseC / max(vColor.rgb, vec3(0.25)); diffuseColor.rgb = mix(diffuseColor.rgb, max(diffuseColor.rgb, glowC * (1.7 + 0.25 * uFlicker + gm.y * (1.6 + 0.6 * uFlicker))), gm.x); }\n') + (water ? GFX_WATER : ''));
+        'diffuseColor.rgb *= max(max(max(sunT * sunC, vec3(uAmbient)), torchT), vec3(hl, hl * 0.96, hl * 0.86));\n' +
+        // (v46) the sun's highlight on shiny things (metal, ice, glass), and on open ground wet with rain
+        (water ? '' : '{ float shine = texture2D(uGlowMap, vMapUv).b; vec3 N = gfxNormal(); vec3 V = normalize(cameraPosition - vWorldP);\n' +
+          'float wet = uWet * step(0.7, N.y) * smoothstep(0.85, 1.0, vSky) * smoothstep(0.35, 0.65, fract(sin(dot(floor(vWorldP.xz * 2.0), vec2(12.99, 78.23))) * 437.58) * 0.5 + 0.5 * sin(vWorldP.x * 0.7 + 1.3 * sin(vWorldP.z * 0.5)));\n' +
+          // (v46) with full traced lighting, shiny things and puddles mirror what's around them (the blocks, or the sky)
+          'if (uVoxOn > 1.5) { float rk = max(shine * 0.6, wet * 0.5); if (rk > 0.02) { float fr = 0.25 + 0.75 * pow(1.0 - max(dot(N, V), 0.0), 4.0);\n' +
+          '  diffuseColor.rgb = mix(diffuseColor.rgb, gfxVoxReflect(reflect(-V, N), N) * mix(vec3(1.0), baseC / max(vColor.rgb, vec3(0.2)), shine * 0.6), rk * fr); } }\n' +
+          'float k = max(shine, wet * 0.8);\n' +
+          'if (k > 0.0 && sunT > 0.02 && uSunStr > 0.0) { float s = pow(max(dot(N, normalize(uSunDir + V)), 0.0), mix(28.0, 90.0, shine)); diffuseColor.rgb += min(sunC * s * k * sunT * uSunStr, vec3(0.7)); } }\n') +
+        (water ? '' : 'if (vGlow > 0.5) { vec2 gm = texture2D(uGlowMap, vMapUv).rg; vec3 glowC = baseC / max(vColor.rgb, vec3(0.25)); diffuseColor.rgb = mix(diffuseColor.rgb, max(diffuseColor.rgb, glowC * (1.7 + 0.25 * uFlicker + gm.y * (1.6 + 0.6 * uFlicker))), gm.x); }\n') + (water ? GFX_WATER : ''))
+      // (v46) path tracing: the plain pictures it lights (the colour of the block without light, its distance,
+      // which way it faces and how much it glows; see renderPathTraced in graphics.js)
+      .replace('#include <dithering_fragment>', '#include <dithering_fragment>\n' +
+        'if (uPTPass > 0.5) { float ptE = vGlow > 0.5 ? texture2D(uGlowMap, vMapUv).r : 0.0;\n' +
+        '  gl_FragColor = gfxPTOut(baseC / max(vColor.rgb, vec3(0.05)), vWorldP, gfxNormal(), ptE, 0.0); if (uPTPass < 1.5) gl_FragColor.a = diffuseColor.a; }');
   };
+  mat.userData.ptWorld = true;
 }
 addTorchLight(material);
 
@@ -209,6 +235,17 @@ addTorchLight(waterMat, true);
 const materials = { solid: material, water: waterMat };
 // optional fancy graphics: shadows, bloom, water (see graphics.js)
 const gfx = new Graphics(renderer, settings.gfx);
+// (v46) traced lighting: the world, and each block's colour, for the 3D picture of the blocks around you
+gfx.voxWorld = () => world;
+gfx.voxPalette = makePalette(atlasCanvas);
+// (v46) path tracing: the creatures (and you: your body casts light and shade even when you can't see it)
+gfx.ptObjects = () => { const l = mobs ? mobs.mobs.map((m) => m.root) : []; if (avatar && !dead) l.push(avatar.root); return l; };
+gfx.ptEnv = () => ({ day: lightUniforms.uDay.value, ambient: lightUniforms.uAmbient.value });
+// (v46) sunlight through stained glass takes on its colour (its leading still casts a shadow): see graphics.js
+gfx.glass = {
+  material, first: TILES.STAINED, count: COLORS.length, cols: ATLAS_COLS,
+  colours: COLORS.map((c) => { const v = new THREE.Color().setRGB(c.rgb[0] / 255, c.rgb[1] / 255, c.rgb[2] / 255, THREE.SRGBColorSpace); const m = Math.max(v.r, v.g, v.b); return new THREE.Vector3(v.r, v.g, v.b).multiplyScalar(1 / Math.max(m, 0.35)); }),
+};
 // torch shadows: the nearest lights (not lava, not ones out in the sun) within 16 blocks (24 for many lights)
 gfx.findLights = (n) => {
   if (!world || !player) return [];
@@ -220,7 +257,7 @@ gfx.findLights = (n) => {
     const def = BLOCKS[id];
     if (!def || !(def.light >= 6) || def.liquid) continue;
     if (!gfx.opts.torchDay && day * world.skyAt(x, y, z) / 15 > 0.35) continue; // drowned out by daylight (unless shadows by day are on)
-    found.push({ x: x + 0.5, y: y + 0.55, z: z + 0.5, r: def.light + 1, d: (x - px) ** 2 + (y - py) ** 2 + (z - pz) ** 2 });
+    found.push({ x: x + 0.5, y: y + 0.55, z: z + 0.5, r: def.light + 1, c: TINTS[def.tint] ?? TINTS[0], d: (x - px) ** 2 + (y - py) ** 2 + (z - pz) ** 2 });
   }
   found.sort((a, b) => a.d - b.d);
   return found.slice(0, n);
@@ -246,7 +283,7 @@ function findWaterLevel(dt) {
   for (const [y, v] of votes) if (v > most) { most = v; best = y; }
   gfx.waterY = best === null ? null : best + 0.875; // (the surface sits a little below the block top)
 }
-gfx.onFail = (key) => { goCustom(); settings.gfx[key] = key === 'torches' || key === 'shadows' ? 0 : false; saveSettings(); updateGfxLabels(); toast(`${GFX_NAMES[key]} doesn't work on this device — turned off`, 4000); };
+gfx.onFail = (key) => { goCustom(); settings.gfx[key] = key === 'torches' || key === 'shadows' || key === 'shafts' || key === 'traced' ? 0 : false; saveSettings(); updateGfxLabels(); toast(`${GFX_NAMES[key]} doesn't work on this device — turned off`, 4000); };
 
 const sky = new Sky(scene);
 const farLand = new FarLand(scene, null, lightUniforms.uDay); // (v41: the land past the loaded chunks)
@@ -495,6 +532,8 @@ let riding = null; // the minecart you're sitting in
 const minimap = new MiniMap($('map'), atlasCanvas);
 const frames = new Frames(scene, icons); // what's shown in each item frame
 const paintings = new Paintings(scene); // the pictures in paintings
+const screens = new Screens(scene, renderer); // (v46) mirrors, and what security cameras see on monitors
+screens.links = frames; // (a monitor's camera is kept with the item frames)
 const weather = new Weather(scene);
 const smoke = new Smoke(scene); // chimney and locomotive smoke
 const fireworks = new Fireworks(scene);
@@ -1455,12 +1494,13 @@ function renderInventory() {
   const shown = RECIPES.filter((r) => favs.has(recipeKey(r))).concat(RECIPES.filter((r) => !favs.has(recipeKey(r))));
   let count = 0;
   shown.forEach((r) => {
-    if (r.metal && countOf(r.metal) <= 0) return; // metal tools only show up once you have that metal
+    const haveAll = r.in.every(([id, n]) => countOf(id) >= n) && (r.tools ?? []).every((id) => inventory.count(id) > 0);
+    // metal tools only show up once you have that metal (or its plates, or everything the recipe needs)
+    if (r.metal && countOf(r.metal) <= 0 && !haveAll && !idsOf(r.metal).some((id) => { const p = plateOf(id); return p >= PLATES && inventory.count(p) > 0; })) return;
     const fav = favs.has(recipeKey(r));
     if (favOnly && !fav) return;
     if (query && ![r.out[0], ...r.in.flatMap(([id]) => idsOf(id))].some((id) => itemName(id).toLowerCase().includes(query))) return;
     const stationOk = (!r.table || hasTable) && (!r.churn || hasChurn);
-    const haveAll = r.in.every(([id, n]) => countOf(id) >= n) && (r.tools ?? []).every((id) => inventory.count(id) > 0);
     const canMake = haveAll && stationOk && inventory.room(r.out[0]) >= r.out[1];
     if (canMakeOnly && !canMake) return;
     count++;
@@ -3775,6 +3815,21 @@ function tickSwitches(dt) {
 
 // ---------- item frames ----------
 // Tap an empty frame holding something to put one in it; tap a full one to take it out.
+// (v46) tap a security camera to tilt it down a step (and back up after the lowest)
+function tiltCamera(x, y, z, id) {
+  const d = BLOCKS[id], tilt = (d.tilt + 1) % 3;
+  world.setBlock(x, y, z, CAMERA + (d.floor ? 12 : 0) + tilt * 4 + d.facing);
+  sound.click();
+  toast(['Camera looking straight ahead', 'Camera tilted down', 'Camera tilted well down'][tilt], 1200);
+}
+// ...and a monitor to watch the next camera (the nearest first), or switch it off after the last one
+function tuneMonitor(x, y, z) {
+  const on = screens.nextCamera(x, y, z);
+  sound.click();
+  if (!on) { toast(screens.cameras.size ? 'Monitor off' : 'No cameras nearby: put up a security camera first', 1800); return; }
+  const [cx, cy, cz] = on.at;
+  toast(`Camera ${on.index} of ${on.count} (${Math.round(Math.hypot(cx - x, cz - z))} blocks ${pointName(cx - x, cz - z)}${cy !== y ? `, ${Math.abs(cy - y)} ${cy > y ? 'up' : 'down'}` : ''})`, 2200);
+}
 function useFrame(x, y, z, held) {
   const item = frames.get(x, y, z);
   if (item) {
@@ -4220,6 +4275,8 @@ function placeInner() {
     if (BLOCKS[tid].logic && !(held && isBlock(held.id))) { useLogic(tx, ty, tz, BLOCKS[tid]); return; }
     if (BLOCKS[tid].switch === 'button') { setSwitch(tx, ty, tz, true); pressedButtons.set(lampKey(tx, ty, tz), 1.5); return; }
     if (isFrame(tid)) { useFrame(tx, ty, tz, held); return; }
+    if (isCamera(tid) && !(held && isBlock(held.id))) { tiltCamera(tx, ty, tz, tid); return; }
+    if (isMonitor(tid) && !(held && isBlock(held.id))) { tuneMonitor(tx, ty, tz); return; }
     if (isRecordPlayer(tid) && !(held && isBlock(held.id))) { useRecordPlayer(tx, ty, tz, tid); return; }
     if (isStand(tid) && !(held && isBlock(held.id) && !ITEMS[held.id]?.armour)) { useStand(tx, ty, tz); return; }
     if (isDisplay(tid) && target.ny === 1 && (frames.get(tx, ty, tz) || (held && !isBlock(held.id)))) { useDisplay(tx, ty, tz, held); return; }
@@ -4575,6 +4632,20 @@ function placeInner() {
     inventory.consumeHeld();
     if (isSign(id)) editSign(x, y, z);
     return;
+  } else if (id === MIRROR || id === CAMERA || id === MONITOR) {
+    // (v46) a mirror hangs on the side of a block; a camera hangs on one or stands on top, looking the way you
+    // look; a monitor faces you
+    if (there !== AIR) return;
+    const side = FACING_DIRS.findIndex(([dx, dz]) => dx === target.nx && dz === target.nz);
+    if (id === MONITOR) id += facingTowardPlayer(x, z);
+    else if (id === CAMERA && target.ny === 1 && BLOCKS[target.id].solid) id += 12 + (facingTowardPlayer(x, z) + 2) % 4;
+    else if (target.ny !== 0 || !BLOCKS[target.id].solid) { toast(id === MIRROR ? 'Mirrors hang on the side of a block' : 'Cameras go on the side of a block or on top of one'); return; }
+    else id += side;
+    world.setBlock(x, y, z, id);
+    sound.place(BLOCKS[id].sound);
+    inventory.consumeHeld();
+    if (isMonitor(id)) toast('Tap the monitor to pick a camera to watch', 2500);
+    return;
   } else if (id === LAMP || id === MIRROR_LAMP || isCarpet(id)) {
     if (there !== AIR || !world.isSolid(x, y - 1, z)) { toast(`${BLOCKS[id].name}s need something solid underneath`); return; }
   } else {
@@ -4612,6 +4683,7 @@ function placeInner() {
 // A water wheel's axle is always level: on top of a block it points the way you're looking.
 function kineticVariant(id) {
   const k = BLOCKS[id].kinetic;
+  if (k.axis < 0) return id; // (a gearbox has no axle: every face is an axle end)
   let axis = target.nx ? 0 : target.ny ? 1 : 2;
   const other = BLOCKS[target.id].kinetic;
   // (not a gearbox or engine: those have no axle; sneak to keep the tapped face's axle, for a gear at a corner)
@@ -5075,7 +5147,7 @@ function dropUnsupported(x, y, z) {
   FACING_DIRS.forEach(([dx, dz], f) => {
     const id = world.get(x + dx, y, z + dz), d = BLOCKS[id];
     if (id === ROPE_LADDER + f) { rollUpRope(x + dx, y, z + dz); return; }
-    const hung = id === LADDER + f || id === SIGN + f || id === ITEM_FRAME + f || (d?.switch && !d.floor && d.facing === f);
+    const hung = id === LADDER + f || id === SIGN + f || id === ITEM_FRAME + f || (d?.switch && !d.floor && d.facing === f) || (d?.hung === 'wall' && d.facing === f);
     if (hung) {
       world.setBlock(x + dx, y, z + dz, AIR);
       if (id === SIGN + f) signs.remove(x + dx, y, z + dz);
@@ -5091,6 +5163,7 @@ function dropUnsupported(x, y, z) {
     inventory.add(onTop.drop, 1);
     signalChanged(x, y + 1, z);
   }
+  if (BLOCKS[world.get(x, y + 1, z)]?.hung === 'floor') { const d = BLOCKS[world.get(x, y + 1, z)]; world.setBlock(x, y + 1, z, AIR); inventory.add(d.drop, 1); }
   if (BLOCKS[world.get(x, y + 1, z)]?.post) {
     world.setBlock(x, y + 1, z, AIR);
     signs.remove(x, y + 1, z);
@@ -5294,7 +5367,7 @@ const KV = {
   },
   frame: {
     entries: () => frames.items,
-    apply: (k, v) => { if ((Number.isInteger(v) && v > 0) || (typeof v === 'string' && v[0] === 'A' && v.length < 4000)) frames.items.set(k, v); else frames.items.delete(k); return frames.items.get(k); },
+    apply: (k, v) => { if ((Number.isInteger(v) && v > 0) || (typeof v === 'string' && (v[0] === 'A' || v[0] === 'M') && v.length < 4000)) frames.items.set(k, v); else frames.items.delete(k); return frames.items.get(k); },
   },
 };
 const kvKey = (v) => (v === undefined || v === null ? '' : JSON.stringify(v));
@@ -5477,8 +5550,11 @@ updateLookButtons();
 function updateGfxLabels() {
   const g = settings.gfx;
   $('btn-gfx-shadows').textContent = `Sun shadows: ${SHADOW_LEVELS[g.shadows]}`;
+  $('btn-gfx-traced').textContent = `Traced lighting: ${TRACED_LEVELS[g.traced]}`;
   $('torch-shadows').value = g.torches;
   $('torch-shadows-label').textContent = `Torch shadows: ${g.torches ? `nearest ${g.torches}` : 'off'}`;
+  $('torch-shafts').value = g.shafts;
+  $('torch-shafts-label').textContent = `Torch light shafts: ${g.shafts ? `nearest ${g.shafts}` : 'off'}`;
   $('torch-rate').value = g.torchRate;
   $('torch-rate-label').textContent = `Torch shadows redrawn per frame: ${g.torchRate}`;
   for (const key of GFX_TOGGLES) { const b = $(`btn-gfx-${key}`); if (b) b.textContent = `${GFX_NAMES[key]}: ${g[key] ? 'on' : 'off'}`; }
@@ -5529,10 +5605,12 @@ function tickAutoGfx(dt) {
 updatePresetLabel();
 if (settings.gfxPreset === 'auto') applyPreset('auto', true);
 $('torch-shadows').addEventListener('input', (e) => { goCustom(); settings.gfx.torches = +e.target.value; gfx.set('torches', settings.gfx.torches); updateGfxLabels(); saveSettings(); });
+$('torch-shafts').addEventListener('input', (e) => { goCustom(); settings.gfx.shafts = +e.target.value; gfx.set('shafts', settings.gfx.shafts); updateGfxLabels(); saveSettings(); });
 $('torch-rate').addEventListener('input', (e) => { goCustom(); settings.gfx.torchRate = +e.target.value; gfx.set('torchRate', settings.gfx.torchRate); updateGfxLabels(); saveSettings(); });
+$('btn-gfx-traced').addEventListener('click', () => { goCustom(); settings.gfx.traced = (settings.gfx.traced + 1) % 3; gfx.set('traced', settings.gfx.traced); updateGfxLabels(); saveSettings(); });
 $('btn-gfx-shadows').addEventListener('click', () => { goCustom(); settings.gfx.shadows = (settings.gfx.shadows + 1) % 3; gfx.set('shadows', settings.gfx.shadows); updateGfxLabels(); saveSettings(); });
 for (const key of GFX_TOGGLES) {
-  $(`btn-gfx-${key}`)?.addEventListener('click', () => { goCustom(); settings.gfx[key] = !settings.gfx[key]; gfx.set(key, settings.gfx[key]); updateGfxLabels(); saveSettings(); });
+  $(`btn-gfx-${key}`)?.addEventListener('click', () => { if (key !== 'pathtrace') goCustom(); settings.gfx[key] = !settings.gfx[key]; gfx.set(key, settings.gfx[key]); updateGfxLabels(); saveSettings(); });
 }
 $('btn-tips').addEventListener('click', () => { settings.tips = !settings.tips; updateTipsLabel(); saveSettings(); if (!settings.tips) $('inv-tip').classList.remove('show'); });
 function updatePerfLabel() { $('btn-perf').textContent = `Performance info: ${settings.perf ? 'on' : 'off'}`; }
@@ -7195,7 +7273,7 @@ function snapPhoto() {
   document.body.classList.add('snapping');
   gfx.render(scene, camera);
   let url = null;
-  try { url = renderer.domElement.toDataURL('image/png'); } catch (err) { reportError(err); }
+  try { url = (gfx.ptActive ? gfx.pt.canvas : renderer.domElement).toDataURL('image/png'); } catch (err) { reportError(err); }
   document.body.classList.remove('snapping');
   if (!url) return null;
   lastPhoto = url;
@@ -7771,10 +7849,25 @@ function frame(now) {
   try { world.update(player.pos.x, player.pos.z, scene, materials, 6, dt); } catch (err) { reportError(err); }
   farLand.update(player.pos, Math.floor(player.pos.x / CHUNK), Math.floor(player.pos.z / CHUNK), settings.viewDistance);
   gfx.sunDir.copy(sky.sunDir); gfx.overcast = weather?.overcast ?? 0; gfx.underwater = !!player.eyeInWater;
+  // (v46) the ground gets wet while it rains and dries off slowly after (it glints in the sun, see addTorchLight)
+  const wetU = lightUniforms.uWet;
+  wetU.value = Math.max(0, Math.min(1, wetU.value + dt * (weather?.raining && weather.kind === 'rain' ? 0.05 : -0.008)));
   try { findWaterLevel(dt); } catch (err) { reportError(err); }
+  try { renderScreens(); } catch (err) { reportError(err); }
+  const hand = viewMode === 0 && !photoMode && !dead;
+  gfx.overlay = hand ? drawHand : null; // (path tracing draws it on its own picture)
   gfx.render(scene, camera);
-  if (viewMode === 0 && !photoMode && !dead) viewmodel.render(renderer);
+  if (hand && !gfx.ptActive) viewmodel.render(renderer);
   updatePerf(now);
+}
+
+// (v46) the mirrors' pictures and a security camera's view, drawn before the main view. In first person your
+// body is hidden from you, but it's in the mirror (and on camera).
+function drawHand(r) { viewmodel.render(r); }
+function renderScreens() {
+  camera.updateMatrixWorld();
+  const body = !dead && !avatar.root.visible ? [avatar.root] : [];
+  screens.render(camera, { mirrors: !!gfx.opts.mirrors, show: body, hide: [highlight, crack], sky: scene.fog?.color, uniforms: gfxUniforms });
 }
 
 function updatePerf(now) {
@@ -7901,6 +7994,7 @@ function stepGame(now, dt) {
   } catch (err) { reportError(err); }
   frames.update(dt, world, { day: lightUniforms.uDay.value, flicker: lightUniforms.uFlicker.value, ambient: lightUniforms.uAmbient.value });
   paintings.update(dt, world, { day: lightUniforms.uDay.value, flicker: lightUniforms.uFlicker.value, ambient: lightUniforms.uAmbient.value });
+  screens.update(dt, world);
   signs.update(dt, world, { day: lightUniforms.uDay.value, flicker: lightUniforms.uFlicker.value, ambient: lightUniforms.uAmbient.value });
   coordsTimer -= dt;
   if (coordsTimer <= 0) {
@@ -7990,7 +8084,7 @@ window.minicraft = {
   arrows, fishing, kinetics, electric, lightUniforms, bees, catchAt, seasonOf, applySeason, set day(v) { day = v; applySeason(); }, frames, signalAt, setSwitch, logic, machines, carts, minimap, signs, armour, damage, placeRail, getInCart, getOutOfCart,
   get riding() { return riding; }, explode, lightFuse, fuses, clockTime, compassText, place, editSign, closeSign, openInventory, closeInventory, chestMove, lamps, tickLamps, sleepUntilMorning, stations, openStation, closeStation,
   get caneToday() { return caneToday; }, get creative() { return creative; }, set creative(v) { creative = v; applyCreative(); }, toggleFly, wand, useWand, get achieved() { return achieved; }, achieve, worldMap, openMap, closeMap, openGuide, switchSlot, store, saveGame, renderWorlds, openWorlds, exportSlot, get target() { return target; }, set target(v) { target = v; }, applyKeys, renderKeys, camera, get controls() { return controls; }, loose, throwHeld, get waypoints() { return waypoints; }, toggleWaypoint, sortSlots, quickStack, dropMeteor, get meteors() { return meteors; }, weather, openTrade, closeTrade, mountMob, dismount, get ridingMob() { return ridingMob; }, effects, armourWear, useAnvil, rollLoot, settings,
-  get bedSpawn() { return bedSpawn; }, fertilise, openJournal, closeJournal, get packs() { return packs; }, radiationAt, vehicles, boardVehicle, leaveVehicle, get boarded() { return boarded; }, get seated() { return seated; }, crows, onInvSlot, onStationSlot, quickMoveInv, quickMoveStation, usedIn, itemTipHTML, critters, tickPets, sealife, useRecordPlayer, recordNear, useStand, undoEdit, undoStack, get catGiftDay() { return catGiftDay; }, get villageGrowth() { return villageGrowth; }, notePlanting, tickPuzzles, airPumpNear, useStable, stableNear, horseLabel, logistics, openLogistics, closeLogistics, placeOrder, get lpOpen() { return lpOpen; }, music, musicMood, get guideDone() { return guideDone; }, get guideClaimed() { return guideClaimed; }, tickGuidebook, openGuidebook, closeGuidebook, claimGoal, goalMet, fineChance, fineHarvest, showProduce, foodContest, specialTrades, catchAt, stockStable, tickStables, mangers, openSaddlebags, honeyAt, apiculture, scoopHive, beeEnv, fitUpgrade, piles, lightCharcoalPile, tickPiles, searchChests, takeFromChest, markChest, get chestMark() { return chestMark; }, enterPhotoMode, exitPhotoMode, snapPhoto, get photoMode() { return photoMode; }, photoCam, get lastPhoto() { return lastPhoto; }, tickStalactites, loosenStalactite, fallingRocks, shaking, workLock, findLock, tickLocks, openGates, lockJobs, hangRopeLadder, layBridge, rollUpRope, fireworks, ringBell, requestFor, festivalToday, repOf, addRep, tradeCost, tickFestival, villageEntry, hearths, tickHearths, feedHearth, chimneyTop, smoke, renderPins, togglePin, lightning, igniteAt, fires, tickFires, tickStorm, growVillage, buildVillageHouse, stallPrice, tickStalls, tickVillages, set catGiftDay(v) { catGiftDay = v; }, get places() { return places; }, get treasures() { return treasures; }, readTreasureMap, tickTreasure, beams, tickBeams, beaconSpots: () => beaconSpots, mistNow, tickSnow, tickExplore, sitOn, standUp, useDisplay, zips, linkZip, startZip, get zipping() { return zipping; }, burnCoal, get health() { return health; }, set health(v) { health = v; }, paintings, placeSwitchRail, signalAt, ailments, armourEnch, openAltar, lairNear, useBed, eat, drinkTea,
+  get bedSpawn() { return bedSpawn; }, fertilise, openJournal, closeJournal, get packs() { return packs; }, radiationAt, vehicles, boardVehicle, leaveVehicle, get boarded() { return boarded; }, get seated() { return seated; }, crows, onInvSlot, onStationSlot, quickMoveInv, quickMoveStation, usedIn, itemTipHTML, critters, tickPets, sealife, useRecordPlayer, recordNear, useStand, undoEdit, undoStack, get catGiftDay() { return catGiftDay; }, get villageGrowth() { return villageGrowth; }, notePlanting, tickPuzzles, airPumpNear, useStable, stableNear, horseLabel, logistics, openLogistics, closeLogistics, placeOrder, get lpOpen() { return lpOpen; }, music, musicMood, get guideDone() { return guideDone; }, get guideClaimed() { return guideClaimed; }, tickGuidebook, openGuidebook, closeGuidebook, claimGoal, goalMet, fineChance, fineHarvest, showProduce, foodContest, specialTrades, catchAt, stockStable, tickStables, mangers, openSaddlebags, honeyAt, apiculture, scoopHive, beeEnv, fitUpgrade, piles, lightCharcoalPile, tickPiles, searchChests, takeFromChest, markChest, get chestMark() { return chestMark; }, enterPhotoMode, exitPhotoMode, snapPhoto, get photoMode() { return photoMode; }, photoCam, get lastPhoto() { return lastPhoto; }, tickStalactites, loosenStalactite, fallingRocks, shaking, workLock, findLock, tickLocks, openGates, lockJobs, hangRopeLadder, layBridge, rollUpRope, fireworks, ringBell, requestFor, festivalToday, repOf, addRep, tradeCost, tickFestival, villageEntry, hearths, tickHearths, feedHearth, chimneyTop, smoke, renderPins, togglePin, lightning, igniteAt, fires, tickFires, tickStorm, growVillage, buildVillageHouse, stallPrice, tickStalls, tickVillages, set catGiftDay(v) { catGiftDay = v; }, get places() { return places; }, get treasures() { return treasures; }, readTreasureMap, tickTreasure, beams, tickBeams, beaconSpots: () => beaconSpots, mistNow, tickSnow, tickExplore, sitOn, standUp, useDisplay, zips, linkZip, startZip, get zipping() { return zipping; }, burnCoal, get health() { return health; }, set health(v) { health = v; }, paintings, screens, tuneMonitor, tiltCamera, placeSwitchRail, signalAt, ailments, armourEnch, openAltar, lairNear, useBed, eat, drinkTea,
 };
 
 // ---------- v31: catching bees ----------
@@ -8018,6 +8112,8 @@ apiculture.onYoung = (x, y, z, sp, mate, kids) => {
 import { CHOC_MOULD, CHOC_CAKE, CAKE_SLICES, MOULD_BARS, MELTED_CHOC, CHOC_BAR, MOULD_FILLS, mouldFill } from './blocks.js';
 import { FESTIVAL_FAVOURITES, contestScore, GUANO, BANDAGE, WHISKY, OLD_WHISKY } from './blocks.js';
 import { GLIDER, isWetId, KELP, RECORD_PLAYER, RECORD_MOODS, RECORD_NAMES, isRecordPlayer, ARMOUR_STAND, isStand } from './blocks.js';
+import { MIRROR, CAMERA, MONITOR, METAL_BLOCKS, isCamera, isMonitor, T as TILES, plateOf, PLATES } from './blocks.js';
+import { Screens } from './screens.js';
 import { TREE_TAP, LATEX, MAX_LATEX, POLYMER_BOAT, DEMO_CHARGE, DETONATOR, DEMO_RADIUS, DETONATOR_LINKS, DETONATOR_RANGE } from './blocks.js';
 // Tapping a tree tap takes the latex in it.
 function useTap(x, y, z, tid) {

@@ -4,6 +4,7 @@ import * as THREE from 'three';
 import {
   BLOCKS, AIR, LEAVES, LOG, isLeaves, FRUIT_SAPLING, FRUITS, fruitLeaves, saplingLeaves, GLASS, DIRT, GRASS, WATER, MAX_LIGHT, SUGAR_CANE, MAX_CANE_HEIGHT,
   PUMPKIN, isWheat, WATER_FLOW, WATER_FALL, WATER_WHEEL, isWaterId, isFlowing, waterLevel, LAVA, OBSIDIAN, COBBLE, PIPE, PUMP, SPOUT, T, FLOWERS, isFlower, FACING_DIRS, isWetId,
+  COLORS, STAINED_GLASS, STAINED_PANE,
 } from './blocks.js';
 
 // Water wheels let water run through their cell (and over them); see waterAt().
@@ -100,6 +101,9 @@ function rayBoxes(o, d, x, y, z, boxes, maxDist) {
 const NEIGHBOURS = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]];
 const SIDES = [[1, 0], [-1, 0], [0, 1], [0, -1]];
 const passes = (id) => id === AIR || BLOCKS[id].transparent;
+// (v46) torch light shining through stained glass takes on its colour (an index into TINTS, like a glow lamp's)
+const GLASS_TINT = new Map();
+COLORS.forEach((c, i) => { GLASS_TINT.set(STAINED_GLASS + i, i + 1); GLASS_TINT.set(STAINED_PANE + i, i + 1); });
 
 class Chunk {
   constructor(cx, cz, data) {
@@ -255,7 +259,7 @@ export class World {
     // water nearby may now flow in, or drain away
     this.flow.push([x, y, z], [x + 1, y, z], [x - 1, y, z], [x, y + 1, z], [x, y - 1, z], [x, y, z + 1], [x, y, z - 1]);
     const def = BLOCKS[id];
-    const isMachine = (d) => !!(d?.kinetic || d?.machine || d?.hopper || d?.sensor || d?.painting || d?.ejector || d?.farm || d?.electric || d?.spawner);
+    const isMachine = (d) => !!(d?.kinetic || d?.machine || d?.hopper || d?.sensor || d?.painting || d?.ejector || d?.farm || d?.electric || d?.spawner || d?.screen);
     if (isMachine(def)) c.machines.add(li); else c.machines.delete(li);
     if (isMachine(BLOCKS[old]) || isMachine(def)) this.machinesChanged = true;
     if (BLOCKS[old]?.electric || def?.electric) this.electricChanged = true;
@@ -827,7 +831,7 @@ export class World {
         const next = isSky ? skyStep(level, dy === -1, id) : level - 1;
         if (next > nc[channel][li]) {
           nc[channel][li] = next;
-          if (!isSky) nc.tint[li] = c.tint[localIndex(x, y, z)]; // coloured light stays its colour as it spreads
+          if (!isSky) nc.tint[li] = GLASS_TINT.get(id) ?? c.tint[localIndex(x, y, z)]; // coloured light stays its colour as it spreads (and stained glass colours it)
           this.markCellDirty(nx, nz);
           queue.push(pack(nx, ny, nz));
         }
@@ -975,7 +979,7 @@ export class World {
       if (def?.hive >= 0) c.hives.add(li);
       if (def?.logic) c.logic.add(li);
       if (def?.grows && this.canGrow(c, li & 15, li >> 8, (li >> 4) & 15)) c.growing.add(li);
-      else if (def?.kinetic || def?.machine || def?.hopper || def?.sensor || def?.painting || def?.ejector || def?.farm || def?.electric || def?.spawner) { c.machines.add(li); this.machinesChanged = true; }
+      else if (def?.kinetic || def?.machine || def?.hopper || def?.sensor || def?.painting || def?.ejector || def?.farm || def?.electric || def?.spawner || def?.screen) { c.machines.add(li); this.machinesChanged = true; }
       else if (isFlowing(id)) this.flow.push([x0 + (li & 15), li >> 8, z0 + ((li >> 4) & 15)]); // water left running
     }
     this.dirty.add(c.key);
@@ -1137,6 +1141,7 @@ export class World {
   // ---------- meshing ----------
 
   meshChunk(c, scene, materials) {
+    c.rev = (c.rev ?? 0) + 1; // (v46: tells the traced-lighting picture to copy this chunk again, see voxels.js)
     const geo = this.buildChunkGeometry(c);
     for (const kind of ['solid', 'water']) {
       const g = geo[kind];
