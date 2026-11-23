@@ -203,6 +203,7 @@ menu, right-stick click the view, d-pad up the guidebook, d-pad down fly (creati
 | World map | ☰ → World map, or tap the corner map | M |
 | Fly on / off (creative) | 🕊 button | F |
 | Fly up / down (creative) | ⤒ / ⤓ buttons | Space / Left Shift |
+| Undo your last block change (creative) | ↶ button | Ctrl + Z |
 | Photo mode (free camera, no HUD) | ☰ → 📷 Photo mode; move and look as usual, ▲ ▼ to rise and sink, 📷 to save the picture, ✕ to leave | F2 (Space / Left Shift to rise and sink, Enter or P to snap, F2 or Esc to leave) |
 | Copy and paste a build (creative) | Tap two corners with the copy wand, then tap to paste; double-tap and hold to clear | Right click / hold left button |
 
@@ -920,12 +921,23 @@ cobblestone, the metal's ingot, or leather. Wear can be turned off in the ☰ me
 | 3 Carpets | 2 wool |
 | Curtain | 2 wool + 1 stick |
 | Door | 4 planks |
+| Record Player | 4 planks + 1 iron ingot + 1 copper ingot |
+| Armour Stand | 6 sticks + 2 planks |
 
 Chairs face you when you place them; doors take two blocks. Beds are two blocks long: the foot goes
 where you tap and the head (with the pillow) extends away from you. Tap a bed in the evening or at
 night to sleep until morning (not while a creature is lurking nearby); any tap sets it as your respawn point.
 
 Tap a crafting table or butter churn to open crafting there.
+
+A **record player** plays music: tap it to put on a record (Morning Fields, Night Sky, Deep Caves, Under the
+Waves, Village Square, Festival Day and First Snow, one tap each) and once more past the last to stop it. While
+it plays, its music goes on and on (even with the Music slider at 0), loudest close by and fading out about 24
+blocks away. In multiplayer everyone nearby hears it.
+
+An **armour stand** faces you when you place it and needs room above it. Tap it to swap all your armour (and
+your shield) with what it holds: hang a set up, put on another, and swap back whenever you like. Wear and
+enchantments stay with each piece. Break the stand and its armour drops.
 
 ### Storage, ladders and signs
 
@@ -1740,7 +1752,8 @@ to take the mark off. Marks off the edge of the map show as arrows pointing towa
 In **creative mode** you can't be hurt or get hungry, blocks break at once and are never used up, and 🎒
 has a **palette** of every block and item (the recipe search filters it). Press F (or 🕊) to fly. The
 **copy wand** (in the palette) copies builds of up to 32,768 blocks: tap one corner, then the opposite corner,
-then tap wherever you want copies. Switch a world between survival and creative under ☰ → Game mode.
+then tap wherever you want copies. Made a mistake? **Ctrl + Z** (or the ↶ button) undoes your last place,
+break or paste, up to 64 steps back. Switch a world between survival and creative under ☰ → Game mode.
 
 The **world map** (M, ☰ → World map, or tap the corner map) shows all the land you've explored. Drag to look
 around, pinch or scroll to zoom, and tap to put down a waypoint (or tap one to take it away). Waypoints show
@@ -1758,6 +1771,9 @@ guide to how everything works.
 
 ## Version history
 
+- **Version 44**: the **glider** (wear it, jump in mid-air to open it, ride warm air over fires and lava);
+  the sea comes alive: deep ocean in tall worlds, coral reefs, sea grass and kelp, schools of fish, jellyfish,
+  sea turtles and dolphins; the **record player**; the **armour stand**; and **undo** in creative mode.
 - **Version 43**: a taller world. Worlds are now 128 blocks high. New worlds sit higher, with the sea at 56,
   far deeper rock, caves and ore below it, and mountains to 116; worlds made before keep their ground as it was
   and gain 64 blocks of building room above. Clouds moved up to 136.

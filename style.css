@@ -310,6 +310,7 @@ html, body {
 #btn-down { position: absolute; right: max(28px, env(safe-area-inset-right)); bottom: calc(var(--slot) + 124px); }
 #btn-fly { position: absolute; right: max(108px, calc(env(safe-area-inset-right) + 80px)); bottom: calc(var(--slot) + 44px); font-size: 26px; }
 #btn-fly.on { background: #f0c838; }
+#btn-undo { position: absolute; right: max(108px, calc(env(safe-area-inset-right) + 80px)); bottom: calc(var(--slot) + 124px); font-size: 26px; }
 .btn.round.hidden { display: none; }
 
 /* creative palette */

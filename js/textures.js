@@ -3579,3 +3579,12 @@ import { DRIED_KELP } from './blocks.js';
 ITEM_PAINTERS[DRIED_KELP] = (ctx) => {
   for (let k = 0; k < 11; k++) { rect(ctx, 3 + k, 4 + Math.round(Math.sin(k * 0.7) * 1.5) + (k >> 1), 2, 3, k % 3 ? [50, 62, 30] : [70, 84, 40]); }
 };
+
+// ---------- v44: the record player ----------
+P[T.RECORD] = (t) => { // a black disc with grooves and a red label
+  for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+    const d = Math.hypot(x - 7.5, y - 7.5);
+    t.set(x, y, d < 0.8 ? [20, 20, 20] : d < 2.2 ? [200, 50, 40] : Math.round(d * 2) % 3 === 0 ? [44, 44, 48] : [18, 18, 22]);
+  }
+};
+P[T.TURNTABLE] = (t) => { t.fill([70, 70, 76], 0.08); for (let y = 6; y < 10; y++) for (let x = 6; x < 10; x++) t.set(x, y, [150, 150, 160]); };
