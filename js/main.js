@@ -103,7 +103,7 @@ function writeSave(obj, slot = activeSlot) {
 }
 // Settings live apart from the world so they survive "New world".
 const settings = (() => {
-  const defaults = { farLand: true, fog: true, gfxPreset: 'custom', sens: 6, volume: 70, music: 50, viewDistance: 6, perf: false, difficulty: 'worrying', wear: true, favs: [], pins: [], slot: 0, fov: 72, keys: {}, tips: true, doubleTap: true, gfx: {} };
+  const defaults = { farLand: true, fog: true, gfxPreset: 'custom', res: 'auto', sens: 6, volume: 70, music: 50, viewDistance: 6, perf: false, difficulty: 'worrying', wear: true, favs: [], pins: [], slot: 0, fov: 72, keys: {}, tips: true, doubleTap: true, gfx: {} };
   let s;
   try { s = { ...defaults, ...JSON.parse(localStorage.getItem(SETTINGS_KEY)) }; } catch { s = { ...defaults }; }
   s.slot = Math.max(0, Math.min(SLOT_COUNT - 1, s.slot | 0));
@@ -118,6 +118,7 @@ const settings = (() => {
   s.gfx.shafts = Math.max(0, Math.min(MAX_TORCH_SHADOWS, s.gfx.shafts | 0));
   s.gfx.torchRate = Math.max(1, Math.min(MAX_TORCH_SHADOWS, s.gfx.torchRate | 0 || 2));
   s.gfx.shadows = s.gfx.shadows === true ? 2 : Math.max(0, Math.min(2, s.gfx.shadows | 0)); // (v36 saved on/off)
+  if (s.res !== 'auto' && !(+s.res > 0)) s.res = 'auto';
   return s;
 })();
 activeSlot = settings.slot;
@@ -127,8 +128,29 @@ function saveSettings() {
 
 // ---------- renderer / scene ----------
 const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance' });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
-renderer.setSize(window.innerWidth, window.innerHeight);
+// (v48) render resolution, as pixels drawn per CSS pixel. A phone's screen packs 2-3 of its own pixels into each
+// one, and drawing them all cost a lot of speed for a little sharpness. Auto draws phones at 1 (computers at up to
+// 1.5, as before), and lowers it while the game runs slowly: before the Auto graphics preset turns effects off,
+// down to RES_FLOOR, and below that only once every effect is off.
+const RES_LEVELS = [0.5, 0.67, 0.75, 0.85, 1, 1.25, 1.5, 2];
+const RES_FLOOR = 0.75;
+const isPhone = matchMedia('(pointer: coarse)').matches;
+const dpr = () => window.devicePixelRatio || 1;
+const autoRes = { i: 0, cap: 0, capT: 0, timer: 4, fps: [], good: 0 };
+// the levels Auto can use: up to 1 on a phone, 1.5 on a computer (and never past what the screen has)
+const autoResLevels = () => { const top = Math.min(dpr(), isPhone ? 1 : 1.5); const l = RES_LEVELS.filter((r) => r < top - 0.01); l.push(top); return l; };
+function resetAutoRes() { const l = autoResLevels(); autoRes.i = autoRes.cap = l.length - 1; autoRes.capT = 0; autoRes.fps = []; autoRes.good = 0; autoRes.timer = 4; }
+resetAutoRes();
+const renderRatio = () => settings.res === 'auto' ? autoResLevels()[Math.min(autoRes.i, autoResLevels().length - 1)] : Math.min(+settings.res, Math.max(1, dpr()));
+let appliedRatio = 0;
+function applyRes() {
+  const r = renderRatio();
+  if (r === appliedRatio) return;
+  appliedRatio = r;
+  renderer.setPixelRatio(r);
+  renderer.setSize(window.innerWidth, window.innerHeight);
+}
+applyRes();
 $('game').prepend(renderer.domElement);
 
 const SKY = 0x87c5f5;
@@ -5627,8 +5649,9 @@ function tickAutoGfx(dt) {
   autoGfx.fps = [];
   if (f.length < 4) return;
   let to = autoGfx.level;
-  if (med < 40 && to > 0) { to--; autoGfx.ceiling = to; autoGfx.good = 0; }
-  else if (med > 57 && to < autoGfx.ceiling) { if (++autoGfx.good >= 2) { to++; autoGfx.good = 0; } }
+  // (v48: while Auto resolution can still draw fewer pixels, it does that first; and it climbs back first)
+  if (med < 40 && to > 0) { if (!autoResCanDrop()) { to--; autoGfx.ceiling = to; } autoGfx.good = 0; }
+  else if (med > 57 && to < autoGfx.ceiling && !autoResCanRise()) { if (++autoGfx.good >= 2) { to++; autoGfx.good = 0; } }
   else autoGfx.good = 0;
   if (to !== autoGfx.level) {
     autoGfx.level = to; applyPreset('auto', true); updatePresetLabel();
@@ -5647,6 +5670,39 @@ for (const key of GFX_TOGGLES) {
   $(`btn-gfx-${key}`)?.addEventListener('click', () => { if (key !== 'pathtrace') goCustom(); settings.gfx[key] = !settings.gfx[key]; gfx.set(key, settings.gfx[key]); updateGfxLabels(); saveSettings(); });
 }
 $('btn-tips').addEventListener('click', () => { settings.tips = !settings.tips; updateTipsLabel(); saveSettings(); if (!settings.tips) $('inv-tip').classList.remove('show'); });
+// (v48) resolution: Auto, or a fixed level (only those the screen can show)
+const fmtRes = (r) => `${+r.toFixed(2)}×`;
+function updateResLabel() {
+  $('btn-res').textContent = settings.res === 'auto' ? `Resolution: Auto (${fmtRes(renderRatio())})` : `Resolution: ${fmtRes(+settings.res)}`;
+}
+$('btn-res').addEventListener('click', () => {
+  const fixed = RES_LEVELS.filter((r) => r <= Math.max(1, dpr()) + 0.01);
+  const cycle = ['auto', ...fixed];
+  const i = cycle.findIndex((v) => String(v) === String(settings.res));
+  settings.res = cycle[(i + 1) % cycle.length];
+  if (settings.res === 'auto') resetAutoRes();
+  applyRes(); updateResLabel(); saveSettings();
+});
+updateResLabel();
+// Auto resolution: every few seconds, below 50 fps draw a level smaller; comfortably above 57 for a while, a level
+// larger again (but not past a level that was too slow until half a minute has gone by)
+const autoResCanDrop = () => settings.res === 'auto' && autoRes.i > 0 && (autoResLevels()[autoRes.i] > RES_FLOOR + 0.01 || settings.gfxPreset !== 'auto' || autoGfx.level === 0);
+const autoResCanRise = () => settings.res === 'auto' && autoRes.i < autoResLevels().length - 1;
+function tickAutoRes(dt) {
+  if (settings.res !== 'auto' || paused || dead || document.hidden) return;
+  if (perf.fps) autoRes.fps.push(perf.fps);
+  if (autoRes.capT > 0 && (autoRes.capT -= dt) <= 0) autoRes.cap = autoResLevels().length - 1;
+  if ((autoRes.timer -= dt) > 0) return;
+  autoRes.timer = 3;
+  const f = autoRes.fps.sort((a, b) => a - b), med = f[f.length >> 1] ?? 60;
+  autoRes.fps = [];
+  if (f.length < 4) return;
+  let i = autoRes.i;
+  if (med < 50 && autoResCanDrop()) { i--; autoRes.cap = i; autoRes.capT = 30; autoRes.good = 0; }
+  else if (med > 57 && i < Math.min(autoRes.cap, autoResLevels().length - 1)) { if (++autoRes.good >= 2) { i++; autoRes.good = 0; } }
+  else autoRes.good = 0;
+  if (i !== autoRes.i) { autoRes.i = i; applyRes(); updateResLabel(); }
+}
 function updatePerfLabel() { $('btn-perf').textContent = `Performance info: ${settings.perf ? 'on' : 'off'}`; }
 updatePerfLabel();
 $('perf').classList.toggle('hidden', !settings.perf);
@@ -5769,7 +5825,8 @@ renderHotbar();
 window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
-  renderer.setSize(window.innerWidth, window.innerHeight);
+  appliedRatio = 0; applyRes(); // (v48: the screen may have changed: moved to another monitor, say)
+  updateResLabel();
 });
 document.addEventListener('visibilitychange', () => { if (document.hidden) saveGame(); });
 window.addEventListener('pagehide', saveGame);
@@ -7868,9 +7925,11 @@ let coordsTimer = 0;
 let stationRefresh = 0;
 let unsavedCount = 0, lastEditAt = 0;
 const perf = { frames: 0, since: 0, fps: 0 };
+let wallDt = 0;
 function frame(now) {
   requestAnimationFrame(frame);
   const dt = Math.min((now - last) / 1000, 0.05);
+  wallDt = Math.min((now - last) / 1000, 1); // (v48: real time, for Auto graphics and resolution, which watch slow frames)
   last = now;
   if (!world) return;
   // gameplay, streaming and rendering are isolated so an error in one can't stop the others
@@ -7912,7 +7971,7 @@ function updatePerf(now) {
   perf.since = now;
   if (!settings.perf) return;
   const st = world.stats(player.pos.x, player.pos.z);
-  $('perf').textContent = `${perf.fps} fps · view ${settings.viewDistance * CHUNK} blocks\n` +
+  $('perf').textContent = `${perf.fps} fps · view ${settings.viewDistance * CHUNK} blocks · ${fmtRes(renderer.getPixelRatio())} (${renderer.domElement.width}×${renderer.domElement.height})\n` +
     `chunks: ${st.loaded} loaded, ${st.drawn} drawn, ${st.waiting} waiting` +
     (st.pending ? `, ${st.pending} reading` : '') + (st.failed ? `, ${st.failed} failed` : '') +
     `\nanimals: ${mobs.animals} · creatures: ${mobs.creatures} (${difficulty().name})` +
@@ -7981,7 +8040,8 @@ function stepGame(now, dt) {
     tickPads(dt);
     tickHum(dt);
     tickMachineSounds(dt);
-    tickAutoGfx(dt);
+    tickAutoGfx(wallDt);
+    tickAutoRes(wallDt);
     try { tickRipples(dt); } catch (err) { reportError(err); }
     try { tickNet(dt); } catch (err) { reportError(err); }
     renderBossBar();
