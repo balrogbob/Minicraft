@@ -3,7 +3,7 @@
 import * as THREE from 'three';
 import {
   BLOCKS, AIR, LEAVES, LOG, isLeaves, FRUIT_SAPLING, FRUITS, fruitLeaves, saplingLeaves, GLASS, DIRT, GRASS, WATER, MAX_LIGHT, SUGAR_CANE, MAX_CANE_HEIGHT,
-  PUMPKIN, isWheat, WATER_FLOW, WATER_FALL, WATER_WHEEL, isWaterId, isFlowing, waterLevel, LAVA, OBSIDIAN, COBBLE, PIPE, PUMP, SPOUT, T, FLOWERS, isFlower, FACING_DIRS, isWetId,
+  PUMPKIN, isWheat, WATER_FLOW, WATER_FALL, WATER_WHEEL, isWaterId, isFlowing, waterLevel, LAVA, OBSIDIAN, COBBLE, FLOWERS, isFlower, isWetId,
   COLORS, STAINED_GLASS, STAINED_PANE,
 } from './blocks.js';
 
@@ -11,13 +11,12 @@ import {
 const isWheel = (id) => id === WATER_WHEEL || id === WATER_WHEEL + 1;
 const MOULD_SECONDS = 60; // (v33) seconds, on average, for each step of chocolate setting in a mould
 const TAP_SECONDS = 90; // (v32) seconds, on average, for a tree tap to fill another level of latex
-import { TILE, ATLAS_COLS } from './textures.js';
 import { Generator, CHUNK, H, SEA_LEVEL, WORLD_SIZE, WORLD_CHUNKS, CHUNK_VOLUME, localIndex } from './terrain.js';
+import { lightBrightness, skyBrightness, shareShapes, meshJob, PW, PL } from './mesher.js';
+export { lightBrightness, skyBrightness };
 
 export { CHUNK, H, SEA_LEVEL, WORLD_SIZE, WORLD_CHUNKS };
 
-const WATER_TOP = 0.875; // surface sits a little below the block top
-const WHEEL_STREAM = 0.3; // water running through a water wheel's cell is drawn as a shallow stream under it
 
 export const chunkKey = (cx, cz) => cx * WORLD_CHUNKS + cz;
 
@@ -25,48 +24,6 @@ export const chunkKey = (cx, cz) => cx * WORLD_CHUNKS + cz;
 const S1 = WORLD_SIZE, S2 = WORLD_SIZE * WORLD_SIZE;
 const pack = (x, y, z) => x + z * S1 + y * S2;
 
-// ---------- face tables for meshing ----------
-// For each of the 6 faces: axis d, sign s, plus per-corner vertex offset, AO neighbour offsets and uv.
-const FACES = [];
-for (const [d, s] of [[0, 1], [0, -1], [1, 1], [1, -1], [2, 1], [2, -1]]) {
-  const u = (d + 1) % 3, v = (d + 2) % 3;
-  const order = s > 0 ? [[0, 0], [1, 0], [1, 1], [0, 1]] : [[0, 0], [0, 1], [1, 1], [1, 0]];
-  const n = [0, 0, 0]; n[d] = s;
-  const corners = order.map(([cu, cv]) => {
-    const o = [0, 0, 0];
-    o[d] = s > 0 ? 1 : 0; o[u] = cu; o[v] = cv;
-    const a = [...n]; a[u] += cu ? 1 : -1;
-    const b = [...n]; b[v] += cv ? 1 : -1;
-    const c = [...n]; c[u] += cu ? 1 : -1; c[v] += cv ? 1 : -1;
-    let uv;
-    if (d === 1) uv = [o[0], o[2]];
-    else if (d === 0) uv = [o[2], o[1]];
-    else uv = [o[0], o[1]];
-    return { o, a, b, c, uv };
-  });
-  // brightness per face direction (top brightest, bottom darkest)
-  const shade = d === 1 ? (s > 0 ? 1.0 : 0.5) : d === 0 ? 0.8 : 0.65;
-  // which of the four facings (0..3 = +z, -x, -z, +x) a side face points toward
-  const dir = d === 2 ? (s > 0 ? 0 : 2) : d === 0 ? (s > 0 ? 3 : 1) : -1;
-  FACES.push({ d, s, n, corners, shade, dir });
-}
-const AO_LEVELS = [0.45, 0.62, 0.8, 1.0];
-// vertex colours are linear in three.js; convert perceptual brightness to linear
-const toLinear = (v) => Math.pow(v, 2.2);
-
-// Torch light level (0-15, up to 22 for a mirror lamp) -> linear brightness, falling off ~17% per block.
-const LIGHT_CURVE = Array.from({ length: 24 * 4 + 1 }, (_, i) => {
-  const level = i / 4;
-  return level <= 0 ? 0 : toLinear(Math.pow(0.83, 14 - Math.min(14, level)));
-});
-export const lightBrightness = (level) => LIGHT_CURVE[Math.min(96, Math.round(level * 4))];
-
-// Sunlight level (0-15) -> linear brightness. Gentler falloff so cave mouths fade gradually.
-const SKY_CURVE = Array.from({ length: 16 * 4 + 1 }, (_, i) => {
-  const level = i / 4;
-  return level <= 0 ? 0 : toLinear(Math.pow(0.84, 15 - Math.min(15, level)));
-});
-export const skyBrightness = (level) => SKY_CURVE[Math.round(level * 4)];
 
 // Sunlight level after one step into a block of type `id`. Full sunlight shining straight down
 // through air or glass stays full; everything else (sideways, or down through leaves and water)
@@ -133,6 +90,40 @@ const SOIL_REST_DAYS = 6; // a season: soil left this long without the same crop
 // Leaves with no log within this many steps (through other leaves) decay.
 const LEAF_REACH = 4;
 
+// (v48) chunks are meshed in workers (mesh-worker.js) where the browser allows, so building a chunk's triangles
+// (several milliseconds, tens on a phone) never holds up a frame. Without workers, or if they fail, meshing
+// happens here as before. (?syncmesh in the address meshes here, for testing.)
+const MESH_WORKERS = Math.max(1, Math.min(2, (globalThis.navigator?.hardwareConcurrency || 2) - 1));
+const JOBS_PER_WORKER = 2;
+class MeshPool {
+  constructor(onDone, onBroken) {
+    this.onDone = onDone; this.onBroken = onBroken;
+    this.workers = []; this.busy = []; this.broken = null;
+    try {
+      for (let i = 0; i < MESH_WORKERS; i++) {
+        const w = new Worker(new URL('./mesh-worker.js', import.meta.url), { type: 'module' });
+        w.onmessage = (e) => { this.busy[i]--; this.onDone(e.data); };
+        w.onerror = (e) => { e.preventDefault?.(); this.fail(new Error(`mesh worker: ${e.message || 'failed to start'}`)); };
+        this.workers.push(w); this.busy.push(0);
+      }
+    } catch (err) { this.fail(err); }
+  }
+  fail(err) {
+    if (this.broken) return;
+    this.broken = err;
+    this.dispose();
+    this.onBroken(err);
+  }
+  get free() { return !this.broken && this.busy.some((b) => b < JOBS_PER_WORKER); }
+  post(job, transfer) {
+    let i = 0;
+    for (let k = 1; k < this.busy.length; k++) if (this.busy[k] < this.busy[i]) i = k;
+    this.busy[i]++;
+    this.workers[i].postMessage(job, transfer);
+  }
+  dispose() { for (const w of this.workers) w.terminate(); this.workers = []; this.busy = []; }
+}
+
 export class World {
   // tall: (v43) the terrain profile, true for worlds made since v43 (see terrain.js)
   constructor(seed, store, tall = false) {
@@ -154,6 +145,12 @@ export class World {
     this.ringCache = null;
     this.failed = new Map(); // chunk key -> time it failed to load; retried after a pause
     this.onError = null; // called with an Error if a chunk fails to generate, load or mesh
+    // (v48) meshing: each job gets a number; a chunk shows the newest result that has come back (meshSeq: its
+    // newest job, shownSeq: the job it shows, or any job begun before it was dropped)
+    this.meshSeq = 0;
+    this.inFlight = new Map(); // job number -> chunk key
+    this.pool = typeof Worker !== 'undefined' && !globalThis.location?.search.includes('syncmesh')
+      ? new MeshPool((msg) => this.meshDone(msg), (err) => this.meshBroken(err)) : null;
   }
 
   // Report an error without letting it stop the streaming of other chunks.
@@ -271,87 +268,6 @@ export class World {
   }
 
   // ---------- fences, panes and collision ----------
-
-  // Does a fence or pane at (x, y, z) reach out toward its neighbour at (nx, y, nz)?
-  joins(def, nx, y, nz) {
-    const n = BLOCKS[this.get(nx, y, nz)];
-    if (!n || n.id === AIR) return false;
-    if (n.shape === def.shape) return true;
-    if ((def.shape === 'fence' || def.shape === 'wall') && n.gate) return true;
-    return n.shape === 'cube' && n.solid && (def.shape === 'pane' || !n.transparent);
-  }
-
-  // The model of a fence or pane, with arms toward whatever it joins.
-  joinedModel(x, y, z, def) {
-    const dirs = [[1, 0], [-1, 0], [0, 1], [0, -1]].filter(([dx, dz]) => this.joins(def, x + dx, y, z + dz));
-    const arm = (dx, dz, a, b, y0, y1, tile) => {
-      const [lo, hi] = dx > 0 ? [b, 16] : dx < 0 ? [0, a] : dz > 0 ? [b, 16] : [0, a];
-      return dx ? [lo, y0, 7, hi, y1, 9, tile] : [7, y0, lo, 9, y1, hi, tile];
-    };
-    if (def.shape === 'fence') {
-      const post = def.postTex ?? T.PLANKS, rail = def.armTex ?? T.PLANKS, [r0, r1] = def.armTex ? [7, 8] : [6, 8]; // (an electric fence's wires are thin)
-      const m = [[6, 0, 6, 10, 16, 10, post]];
-      for (const [dx, dz] of dirs) m.push(arm(dx, dz, 6, 10, r0, r1, rail), arm(dx, dz, 6, 10, r0 + 6, r1 + 6, rail), ...(def.armTex ? [arm(dx, dz, 6, 10, r0 + 3, r1 + 3, rail)] : []));
-      return m;
-    }
-    if (def.shape === 'wall') {
-      // a thick post (left out where the wall just runs straight through), and a wall toward each neighbour
-      const tex = def.wallTex, straight = dirs.length === 2 && dirs[0][0] === -dirs[1][0] && dirs[0][1] === -dirs[1][1];
-      const up = this.get(x, y + 1, z) !== AIR;
-      const m = straight && !up ? [] : [[4, 0, 4, 12, 16, 12, tex]];
-      const wide = (dx, dz) => {
-        const [lo, hi] = dx > 0 ? [straight ? 8 : 12, 16] : dx < 0 ? [0, straight ? 8 : 4] : dz > 0 ? [straight ? 8 : 12, 16] : [0, straight ? 8 : 4];
-        const top = up ? 16 : 14;
-        return dx ? [lo, 0, 5, hi, top, 11, tex] : [5, 0, lo, 11, top, hi, tex];
-      };
-      for (const [dx, dz] of dirs) m.push(wide(dx, dz));
-      if (!dirs.length && !m.length) m.push([4, 0, 4, 12, 16, 12, tex]);
-      return m;
-    }
-    const glass = def.paneTex ?? T.GLASS;
-    const m = [[7, 0, 7, 9, 16, 9, glass]];
-    for (const [dx, dz] of dirs) m.push(arm(dx, dz, 7, 9, 0, 16, glass));
-    return m;
-  }
-
-  // Copper wire: a dot in the middle, with a strip out to each wire or switch it touches, to wires a
-  // block lower, and up the side of a block to wires on top of it.
-  wireModel(x, y, z, def) {
-    const t = def.wireTex ? def.wireTex[def.on ? 1 : 0] : def.electric ? (def.on ? T.ELWIRE_ON : T.ELWIRE_OFF) : def.on ? T.WIRE_ON : T.WIRE_OFF, m = [[6.5, 0, 6.5, 9.5, 1, 9.5, t]];
-    for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
-      const n = BLOCKS[this.get(x + dx, y, z + dz)];
-      // (electrum wire also runs up to the electric machines beside it)
-      if (def.electric && n?.electric && !n.switch) { m.push(dx > 0 ? [9.5, 0, 6.5, 16, 1, 9.5, t] : dx < 0 ? [0, 0, 6.5, 6.5, 1, 9.5, t] : dz > 0 ? [6.5, 0, 9.5, 9.5, 1, 16, t] : [6.5, 0, 0, 9.5, 1, 6.5, t]); continue; }
-      const up = BLOCKS[this.get(x + dx, y + 1, z + dz)]?.logic === 'wire' && !BLOCKS[this.get(x, y + 1, z)]?.solid;
-      const down = BLOCKS[this.get(x + dx, y - 1, z + dz)]?.logic === 'wire' && !n?.solid;
-      if (!(n?.switch || up || down)) continue;
-      m.push(dx > 0 ? [9.5, 0, 6.5, 16, 1, 9.5, t] : dx < 0 ? [0, 0, 6.5, 6.5, 1, 9.5, t] : dz > 0 ? [6.5, 0, 9.5, 9.5, 1, 16, t] : [6.5, 0, 0, 9.5, 1, 6.5, t]);
-      if (up) m.push(dx > 0 ? [15, 0, 6.5, 16, 16, 9.5, t] : dx < 0 ? [0, 0, 6.5, 1, 16, 9.5, t] : dz > 0 ? [6.5, 0, 15, 9.5, 16, 16, t] : [6.5, 0, 0, 9.5, 16, 1, t]);
-    }
-    return m;
-  }
-
-  // Stairs turn their corners: a stair whose high side backs onto another stair at right angles becomes an
-  // outside corner (just a quarter up high); one whose low side meets one at right angles, an inside corner.
-  stairModel(x, y, z, def) {
-    const tex = def.model[0][6], f = def.facing;
-    const [fx, fz] = FACING_DIRS[f];
-    const half = (dx, dz) => [dx > 0 ? 8 : 0, dx < 0 ? 8 : 16, dz > 0 ? 8 : 0, dz < 0 ? 8 : 16];
-    const box = ([x0, x1, z0, z1]) => [x0, 8, z0, x1, 16, z1, tex];
-    const meet = (a, b) => [Math.max(a[0], b[0]), Math.min(a[1], b[1]), Math.max(a[2], b[2]), Math.min(a[3], b[3])];
-    const m = [[0, 0, 0, 16, 8, 16, tex]];
-    const back = half(-fx, -fz);
-    const behind = BLOCKS[this.get(x - fx, y, z - fz)], ahead = BLOCKS[this.get(x + fx, y, z + fz)];
-    const across = (n) => n?.stair && n.facing % 2 !== f % 2;
-    if (across(behind)) {
-      const [gx, gz] = FACING_DIRS[behind.facing];
-      m.push(box(meet(back, half(-gx, -gz))));
-    } else if (across(ahead)) {
-      const [gx, gz] = FACING_DIRS[ahead.facing];
-      m.push(box(back), box(meet(half(fx, fz), half(-gx, -gz))));
-    } else m.push(box(back));
-    return m;
-  }
 
   // Fences and shut gates are too tall to step or jump onto.
   isTall(x, y, z) {
@@ -763,16 +679,6 @@ export class World {
     this.flow.push([x + 1, y, z], [x - 1, y, z], [x, y + 1, z], [x, y - 1, z], [x, y, z + 1], [x, y, z - 1]);
   }
 
-  // Does the column of falling water at (x, y, z) come down onto a water wheel?
-  fallsOnWheel(x, y, z) {
-    for (let ty = y - 1; ty >= Math.max(0, y - 24); ty--) {
-      const id = this.get(x, ty, z);
-      if (isWheel(id)) return true;
-      if (id !== WATER_FALL) return false;
-    }
-    return false;
-  }
-
   // Can water rest on this cell and spread sideways over it? Anything but air, water and water wheels
   // (water runs on through those; the bottom of the world counts as a floor). Water running onto still
   // water just joins it.
@@ -780,28 +686,6 @@ export class World {
     if (y < 0) return true;
     const id = this.get(x, y, z);
     return id !== AIR && !isWaterId(id) && !isWheel(id) && !isWetId(id);
-  }
-
-  // Height of the water surface at one corner of a cell: the average of the water cells sharing that
-  // corner, so flowing water slopes smoothly down from its source. Full if any of them has water above.
-  waterCorner(x, y, z, cx, cz) {
-    let sum = 0, n = 0;
-    for (let dz = cz - 1; dz <= cz; dz++) for (let dx = cx - 1; dx <= cx; dx++) {
-      const id = this.waterAt(x + dx, y, z + dz);
-      if (!isWaterId(id)) continue;
-      const h = this.waterHeight(x + dx, y, z + dz, id);
-      if (h === 1) return 1;
-      sum += h; n++;
-    }
-    return n ? sum / n : WATER_TOP;
-  }
-
-  // Surface height of the water in a cell, for drawing: still water sits a little below the top,
-  // flowing water is lower the further it has run, and water with water above fills the cell.
-  waterHeight(x, y, z, id) {
-    if (isWaterId(this.waterAt(x, y + 1, z))) return 1;
-    if (id === WATER || id === WATER_FALL) return WATER_TOP;
-    return Math.max(0.12, (WATER_TOP * waterLevel(id)) / 8);
   }
 
   // ---------- light ----------
@@ -969,6 +853,7 @@ export class World {
 
   addChunk(cx, cz, data) {
     const c = new Chunk(cx, cz, data);
+    c.meshSeq = c.shownSeq = this.meshSeq; // (results for an earlier copy of this chunk don't belong to it)
     this.chunks.set(c.key, c);
     this.lightChunk(c);
     const x0 = cx * CHUNK, z0 = cz * CHUNK;
@@ -1009,6 +894,7 @@ export class World {
   // Load and mesh chunks around (px, pz) within a time budget; unload far ones.
   update(px, pz, scene, materials, budgetMs = 6, dt = 0) {
     const t0 = performance.now();
+    this.scene = scene; this.materials = materials; // (for meshes coming back from the workers)
     const pcx = Math.floor(px / CHUNK), pcz = Math.floor(pz / CHUNK);
     const R = this.renderDistance;
     // 1. load: one ring wider than we draw, so every drawn chunk has its neighbours
@@ -1059,6 +945,7 @@ export class World {
       for (const [, c] of list) {
         // always mesh at least one chunk so edits show up even when generation is busy
         if (performance.now() - t0 > budgetMs && c !== list[0][1]) break;
+        if (this.pool && !this.pool.broken && !this.pool.free) break; // (the workers have enough to do: the rest wait a frame)
         this.dirty.delete(c.key);
         try {
           this.meshChunk(c, scene, materials);
@@ -1088,7 +975,7 @@ export class World {
       const c = this.chunks.get(key);
       if (c && Math.max(Math.abs(c.cx - pcx), Math.abs(c.cz - pcz)) <= R) waiting++;
     }
-    return { loaded: this.chunks.size, drawn, waiting, pending: this.pending.size, failed: this.failed.size };
+    return { loaded: this.chunks.size, drawn, waiting: waiting + this.inFlight.size, pending: this.pending.size, failed: this.failed.size };
   }
 
   // Fraction of chunks within radius r of (px, pz) that are loaded and meshed (for the loading screen).
@@ -1100,12 +987,13 @@ export class World {
       if (!this.inWorld(cx, cz)) continue;
       total++;
       const c = this.chunks.get(chunkKey(cx, cz));
-      if (c && !this.dirty.has(c.key)) ready++;
+      if (c && !this.dirty.has(c.key) && !this.meshing(c)) ready++;
     }
     return total ? ready / total : 1;
   }
 
   dropMeshes(c, scene) {
+    c.shownSeq = c.meshSeq ?? 0; // (a mesh still being made for it is no longer wanted)
     for (const kind of ['solid', 'water']) {
       if (c[kind]) { scene.remove(c[kind]); c[kind].geometry.dispose(); c[kind] = null; }
     }
@@ -1134,17 +1022,68 @@ export class World {
   dispose(scene) {
     this.disposed = true;
     for (const c of this.chunks.values()) this.dropMeshes(c, scene);
+    this.pool?.dispose();
+    this.inFlight.clear();
     this.chunks.clear();
     this.dirty.clear();
   }
 
   // ---------- meshing ----------
 
+  // Mesh a chunk: in a worker, or here if there are none. Either way from a snapshot of it and its border.
   meshChunk(c, scene, materials) {
     c.rev = (c.rev ?? 0) + 1; // (v46: tells the traced-lighting picture to copy this chunk again, see voxels.js)
-    const geo = this.buildChunkGeometry(c);
+    const job = this.snapshot(c);
+    job.seq = c.meshSeq = ++this.meshSeq;
+    job.key = c.key;
+    if (this.pool && !this.pool.broken) {
+      this.inFlight.set(job.seq, c.key);
+      this.pool.post(job, [job.data.buffer, job.light.buffer, job.sky.buffer, job.tint.buffer]);
+      return;
+    }
+    this.applyMesh(c, job.seq, meshJob(job), scene, materials);
+  }
+
+  // A worker has finished a job
+  meshDone(msg) {
+    this.inFlight.delete(msg.seq);
+    const c = this.chunks.get(msg.key);
+    if (this.disposed || !c) return;
+    if (msg.error) {
+      if (msg.seq > (c.shownSeq ?? 0)) c.shownSeq = msg.seq; // (as good as done: don't hold up the loading screen)
+      this.fail(c.key, new Error(msg.error));
+      return;
+    }
+    this.applyMesh(c, msg.seq, msg, this.scene, this.materials);
+  }
+
+  // The workers stopped working (or never started): mesh here from now on, starting with the jobs they had
+  meshBroken(err) {
+    console.warn('Meshing on the main thread:', err?.message ?? err);
+    for (const key of this.inFlight.values()) if (this.chunks.has(key)) this.dirty.add(key);
+    this.inFlight.clear();
+  }
+
+  // Is a mesh being made for this chunk that it doesn't show yet?
+  meshing(c) { return (c.meshSeq ?? 0) > (c.shownSeq ?? 0); }
+
+  // Show a mesh job's result (unless the chunk already shows a newer one, or was dropped since)
+  applyMesh(c, seq, geo, scene, materials) {
+    if (!scene || seq <= (c.shownSeq ?? 0)) return;
+    c.shownSeq = seq;
     for (const kind of ['solid', 'water']) {
-      const g = geo[kind];
+      const a = geo[kind];
+      let g = null;
+      if (a) {
+        g = new THREE.BufferGeometry();
+        g.setAttribute('position', new THREE.BufferAttribute(a.position, 3));
+        g.setAttribute('uv', new THREE.BufferAttribute(a.uv, 2));
+        g.setAttribute('color', new THREE.BufferAttribute(a.color, 3));
+        g.setAttribute('torch', new THREE.BufferAttribute(a.torch, 1));
+        g.setAttribute('sky', new THREE.BufferAttribute(a.sky, 1));
+        g.setIndex(new THREE.BufferAttribute(a.index, 1));
+        g.boundingSphere = new THREE.Sphere(new THREE.Vector3(a.sphere[0], a.sphere[1], a.sphere[2]), a.sphere[3]);
+      }
       let mesh = c[kind];
       if (mesh) {
         mesh.geometry.dispose();
@@ -1161,306 +1100,28 @@ export class World {
     }
   }
 
-  buildChunkGeometry(c) {
-    const pos = [], uv = [], col = [], tl = [], sl = [], index = [];
-    const wpos = [], wuv = [], wcol = [], wtl = [], wsl = [], windex = [];
-    let wcount = 0, vcount = 0;
-    const data = c.data;
-    const tileUV = 1 / ATLAS_COLS;
-    const eps = 0.5 / (TILE * ATLAS_COLS); // half-texel inset to avoid atlas bleeding
-    const opaque = (x, y, z) => {
-      if (y < 0) return true;
-      const id = this.get(x, y, z);
-      return id !== AIR && !BLOCKS[id].transparent;
-    };
-    const x0 = c.cx * CHUNK, z0 = c.cz * CHUNK;
-    const waterU = x0 % 64, waterV = z0 % 64; // keeps water UVs small but seamless across chunks
-    for (let y = 0, yTop = Math.min(H - 1, c.top); y <= yTop; y++) for (let lz = 0; lz < CHUNK; lz++) for (let lx = 0; lx < CHUNK; lx++) {
-      let id = data[localIndex(lx, y, lz)];
-      if (id === AIR) continue;
-      const x = x0 + lx, z = z0 + lz;
-      const wheel = isWheel(id);
-      if (wheel) {
-        id = this.waterAt(x, y, z); // a water wheel is drawn by kinetics.js; the stream it dips into is drawn here
-        if (id === AIR) continue;
-      }
-      const def = BLOCKS[id];
-      const wet = isWetId(id); // (v44) a sea plant: draw the water it stands in, then the plant
-      if (wet || isWaterId(id)) {
-        if (wet) id = WATER;
-        const height = wheel ? WHEEL_STREAM : this.waterHeight(x, y, z, id);
-        // water falling onto a water wheel narrows to a stream, so the wheel's paddles show around it
-        const ins = id === WATER_FALL && this.fallsOnWheel(x, y, z) ? 0.25 : 0;
-        for (const f of FACES) {
-          if (f.n[1] < 0 && y === 0) continue;
-          const nx = x + f.n[0], ny = y + f.n[1], nz = z + f.n[2];
-          // (a wheel's shallow stream counts as open, so water around and above it shows its faces)
-          const raw = this.get(nx, ny, nz), nid = isWheel(raw) ? AIR : isWetId(raw) ? WATER : raw;
-          if (nid !== AIR && !isWaterId(nid) && !BLOCKS[nid].transparent) continue;
-          // between two water cells, only where this one stands higher than its neighbour
-          if (!wheel && !ins && isWaterId(nid) && (f.d === 1 || this.waterHeight(nx, ny, nz, nid) >= height)) continue;
-          if (ins && f.d === 1 && isWaterId(nid)) continue;
-          if (wheel && isWaterId(nid) && f.d !== 1) continue;
-          for (const cr of f.corners) {
-            const top = cr.o[1] === 1 ? (height === 1 || wheel ? height : this.waterCorner(x, y, z, cr.o[0], cr.o[2])) : cr.o[1];
-            const px = lx + ins + cr.o[0] * (1 - 2 * ins), py = y + top, pz = lz + ins + cr.o[2] * (1 - 2 * ins);
-            wpos.push(px, py, pz);
-            // world-space UVs (wrapped every 64 blocks) so the texture tiles seamlessly and can scroll
-            const ux = waterU + px, uz = waterV + pz;
-            if (f.d === 1) wuv.push(ux, uz); else if (f.d === 0) wuv.push(uz, py); else wuv.push(ux, py);
-            const b = toLinear(f.shade);
-            wcol.push(b, b, b);
-            const fx = x + f.n[0], fy = y + f.n[1], fz = z + f.n[2];
-            wtl.push(lightBrightness(Math.max(this.lightAt(x, y, z), this.lightAt(fx, fy, fz))) + 2 * this.tintAt(x, y, z));
-            wsl.push(skyBrightness(Math.max(this.skyAt(x, y, z), this.skyAt(fx, fy, fz))));
-          }
-          windex.push(wcount, wcount + 1, wcount + 2, wcount, wcount + 2, wcount + 3);
-          wcount += 4;
-        }
-        if (!wet) continue;
-        id = def.id;
-      }
-      if (def.shape === 'kinetic') continue; // drawn (and turned) by kinetics.js
-      if (def.shape === 'pipe') {
-        // a lead pipe: a short length at the centre, with arms reaching out to each pipe, pump, spout, tank,
-        // sprinkler or fuel-burning machine it touches
-        const model = [[5, 5, 5, 11, 11, 11, T.LEAD]];
-        if (def.valve) model.push([4, 11, 7, 12, 12, 9, T.WIRE_ON], [7, 11, 4, 9, 12, 12, T.WIRE_ON], [7.5, 11, 7.5, 8.5, 12.5, 8.5, T.IRON]); // its handwheel
-        const joins = (id) => { const d = BLOCKS[id]; return id === PUMP || id === SPOUT || d?.shape === 'pipe' || d?.tank || d?.sprinkler || d?.engine || ['oven', 'smelter', 'blast'].includes(d?.station); };
-        if (joins(this.get(x + 1, y, z))) model.push([11, 5.5, 5.5, 16, 10.5, 10.5, T.LEAD]);
-        if (joins(this.get(x - 1, y, z))) model.push([0, 5.5, 5.5, 5, 10.5, 10.5, T.LEAD]);
-        if (joins(this.get(x, y + 1, z))) model.push([5.5, 11, 5.5, 10.5, 16, 10.5, T.LEAD]);
-        if (joins(this.get(x, y - 1, z))) model.push([5.5, 0, 5.5, 10.5, 5, 10.5, T.LEAD]);
-        if (joins(this.get(x, y, z + 1))) model.push([5.5, 5.5, 11, 10.5, 10.5, 16, T.LEAD]);
-        if (joins(this.get(x, y, z - 1))) model.push([5.5, 5.5, 0, 10.5, 10.5, 5, T.LEAD]);
-        vcount = this.addModel(lx, y, lz, { model }, this.torchAt(x, y, z), skyBrightness(this.skyAt(x, y, z)),
-          pos, uv, col, tl, sl, index, vcount);
-        continue;
-      }
-      if (def.shape === 'lpipe') {
-        // a logistics pipe: a coloured core (by its job) with clear arms out to each pipe, chest or machine it touches
-        const model = [[4.5, 4.5, 4.5, 11.5, 11.5, 11.5, def.side]];
-        const joins = (id) => { const d = BLOCKS[id]; return !!(d?.lpipe || d?.station || d?.tank || d?.engine || (d?.liquid && def.lpipe === 'fprovider')); };
-        if (joins(this.get(x + 1, y, z))) model.push([11.5, 5.5, 5.5, 16, 10.5, 10.5, T.LP_ARM]);
-        if (joins(this.get(x - 1, y, z))) model.push([0, 5.5, 5.5, 4.5, 10.5, 10.5, T.LP_ARM]);
-        if (joins(this.get(x, y + 1, z))) model.push([5.5, 11.5, 5.5, 10.5, 16, 10.5, T.LP_ARM]);
-        if (joins(this.get(x, y - 1, z))) model.push([5.5, 0, 5.5, 10.5, 4.5, 10.5, T.LP_ARM]);
-        if (joins(this.get(x, y, z + 1))) model.push([5.5, 5.5, 11.5, 10.5, 10.5, 16, T.LP_ARM]);
-        if (joins(this.get(x, y, z - 1))) model.push([5.5, 5.5, 0, 10.5, 10.5, 4.5, T.LP_ARM]);
-        vcount = this.addModel(lx, y, lz, { model }, this.torchAt(x, y, z), skyBrightness(this.skyAt(x, y, z)),
-          pos, uv, col, tl, sl, index, vcount);
-        continue;
-      }
-      if (def.shape === 'cable') {
-        // cupronickel cable: a thin insulated run with arms out to each cable or electric block it touches
-        const model = [[6, 6, 6, 10, 10, 10, T.CABLE]];
-        const joins = (id) => !!BLOCKS[id]?.electric && BLOCKS[id].electric.role !== 'wire';
-        if (joins(this.get(x + 1, y, z))) model.push([10, 6.5, 6.5, 16, 9.5, 9.5, T.CABLE]);
-        if (joins(this.get(x - 1, y, z))) model.push([0, 6.5, 6.5, 6, 9.5, 9.5, T.CABLE]);
-        if (joins(this.get(x, y + 1, z))) model.push([6.5, 10, 6.5, 9.5, 16, 9.5, T.CABLE]);
-        if (joins(this.get(x, y - 1, z))) model.push([6.5, 0, 6.5, 9.5, 6, 9.5, T.CABLE]);
-        if (joins(this.get(x, y, z + 1))) model.push([6.5, 6.5, 10, 9.5, 9.5, 16, T.CABLE]);
-        if (joins(this.get(x, y, z - 1))) model.push([6.5, 6.5, 0, 9.5, 9.5, 6, T.CABLE]);
-        vcount = this.addModel(lx, y, lz, { model }, this.torchAt(x, y, z), skyBrightness(this.skyAt(x, y, z)),
-          pos, uv, col, tl, sl, index, vcount);
-        continue;
-      }
-      if (def.shape === 'wire') {
-        vcount = this.addModel(lx, y, lz, { model: this.wireModel(x, y, z, def) }, this.torchAt(x, y, z), skyBrightness(this.skyAt(x, y, z)),
-          pos, uv, col, tl, sl, index, vcount);
-        continue;
-      }
-      if (def.shape === 'fence' || def.shape === 'pane' || def.shape === 'wall') {
-        vcount = this.addModel(lx, y, lz, { model: this.joinedModel(x, y, z, def) }, this.torchAt(x, y, z), skyBrightness(this.skyAt(x, y, z)),
-          pos, uv, col, tl, sl, index, vcount);
-        continue;
-      }
-      if (def.shape === 'torch') {
-        vcount = this.addTorch(lx, y, lz, def, pos, uv, col, tl, sl, index, vcount);
-        continue;
-      }
-      if (def.shape === 'model') {
-        vcount = this.addModel(lx, y, lz, def.stair ? { model: this.stairModel(x, y, z, def) } : def, this.torchAt(x, y, z), skyBrightness(this.skyAt(x, y, z)),
-          pos, uv, col, tl, sl, index, vcount);
-        continue;
-      }
-      if (def.shape === 'cross') {
-        // (how many plant blocks it stands on, so a tall plant sways as one: see addCross)
-        let up = 0;
-        while (up < 7 && y - up > 0 && BLOCKS[this.get(x, y - up - 1, z)]?.shape === 'cross') up++;
-        vcount = this.addCross(lx, y, lz, def, this.torchAt(x, y, z), skyBrightness(this.skyAt(x, y, z)),
-          pos, uv, col, tl, sl, index, vcount, up);
-        continue;
-      }
-      for (const f of FACES) {
-        const nx = x + f.n[0], ny = y + f.n[1], nz = z + f.n[2];
-        if (ny < 0) continue;
-        const nid = this.get(nx, ny, nz);
-        if (nid !== AIR) {
-          const ndef = BLOCKS[nid];
-          if (!ndef.transparent) continue;
-          if (nid === id && !isLeaves(id)) continue; // glass-to-glass faces are hidden
-        }
-        // (blocks with a front, like ovens, show it on the side that faces their `facing` direction)
-        const tile = f.d === 1 ? (f.s > 0 ? def.top : def.bottom) : def.front !== null && f.dir === def.facing ? def.front : def.side;
-        const tu = (tile % ATLAS_COLS) * tileUV;
-        const tvTop = 1 - Math.floor(tile / ATLAS_COLS) * tileUV;
-        const ao = [0, 0, 0, 0];
-        const wet = isWaterId(nid);
-        const leafSway = (isLeaves(id) ? 4 : 0) + (def.light > 0 ? 16 : 0); // (+16: it gives off light, so it glows)
-        for (let k = 0; k < 4; k++) {
-          const cr = f.corners[k];
-          pos.push(lx + cr.o[0], y + cr.o[1], lz + cr.o[2]);
-          uv.push(
-            tu + eps + cr.uv[0] * (tileUV - 2 * eps),
-            tvTop - tileUV + eps + cr.uv[1] * (tileUV - 2 * eps),
-          );
-          const s1 = opaque(x + cr.a[0], y + cr.a[1], z + cr.a[2]) ? 1 : 0;
-          const s2 = opaque(x + cr.b[0], y + cr.b[1], z + cr.b[2]) ? 1 : 0;
-          const cc = opaque(x + cr.c[0], y + cr.c[1], z + cr.c[2]) ? 1 : 0;
-          const a = s1 && s2 ? 0 : 3 - (s1 + s2 + cc);
-          ao[k] = a;
-          const b = toLinear(f.shade * AO_LEVELS[a]);
-          col.push(b, b, b);
-          // smooth light: average the open cells around this corner, in front of the face
-          let sum = this.lightAt(nx, ny, nz), sun = this.skyAt(nx, ny, nz), n = 1;
-          if (!s1) { sum += this.lightAt(x + cr.a[0], y + cr.a[1], z + cr.a[2]); sun += this.skyAt(x + cr.a[0], y + cr.a[1], z + cr.a[2]); n++; }
-          if (!s2) { sum += this.lightAt(x + cr.b[0], y + cr.b[1], z + cr.b[2]); sun += this.skyAt(x + cr.b[0], y + cr.b[1], z + cr.b[2]); n++; }
-          if (!cc && !(s1 && s2)) { sum += this.lightAt(x + cr.c[0], y + cr.c[1], z + cr.c[2]); sun += this.skyAt(x + cr.c[0], y + cr.c[1], z + cr.c[2]); n++; }
-          tl.push(lightBrightness(sum / n) + 2 * this.tintAt(nx, ny, nz));
-          sl.push(skyBrightness(sun / n) + (wet ? 2 : 0) + leafSway); // (+2: faces under water, for caustics; +4: leaves sway; +16 glow)
-        }
-        // flip the quad diagonal so AO interpolates without artifacts
-        if (ao[0] + ao[2] < ao[1] + ao[3]) {
-          index.push(vcount + 1, vcount + 2, vcount + 3, vcount + 1, vcount + 3, vcount);
-        } else {
-          index.push(vcount, vcount + 1, vcount + 2, vcount, vcount + 2, vcount + 3);
-        }
-        vcount += 4;
+  // A copy of a chunk with a one-block border from its neighbours, up to a layer above its highest block: all
+  // the mesher needs (see MeshSource in mesher.js)
+  snapshot(c) {
+    const ny = Math.min(H, c.top + 2), n = PL * ny;
+    const data = new Uint16Array(n), light = new Uint8Array(n), sky = new Uint8Array(n), tint = new Uint8Array(n);
+    for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) {
+      if (!this.inWorld(c.cx + dx, c.cz + dz)) continue;
+      const nb = dx || dz ? this.chunks.get(chunkKey(c.cx + dx, c.cz + dz)) : c;
+      if (!nb) continue;
+      const lx0 = dx < 0 ? 15 : 0, lx1 = dx > 0 ? 0 : 15, lz0 = dz < 0 ? 15 : 0, lz1 = dz > 0 ? 0 : 15;
+      const nd = nb.data, nl = nb.light, ns = nb.sky, nt = nb.tint;
+      for (let y = 0; y < ny; y++) for (let lz = lz0; lz <= lz1; lz++) {
+        const src = (lz << 4) | (y << 8), dst = (lz + 1 + dz * 16) * PW + y * PL + 1 + dx * 16;
+        for (let lx = lx0; lx <= lx1; lx++) { data[dst + lx] = nd[src + lx]; light[dst + lx] = nl[src + lx]; sky[dst + lx] = ns[src + lx]; tint[dst + lx] = nt[src + lx]; }
       }
     }
-    const geo = (p, u, cl, t, sk, i) => {
-      const g = new THREE.BufferGeometry();
-      g.setAttribute('position', new THREE.Float32BufferAttribute(p, 3));
-      g.setAttribute('uv', new THREE.Float32BufferAttribute(u, 2));
-      g.setAttribute('color', new THREE.Float32BufferAttribute(cl, 3));
-      g.setAttribute('torch', new THREE.Float32BufferAttribute(t, 1));
-      g.setAttribute('sky', new THREE.Float32BufferAttribute(sk, 1));
-      g.setIndex(i);
-      g.computeBoundingSphere();
-      return g;
-    };
-    return {
-      solid: vcount ? geo(pos, uv, col, tl, sl, index) : null,
-      water: wcount ? geo(wpos, wuv, wcol, wtl, wsl, windex) : null,
-    };
-  }
-
-  // Furniture: a list of boxes (in 1/16 block), each face textured with the matching part of its tile,
-  // so a thin table leg shows a thin strip of planks. (x, y, z) are chunk-local.
-  addModel(x, y, z, def, torch, sky, pos, uv, col, tl, sl, index, vcount) {
-    const tileUV = 1 / ATLAS_COLS;
-    const inset = 0.5 / TILE; // keep samples inside the tile
-    const clampUV = (t) => Math.min(1 - inset, Math.max(inset, t));
-    for (const [x0, y0, z0, x1, y1, z1, tiles, glow, kind] of def.model) {
-      if (kind === 'cross') {
-        // a plant: two sprites crossed through this box, the whole tile on each
-        const tu = (tiles % ATLAS_COLS) * tileUV, tv0 = 1 - Math.floor(tiles / ATLAS_COLS) * tileUV - tileUV, b2 = toLinear(0.88);
-        const [ax, az, bx, bz, ya, yb] = [x0 / 16, z0 / 16, x1 / 16, z1 / 16, y0 / 16, y1 / 16];
-        for (const [p1, q1, p2, q2] of [[ax, az, bx, bz], [bx, az, ax, bz]]) {
-          for (const [cx, cy, cz, u, v] of [[p1, ya, q1, 0, 0], [p2, ya, q2, 1, 0], [p2, yb, q2, 1, 1], [p1, yb, q1, 0, 1]]) {
-            pos.push(x + cx, y + cy, z + cz);
-            uv.push(tu + clampUV(u) * tileUV, tv0 + clampUV(v) * tileUV);
-            col.push(b2, b2, b2);
-            tl.push(glow ? 1 : torch);
-            sl.push(glow ? 17 : sky); // (+16: a glowing part)
-          }
-          index.push(vcount, vcount + 1, vcount + 2, vcount, vcount + 2, vcount + 3);
-          index.push(vcount, vcount + 2, vcount + 1, vcount, vcount + 3, vcount + 2);
-          vcount += 4;
-        }
-        continue;
-      }
-      const lo = [x0 / 16, y0 / 16, z0 / 16], size = [(x1 - x0) / 16, (y1 - y0) / 16, (z1 - z0) / 16];
-      for (const f of FACES) {
-        const tile = typeof tiles === 'number' ? tiles : f.d === 1 ? (f.s > 0 ? tiles.top : tiles.bottom) : tiles.side;
-        const tu = (tile % ATLAS_COLS) * tileUV;
-        const tv0 = 1 - Math.floor(tile / ATLAS_COLS) * tileUV - tileUV;
-        const b = toLinear(f.shade);
-        for (const c of f.corners) {
-          const px = lo[0] + c.o[0] * size[0], py = lo[1] + c.o[1] * size[1], pz = lo[2] + c.o[2] * size[2];
-          pos.push(x + px, y + py, z + pz);
-          const [u, v] = f.d === 1 ? [px, pz] : f.d === 0 ? [pz, py] : [px, py];
-          uv.push(tu + clampUV(u) * tileUV, tv0 + clampUV(v) * tileUV);
-          col.push(b, b, b);
-          tl.push(glow ? 1 : torch);
-          sl.push(glow ? 17 : sky);
-        }
-        index.push(vcount, vcount + 1, vcount + 2, vcount, vcount + 2, vcount + 3);
-        vcount += 4;
-      }
+    const wheels = [], x0 = c.cx * CHUNK - 1, z0 = c.cz * CHUNK - 1;
+    for (const [k, id] of this.wheelWater) {
+      const x = k % S1, z = Math.floor(k / S1) % S1, y = Math.floor(k / S2);
+      if (x >= x0 && z >= z0 && x < x0 + PW && z < z0 + PW && y < ny) wheels.push(x - x0 + (z - z0) * PW + y * PL, id);
     }
-    return vcount;
-  }
-
-  // Plants: two sprites crossed diagonally through the block, visible from both sides.
-  // (x, y, z) are chunk-local; torch and sky are the light levels in the plant's own cell.
-  // `up` is how many plant blocks this one stands on: a tall plant bends from its root, not at every block.
-  addCross(x, y, z, def, torch, sky, pos, uv, col, tl, sl, index, vcount, up = 0) {
-    const tileUV = 1 / ATLAS_COLS;
-    const tu = (def.side % ATLAS_COLS) * tileUV;
-    const tv0 = 1 - Math.floor(def.side / ATLAS_COLS) * tileUV - tileUV;
-    const a = 0.12, b = 0.88; // inset from the block corners
-    const b2 = toLinear(0.88);
-    const e = 0.1 / TILE; // (a hair inside the tile, so its edges never pick up the next tile's pixels)
-    const sway = def.sound === 'leaves' && !def.light; // plants, not fire or crystals
-    for (const [x1, z1, x2, z2] of [[a, a, b, b], [b, a, a, b]]) {
-      const corners = [[x1, 0, z1, 0, 0], [x2, 0, z2, 1, 0], [x2, 1, z2, 1, 1], [x1, 1, z1, 0, 1]];
-      for (const [cx, cy, cz, u, v] of corners) {
-        pos.push(x + cx, y + cy, z + cz);
-        uv.push(tu + (e + u * (1 - 2 * e)) * tileUV, tv0 + (e + v * (1 - 2 * e)) * tileUV);
-        col.push(b2, b2, b2);
-        tl.push(torch);
-        const h = up + cy; // blocks up from the root
-        sl.push(sky + (sway && h ? 8 + 32 * h : 0) + (def.light > 0 ? 16 : 0)); // (+8: above a plant's root, so it sways; +16: glows)
-      }
-      // both windings, so the sprite shows from either side
-      index.push(vcount, vcount + 1, vcount + 2, vcount, vcount + 2, vcount + 3);
-      index.push(vcount, vcount + 2, vcount + 1, vcount, vcount + 3, vcount + 2);
-      vcount += 4;
-    }
-    return vcount;
-  }
-
-  // A torch is a 2x10-pixel stick. Wall torches sit low against the wall and lean out of it.
-  // (x, y, z) here are chunk-local.
-  addTorch(x, y, z, def, pos, uv, col, tl, sl, index, vcount) {
-    const tileUV = 1 / ATLAS_COLS;
-    const tu = (def.top % ATLAS_COLS) * tileUV;
-    const tv0 = 1 - Math.floor(def.top / ATLAS_COLS) * tileUV - tileUV;
-    const [wx, wz] = def.wall ?? [0, 0];
-    const lift = def.wall ? 0.22 : 0;
-    for (const f of FACES) {
-      // texture rows: sides show the whole stick, the top shows the flame, the bottom the stick end
-      const [v0, vlen] = f.d !== 1 ? [0, 10] : f.s > 0 ? [8, 2] : [0, 2];
-      for (const c of f.corners) {
-        const o = c.o;
-        const lean = 0.42 - 0.27 * o[1]; // distance from the centre toward the wall: more at the base
-        pos.push(
-          x + (7 + 2 * o[0]) / 16 + wx * lean,
-          y + lift + (o[1] * 10) / 16,
-          z + (7 + 2 * o[2]) / 16 + wz * lean,
-        );
-        uv.push(tu + ((7 + 2 * c.uv[0]) / 16) * tileUV, tv0 + ((v0 + vlen * c.uv[1]) / 16) * tileUV);
-        const b = toLinear(f.shade);
-        col.push(b, b, b);
-        tl.push(1); // torches are always fully lit
-        sl.push(17); // (and their flame glows)
-      }
-      index.push(vcount, vcount + 1, vcount + 2, vcount, vcount + 2, vcount + 3);
-      vcount += 4;
-    }
-    return vcount;
+    return { cx: c.cx, cz: c.cz, top: c.top, ny, data, light, sky, tint, wheels };
   }
 
   // Voxel DDA raycast. Returns { x, y, z, id, nx, ny, nz, t } for the first solid block hit (water is ignored);
@@ -1492,3 +1153,4 @@ export class World {
     return null;
   }
 }
+shareShapes(World); // (fences, walls, wires, stairs and water surfaces: see mesher.js)

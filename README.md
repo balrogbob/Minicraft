@@ -1869,6 +1869,8 @@ guide to how everything works.
   (☰ → Graphics): Auto draws phones at 1 pixel per screen point rather than 1.5 (about half the pixels on a
   sharp phone screen) and draws fewer while the game runs slowly, before the Auto graphics preset turns
   effects off; or pick a fixed level from 0.5× to 2×. Performance info shows the resolution in use.
+  Chunks are now built in background workers, so walking into new land no longer stutters while their
+  blocks are turned into triangles (browsers without module workers build them as before, twice as fast).
 - **Version 47**: **volumetric god rays** (a third God rays setting: sunbeams in the air through roofs,
   windows and trees, from any angle, coloured by stained glass; classic stays for slower computers);
   **Cloud shadows**; path tracing: lava and every nearby light (in the sun too) light what's round them,
@@ -1964,7 +1966,8 @@ guide to how everything works.
 | `js/blocks.js` | Block & item definitions, break times, drops, recipes |
 | `js/textures.js` | Procedural texture atlas, item icons, break cracks |
 | `js/terrain.js` | Chunk-by-chunk terrain generation (every block is a pure function of seed and position) |
-| `js/world.js` | Chunk streaming, sunlight and torch light propagation across chunks, chunk meshing (face culling + AO + smooth light, separate water mesh), water flow, raycasting |
+| `js/world.js` | Chunk streaming, sunlight and torch light propagation across chunks, sending chunks to be meshed (in workers) and showing the results, water flow, raycasting |
+| `js/mesher.js`, `js/mesh-worker.js` | Chunk meshing (face culling + AO + smooth light, separate water mesh) from a snapshot of a chunk and its border; the shapes of fences, walls, wires, stairs and water surfaces. The worker runs it off the main thread |
 | `js/store.js` | Saving edited chunks to IndexedDB, per world slot (16 bits per block; older one-byte chunks are widened as they load) |
 | `js/legacy.js` | The old 128 × 128 generator, used once to migrate old saves |
 | `js/held.js` | What you hold: blocks and items as solid shapes, your arm (first person) and your character (third person, and other players) |
