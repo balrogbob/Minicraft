@@ -5,7 +5,7 @@
 
 import * as THREE from 'three';
 import { CHUNK, SEA_LEVEL, SNOW_LINE } from './terrain.js';
-import { gfxUniforms, GFX_PT_HEAD, GFX_CLOUD } from './graphics.js';
+import { gfxUniforms, gfxMaterials, GFX_PT_HEAD, GFX_CLOUD } from './graphics.js';
 
 const FAR_CELL = 4; // blocks per step
 const TILE = 64; // blocks per tile (a mesh each)
@@ -40,11 +40,12 @@ export class FarLand {
       shader.vertexShader = 'varying vec3 vFarP;\n' + shader.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\nvFarP = (modelMatrix * vec4(position, 1.0)).xyz;');
       shader.fragmentShader = 'uniform float uDay;\nuniform float uInner;\nuniform vec2 uCentre;\nvarying vec3 vFarP;\nuniform vec3 uSunDir;\n' + GFX_PT_HEAD + GFX_CLOUD + shader.fragmentShader
         .replace('#include <clipping_planes_fragment>', '#include <clipping_planes_fragment>\nvec2 farD = abs(vFarP.xz - uCentre);\nif (max(farD.x, farD.y) < uInner) discard; // (the real chunks are here)')
-        .replace('#include <color_fragment>', '#include <color_fragment>\nvec3 farC = diffuseColor.rgb;\ndiffuseColor.rgb *= max(uDay, 0.03);\nif (uCloud.w > 0.0) diffuseColor.rgb *= 1.0 - 0.6 * uCloud.w * gfxCloud(vFarP, uSunDir) * smoothstep(0.02, 0.25, uSunDir.y); // (v47: cloud shadows)')
+        .replace('#include <color_fragment>', '#include <color_fragment>\nvec3 farC = diffuseColor.rgb;\ndiffuseColor.rgb *= max(uDay, 0.03);\n#ifdef GFX_CLOUDS\nif (uCloud.w > 0.0) diffuseColor.rgb *= 1.0 - 0.6 * uCloud.w * gfxCloud(vFarP, uSunDir) * smoothstep(0.02, 0.25, uSunDir.y); // (v47: cloud shadows)\n#endif\n')
         // (v46: path tracing's plain pictures, see graphics.js)
-        .replace('#include <dithering_fragment>', '#include <dithering_fragment>\nif (uPTPass > 0.5) { vec3 fn = normalize(cross(dFdx(vFarP), dFdy(vFarP))); if (dot(fn, cameraPosition - vFarP) < 0.0) fn = -fn; gl_FragColor = gfxPTOut(farC, vFarP, fn, 0.0, 0.0); }');
+        .replace('#include <dithering_fragment>', '#include <dithering_fragment>\n#ifdef GFX_PT\nif (uPTPass > 0.5) { vec3 fn = normalize(cross(dFdx(vFarP), dFdy(vFarP))); if (dot(fn, cameraPosition - vFarP) < 0.0) fn = -fn; gl_FragColor = gfxPTOut(farC, vFarP, fn, 0.0, 0.0); }\n#endif\n');
     };
-    this.material.customProgramCacheKey = () => 'far-land';
+    this.material.customProgramCacheKey = () => 'far-land:' + Object.keys(this.material.defines ?? {}).join(','); // (v48: see gfxDefines)
+    gfxMaterials.add(this.material);
     this.material.userData.ptWorld = true;
     this.on = true;
   }
@@ -56,7 +57,7 @@ export class FarLand {
     this.tiles.clear();
   }
 
-  dispose() { this.clear(); this.scene.remove(this.group); this.material.dispose(); }
+  dispose() { this.clear(); this.scene.remove(this.group); gfxMaterials.delete(this.material); this.material.dispose(); }
 
   // every frame: (cx, cz) the chunk the loaded square is centred on, r its radius in chunks
   update(camPos, cx, cz, r) {

@@ -1857,6 +1857,10 @@ guide to how everything works.
 
 ## Version history
 
+- **Version 48** (in progress: speed): the world's shader is built with only the graphics effects that are
+  switched on, so with effects off it is much faster again (about 5× in tests, faster than Version 45). With
+  every effect off, the sun's shine on metal, ice and wet ground is off too; it's back from Low up. Changing a
+  graphics setting can pause the game for a moment while the shader is rebuilt.
 - **Version 47**: **volumetric god rays** (a third God rays setting: sunbeams in the air through roofs,
   windows and trees, from any angle, coloured by stained glass; classic stays for slower computers);
   **Cloud shadows**; path tracing: lava and every nearby light (in the sun too) light what's round them,

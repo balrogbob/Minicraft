@@ -3,7 +3,7 @@ import { Viewmodel, Avatar, LOOKS, randomLook, gliderGroup, lightColour } from '
 import { Ripples } from './ripples.js';
 import { FarLand, FAR_REACH } from './farland.js';
 import { Net } from './net.js';
-import { Graphics, GFX_DEFAULTS, GFX_NAMES, GFX_TOGGLES, SHADOW_LEVELS, TRACED_LEVELS, GODRAY_LEVELS, GFX_PRESETS, PRESET_ORDER, PRESET_NAMES, MAX_TORCH_SHADOWS, gfxUniforms, GFX_FRAG_HEAD, GFX_SUN_TERM, GFX_WATER, GFX_VERT_HEAD, GFX_VERT_DECODE, GFX_VERT_SWAY, WATER_LAYER, LATE_LAYER } from './graphics.js';
+import { Graphics, GFX_DEFAULTS, GFX_NAMES, GFX_TOGGLES, SHADOW_LEVELS, TRACED_LEVELS, GODRAY_LEVELS, GFX_PRESETS, PRESET_ORDER, PRESET_NAMES, MAX_TORCH_SHADOWS, gfxUniforms, gfxMaterials, GFX_FRAG_HEAD, GFX_SUN_TERM, GFX_WATER, GFX_VERT_HEAD, GFX_VERT_DECODE, GFX_VERT_SWAY, WATER_LAYER, LATE_LAYER } from './graphics.js';
 import {
   BLOCKS, RECIPES, TABLE, AIR, WATER, TORCH, TORCH_WALL_W, WALL_TORCH_DIRS,
   GRASS, DIRT, SAND, CHURN, SUGAR_CANE, BREAD, ITEMS, BOW, ARROW, BUCKET,
@@ -189,7 +189,9 @@ const AMBIENT = 0.03; // linear; just enough to make out cave walls without a to
 const lightUniforms = { uGlowMap: { value: glowMask }, uHand: { value: new THREE.Vector4(0, 0, 0, 0) }, uDay: { value: 1 }, uFlicker: { value: 1 }, uAmbient: { value: AMBIENT }, uTints: { value: TINTS.map((c) => new THREE.Vector3(...c)) }, uWet: { value: 0 }, ...gfxUniforms };
 function addTorchLight(mat, water = false) {
   // (sky also carries a "next to water" flag, +2, for caustics: see World.buildChunkGeometry)
-  mat.customProgramCacheKey = () => (water ? 'world-water' : 'world-solid');
+  // (v48: each effect is compiled in only when it's on: see gfxDefines in graphics.js)
+  gfxMaterials.add(mat);
+  mat.customProgramCacheKey = () => (water ? 'world-water:' : 'world-solid:') + Object.keys(mat.defines ?? {}).join(',');
   mat.onBeforeCompile = (shader) => {
     Object.assign(shader.uniforms, lightUniforms);
     // torch light comes in as brightness + 2 x its colour (see TINTS): decoded here, per vertex
@@ -202,25 +204,25 @@ function addTorchLight(mat, water = false) {
     // shading, so a torch's flame glows the same on all four sides)
     shader.fragmentShader = 'uniform sampler2D uGlowMap;\nuniform float uWet;\nuniform float uDay;\nuniform float uFlicker;\nuniform float uAmbient;\nuniform vec4 uHand;\nvarying vec3 vTorchC;\nvarying float vSky;\nvarying vec3 vWorldP;\nvarying float vGlow;\n' + GFX_FRAG_HEAD + shader.fragmentShader
       .replace('#include <color_fragment>',
-        '#include <color_fragment>\nvec3 baseC = diffuseColor.rgb;\nfloat hl = uHand.w * pow(clamp(1.0 - distance(vWorldP, uHand.xyz) / 13.0, 0.0, 1.0), 1.4);\n' + GFX_SUN_TERM +
+        '#include <color_fragment>\nvec3 baseC = diffuseColor.rgb;\nfloat hl = 0.0;\nif (uHand.w > 0.0) hl = uHand.w * pow(clamp(1.0 - distance(vWorldP, uHand.xyz) / 13.0, 0.0, 1.0), 1.4);\n' + GFX_SUN_TERM +
         'diffuseColor.rgb *= max(max(max(sunT * sunC, vec3(uAmbient)), torchT), vec3(hl, hl * 0.96, hl * 0.86));\n' +
         // (v46) the sun's highlight on shiny things (metal, ice, glass), and on open ground wet with rain
-        (water ? '' : '{ float shine = texture2D(uGlowMap, vMapUv).b; vec3 N = gfxNormal(); vec3 V = normalize(cameraPosition - vWorldP);\n' +
+        (water ? '' : '#ifdef GFX_SHINE\n{ float shine = texture2D(uGlowMap, vMapUv).b; vec3 N = gfxNormal(); vec3 V = normalize(cameraPosition - vWorldP);\n' +
           'float wet = uWet * step(0.7, N.y) * smoothstep(0.85, 1.0, vSky) * smoothstep(0.35, 0.65, fract(sin(dot(floor(vWorldP.xz * 2.0), vec2(12.99, 78.23))) * 437.58) * 0.5 + 0.5 * sin(vWorldP.x * 0.7 + 1.3 * sin(vWorldP.z * 0.5)));\n' +
           // (v46) with full traced lighting, shiny things and puddles mirror what's around them (the blocks, or the sky)
-          'if (uVoxOn > 1.5) { float rk = max(shine * 0.6, wet * 0.5); if (rk > 0.02) { float fr = 0.25 + 0.75 * pow(1.0 - max(dot(N, V), 0.0), 4.0);\n' +
-          '  diffuseColor.rgb = mix(diffuseColor.rgb, gfxVoxReflect(reflect(-V, N), N) * mix(vec3(1.0), baseC / max(vColor.rgb, vec3(0.2)), shine * 0.6), rk * fr); } }\n' +
+          '#ifdef GFX_VOX\nif (uVoxOn > 1.5) { float rk = max(shine * 0.6, wet * 0.5); if (rk > 0.02) { float fr = 0.25 + 0.75 * pow(1.0 - max(dot(N, V), 0.0), 4.0);\n' +
+          '  diffuseColor.rgb = mix(diffuseColor.rgb, gfxVoxReflect(reflect(-V, N), N) * mix(vec3(1.0), baseC / max(vColor.rgb, vec3(0.2)), shine * 0.6), rk * fr); } }\n#endif\n' +
           'float k = max(shine, wet * 0.8);\n' +
-          'if (k > 0.0 && sunT > 0.02 && uSunStr > 0.0) { float s = pow(max(dot(N, normalize(uSunDir + V)), 0.0), mix(28.0, 90.0, shine)); diffuseColor.rgb += min(sunC * s * k * sunT * uSunStr, vec3(0.7)); } }\n') +
+          'if (k > 0.0 && sunT > 0.02 && uSunStr > 0.0) { float s = pow(max(dot(N, normalize(uSunDir + V)), 0.0), mix(28.0, 90.0, shine)); diffuseColor.rgb += min(sunC * s * k * sunT * uSunStr, vec3(0.7)); } }\n#endif\n') +
         (water ? '' : 'if (vGlow > 0.5) { vec2 gm = texture2D(uGlowMap, vMapUv).rg; vec3 glowC = baseC / max(vColor.rgb, vec3(0.25)); diffuseColor.rgb = mix(diffuseColor.rgb, max(diffuseColor.rgb, glowC * (1.7 + 0.25 * uFlicker + gm.y * (1.6 + 0.6 * uFlicker))), gm.x); }\n') + (water ? GFX_WATER : ''))
       // (v46) path tracing: the plain pictures it lights (the colour of the block without light, its distance,
       // which way it faces and how much it glows; see renderPathTraced in graphics.js)
-      .replace('#include <dithering_fragment>', '#include <dithering_fragment>\n' +
+      .replace('#include <dithering_fragment>', '#include <dithering_fragment>\n#ifdef GFX_PT\n' +
         'if (uPTPass > 0.5) { float ptE = vGlow > 0.5 ? texture2D(uGlowMap, vMapUv).r : 0.0;\n' +
         // (v47: and how shiny it is, for path-traced reflections: metal, glassy, or a wet patch of open ground after rain)
         (water ? '' : '  float ptS = texture2D(uGlowMap, vMapUv).b; vec3 ptN = gfxNormal(); gfxPTShine = ptS > 0.8 ? 2.0 : ptS > 0.3 ? 1.0 : 0.0;\n' +
           '  if (gfxPTShine < 0.5 && uWet > 0.0 && ptN.y > 0.7 && vSky > 0.85 && uWet * (fract(sin(dot(floor(vWorldP.xz * 2.0), vec2(12.99, 78.23))) * 437.58) * 0.5 + 0.5 * sin(vWorldP.x * 0.7 + 1.3 * sin(vWorldP.z * 0.5))) > 0.45) gfxPTShine = 3.0;\n') +
-        '  gl_FragColor = gfxPTOut(baseC / max(vColor.rgb, vec3(0.05)), vWorldP, gfxNormal(), ptE, 0.0); if (uPTPass < 1.5) gl_FragColor.a = diffuseColor.a; }');
+        '  gl_FragColor = gfxPTOut(baseC / max(vColor.rgb, vec3(0.05)), vWorldP, gfxNormal(), ptE, 0.0); if (uPTPass < 1.5) gl_FragColor.a = diffuseColor.a; }\n#endif\n');
   };
   mat.userData.ptWorld = true;
 }
