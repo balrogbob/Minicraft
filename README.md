@@ -1875,10 +1875,13 @@ guide to how everything works.
   long distances (it streaked like blowing sand as you moved). It now gives a light haze outdoors, and
   sunbeams still show in dark halls and under trees.
   Lighting tweaks: volumetric god rays are strongest at sunrise and sunset and faint in the middle of the day
-  (they washed the afternoon out), and by night the moon casts faint blue-white rays of its own. Torch light
+  (they washed the afternoon out), and by night the moon casts faint blue-white rays of its own. With
+  volumetric god rays, **Sun ray strength** and **Moon ray strength** sliders (0–200%) appear under the
+  God rays setting. Torch light
   shafts are gentler, warmer (firelight, not white), no longer hang like fog round a bare torch, and have a
   **strength** slider (☰ → Graphics, 10–200%). With traced lighting, a wall the sun reaches from the side is
-  no longer darkened by blocks overhead. Colour bleed no longer outlines hills against the sky.
+  no longer darkened by blocks overhead. Colour bleed no longer outlines hills against the sky. Live mirrors
+  no longer flicker with stripes of the mirror's own face when seen straight on from a distance.
 - **Version 47**: **volumetric god rays** (a third God rays setting: sunbeams in the air through roofs,
   windows and trees, from any angle, coloured by stained glass; classic stays for slower computers);
   **Cloud shadows**; path tracing: lava and every nearby light (in the sun too) light what's round them,

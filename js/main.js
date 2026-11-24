@@ -103,7 +103,7 @@ function writeSave(obj, slot = activeSlot) {
 }
 // Settings live apart from the world so they survive "New world".
 const settings = (() => {
-  const defaults = { farLand: true, fog: true, gfxPreset: 'custom', res: 'auto', shaftStr: 100, sens: 6, volume: 70, music: 50, viewDistance: 6, perf: false, difficulty: 'worrying', wear: true, favs: [], pins: [], slot: 0, fov: 72, keys: {}, tips: true, doubleTap: true, gfx: {} };
+  const defaults = { farLand: true, fog: true, gfxPreset: 'custom', res: 'auto', shaftStr: 100, sunRays: 100, moonRays: 100, sens: 6, volume: 70, music: 50, viewDistance: 6, perf: false, difficulty: 'worrying', wear: true, favs: [], pins: [], slot: 0, fov: 72, keys: {}, tips: true, doubleTap: true, gfx: {} };
   let s;
   try { s = { ...defaults, ...JSON.parse(localStorage.getItem(SETTINGS_KEY)) }; } catch { s = { ...defaults }; }
   s.slot = Math.max(0, Math.min(SLOT_COUNT - 1, s.slot | 0));
@@ -120,6 +120,7 @@ const settings = (() => {
   s.gfx.shadows = s.gfx.shadows === true ? 2 : Math.max(0, Math.min(2, s.gfx.shadows | 0)); // (v36 saved on/off)
   if (s.res !== 'auto' && !(+s.res > 0)) s.res = 'auto';
   s.shaftStr = Math.max(10, Math.min(200, +s.shaftStr || 100));
+  for (const k of ['sunRays', 'moonRays']) s[k] = Math.max(0, Math.min(200, Number.isFinite(+s[k]) ? +s[k] : 100));
   return s;
 })();
 activeSlot = settings.slot;
@@ -265,6 +266,7 @@ const materials = { solid: material, water: waterMat };
 // optional fancy graphics: shadows, bloom, water (see graphics.js)
 const gfx = new Graphics(renderer, settings.gfx);
 gfx.shaftStr = settings.shaftStr / 100;
+gfx.sunRays = settings.sunRays / 100; gfx.moonRays = settings.moonRays / 100;
 // (v46) traced lighting: the world, and each block's colour, for the 3D picture of the blocks around you
 gfx.voxWorld = () => world;
 gfx.voxPalette = makePalette(atlasCanvas);
@@ -5608,6 +5610,12 @@ function updateGfxLabels() {
   $('btn-gfx-shadows').textContent = `Sun shadows: ${SHADOW_LEVELS[g.shadows]}`;
   $('btn-gfx-traced').textContent = `Traced lighting: ${TRACED_LEVELS[g.traced]}`;
   $('btn-gfx-godrays').textContent = `God rays: ${GODRAY_LEVELS[g.godrays | 0]}`;
+  // (v48) how strong the volumetric rays are, by sun and by moon: shown only with volumetric god rays
+  for (const k of ['sun', 'moon']) {
+    $(`${k}-ray-row`).classList.toggle('hidden', (g.godrays | 0) !== 2);
+    $(`${k}-ray`).value = settings[`${k}Rays`];
+    $(`${k}-ray-label`).textContent = `${k === 'sun' ? 'Sun' : 'Moon'} ray strength: ${settings[`${k}Rays`] ? `${settings[`${k}Rays`]}%` : 'off'}`;
+  }
   $('torch-shadows').value = g.torches;
   $('torch-shadows-label').textContent = `Torch shadows: ${g.torches ? `nearest ${g.torches}` : 'off'}`;
   $('torch-shafts').value = g.shafts;
@@ -5670,6 +5678,7 @@ $('torch-shafts').addEventListener('input', (e) => { goCustom(); settings.gfx.sh
 $('shaft-str').addEventListener('input', (e) => { settings.shaftStr = +e.target.value; gfx.shaftStr = settings.shaftStr / 100; updateGfxLabels(); saveSettings(); });
 $('torch-rate').addEventListener('input', (e) => { goCustom(); settings.gfx.torchRate = +e.target.value; gfx.set('torchRate', settings.gfx.torchRate); updateGfxLabels(); saveSettings(); });
 $('btn-gfx-traced').addEventListener('click', () => { goCustom(); settings.gfx.traced = (settings.gfx.traced + 1) % 3; gfx.set('traced', settings.gfx.traced); updateGfxLabels(); saveSettings(); });
+for (const k of ['sun', 'moon']) $(`${k}-ray`).addEventListener('input', (e) => { settings[`${k}Rays`] = +e.target.value; gfx[`${k}Rays`] = settings[`${k}Rays`] / 100; updateGfxLabels(); saveSettings(); });
 $('btn-gfx-godrays').addEventListener('click', () => { goCustom(); settings.gfx.godrays = ((settings.gfx.godrays | 0) + 1) % 3; gfx.set('godrays', settings.gfx.godrays); updateGfxLabels(); saveSettings(); });
 $('btn-gfx-shadows').addEventListener('click', () => { goCustom(); settings.gfx.shadows = (settings.gfx.shadows + 1) % 3; gfx.set('shadows', settings.gfx.shadows); updateGfxLabels(); saveSettings(); });
 for (const key of GFX_TOGGLES) {

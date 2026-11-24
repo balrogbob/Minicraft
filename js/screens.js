@@ -190,7 +190,9 @@ export class Screens {
         uTex: { value: null }, uMat: { value: new THREE.Matrix4() }, uOn: { value: 0 }, uLive: this.liveU,
         uNormal: { value: new THREE.Vector3(dx, 0, dz) }, uSky: this.skyU,
       },
-      polygonOffset: true, polygonOffsetFactor: -1,
+      // (v48: offset by a fixed amount too: face on, the slope-only offset was nothing, and further away the
+      // picture fought the mirror's own face for depth, in stripes)
+      polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -4,
     });
     const geo = this.quads(cells, f, -0.5 + 1 / 16 + 0.003, null, null);
     const mesh = new THREE.Mesh(geo, mat);
@@ -211,7 +213,7 @@ export class Screens {
     ];
     const uvOf = (px, py, pz) => [(px * rx + pz * rz - s0) / (s1 - s0), (py - y0) / (y1 - y0)];
     const geo = this.quads(cells, f, 0.5 + 0.003, uvOf, inset);
-    const mat = new THREE.MeshBasicMaterial({ color: 0xf0f0f0, polygonOffset: true, polygonOffsetFactor: -1 });
+    const mat = new THREE.MeshBasicMaterial({ color: 0xf0f0f0, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -4 });
     const mesh = new THREE.Mesh(geo, mat);
     mesh.visible = false;
     mesh.userData.noShadow = true;

@@ -270,6 +270,7 @@ html, body {
 #difficulty-about { margin: -4px 0 0; }
 .slider { display: flex; align-items: center; gap: 12px; font-size: 16px; }
 .slider input { flex: 1; height: 36px; }
+.slider.hidden { display: none; }
 
 #loading { background: #6fa8dc; }
 .loading-box { text-align: center; }
