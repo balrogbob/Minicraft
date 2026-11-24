@@ -150,6 +150,11 @@ If an effect doesn't work on your device it is switched off by itself, with a me
 drops below 40 frames a second, or up when it stays smooth (and won't climb back to a level that was too
 slow). Changing any one effect yourself makes it **Custom**.
 
+**Resolution**, below the preset, is how many pixels the game draws for each point of the screen. **Auto**
+(the default) uses 1 on phones and up to 1.5 on computers, and draws fewer while the game is slow: down to
+0.75× before the Auto preset turns any effect off, and lower only once everything is off. It goes back up
+when the game is smooth again. Or pick a fixed level from 0.5× (blurry, fastest) to 2× (sharpest).
+
 Whatever the settings, the water shows rings spreading round ducks, newts and anything else swimming,
 round you as you swim, and round boats sitting still; boats leave a wake when they move; jumping in throws up
 spray (more the further you fall), and now and then a duck has a splash about.
@@ -1860,7 +1865,10 @@ guide to how everything works.
 - **Version 48** (in progress: speed): the world's shader is built with only the graphics effects that are
   switched on, so with effects off it is much faster again (about 5× in tests, faster than Version 45). With
   every effect off, the sun's shine on metal, ice and wet ground is off too; it's back from Low up. Changing a
-  graphics setting can pause the game for a moment while the shader is rebuilt.
+  graphics setting can pause the game for a moment while the shader is rebuilt. A **Resolution** setting
+  (☰ → Graphics): Auto draws phones at 1 pixel per screen point rather than 1.5 (about half the pixels on a
+  sharp phone screen) and draws fewer while the game runs slowly, before the Auto graphics preset turns
+  effects off; or pick a fixed level from 0.5× to 2×. Performance info shows the resolution in use.
 - **Version 47**: **volumetric god rays** (a third God rays setting: sunbeams in the air through roofs,
   windows and trees, from any angle, coloured by stained glass; classic stays for slower computers);
   **Cloud shadows**; path tracing: lava and every nearby light (in the sun too) light what's round them,
