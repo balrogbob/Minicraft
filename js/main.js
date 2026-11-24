@@ -103,7 +103,7 @@ function writeSave(obj, slot = activeSlot) {
 }
 // Settings live apart from the world so they survive "New world".
 const settings = (() => {
-  const defaults = { farLand: true, fog: true, gfxPreset: 'custom', res: 'auto', sens: 6, volume: 70, music: 50, viewDistance: 6, perf: false, difficulty: 'worrying', wear: true, favs: [], pins: [], slot: 0, fov: 72, keys: {}, tips: true, doubleTap: true, gfx: {} };
+  const defaults = { farLand: true, fog: true, gfxPreset: 'custom', res: 'auto', shaftStr: 100, sens: 6, volume: 70, music: 50, viewDistance: 6, perf: false, difficulty: 'worrying', wear: true, favs: [], pins: [], slot: 0, fov: 72, keys: {}, tips: true, doubleTap: true, gfx: {} };
   let s;
   try { s = { ...defaults, ...JSON.parse(localStorage.getItem(SETTINGS_KEY)) }; } catch { s = { ...defaults }; }
   s.slot = Math.max(0, Math.min(SLOT_COUNT - 1, s.slot | 0));
@@ -119,6 +119,7 @@ const settings = (() => {
   s.gfx.torchRate = Math.max(1, Math.min(MAX_TORCH_SHADOWS, s.gfx.torchRate | 0 || 2));
   s.gfx.shadows = s.gfx.shadows === true ? 2 : Math.max(0, Math.min(2, s.gfx.shadows | 0)); // (v36 saved on/off)
   if (s.res !== 'auto' && !(+s.res > 0)) s.res = 'auto';
+  s.shaftStr = Math.max(10, Math.min(200, +s.shaftStr || 100));
   return s;
 })();
 activeSlot = settings.slot;
@@ -263,6 +264,7 @@ addTorchLight(waterMat, true);
 const materials = { solid: material, water: waterMat };
 // optional fancy graphics: shadows, bloom, water (see graphics.js)
 const gfx = new Graphics(renderer, settings.gfx);
+gfx.shaftStr = settings.shaftStr / 100;
 // (v46) traced lighting: the world, and each block's colour, for the 3D picture of the blocks around you
 gfx.voxWorld = () => world;
 gfx.voxPalette = makePalette(atlasCanvas);
@@ -5610,6 +5612,8 @@ function updateGfxLabels() {
   $('torch-shadows-label').textContent = `Torch shadows: ${g.torches ? `nearest ${g.torches}` : 'off'}`;
   $('torch-shafts').value = g.shafts;
   $('torch-shafts-label').textContent = `Torch light shafts: ${g.shafts ? `nearest ${g.shafts}` : 'off'}`;
+  $('shaft-str').value = settings.shaftStr;
+  $('shaft-str-label').textContent = `Torch light shaft strength: ${settings.shaftStr}%`;
   $('torch-rate').value = g.torchRate;
   $('torch-rate-label').textContent = `Torch shadows redrawn per frame: ${g.torchRate}`;
   for (const key of GFX_TOGGLES) { const b = $(`btn-gfx-${key}`); if (b) b.textContent = `${GFX_NAMES[key]}: ${g[key] ? 'on' : 'off'}`; }
@@ -5662,6 +5666,8 @@ updatePresetLabel();
 if (settings.gfxPreset === 'auto') applyPreset('auto', true);
 $('torch-shadows').addEventListener('input', (e) => { goCustom(); settings.gfx.torches = +e.target.value; gfx.set('torches', settings.gfx.torches); updateGfxLabels(); saveSettings(); });
 $('torch-shafts').addEventListener('input', (e) => { goCustom(); settings.gfx.shafts = +e.target.value; gfx.set('shafts', settings.gfx.shafts); updateGfxLabels(); saveSettings(); });
+// (v48) how bright the torch light shafts are: a setting of its own, not part of the presets
+$('shaft-str').addEventListener('input', (e) => { settings.shaftStr = +e.target.value; gfx.shaftStr = settings.shaftStr / 100; updateGfxLabels(); saveSettings(); });
 $('torch-rate').addEventListener('input', (e) => { goCustom(); settings.gfx.torchRate = +e.target.value; gfx.set('torchRate', settings.gfx.torchRate); updateGfxLabels(); saveSettings(); });
 $('btn-gfx-traced').addEventListener('click', () => { goCustom(); settings.gfx.traced = (settings.gfx.traced + 1) % 3; gfx.set('traced', settings.gfx.traced); updateGfxLabels(); saveSettings(); });
 $('btn-gfx-godrays').addEventListener('click', () => { goCustom(); settings.gfx.godrays = ((settings.gfx.godrays | 0) + 1) % 3; gfx.set('godrays', settings.gfx.godrays); updateGfxLabels(); saveSettings(); });
