@@ -491,12 +491,17 @@ if (uVoxStr > 0.0 && sunT > 0.0 && gfxVF > 0.0) { gfxSunVis = min(gfxSunVis, mix
 #endif
 sunT *= 1.0 - gfxSunK * (1.0 - gfxSunVis);
 #endif
+float gfxCl = 1.0;
 #ifdef GFX_CLOUDS
-if (uCloud.w > 0.0 && sunT > 0.0) sunT *= 1.0 - uCloud.w * gfxCloud(vWorldP, uSunDir); // (v47)
+if (uCloud.w > 0.0 && sunT > 0.0) { gfxCl = 1.0 - uCloud.w * gfxCloud(vWorldP, uSunDir); sunT *= gfxCl; } // (v47)
 #endif
 #ifdef GFX_VOX
 vec2 gfxAmb = vec2(1.0);
 if (gfxVF > 0.0) { gfxAmb = mix(vec2(1.0), gfxVoxAmb(gfxNormal()), gfxVF); sunT *= mix(1.0, gfxAmb.x, 0.55) * mix(1.0, gfxAmb.y, 0.6); }
+// (v48) sun the trace finds reaching a face isn't dimmed by blocks overhead: the daylight above comes from how open
+// the spot is to the sky, so a wall under an overhang, lit from the side, came out shaded as if the sun were overhead
+if (uVoxStr > 0.0 && gfxVF > 0.0 && uSunStr > 0.0 && sunT > 0.0)
+  sunT = max(sunT, uDay * uSunStr * gfxCl * gfxVF * gfxSunVis * smoothstep(0.0, 0.25, dot(gfxNormal(), uSunDir)) * smoothstep(0.03, 0.3, vSky) * 0.9);
 torchT *= mix(1.0, gfxAmb.x, 0.45);
 #endif
 #ifdef GFX_SHADOW
@@ -581,10 +586,10 @@ void main() { // 4 taps: halves the picture without flicker
 const BLUR_FRAG = `uniform sampler2D tSrc; uniform vec2 uDir;
 varying vec2 vUv;
 void main() {
-  vec3 c = texture2D(tSrc, vUv).rgb * 0.227027;
-  c += (texture2D(tSrc, vUv + uDir * 1.3846).rgb + texture2D(tSrc, vUv - uDir * 1.3846).rgb) * 0.316216;
-  c += (texture2D(tSrc, vUv + uDir * 3.2308).rgb + texture2D(tSrc, vUv - uDir * 3.2308).rgb) * 0.070270;
-  gl_FragColor = vec4(c, 1.0);
+  vec4 c = texture2D(tSrc, vUv) * 0.227027; // (alpha too: colour bleed keeps how much of it is real surface there)
+  c += (texture2D(tSrc, vUv + uDir * 1.3846) + texture2D(tSrc, vUv - uDir * 1.3846)) * 0.316216;
+  c += (texture2D(tSrc, vUv + uDir * 3.2308) + texture2D(tSrc, vUv - uDir * 3.2308)) * 0.070270;
+  gl_FragColor = c;
 }`;
 // god rays: march from each pixel towards the sun, adding up the bright open sky near the sun that
 // is not hidden behind anything (from the depth picture: nothing drawn there)
@@ -594,20 +599,24 @@ void main() {
 const BOUNCE_FRAG = `uniform sampler2D tSrc; uniform sampler2D tDepth; uniform float uNear; uniform float uFar; uniform float uProj; uniform float uAspect;
 varying vec2 vUv;
 float lin(float d) { float z = d * 2.0 - 1.0; return 2.0 * uNear * uFar / (uFar + uNear - z * (uFar - uNear)); }
+// (v48) alpha: how much counts here, 0 for the sky (and fading out into the fog), so after the blur the sky by the
+// horizon takes none of the land's colour, and the land none of the sky's: they made a glowing outline round hills
 void main() {
-  float d0 = lin(texture2D(tDepth, vUv).r);
-  if (d0 > uFar * 0.95) { gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0); return; }
+  float z0 = texture2D(tDepth, vUv).r;
+  if (z0 >= 0.99999) { gl_FragColor = vec4(0.0); return; }
+  float d0 = lin(z0);
   float rad = clamp(1.8 * uProj / d0, 0.003, 0.12);
   float rnd = fract(sin(dot(floor(gl_FragCoord.xy), vec2(12.9898, 78.233))) * 43758.5453) * 6.2832;
   vec3 acc = vec3(0.0); float wsum = 0.0;
   for (int i = 0; i < 12; i++) {
     float a = float(i) * 2.39996 + rnd, r = sqrt((float(i) + 0.5) / 12.0) * rad;
     vec2 uv = clamp(vUv + vec2(cos(a) / uAspect, sin(a)) * r, vec2(0.001), vec2(0.999));
-    float d = lin(texture2D(tDepth, uv).r);
-    float w = max(0.0, 1.0 - abs(d - d0) / 1.8);
+    float z = texture2D(tDepth, uv).r;
+    float d = lin(z);
+    float w = z >= 0.99999 ? 0.0 : max(0.0, 1.0 - abs(d - d0) / 1.8);
     acc += texture2D(tSrc, uv).rgb * w; wsum += w;
   }
-  gl_FragColor = vec4(wsum > 0.0 ? acc / wsum : vec3(0.0), 1.0);
+  gl_FragColor = wsum > 0.0 ? vec4(acc / wsum, 1.0 - smoothstep(0.55, 0.9, d0 / uFar)) : vec4(0.0);
 }`;
 const GOD_FRAG = `uniform sampler2D tDepth; uniform vec2 uSun; uniform float uAspect;
 varying vec2 vUv;
@@ -701,14 +710,15 @@ void main() {
       float d = length(L);
       if (d >= reach) continue;
       float k = 1.0 - d / reach;
-      acc += uShaftC[i] * (k * k * k / (1.0 + d * d * 0.25)) * vis(slot, L, d, reach);
+      // (v48: the air right round the flame counts less: it hung round a bare torch like fog)
+      acc += uShaftC[i] * (k * k * k / (1.0 + d * d * 0.25) * d * d / (d * d + 2.0)) * vis(slot, L, d, reach);
     }
   }
   gl_FragColor = vec4(acc * stepL * 0.035, 1.0);
 }`;
 const FINAL_FRAG = `uniform sampler2D tSrc; uniform sampler2D tB1; uniform sampler2D tB2; uniform float uBloom;
 uniform sampler2D tGod; uniform float uGod; uniform vec3 uGodCol; uniform float uRipple; uniform float uTime;
-uniform sampler2D tBounce; uniform float uBounce; uniform sampler2D tShaft; uniform float uShaft;
+uniform sampler2D tBounce; uniform float uBounce; uniform sampler2D tShaft; uniform float uShaft; uniform sampler2D tDepth;
 varying vec2 vUv;
 vec3 toSRGB(vec3 c) {
   c = clamp(c, 0.0, 1.0);
@@ -720,13 +730,17 @@ void main() {
     cos(uv.x * 19.0 + uTime * 1.7) + 0.5 * cos(uv.x * 37.0 + uTime * 2.6)) * 0.0035 * uRipple;
   uv = clamp(uv, vec2(0.001), vec2(0.999));
   vec3 c = texture2D(tSrc, uv).rgb;
-  if (uBounce > 0.0) { // (v46: colour bleed, mostly into the darker parts)
-    vec3 b = texture2D(tBounce, uv).rgb;
+  if (uBounce > 0.0 && texture2D(tDepth, uv).r < 0.99999) { // (v46: colour bleed, mostly into the darker parts; not the sky)
+    vec4 bb = texture2D(tBounce, uv); vec3 b = bb.rgb;
     float l = dot(c, vec3(0.2126, 0.7152, 0.0722)), lb = dot(b, vec3(0.2126, 0.7152, 0.0722));
     vec3 tint = min(b / max(lb, 0.02), vec3(2.0)); // (the neighbours' hue, brightness taken out)
-    c *= mix(vec3(1.0), tint, 0.3 * uBounce * (1.0 - 0.4 * smoothstep(0.3, 0.9, l))); // (tints, never washes out: a red wall stays red, the floor by it goes pink)
+    c *= mix(vec3(1.0), tint, 0.3 * uBounce * (1.0 - 0.4 * smoothstep(0.3, 0.9, l)) * smoothstep(0.2, 0.8, bb.a)); // (tints, never washes out: a red wall stays red, the floor by it goes pink)
   }
-  if (uShaft > 0.0) c += texture2D(tShaft, uv).rgb * uShaft; // (v46: torch light shafts)
+  if (uShaft > 0.0) { // (v46: torch light shafts)
+    // (v48: levelled off keeping its colour: close to a torch every channel ran past 1 and it came out white)
+    vec3 s = texture2D(tShaft, uv).rgb * uShaft;
+    c += s * (0.7 / (0.7 + max(s.r, max(s.g, s.b))));
+  }
   if (uBloom > 0.0) c += (texture2D(tB1, uv).rgb * 0.7 + texture2D(tB2, uv).rgb * 0.9) * uBloom;
   if (uGod > 0.0) c += texture2D(tGod, uv).rgb * uGod * uGodCol; // (classic: grey; volumetric: stained glass colours)
   gl_FragColor = vec4(toSRGB(c), 1.0);
@@ -788,7 +802,7 @@ export class Graphics {
     this.blurMat = pass(BLUR_FRAG, { tSrc: { value: null }, uDir: { value: new THREE.Vector2() } });
     this.finalMat = pass(FINAL_FRAG, {
       tSrc: { value: null }, tB1: { value: null }, tB2: { value: null }, uBloom: { value: 0 },
-      tGod: { value: null }, uGod: { value: 0 }, tBounce: { value: null }, uBounce: { value: 0 }, tShaft: { value: null }, uShaft: { value: 0 }, uGodCol: { value: new THREE.Color(1, 0.88, 0.62) }, uRipple: { value: 0 }, uTime: gfxUniforms.uTime,
+      tGod: { value: null }, uGod: { value: 0 }, tBounce: { value: null }, uBounce: { value: 0 }, tShaft: { value: null }, uShaft: { value: 0 }, tDepth: { value: null }, uGodCol: { value: new THREE.Color(1, 0.88, 0.62) }, uRipple: { value: 0 }, uTime: gfxUniforms.uTime,
     });
     this.bounceMat = pass(BOUNCE_FRAG, { tSrc: { value: null }, tDepth: { value: null }, uNear: { value: 0.1 }, uFar: { value: 100 }, uProj: { value: 1 }, uAspect: { value: 1 } });
     const G = gfxUniforms;
@@ -803,7 +817,7 @@ export class Graphics {
     this.godMat = pass(GOD_FRAG, { tDepth: { value: null }, uSun: { value: new THREE.Vector2() }, uAspect: { value: 1 } });
     this.sunVolMat = pass(SUNVOL_FRAG, {
       tDepth: { value: null }, uInvProj: { value: new THREE.Matrix4() }, uCamWorld: { value: new THREE.Matrix4() }, uCamPos: { value: new THREE.Vector3() },
-      uShadowMap: G.uShadowMap, uShadowMat: G.uShadowMat, uGlassMap: G.uGlassMap, uGlassOn: G.uGlassOn, uSunDir: G.uSunDir, uLen: { value: 40 },
+      uShadowMap: G.uShadowMap, uShadowMat: G.uShadowMat, uGlassMap: G.uGlassMap, uGlassOn: G.uGlassOn, uSunDir: { value: new THREE.Vector3(0, 1, 0) }, uLen: { value: 40 },
       uCloudMap: G.uCloudMap, uCloud: G.uCloud,
     });
     this.godMode = 0;
@@ -921,6 +935,13 @@ export class Graphics {
     if (o.shadows && sun > 0.01) {
       try { this.renderShadows(scene, camera); U.uShadowStr.value = 0.5 * sun; U.uGlassOn.value = this.glassRT ? 1 : 0; } catch (err) { this.fail(err, 'shadows'); this.freeShadows(); }
     }
+    // (v48) by night, with volumetric god rays, a shadow picture from the moon: only for its faint rays in the air
+    // (the world's shading doesn't use it: uShadowStr stays 0)
+    this.moonShadow = false;
+    if (o.shadows && o.godrays === 2 && sun <= 0.01 && !this.underwater && this.sunDir.y < -0.05) {
+      const md = (this._moonDir ??= new THREE.Vector3()).copy(this.sunDir).negate();
+      try { this.renderShadows(scene, camera, md); this.moonShadow = true; } catch (err) { this.fail(err, 'shadows'); this.freeShadows(); }
+    }
     U.uVoxOn.value = 0; U.uVoxStr.value = 0;
     if (o.traced && this.voxWorld?.() && this.voxPalette) {
       try { this.renderVoxels(camera, sun); } catch (err) { this.fail(err, 'traced'); this.freeVoxels(); }
@@ -958,13 +979,26 @@ export class Graphics {
   godStrength(camera) {
     this.godMode = 0;
     if (!this.opts.godrays || this.underwater) return 0;
-    const up0 = THREE.MathUtils.smoothstep(this.sunDir.y, -0.04, 0.12) * (1 - 0.85 * this.overcast);
+    const S = THREE.MathUtils.smoothstep, up0 = S(this.sunDir.y, -0.04, 0.12) * (1 - 0.85 * this.overcast);
+    const gd = this.godDir ??= new THREE.Vector3(), gc = this.finalMat.uniforms.uGodCol.value;
+    // (v48) the moon's: faint and blue-white, and only with volumetric rays (there's a moon shadow picture to march)
+    if (this.moonShadow && this.shadowRT) {
+      this.godMode = 2;
+      gd.copy(this._moonDir);
+      gc.setRGB(0.6, 0.72, 1);
+      return 0.4 * S(gd.y, 0.05, 0.3) * (1 - 0.9 * this.overcast);
+    }
+    gd.copy(this.sunDir);
     // (volumetric when asked for and there's a sun shadow picture this frame to march through; else classic)
     if (this.opts.godrays === 2 && gfxUniforms.uShadowStr.value > 0 && this.shadowRT) {
       this.godMode = 2;
-      const low = 1 + 0.8 * (1 - THREE.MathUtils.smoothstep(this.sunDir.y, 0.1, 0.6));
-      return up0 * low * this.sunNow;
+      // (v48) like the classic rays, strongest near sunrise and sunset; faint by the middle of the day, when the air
+      // lit all round washed the picture out. Warmer while the sun is low
+      const low = 1 - S(this.sunDir.y, 0.08, 0.55);
+      gc.setRGB(1, 0.88 - 0.12 * low, 0.62 - 0.2 * low);
+      return up0 * (0.3 + 1.2 * low) * this.sunNow;
     }
+    gc.setRGB(1, 0.88, 0.62);
     this.godMode = 1;
     const fwd = camera.getWorldDirection(new THREE.Vector3());
     const facing = THREE.MathUtils.smoothstep(fwd.dot(this.sunDir), 0.2, 0.75);
@@ -975,7 +1009,8 @@ export class Graphics {
 
   // ---------- shadows ----------
 
-  renderShadows(scene, camera) {
+  // (d: the way the light comes from: the sun, or the moon for the moonlit rays at night)
+  renderShadows(scene, camera, d = this.sunDir) {
     const r = this.renderer, q = SHADOW_Q[this.opts.shadows];
     if (!this.shadowRT) {
       this.shadowRT = new THREE.WebGLRenderTarget(q.res, q.res, { depthTexture: new THREE.DepthTexture(q.res, q.res), generateMipmaps: false });
@@ -988,11 +1023,13 @@ export class Graphics {
       this.shadowFrame = -1;
     }
     // (low quality redraws every other frame; the picture keeps its own matrix, so it still lines up)
+    const was = this._shadowFrom ??= d.clone();
+    if (was.dot(d) < 0.999) { this.shadowFrame = -1; was.copy(d); } // (from the sun to the moon: redraw now)
     if (q.every > 1 && this.frame - this.shadowFrame < q.every) return;
     this.shadowFrame = this.frame;
     const SHADOW_RES = q.res, SHADOW_RANGE = q.range;
     // aim along the sunlight; snap to whole shadow texels so edges don't crawl as you walk
-    const cam = this.shadowCam, d = this.sunDir;
+    const cam = this.shadowCam;
     const rot = new THREE.Matrix4().lookAt(d, new THREE.Vector3(), new THREE.Vector3(0, 0, 1));
     const inv = rot.clone().transpose();
     const texel = (SHADOW_RANGE * 2) / SHADOW_RES;
@@ -1350,7 +1387,7 @@ void main() {
       if (c >= MAX_TORCH_SHADOWS) break;
       U.uTorchL.value[c].set(s.x, s.y, s.z, s.row * 32 + s.r);
       const col = s.c ?? [1, 0.86, 0.66];
-      this.shaftC[c].set(col[0], col[1], col[2]);
+      this.shaftC[c].set(col[0] * col[0], col[1] * col[1], col[2] * col[2]); // (v48: deeper, as the lit blocks show it)
       c++;
     }
     U.uTorchCount.value = Math.min(c, this.opts.torches);
@@ -1566,6 +1603,7 @@ void main() {
       vm.uCamWorld.value.copy(camera.matrixWorld);
       vm.uCamPos.value.setFromMatrixPosition(camera.matrixWorld);
       vm.uLen.value = gfxUniforms.uShadowRange.value * 0.95;
+      vm.uSunDir.value.copy(this.godDir); // (the sun, or the moon)
       this.blit(this.sunVolMat, this.god);
       const tmp = this.shaft[1]; // (free until the torch shafts are drawn, below)
       this.blurMat.uniforms.tSrc.value = this.god.texture; this.blurMat.uniforms.uDir.value.set(1 / this.god.width, 0); this.blit(this.blurMat, tmp);
@@ -1600,12 +1638,13 @@ void main() {
       this.blit(this.shaftMat, s1);
       this.blurMat.uniforms.tSrc.value = s1.texture; this.blurMat.uniforms.uDir.value.set(1 / s1.width, 0); this.blit(this.blurMat, s2);
       this.blurMat.uniforms.tSrc.value = s2.texture; this.blurMat.uniforms.uDir.value.set(0, 1 / s1.height); this.blit(this.blurMat, s1);
-      shaft = 1 - 0.75 * this.sunNow; // (they show best in the dark)
+      shaft = (1 - 0.75 * this.sunNow) * 0.7 * (this.shaftStr ?? 1); // (they show best in the dark; v48: 0.7, and the strength setting)
     }
     const f = this.finalMat.uniforms;
     f.tShaft.value = this.shaft[0].texture;
     f.uShaft.value = shaft;
     f.tBounce.value = this.bounce[0].texture;
+    f.tDepth.value = this.rtMain.depthTexture;
     f.uBounce.value = bounce;
     f.tSrc.value = this.rtMain.texture;
     f.tB1.value = this.b1[0].texture;

@@ -75,7 +75,7 @@ turn any off again if the game gets slow (☰ → Performance info shows the fra
   sets how many lights get their shadows redrawn each frame, in turn (new lights are drawn at once):
   higher keeps shadows of moving animals smooth, lower is faster. **Torch shadows by day** counts the lights
   out in the sun too, so their shadows show in shady places by day (under roofs, in doorways).
-- **Torch light shafts** (a slider, off or 1 to 50): the nearest few lights shine through the air around
+- **Torch light shafts** (a slider, off or 1 to 50, and a strength slider, 10–200%): the nearest few lights shine through the air around
   them, so you see their light hang in a dark room: beams fan out through iron bars, a doorway or a window,
   and pillars and furniture cut dark gaps through the glow. Each light takes its colour (a blue glow lamp
   gives blue beams), and a light behind stained glass sends out beams in the glass's colours. They use the same shadow pictures as torch shadows (those are drawn for the shafts'
@@ -1871,6 +1871,14 @@ guide to how everything works.
   effects off; or pick a fixed level from 0.5× to 2×. Performance info shows the resolution in use.
   Chunks are now built in background workers, so walking into new land no longer stutters while their
   blocks are turned into triangles (browsers without module workers build them as before, twice as fast).
+  Path tracing no longer washes everything out white: the light caught in the air was far too strong over
+  long distances (it streaked like blowing sand as you moved). It now gives a light haze outdoors, and
+  sunbeams still show in dark halls and under trees.
+  Lighting tweaks: volumetric god rays are strongest at sunrise and sunset and faint in the middle of the day
+  (they washed the afternoon out), and by night the moon casts faint blue-white rays of its own. Torch light
+  shafts are gentler, warmer (firelight, not white), no longer hang like fog round a bare torch, and have a
+  **strength** slider (☰ → Graphics, 10–200%). With traced lighting, a wall the sun reaches from the side is
+  no longer darkened by blocks overhead. Colour bleed no longer outlines hills against the sky.
 - **Version 47**: **volumetric god rays** (a third God rays setting: sunbeams in the air through roofs,
   windows and trees, from any angle, coloured by stained glass; classic stays for slower computers);
   **Cloud shadows**; path tracing: lava and every nearby light (in the sun too) light what's round them,
