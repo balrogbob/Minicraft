@@ -362,9 +362,15 @@ fn inscatter(o: vec3f, d: vec3f, len: f32, shade: f32) -> vec3f {
     let L = lights[min(u32(rnd() * f32(u.nLights)), u.nLights - 1u)];
     glow = lightAt(L, p, p, vec3f(0.0)) * f32(u.nLights);
   }
-  var s = u.sunCol * sun * (0.25 * len * dens * phase * u.sunStr * (0.12 + 0.88 * shade)) + glow * (len * 0.012);
+  // (v48) the light caught levels off with the length of sunlit air, and the beams only stand out where most of the way is
+  // in shade, as a shaft in a dark hall or under trees: open air lit all the way only takes a light haze. Before, it grew
+  // with the length, and 64 blocks of sunlit air in front of anything shaded came out several times brighter than white:
+  // a white wash, noisy, that streaked as you moved
+  let lit = sun * 0.25; // (the share of the way the sun reaches)
+  let beam = 1.0 - max(lit.r, max(lit.g, lit.b));
+  var s = u.sunCol * (1.0 - exp(-lit * (len * dens))) * (phase * u.sunStr * (0.05 + 1.2 * shade * beam)) + glow * (min(len, 24.0) * 0.012);
   if (under) { s *= vec3f(0.35, 0.8, 0.9); }
-  return s;
+  return min(s, vec3f(1.5));
 }
 
 @compute @workgroup_size(8, 8)

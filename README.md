@@ -1871,6 +1871,9 @@ guide to how everything works.
   effects off; or pick a fixed level from 0.5× to 2×. Performance info shows the resolution in use.
   Chunks are now built in background workers, so walking into new land no longer stutters while their
   blocks are turned into triangles (browsers without module workers build them as before, twice as fast).
+  Path tracing no longer washes everything out white: the light caught in the air was far too strong over
+  long distances (it streaked like blowing sand as you moved). It now gives a light haze outdoors, and
+  sunbeams still show in dark halls and under trees.
 - **Version 47**: **volumetric god rays** (a third God rays setting: sunbeams in the air through roofs,
   windows and trees, from any angle, coloured by stained glass; classic stays for slower computers);
   **Cloud shadows**; path tracing: lava and every nearby light (in the sun too) light what's round them,
