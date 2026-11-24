@@ -116,6 +116,25 @@ export const gfxUniforms = {
   uCloudMap: { value: null }, // (v47) cloud shadows: the sky's cloud pattern, and (drift, blocks across, height, strength)
   uCloud: { value: new THREE.Vector4(0, 512, 136, 0) },
 };
+// (v48) the world materials compile only the effects that are switched on. Each effect is a #define rather
+// than a uniform tested at run time, so with everything off a phone runs a small shader, not a big one that
+// skips most of its work: the skipped code still cost registers and slowed every pixel (see PERFORMANCE.md).
+// Materials added here get the defines (see Graphics.syncShaders), and recompile when the set changes.
+export const gfxMaterials = new Set();
+export function gfxDefines(o) {
+  const d = {};
+  if (o.shadows) d.GFX_SHADOW = '';
+  if (o.torches) d.GFX_TORCH = '';
+  if (o.traced) d.GFX_VOX = '';
+  if (o.clouds) d.GFX_CLOUDS = '';
+  if (o.caustics) d.GFX_CAUSTICS = '';
+  if (o.water || o.refraction || o.reflections) d.GFX_WATERFX = '';
+  if (o.sway) d.GFX_SWAY = '';
+  if (o.pathtrace) d.GFX_PT = '';
+  // (the sun's highlight on shiny blocks and wet ground: from Low up, not with everything off)
+  if (o.water || o.shadows || o.traced || o.pathtrace) d.GFX_SHINE = '';
+  return d;
+}
 // (v47) how much cloud is between p and the sun: 0 clear .. 1 under a cloud (soft-edged: 5 taps)
 export const GFX_CLOUD = `
 uniform sampler2D uCloudMap;
@@ -216,6 +235,7 @@ vWet = step(1.5, skyR);
 vSky = skyR - vWet * 2.0;
 `;
 export const GFX_VERT_SWAY = `
+#ifdef GFX_SWAY
 if (uSway > 0.5 && swayK > 0.5) {
   vec3 swp = (modelMatrix * vec4(position, 1.0)).xyz;
   // (a plant bends as one piece from its root: every block of a tall one keeps time with the rest, by its
@@ -226,6 +246,7 @@ if (uSway > 0.5 && swayK > 0.5) {
   transformed.z += cos(uTime * 1.3 + ph * 0.8) * amp * 0.8;
   if (swayK < 1.5) transformed.y += sin(uTime * 2.1 + ph) * amp * 0.3;
 }
+#endif
 `;
 
 // ---------- shader code for the world materials ----------
@@ -234,6 +255,7 @@ export const GFX_FRAG_HEAD = GFX_PT_HEAD + GFX_CLOUD + `
 uniform float uTime;
 uniform vec3 uSunDir;
 uniform float uSunStr;
+#ifdef GFX_SHADOW
 uniform sampler2D uShadowMap;
 uniform sampler2D uGlassMap;
 uniform float uGlassOn;
@@ -243,12 +265,20 @@ uniform float uShadowTexel;
 uniform float uShadowSoft;
 uniform float uShadowRange;
 uniform float uShadowDepth;
+#endif
 uniform float uCaustics;
 uniform float uFancyWater;
 uniform float uRefract;
+uniform vec3 uSkyCol;
+uniform float uReflect;
+#ifdef GFX_WATERFX
 uniform sampler2D uRefrTex;
 uniform vec2 uResolution;
-uniform vec3 uSkyCol;
+uniform float uReflH;
+uniform mat4 uReflMat;
+uniform sampler2D uReflTex;
+#endif
+#ifdef GFX_TORCH
 uniform int uTorchCount;
 uniform vec4 uTorchL[${MAX_TORCH_SHADOWS}];
 uniform sampler2D uTorchMap;
@@ -256,20 +286,20 @@ uniform vec2 uTorchTexel;
 uniform vec2 uTorchTile;
 uniform mat3 uFaceRot[6];
 uniform float uFaceScale;
-uniform float uReflect;
-uniform float uReflH;
-uniform mat4 uReflMat;
-uniform sampler2D uReflTex;
+#endif
+#ifdef GFX_VOX
 uniform highp usampler3D uVox;
 uniform sampler2D uVoxPal;
 uniform vec3 uVoxO;
 uniform float uVoxOn;
 uniform float uVoxStr;
+#endif
 varying float vWet;
 vec3 gfxNormal() {
   vec3 n = normalize(cross(dFdx(vWorldP), dFdy(vWorldP)));
   return dot(n, cameraPosition - vWorldP) < 0.0 ? -n : n;
 }
+#ifdef GFX_SHADOW
 // points spread over a disc (for soft shadow edges)
 const vec2 GFX_DISC[16] = vec2[](
   vec2(-0.94, -0.40), vec2(0.95, -0.77), vec2(-0.09, -0.93), vec2(0.34, 0.29), vec2(-0.92, 0.46), vec2(-0.82, 0.15),
@@ -317,6 +347,8 @@ vec3 gfxGlass(vec3 n) {
   vec4 g = texture2D(uGlassMap, p.xy);
   return p.z - 0.004 > g.a ? g.rgb : vec3(1.0);
 }
+#endif
+#ifdef GFX_TORCH
 // how much of one light reaches this spot: 1 = all, 0 = blocked (4 taps in its cube picture)
 float gfxTorchVis(float slot, vec3 L, float d, float reach, float bias) {
   vec3 a = abs(L);
@@ -365,6 +397,8 @@ float gfxTorchShadow(vec3 n) {
   if (sw < 0.001) return 1.0;
   return mix(1.0, mix(0.22, 1.0, sv / sw), clamp(sw * 4.0, 0.0, 1.0));
 }
+#endif
+#ifdef GFX_CAUSTICS
 // bright, slowly wandering lines of light, like sun through ripples
 float gfxCaustic(vec3 wp) {
   vec2 p = wp.xz + uSunDir.xz * wp.y * 0.4;
@@ -375,6 +409,8 @@ float gfxCaustic(vec3 wp) {
   float b = abs(sin(r.x * 2.7 - t * 0.6) + sin(r.y * 2.5 + t * 1.2));
   return (1.0 - smoothstep(0.0, 0.55, a)) * 0.6 + (1.0 - smoothstep(0.0, 0.55, b)) * 0.6;
 }
+#endif
+#ifdef GFX_VOX
 // (v46) traced lighting: the blocks around you as a 3D picture of block ids (see voxels.js), and a palette giving
 // each id its colour and whether light passes it. Walk a ray through it block by block: 2 = hit a block (t = how
 // far, hn = the face it hit, hp = its palette entry), 1 = left the traced area or the world, 0 = ran out of steps
@@ -436,29 +472,47 @@ vec3 gfxVoxReflect(vec3 R, vec3 n) {
   float lit = uSunStr * (0.3 + 0.7 * max(dot(hn, uSunDir), 0.0)) * (hn.y < -0.5 ? 0.4 : 1.0) + 0.05;
   return col * (lit + glow * 1.6);
 }
+#endif
 `;
 
 // replaces the plain "daylight x sunlight" term
 export const GFX_SUN_TERM = `
 float sunT = uDay * vSky;
+vec3 sunC = vec3(1.0);
+vec3 torchT = vTorchC * uFlicker;
+#if defined(GFX_SHADOW) || defined(GFX_VOX)
 float gfxSunVis = 1.0, gfxSunK = 0.0;
+#ifdef GFX_SHADOW
 if (uShadowStr > 0.0 && sunT > 0.0) { gfxSunVis = gfxShadow(gfxNormal()); gfxSunK = uShadowStr; }
+#endif
+#ifdef GFX_VOX
 float gfxVF = uVoxOn > 0.5 ? gfxVoxFade() : 0.0;
 if (uVoxStr > 0.0 && sunT > 0.0 && gfxVF > 0.0) { gfxSunVis = min(gfxSunVis, mix(1.0, gfxVoxSun(gfxNormal()), gfxVF)); gfxSunK = max(gfxSunK, uVoxStr); } // (v46: traced)
+#endif
 sunT *= 1.0 - gfxSunK * (1.0 - gfxSunVis);
+#endif
+#ifdef GFX_CLOUDS
 if (uCloud.w > 0.0 && sunT > 0.0) sunT *= 1.0 - uCloud.w * gfxCloud(vWorldP, uSunDir); // (v47)
+#endif
+#ifdef GFX_VOX
 vec2 gfxAmb = vec2(1.0);
 if (gfxVF > 0.0) { gfxAmb = mix(vec2(1.0), gfxVoxAmb(gfxNormal()), gfxVF); sunT *= mix(1.0, gfxAmb.x, 0.55) * mix(1.0, gfxAmb.y, 0.6); }
-vec3 sunC = vec3(1.0);
-if (uGlassOn > 0.5 && sunT > 0.0) sunC = gfxGlass(gfxNormal());
-if (uCaustics > 0.0 && vWet > 0.5) sunT *= 1.0 + gfxCaustic(vWorldP) * (0.25 + 0.75 * uSunStr);
-vec3 torchT = vTorchC * uFlicker;
-if (uTorchCount > 0 && torchT.r + torchT.g + torchT.b > 0.03) torchT *= gfxTorchShadow(gfxNormal());
 torchT *= mix(1.0, gfxAmb.x, 0.45);
+#endif
+#ifdef GFX_SHADOW
+if (uGlassOn > 0.5 && sunT > 0.0) sunC = gfxGlass(gfxNormal());
+#endif
+#ifdef GFX_CAUSTICS
+if (uCaustics > 0.0 && vWet > 0.5) sunT *= 1.0 + gfxCaustic(vWorldP) * (0.25 + 0.75 * uSunStr);
+#endif
+#ifdef GFX_TORCH
+if (uTorchCount > 0 && torchT.r + torchT.g + torchT.b > 0.03) torchT *= gfxTorchShadow(gfxNormal());
+#endif
 `;
 
 // water surface: runs after the light, only in the water material
 export const GFX_WATER = `
+#ifdef GFX_WATERFX
 if (uFancyWater > 0.5 || uRefract > 0.5 || uReflect > 0.5) {
   vec3 ng = gfxNormal();
   vec3 V = normalize(cameraPosition - vWorldP);
@@ -504,6 +558,7 @@ if (uFancyWater > 0.5 || uRefract > 0.5 || uReflect > 0.5) {
   diffuseColor.rgb = col;
   diffuseColor.a = alpha;
 }
+#endif
 `;
 
 // ---------- full-screen passes ----------
@@ -830,8 +885,15 @@ export class Graphics {
   // anything turned on?
   get fancy() { return Object.values(this.opts).some(Boolean); }
 
+  // (v48) give the world materials the #defines for the effects that are on, recompiling them when that changes
+  syncShaders() {
+    const d = gfxDefines(this.opts), key = Object.keys(d).join(',');
+    for (const m of gfxMaterials) if (m.userData.gfxKey !== key) { m.userData.gfxKey = key; m.defines = { ...d }; m.needsUpdate = true; }
+  }
+
   render(scene, camera) {
     const U = gfxUniforms, o = this.opts, r = this.renderer;
+    this.syncShaders();
     U.uTime.value = (performance.now() / 1000) % 3600;
     U.uSunDir.value.copy(this.sunDir);
     const sun = THREE.MathUtils.smoothstep(this.sunDir.y, 0.02, 0.25) * (1 - 0.9 * this.overcast);
