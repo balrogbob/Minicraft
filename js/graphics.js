@@ -938,7 +938,7 @@ export class Graphics {
     // (v48) by night, with volumetric god rays, a shadow picture from the moon: only for its faint rays in the air
     // (the world's shading doesn't use it: uShadowStr stays 0)
     this.moonShadow = false;
-    if (o.shadows && o.godrays === 2 && sun <= 0.01 && !this.underwater && this.sunDir.y < -0.05) {
+    if (o.shadows && o.godrays === 2 && sun <= 0.01 && !this.underwater && this.sunDir.y < -0.05 && (this.moonRays ?? 1) > 0) {
       const md = (this._moonDir ??= new THREE.Vector3()).copy(this.sunDir).negate();
       try { this.renderShadows(scene, camera, md); this.moonShadow = true; } catch (err) { this.fail(err, 'shadows'); this.freeShadows(); }
     }
@@ -986,7 +986,7 @@ export class Graphics {
       this.godMode = 2;
       gd.copy(this._moonDir);
       gc.setRGB(0.6, 0.72, 1);
-      return 0.4 * S(gd.y, 0.05, 0.3) * (1 - 0.9 * this.overcast);
+      return 0.16 * (this.moonRays ?? 1) * S(gd.y, 0.05, 0.3) * (1 - 0.9 * this.overcast); // (and the strength settings: see main.js)
     }
     gd.copy(this.sunDir);
     // (volumetric when asked for and there's a sun shadow picture this frame to march through; else classic)
@@ -996,7 +996,7 @@ export class Graphics {
       // lit all round washed the picture out. Warmer while the sun is low
       const low = 1 - S(this.sunDir.y, 0.08, 0.55);
       gc.setRGB(1, 0.88 - 0.12 * low, 0.62 - 0.2 * low);
-      return up0 * (0.3 + 1.2 * low) * this.sunNow;
+      return up0 * (0.3 + 1.2 * low) * this.sunNow * (this.sunRays ?? 1);
     }
     gc.setRGB(1, 0.88, 0.62);
     this.godMode = 1;
