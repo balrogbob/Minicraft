@@ -7,12 +7,15 @@
 //   { count: [id, n] }     have n of it at once
 //   { ach: 'id' }          earn that achievement
 //   { fn: 'name' }         a test main.js knows (see GOAL_TESTS there)
+//
+// A goal may end with a list of more items whose recipes it needs (`shows`). Once a chapter is open, the recipes
+// for everything its goals name are listed in 🎒 even before you carry the metal or part that would reveal them.
 import * as B from './blocks.js';
 
 const shaft = B.kineticId('shaft', 0), gear = B.kineticId('gear', 0);
 const has = (id) => ({ has: id }), count = (id, n) => ({ count: [id, n] }), ach = (id) => ({ ach: id }), fn = (name) => ({ fn: name });
 
-// [id, chapter title, chapter it follows (or -1), [goals]]; a goal is [id, name, check, hint, [reward id, n]]
+// [id, chapter title, chapter it follows (or -1), [goals]]; a goal is [id, name, check, hint, [reward id, n], shows?]
 const CHAPTERS = [
   ['start', 'First Steps', -1, [
     ['log', 'Timber!', has(B.LOG), 'Hold still on a tree trunk to punch out a log.', [B.APPLE, 2]],
@@ -59,8 +62,8 @@ const CHAPTERS = [
     ['crate', 'Packed Tight', has(Object.keys(B.CRATED).map(Number)), 'A carpenter turned by a shaft packs 9 of a thing into a crate: 64 crates fit in a slot.', [B.PLANKS, 16]],
   ]],
   ['steam', 'Steam and Steel', 4, [
-    ['steel', 'Steel', has(B.STEEL_INGOT), 'Iron and coal in a blast smelter make steel.', [B.STEEL_INGOT, 2]],
-    ['engine', 'Full Steam', ach('engine'), 'A steam engine burns fuel and needs water: more power than any wheel.', [B.COAL, 16]],
+    ['steel', 'Steel', has(B.STEEL_INGOT), 'Iron and coal in a blast smelter make steel. Crush clay and flint for fire clay, bake it into fire bricks in a smelter, and build the blast smelter from 8 of them and a smelter.', [B.STEEL_INGOT, 2], [B.FIRE_CLAY, B.BLAST_SMELTER]],
+    ['engine', 'Full Steam', ach('engine'), 'A steam engine burns fuel and needs water: more power than any wheel.', [B.COAL, 16], [B.STEAM_ENGINE]],
     ['drill', 'Mining Drill', has(B.DRILL), 'A turned drill bores out the blocks in front of it.', [B.TORCH, 16]],
     ['crafter', 'Auto-crafter', has(B.AUTO_CRAFTER), 'It crafts by itself from what you feed it. A programmable crafter follows the recipe on its item frame.', [B.STEEL_INGOT, 2]],
     ['washer', 'Ore Washer', has(B.WASHER), 'Wash dirty dust for clean dust and a chance of trace metals. It needs water touching it.', [B.SPEED_UPGRADE, 1]],
@@ -152,7 +155,7 @@ const CHAPTERS = [
 
 export const GUIDE = CHAPTERS.map(([id, name, after, goals]) => ({
   id, name, after,
-  goals: goals.map(([gid, gname, check, hint, reward]) => ({ id: `${id}.${gid}`, name: gname, check, hint, reward: reward && reward[0] != null ? reward : null })),
+  goals: goals.map(([gid, gname, check, hint, reward, shows]) => ({ id: `${id}.${gid}`, name: gname, check, hint, reward: reward && reward[0] != null ? reward : null, shows: shows ?? [] })),
 }));
 export const GOALS = GUIDE.flatMap((c) => c.goals);
 
@@ -170,4 +173,18 @@ export function goalItem(g) {
   if (c.has != null) return Array.isArray(c.has) ? c.has[0] : c.has;
   if (c.count) return c.count[0];
   return g.reward?.[0] ?? 0;
+}
+
+// Every item whose recipe the open chapters' goals call for: what they ask you to have, and what they list as needed.
+// (Only the recipes that make it: unpacking a crate of it stays hidden until you have the crate.)
+export function goalShown(done) {
+  const out = new Set();
+  GUIDE.forEach((ch, i) => {
+    if (!chapterOpen(i, done)) return;
+    for (const g of ch.goals) {
+      const c = g.check, ids = c.has != null ? [c.has].flat() : c.count ? [c.count[0]] : [];
+      for (const id of [...ids, ...g.shows]) out.add(id);
+    }
+  });
+  return out;
 }

@@ -1882,6 +1882,9 @@ guide to how everything works.
   **strength** slider (☰ → Graphics, 10–200%). With traced lighting, a wall the sun reaches from the side is
   no longer darkened by blocks overhead. Colour bleed no longer outlines hills against the sky. Live mirrors
   no longer flicker with stripes of the mirror's own face when seen straight on from a distance.
+  Guidebook: once a chapter is open, the recipes its goals call for are always listed in 🎒, even before you
+  carry the metal that would normally reveal them (the blast smelter and steam engine could stay hidden, and
+  stop Steam and Steel). The Steel goal now explains fire bricks.
 - **Version 47**: **volumetric god rays** (a third God rays setting: sunbeams in the air through roofs,
   windows and trees, from any angle, coloured by stained glass; classic stays for slower computers);
   **Cloud shadows**; path tracing: lava and every nearby light (in the sun too) light what's round them,

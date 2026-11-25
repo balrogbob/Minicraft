@@ -59,7 +59,8 @@ import { Controls, KEY_ACTIONS, DEFAULT_KEYS, keyLabel } from './controls.js';
 import { WorldMap } from './worldmap.js';
 import { ItemDrops } from './drops.js';
 import { ACHIEVEMENTS, ACHIEVEMENT_IDS } from './achievements.js';
-import { GUIDE, GOALS, chapterOpen, goalItem } from './guidebook.js';
+import { GUIDE, GOALS, chapterOpen, goalItem, goalShown } from './guidebook.js';
+import { CRATED } from './blocks.js';
 import { MobManager, DIFFICULTY, DIFFICULTY_ORDER, SPECIES } from './mobs.js';
 import { ArrowManager } from './arrows.js';
 import { Stations, STATION_KINDS, isFuel, inCellar, wetAt, upgradeStacks, upgradeRefusal } from './stations.js';
@@ -1551,10 +1552,11 @@ function renderInventory() {
   // favourites first, then everything else in the usual order
   const shown = RECIPES.filter((r) => favs.has(recipeKey(r))).concat(RECIPES.filter((r) => !favs.has(recipeKey(r))));
   let count = 0;
+  const guided = goalShown(guideDone); // recipes the open guidebook chapters ask for are never hidden
   shown.forEach((r) => {
     const haveAll = r.in.every(([id, n]) => countOf(id) >= n) && (r.tools ?? []).every((id) => inventory.count(id) > 0);
     // metal tools only show up once you have that metal (or its plates, or everything the recipe needs)
-    if (r.metal && countOf(r.metal) <= 0 && !haveAll && !idsOf(r.metal).some((id) => { const p = plateOf(id); return p >= PLATES && inventory.count(p) > 0; })) return;
+    if (r.metal && !(guided.has(r.out[0]) && !r.in.some(([id]) => idsOf(id).some((i) => CRATED[i]))) && countOf(r.metal) <= 0 && !haveAll && !idsOf(r.metal).some((id) => { const p = plateOf(id); return p >= PLATES && inventory.count(p) > 0; })) return;
     const fav = favs.has(recipeKey(r));
     if (favOnly && !fav) return;
     if (query && ![r.out[0], ...r.in.flatMap(([id]) => idsOf(id))].some((id) => itemName(id).toLowerCase().includes(query))) return;
