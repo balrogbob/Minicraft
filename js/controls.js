@@ -246,7 +246,9 @@ export class Controls {
   bindDesktop() {
     const L = this.layer;
     this.mouseBreak = false;
+    let rightDown = false; // a right button press came as a mousedown (see contextmenu below)
     L.addEventListener('mousedown', (e) => {
+      if (e.button === 2) rightDown = true;
       if (this.hooks.isPaused()) return;
       if (document.pointerLockElement !== L) { this.grabMouse(); return; }
       if (e.button === 0) this.mouseBreak = true;
@@ -258,6 +260,11 @@ export class Controls {
     // on a machine or villager has opened its window, which is what's under the mouse.
     document.addEventListener('contextmenu', (e) => {
       if (!e.target.closest?.('input, textarea, [contenteditable="true"]')) e.preventDefault();
+      // A Chromebook touchpad's two-finger tap (its right click) can come as only this, with no right-button
+      // mousedown: then it places. When a mousedown came first (it always does before this one), it already has.
+      const placed = rightDown;
+      rightDown = false;
+      if (!placed && document.pointerLockElement === L && !this.hooks.isPaused()) this.hooks.place();
     });
     // Some browsers now and then report one wild jump in mouse movement while the pointer is locked (most just after
     // locking, or when the window loses and regains focus), which spun you right round. Skip the first moves

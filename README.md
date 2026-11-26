@@ -1885,6 +1885,7 @@ guide to how everything works.
   Guidebook: once a chapter is open, the recipes its goals call for are always listed in 🎒, even before you
   carry the metal that would normally reveal them (the blast smelter and steam engine could stay hidden, and
   stop Steam and Steel). The Steel goal now explains fire bricks.
+  On a Chromebook, a two-finger tap on the touchpad (its right click) now places blocks.
 - **Version 47**: **volumetric god rays** (a third God rays setting: sunbeams in the air through roofs,
   windows and trees, from any angle, coloured by stained glass; classic stays for slower computers);
   **Cloud shadows**; path tracing: lava and every nearby light (in the sun too) light what's round them,
