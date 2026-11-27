@@ -23,6 +23,7 @@ const HIDE_SECONDS = 120; // a buffalo sheds a loose patch of its shaggy hide no
 // face brightness for box faces (+x, -x, +y, -y, +z, -z), matching the world's block shading
 const SHADE = [0.8, 0.8, 1.0, 0.5, 0.65, 0.65].map((v) => Math.pow(v, 2.2));
 const rand = (a, b) => a + Math.random() * (b - a);
+const childScale = (youth) => 1 - 0.42 * Math.min(1, youth / CHILD_TIME * 1.6); // (a child is a bit over half size)
 const pick = (list) => list[Math.floor(Math.random() * list.length)];
 
 // Builds a model from coloured boxes. All boxes of one animal share its material, whose colour
@@ -64,7 +65,16 @@ const VILLAGER_LOOKS = {
   smith: { robe: 0x5a5a62, apron: 0x2a2a2e, legs: 0x3a3a40, hat: 'cap' },
   fisher: { robe: 0x3a6a8a, apron: 0xc8b88a, legs: 0x2a3a4a, hat: 'cap' },
   cleric: { robe: 0x7a3a8a, apron: 0xd8c050, legs: 0x5a2a6a, hat: 'hood' },
+  // (v50) the new villages' trades, their guards and their children
+  blacksmith: { robe: 0x4a3a30, apron: 0x2a2420, legs: 0x302a28, hat: 'cap' },
+  railsmith: { robe: 0x5a4a3a, apron: 0x8a5a2a, legs: 0x3a3028, hat: 'cap' },
+  mechanic: { robe: 0x3a5068, apron: 0x3a5068, legs: 0x2a3a4c, hat: 'goggles' },
+  cook: { robe: 0xe4e0d4, apron: 0xf4f0e8, legs: 0x5a4a3a, hat: 'chef' },
+  guard: { robe: 0x8a8a92, apron: 0x9a2a2a, legs: 0x3a3a40, hat: 'helm' },
+  child: { robe: 0x6a8a4a, apron: 0x6a8a4a, legs: 0x4a3a2a },
 };
+const CHILD_CLOTHES = [0x6a8a4a, 0x8a4a4a, 0x4a6a9a, 0xb08a3a, 0x7a5a8a];
+const HAIR = [0x4a3a2a, 0x2a2018, 0x8a5a2a, 0xc8a860, 0x6a3a1a, 0x9a9a9a];
 
 // A hulking golem with a sunken head, huge fists and glowing eyes (mossbacks, and the Ember Lord).
 function golem(b, root, { stone, dark, moss, eye }) {
@@ -693,15 +703,18 @@ const SPECIES = {
 
   // villagers live in the villages: each has a trade (farmer, smith, fisher or cleric) and swaps its goods
   villager: {
-    w: 0.6, h: 1.8, speed: 0.8, fleeSpeed: 2.2, sink: 1, stride: 7, legSwing: 0.5,
+    w: 0.6, h: 1.8, speed: 0.8, fleeSpeed: 2.2, chaseSpeed: 3.2, sink: 1, stride: 7, legSwing: 0.5,
     avoidWater: true, grazes: false, trader: true, villager: true,
     build(b, root, opts = {}) {
-      const look = VILLAGER_LOOKS[opts.profession] ?? VILLAGER_LOOKS.farmer;
-      const skin = pick([0xd8a878, 0xb07a50, 0x8a5a38, 0xe8c09a]);
+      const role = opts.role ?? 'adult', woman = opts.sex === 'f';
+      let look = VILLAGER_LOOKS[role === 'adult' ? opts.profession : role] ?? VILLAGER_LOOKS.farmer;
+      if (role === 'child') { const c = pick(CHILD_CLOTHES); look = { ...look, robe: c, apron: c }; }
+      const skin = pick([0xd8a878, 0xb07a50, 0x8a5a38, 0xe8c09a]), hair = pick(HAIR);
       const parts = { legs: [], arms: [] };
       const torso = parts.torso = b.pivot(root, [0, 0.78, 0]);
       b.box(torso, [0.48, 0.68, 0.3], look.robe, [0, 0.34, 0]);
-      b.box(torso, [0.5, 0.42, 0.04], look.apron, [0, 0.22, 0.16]); // apron
+      b.box(torso, [0.5, 0.42, 0.04], look.apron, [0, 0.22, 0.16]); // apron (a guard's tabard)
+      if (woman) b.box(torso, [0.52, 0.42, 0.34], look.robe, [0, -0.12, 0]); // a skirt
       const head = parts.head = b.pivot(torso, [0, 0.7, 0]);
       b.box(head, [0.36, 0.38, 0.36], skin, [0, 0.19, 0]);
       b.box(head, [0.08, 0.14, 0.08], shade(skin), [0, 0.13, 0.21]); // nose
@@ -709,11 +722,19 @@ const SPECIES = {
       if (look.hat === 'straw') { b.box(head, [0.62, 0.05, 0.62], 0xd8c070, [0, 0.4, 0]); b.box(head, [0.36, 0.14, 0.36], 0xd8c070, [0, 0.48, 0]); }
       else if (look.hat === 'cap') b.box(head, [0.4, 0.1, 0.44], look.apron, [0, 0.42, 0.03]);
       else if (look.hat === 'hood') { b.box(head, [0.42, 0.14, 0.42], look.robe, [0, 0.42, 0]); b.box(head, [0.42, 0.3, 0.06], look.robe, [0, 0.24, -0.2]); }
-      else b.box(head, [0.38, 0.1, 0.38], 0x4a3a2a, [0, 0.42, 0]); // hair
+      else if (look.hat === 'chef') { b.box(head, [0.4, 0.08, 0.4], 0xf4f4f0, [0, 0.42, 0]); b.box(head, [0.34, 0.22, 0.34], 0xf4f4f0, [0, 0.56, 0]); }
+      else if (look.hat === 'helm') { b.box(head, [0.42, 0.16, 0.42], 0x9a9aa4, [0, 0.42, 0]); b.box(head, [0.06, 0.12, 0.06], 0x9a2a2a, [0, 0.56, 0]); b.box(head, [0.42, 0.22, 0.05], 0x8a8a94, [0, 0.26, -0.2]); }
+      else if (look.hat === 'goggles') { b.box(head, [0.38, 0.1, 0.38], hair, [0, 0.42, 0]); b.box(head, [0.38, 0.06, 0.04], 0x2a2a2a, [0, 0.3, 0.18]); for (const sx of [-1, 1]) b.box(head, [0.1, 0.08, 0.03], 0x9ac8d8, [sx * 0.09, 0.3, 0.2]); }
+      else b.box(head, [0.38, 0.1, 0.38], hair, [0, 0.42, 0]); // hair
+      if (woman && look.hat !== 'hood') { // long hair, down the back and over the ears
+        b.box(head, [0.4, 0.4, 0.08], hair, [0, 0.16, -0.2]);
+        for (const sx of [-1, 1]) b.box(head, [0.05, 0.3, 0.3], hair, [sx * 0.2, 0.2, -0.04]);
+      }
       for (const sx of [-1, 1]) {
         const arm = b.pivot(torso, [sx * 0.31, 0.64, 0]);
         b.box(arm, [0.14, 0.58, 0.14], look.robe, [0, -0.29, 0]);
         b.box(arm, [0.12, 0.1, 0.12], skin, [0, -0.62, 0]);
+        if (role === 'guard' && sx > 0) { b.box(arm, [0.05, 1.5, 0.05], 0x6a4a2a, [0, -0.3, 0.12]); b.box(arm, [0.08, 0.16, 0.03], 0xb8b8c0, [0, 0.52, 0.12]); } // a spear
         parts.arms.push(arm);
         const leg = b.pivot(root, [sx * 0.12, 0.78, 0]);
         b.box(leg, [0.18, 0.78, 0.2], look.legs, [0, -0.39, 0]);
@@ -827,7 +848,53 @@ function heartSprite() {
 
 export const MOB_KINDS = Object.keys(SPECIES);
 export { SPECIES };
-export const PROFESSIONS = ['farmer', 'smith', 'fisher', 'cleric'];
+export const PROFESSIONS = ['farmer', 'smith', 'fisher', 'cleric']; // (the trades in the old villages)
+// v50 (villages stage 3): in the new villages each grown-up has a job, most of them at one of its buildings:
+export const WORK_JOBS = { church: 'cleric', smithy: 'blacksmith', railsmith: 'railsmith', machine: 'mechanic' };
+export const JOB_NAMES = { farmer: 'Farmer', smith: 'Smith', fisher: 'Fisher', cleric: 'Cleric', blacksmith: 'Blacksmith', railsmith: 'Railsmith', mechanic: 'Mechanic', cook: 'Cook' };
+const GUARDS = { hamlet: 0, village: 1, town: 2, city: 4 };
+export const CHILD_TIME = 2 * 12 * 60; // seconds (two days) a child spends about the village before it's grown up
+const MAX_ABOUT = 12; // never more villagers (not counting guards) about at once
+// Everyone who lives in a village, in a fixed order (so the same people come out each time): guards first,
+// then whoever sleeps in each bed of each house. Each is { i, role: 'guard'|'adult'|'child', sex: 'm'|'f',
+// job, house, work: { x, z, r } | null }. A child has a job waiting for it when it grows up.
+export function villageFolk(v, grown) {
+  if (v.folk && v.folkFor === v.houses.length) return v.folk;
+  const hash = (i, k) => { let h = (v.x * 73856093) ^ (v.z * 19349663) ^ (i * 83492791) ^ (k * 2654435761); h = Math.imul(h ^ (h >>> 13), 1274126177); return ((h ^ (h >>> 16)) >>> 0) / 4294967296; };
+  const folk = [];
+  const add = (o) => { const i = folk.length; folk.push({ i, sex: hash(i, 1) < 0.5 ? 'm' : 'f', work: null, house: null, ...o }); };
+  if (v.layout !== 2) {
+    // the old villages: one more than there are houses, up to 5 and then one a house (never more than 12)
+    const n = v.houses.length ? Math.min(MAX_ABOUT, 5 + Math.max(0, v.houses.length - 5), v.houses.length + 1) : 0;
+    for (let i = 0; i < n; i++) add({ role: i >= 4 && hash(i, 2) < 0.25 ? 'child' : 'adult', job: PROFESSIONS[i] ?? PROFESSIONS[Math.floor(hash(i, 3) * 4)], house: v.houses[i % v.houses.length] });
+  } else {
+    const at = (x, z, r) => ({ x: x + 0.5, z: z + 0.5, r });
+    const jobs = [...v.works.filter((w) => WORK_JOBS[w.kind]).map((w) => ({ job: WORK_JOBS[w.kind], work: at(w.x + w.door[0] * 2, w.z + w.door[1] * 2, 2.5) })),
+      ...v.farms.map((f) => ({ job: 'farmer', work: at(f.x, f.z, 3) })),
+      ...v.stalls.slice(0, Math.ceil(v.stalls.length / 2)).map((s) => ({ job: 'cook', work: at(s.x + s.face[0] * 2, s.z + s.face[1] * 2, 2) })),
+      { job: 'fisher', work: null }];
+    // guards keep watch from the towers, the gates and the square
+    const posts = [...(v.buildings ?? []).filter((b) => b.kind === 'tower').map((b) => at(b.x + b.face[0] * 4, b.z + b.face[1] * 4, 3)),
+      ...(v.walls?.gates ?? []).map((g) => at(g.x - g.dir[0] * 3, g.z - g.dir[1] * 3, 3)), at(v.x + 3, v.z + 3, 5)];
+    v.posts = posts;
+    for (let i = 0; i < (GUARDS[v.size] ?? 0); i++) add({ role: 'guard', job: 'guard', work: posts[i % posts.length] });
+    let j = 0;
+    for (const hs of v.houses) {
+      (hs.beds?.length ? hs.beds : [0]).forEach((_, b) => {
+        // the second bed in a house is a child's, now and then (in the villages that have room to grow)
+        const child = b > 0 && hash(folk.length, 2) < 0.45;
+        // (once every job is taken, the rest farm the fields or go fishing)
+        const spare = jobs.filter((o) => o.job === 'farmer' || o.job === 'fisher');
+        const w = j < jobs.length ? jobs[j] : spare[Math.floor(hash(folk.length, 4) * spare.length)];
+        j++;
+        add({ role: child ? 'child' : 'adult', job: w.job, work: w.work, house: hs });
+      });
+    }
+  }
+  for (const f of folk) if (f.role === 'child' && grown?.includes(f.i)) f.role = 'adult';
+  v.folk = folk; v.folkFor = v.houses.length;
+  return folk;
+}
 const HOSTILE_KINDS = MOB_KINDS.filter((k) => SPECIES[k].hostile && !SPECIES[k].boss);
 const SURFACE_KINDS = HOSTILE_KINDS.filter((k) => !SPECIES[k].caveOnly);
 const ANIMAL_CAP = MAX_MOBS;
@@ -850,6 +917,7 @@ export const DIFFICULTY_ORDER = ['peaceful', 'worrying', 'scary', 'terrifying'];
 class Mob {
   constructor(kind, x, y, z, opts = {}) {
     this.profession = opts.profession;
+    this.role = opts.role; this.sex = opts.sex; // (villagers: 'guard', 'adult' or 'child'; 'm' or 'f')
     this.kind = kind;
     this.spec = SPECIES[kind];
     this.pos = new THREE.Vector3(x, y, z);
@@ -894,6 +962,16 @@ class Mob {
     if (this.spec.lays) this.layFor = rand(this.spec.lays[1] * 0.3, this.spec.lays[2]);
     this.baseScale = this.root.scale.x;
     this.geometries = b.geometries;
+  }
+
+  // Make the model again (a child that has grown up, dressed for its job).
+  rebuild(opts) {
+    for (const g of this.geometries) g.dispose();
+    this.root.clear();
+    const b = new Builder(this.material, this.glowMaterial);
+    this.parts = this.spec.build(b, this.root, opts);
+    this.geometries = b.geometries;
+    this.root.scale.setScalar(this.baseScale);
   }
 
   dispose(scene) {
@@ -1056,26 +1134,87 @@ export class MobManager {
     return null;
   }
 
-  // Villagers turn up around a village as you come near it, and stay close to home.
+  // Villagers turn up around a village as you come near it, and stay close to home: each one of the village's
+  // folk (see villageFolk), one at a time, at its own front door (a guard at its post). Only guards come out at night.
   spawnVillagers(player) {
     const w = this.world;
     const v = w.generator.nearestVillage(player.pos.x, player.pos.z, 1);
     if (!v || Math.hypot(v.x - player.pos.x, v.z - player.pos.z) > 80) return;
     if (this.owns && !this.owns(v.x, v.z)) return; // (the game nearest the village looks after its villagers)
-    const here = this.mobs.filter((m) => m.home === v).length;
-    // (one more than there are houses, up to 5 and then one a house; v50: never more than 12 about at once)
-    if (!v.houses.length || here >= Math.min(12, 5 + Math.max(0, v.houses.length - 5), v.houses.length + 1) || this.villagerNight()) return;
-    const hs = pick(v.houses);
-    const x = hs.x + hs.door[0] * 2 + Math.round(rand(-1, 1)), z = hs.z + hs.door[1] * 2 + Math.round(rand(-1, 1));
+    const folk = villageFolk(v, this.grownOf?.(v));
+    const here = this.mobs.filter((m) => m.home === v), night = this.villagerNight();
+    const about = here.filter((m) => m.role !== 'guard').length;
+    const f = folk.find((o) => !here.some((m) => m.folk === o.i) && (o.role === 'guard' || (!night && about < MAX_ABOUT)));
+    if (!f) return;
+    const hs = f.house, p = f.role === 'guard' ? f.work : null;
+    const x = p ? Math.floor(p.x + rand(-1, 1)) : hs.x + hs.door[0] * 2 + Math.round(rand(-1, 1));
+    const z = p ? Math.floor(p.z + rand(-1, 1)) : hs.z + hs.door[1] * 2 + Math.round(rand(-1, 1));
     if (!w.chunkAt(x, z)) return;
     const s = this.surface(x, z);
     if (!s || w.isWater(x, s.y, z) || !this.hasRoom('villager', x + 0.5, s.y + 1, z + 0.5)) return;
-    const used = this.mobs.filter((m) => m.home === v).map((m) => m.profession);
-    const profession = PROFESSIONS.find((p) => !used.includes(p)) ?? pick(PROFESSIONS);
-    const m = this.spawn('villager', x + 0.5, s.y + 1, z + 0.5, { profession });
-    m.home = v; m.house = hs;
+    const m = this.spawn('villager', x + 0.5, s.y + 1, z + 0.5, { profession: f.role === 'adult' ? f.job : undefined, role: f.role, sex: f.sex });
+    m.home = v; m.house = f.role === 'guard' ? null : hs; m.folk = f.i;
+    if (f.role === 'child') { f.youth ??= CHILD_TIME * (0.4 + 0.6 * ((f.i * 0.618) % 1)); m.youth = f.youth; m.root.scale.setScalar(m.baseScale * childScale(m.youth)); }
     this.onVillagerSpawn?.(m);
     return m;
+  }
+
+  // A child about the village grows a little each second, and is grown up after CHILD_TIME: it takes up the
+  // job waiting for it (and dresses for it).
+  tickChild(m, dt) {
+    const f = m.home?.folk?.[m.folk];
+    m.youth = Math.max(0, m.youth - dt);
+    if (f) f.youth = m.youth;
+    m.root.scale.setScalar(m.baseScale * childScale(m.youth));
+    if (m.youth > 0) return;
+    m.role = 'adult';
+    m.profession = f?.job ?? 'farmer';
+    if (f) f.role = 'adult';
+    m.trades = null;
+    m.rebuild({ profession: m.profession, role: 'adult', sex: m.sex });
+    this.onGrownUp?.(m);
+  }
+
+  // Where a villager means to be just now, and how far it wanders from there: its work by day (with a break
+  // at noon, and the festival), otherwise the square. Children play about the square.
+  anchorOf(m) {
+    const v = m.home, f = v.folk?.[m.folk], h = this.hour ?? 12;
+    if (f?.work && m.role !== 'child' && !this.festival && h >= 7.5 && h < 17 && (h < 12 || h >= 13)) return f.work;
+    return { x: v.x + 0.5, z: v.z + 0.5, r: m.role === 'child' ? 10 : v.layout === 2 ? Math.min(20, v.radius * 0.5) : 16 };
+  }
+
+  // A guard walks the rounds of the village's posts, and goes for any night creature that comes near.
+  thinkGuard(m, dt, player) {
+    const v = m.home;
+    m.attackCD = Math.max(0, (m.attackCD ?? 0) - dt);
+    let target = null, best = 14;
+    for (const o of this.mobs) {
+      if (!o.spec.hostile || o.dying || o.puppet) continue;
+      const d = Math.hypot(o.pos.x - m.pos.x, o.pos.z - m.pos.z);
+      if (d < best && Math.hypot(o.pos.x - v.x, o.pos.z - v.z) < (v.radius ?? 26) + 8) { best = d; target = o; }
+    }
+    if (target) {
+      m.state = 'chase';
+      m.heading = Math.atan2(target.pos.x - m.pos.x, target.pos.z - m.pos.z);
+      m.closeEnough = best < 1 + target.spec.w / 2;
+      if (best < 1.6 + target.spec.w / 2 && m.attackCD <= 0) {
+        m.attackCD = 1;
+        m.swingT = 0.3;
+        this.hurt(target, 4, m.pos, true);
+      }
+      return;
+    }
+    if (m.state === 'chase') { m.state = 'idle'; m.timer = 1; }
+    const posts = v.posts ?? [{ x: v.x + 0.5, z: v.z + 0.5, r: 5 }];
+    m.post ??= posts[(m.folk ?? 0) % posts.length];
+    const dx = m.post.x - m.pos.x, dz = m.post.z - m.pos.z;
+    m.timer -= dt;
+    m.brisk = Math.hypot(dx, dz) > 10;
+    if (Math.hypot(dx, dz) > m.post.r) { m.state = 'walk'; m.heading = Math.atan2(dx, dz); return; }
+    if (m.timer <= 0) {
+      if (m.state === 'walk' || Math.random() < 0.3) { m.state = 'idle'; m.timer = rand(3, 8); }
+      else { m.post = pick(posts); m.state = 'walk'; m.timer = 1; } // on to another post
+    }
   }
 
   // Villagers go indoors from dusk until morning. (`hour` is set by the game each frame: 0..24.)
@@ -1101,7 +1240,7 @@ export class MobManager {
       m.indoors = true; m.root.visible = false; m.vel.set(0, 0, 0);
       return true;
     }
-    m.state = 'walk'; m.heading = Math.atan2(dx, dz); m.timer = Math.max(m.timer, 0.5);
+    m.state = 'walk'; m.heading = Math.atan2(dx, dz); m.timer = Math.max(m.timer, 0.5); m.brisk = Math.hypot(dx, dz) > 8;
     return false;
   }
 
@@ -1254,8 +1393,10 @@ export class MobManager {
         this.thinkPet(m, dt, player);
         if (m.love > 0) this.seekMate(m);
       } else {
-        if (m.house && this.villagerHome(m, dt)) continue;
-        if (!m.house || !this.villagerNight()) this.think(m, dt, player);
+        if (m.youth > 0) this.tickChild(m, dt);
+        if (m.role === 'guard' && m.home) this.thinkGuard(m, dt, player);
+        else if (m.house && this.villagerHome(m, dt)) continue;
+        else if (!m.house || !this.villagerNight()) this.think(m, dt, player);
         if (m.love > 0) this.seekMate(m);
       }
       if (!m.spec.hostile) this.tickBreeding(m, dt);
@@ -1290,8 +1431,13 @@ export class MobManager {
       m.state = 'flee'; m.timer = rand(2.5, 4);
       this.sound?.mob(m.kind, 0.6);
     }
-    // villagers wander back toward the well if they stray too far
-    if (m.home && m.state === 'walk' && Math.hypot(m.pos.x - m.home.x, m.pos.z - m.home.z) > 16) m.heading = Math.atan2(m.home.x - m.pos.x, m.home.z - m.pos.z);
+    // villagers wander back toward the well (or their work) if they stray too far, and go straight there from afar
+    if (m.home) {
+      const a = this.anchorOf(m), d = Math.hypot(m.pos.x - a.x, m.pos.z - a.z);
+      if (d > a.r + 4 && m.state !== 'flee') { m.state = 'walk'; m.timer = Math.max(m.timer, 0.5); }
+      m.brisk = d > a.r + 8; // (a long way to go: it steps out)
+      if (m.state === 'walk' && d > a.r) m.heading = Math.atan2(a.x - m.pos.x, a.z - m.pos.z);
+    }
     if (m.state === 'flee') {
       m.heading = Math.atan2(m.pos.x - player.pos.x, m.pos.z - player.pos.z) + Math.sin(m.timer * 3) * 0.3;
       if (m.timer <= 0) { m.state = 'idle'; m.timer = rand(1, 3); }
@@ -1406,7 +1552,7 @@ export class MobManager {
     if (m.state === 'ride') return m.rideSpeed ?? 0;
     if (m.state === 'follow') return m.spec.followSpeed ?? m.spec.speed * 3;
     if (m.state === 'flee') return m.spec.fleeSpeed;
-    if (m.state === 'walk') return m.spec.speed * (m.inWater ? 0.6 : 1);
+    if (m.state === 'walk') return m.spec.speed * (m.inWater ? 0.6 : 1) * (m.brisk ? 2.2 : 1);
     if (m.state === 'chase') return m.closeEnough ? 0 : m.spec.chaseSpeed * (m.speedMul ?? 1);
     if (m.state === 'retreat') return m.spec.chaseSpeed * 0.7 * (m.speedMul ?? 1);
     return 0;
@@ -1631,6 +1777,10 @@ export class MobManager {
     const o = { k: m.kind }, n = (v) => Math.round(v);
     if (m.coat != null) o.coat = m.coat;
     if (m.profession) o.prof = m.profession;
+    if (m.role) o.role = m.role;
+    if (m.sex) o.sex = m.sex;
+    if (m.youth > 0) o.yo = n(m.youth);
+    if (m.folk != null) o.fk = m.folk;
     if (m.spec.horse) { o.gait = +m.gait.toFixed(2); o.leap = +m.leap.toFixed(2); }
     if (m.tame) o.tame = 1;
     if (m.sitting) o.sit = 1;
@@ -1673,9 +1823,13 @@ export class MobManager {
     m.angry = o.ang ?? 0;
     if (!!o.ind !== !!m.indoors) { m.indoors = !!o.ind; m.root.visible = !m.indoors; }
     m.ridden = !!o.rid; m.shed = !!o.shed;
+    if ((o.role ?? m.role) !== m.role) { m.role = o.role; m.profession = o.prof; m.rebuild({ profession: o.prof, role: o.role, sex: o.sex }); }
+    m.youth = o.yo ?? 0;
+    if (m.role === 'child') m.root.scale.setScalar(m.baseScale * childScale(m.youth));
+    if (o.fk != null) m.folk = o.fk;
     if (o.home && !m.home) {
       const v = this.world?.generator.nearestVillage(o.home[0], o.home[1], 1);
-      if (v && v.x === o.home[0] && v.z === o.home[1]) { m.home = v; m.house = v.houses[o.home[2]] ?? v.houses[0]; }
+      if (v && v.x === o.home[0] && v.z === o.home[1]) { m.home = v; m.house = o.role === 'guard' ? null : v.houses[o.home[2]] ?? v.houses[0]; }
     }
     if (o.trades) m.trades = o.trades;
     if (o.leave != null) m.leaveIn = o.leave;
@@ -1722,7 +1876,7 @@ export class MobManager {
       }
       if (!m) {
         if (!look || !SPECIES[look.k] || look.dy) continue;
-        m = this.spawn(look.k, x, y, z, { coat: look.coat, profession: look.prof, gait: look.gait, leap: look.leap });
+        m = this.spawn(look.k, x, y, z, { coat: look.coat, profession: look.prof, role: look.role, sex: look.sex, gait: look.gait, leap: look.leap });
         m.uid = uid; m.puppet = true; m.yaw = yaw;
         byUid.set(uid, m);
       }
@@ -1802,6 +1956,8 @@ export class MobManager {
       this.sound?.mob(m.kind, 1, true);
       return { give, take, said: '' };
     }
+    if (m.role === 'guard') return { give, take, said: pick(this.villagerNight() ? ['"Stay near the lamps after dark."', '"Keep close. Things come out of the dark."', `"I'll keep watch. Sleep well."`] : [`"All quiet in ${m.home?.name ?? 'the village'}."`, '"Move along, friend."', '"I keep watch from the towers and the gates."']) };
+    if (m.role === 'child') return { give, take, said: pick(['"When I grow up I\'m going to be ' + (/^[aeiou]/.test(m.home?.folk?.[m.folk]?.job ?? 'f') ? 'an ' : 'a ') + (JOB_NAMES[m.home?.folk?.[m.folk]?.job] ?? 'Farmer').toLowerCase() + '!"', '"Tag! You\'re it!"', '"Have you seen a dragon? I have. Nearly."']) };
     if (m.spec.trader) return { give, take, said: '', trade: true };
     if (m.kind === 'beetle') {
       if (m.shed) return { give, take, said: 'The beetle has nothing more to give' };
@@ -1968,7 +2124,7 @@ export class MobManager {
 
   // The player hits a night creature for `amount`. It gets knocked back, flashes, and hunts the
   // player for a while (even on Peaceful). Returns its drops if that hit defeated it.
-  hurt(m, amount, from) {
+  hurt(m, amount, from, quiet = false) { // (quiet: a guard did it, so it isn't one of yours)
     if (m.dying || !m.spec.hostile || !this.take(m)) return [];
     m.hp -= amount;
     m.angry = 30;
@@ -1983,6 +2139,7 @@ export class MobManager {
     if (m.hp <= 0) {
       m.dying = 0.4;
       this.sound?.poof();
+      if (quiet) return [];
       this.onDefeat?.(m);
       return m.spec.drops();
     }

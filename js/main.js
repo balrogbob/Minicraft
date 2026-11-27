@@ -5,7 +5,7 @@ import { FarLand, FAR_REACH } from './farland.js';
 import { Net } from './net.js';
 import { Graphics, GFX_DEFAULTS, GFX_NAMES, GFX_TOGGLES, SHADOW_LEVELS, TRACED_LEVELS, GODRAY_LEVELS, GFX_PRESETS, PRESET_ORDER, PRESET_NAMES, MAX_TORCH_SHADOWS, gfxUniforms, gfxMaterials, GFX_FRAG_HEAD, GFX_SUN_TERM, GFX_WATER, GFX_VERT_HEAD, GFX_VERT_DECODE, GFX_VERT_SWAY, WATER_LAYER, LATE_LAYER } from './graphics.js';
 import {
-  BLOCKS, RECIPES, TABLE, AIR, WATER, TORCH, TORCH_WALL_W, WALL_TORCH_DIRS,
+  BLOCKS, RECIPES, TABLE, armourId, GEARBOX, MUSHROOM_STEW, APPLE_PIE, FISH_PIE, PUMPKIN_PIE, BAKED_POTATO, FISH_SOUP, BERRY_JAM, CHERRY_PIE, TRUFFLE_SOUP, AIR, WATER, TORCH, TORCH_WALL_W, WALL_TORCH_DIRS,
   GRASS, DIRT, SAND, CHURN, SUGAR_CANE, BREAD, ITEMS, BOW, ARROW, BUCKET,
   WOOD_PICK, STONE_PICK, WOOD_AXE, STONE_AXE, WOOD_SHOVEL, STONE_SHOVEL,
   BED, BED_FOOT, CHAIR, LAMP, CARPET, CURTAIN, DOOR, SLIME_FUEL, FACING_DIRS, MAX_LAMP_FUEL,
@@ -63,7 +63,7 @@ import { ACHIEVEMENTS, ACHIEVEMENT_IDS } from './achievements.js';
 import { GUIDE, GOALS, chapterOpen, goalItem, goalShown } from './guidebook.js';
 import { SKILLS, SKILL, MAX_LEVEL, xpToNext, perk, gain, hungerSaving, loadSkills, STATION_SKILL, STATION_PERKS } from './skills.js';
 import { CRATED } from './blocks.js';
-import { MobManager, DIFFICULTY, DIFFICULTY_ORDER, SPECIES } from './mobs.js';
+import { MobManager, DIFFICULTY, DIFFICULTY_ORDER, SPECIES, JOB_NAMES } from './mobs.js';
 import { ArrowManager } from './arrows.js';
 import { Stations, STATION_KINDS, isFuel, inCellar, wetAt, upgradeStacks, upgradeRefusal } from './stations.js';
 import { Fishing } from './fishing.js';
@@ -861,7 +861,7 @@ async function startWorld(save, opts = {}) {
   for (const e of Array.isArray(save?.fires) ? save.fires : []) if (Array.isArray(e) && typeof e[0] === 'string' && Number.isFinite(e[1])) fires.set(e[0], e[1]);
   villageGrowth = new Map((Array.isArray(save?.villageGrowth) ? save.villageGrowth : []).filter((e) => Array.isArray(e) && typeof e[0] === 'string' && e[1] && Number.isFinite(e[1].deals))
     .map(([k, g]) => [k, { deals: g.deals, built: (Array.isArray(g.built) ? g.built : []).filter((h) => h && [h.x, h.y, h.z].every(Number.isFinite) && Array.isArray(h.door)),
-      rep: Number.isFinite(g.rep) ? g.rep : 0, reqDay: Number.isInteger(g.reqDay) ? g.reqDay : -1, decorDay: Number.isInteger(g.decorDay) ? g.decorDay : -1,
+      rep: Number.isFinite(g.rep) ? g.rep : 0, grown: Array.isArray(g.grown) ? g.grown.filter(Number.isInteger) : [], reqDay: Number.isInteger(g.reqDay) ? g.reqDay : -1, decorDay: Number.isInteger(g.decorDay) ? g.decorDay : -1,
       decor: (Array.isArray(g.decor) ? g.decor : []).filter((e) => Array.isArray(e) && e.length === 4 && e.every(Number.isFinite)) }]));
   beaconSpots = new Set(Array.isArray(save?.beacons) ? save.beacons.filter((k) => typeof k === 'string') : []);
   if (save?.weather) weather.set(!!save.weather.raining, Math.max(10, +save.weather.timer || 60));
@@ -1471,7 +1471,7 @@ function lookName() {
   if (targetVehicle) return targetVehicle.v.kind === 'boat' ? (targetVehicle.v.store ? 'Chest Boat (sneak and tap to open)' : targetVehicle.v.fast ? 'Polymer Boat' : 'Boat') : 'Hot-Air Balloon';
   if (targetMob) {
     const m = targetMob.mob;
-    const name = m.spec.name ?? (m.kind === 'villager' ? `Villager (${m.profession ?? 'farmer'})` : capital(m.kind));
+    const name = m.spec.name ?? (m.kind === 'villager' ? villagerLabel(m) : capital(m.kind));
     if (m.spec.horse) return horseLabel(m);
     return m.tame ? `${name} (tame)` : name;
   }
@@ -3684,12 +3684,34 @@ const VILLAGER_TRADES = {
   smith: [[[COAL, 12], [IRON_INGOT, 3]], [[LOG, 16], [STEEL_INGOT, 1]], [[GOLD_INGOT, 1], [STAINLESS_INGOT, 1]], [[COBBLE, 32], [COPPER_INGOT, 4]], [[LEATHER, 4], [IRON_SHIELD, 1]], [[CRYSTAL_SHARD, 4], [TUNGSTEN_INGOT, 1]], [[COIN, 6], [STEEL_INGOT, 2]], [[COIN, 5], [IRON_INGOT, 4]]],
   fisher: [[[STICK, 12], [BAKED_FISH, 3]], [[STRING, 4], [WROD, 1]], [[WHEAT, 16], [SALMON, 4]], [[COAL, 8], [BAKED_SALMON, 3]], [[BREAD, 4], [ROD, 1]], [[OLD_BOOT, 2], [LEATHER, 3]], [[COIN, 3], [BAKED_SALMON, 3]]],
   cleric: [[[GOLD_INGOT, 1], [HEAL_TEA, 2]], [[BERRIES, 8], [NIGHT_TEA, 1]], [[HONEYCOMB, 3], [HASTE_TEA, 1]], [[SILVER_INGOT, 2], [CRYSTAL_SHARD, 4]], [[PAPER, 6], [FIRE_TEA, 1]], [[GLOW_MUSHROOM, 4], [NIGHT_TEA, 1]], [[COIN, 5], [HEAL_TEA, 1]]],
+  // (v50) the trades of the new villages' workshops and market
+  blacksmith: [[[COIN, 6], [metalSword(ironAt), 1]], [[COIN, 5], [metalTool(ironAt, 'pick'), 1]], [[COIN, 4], [metalTool(ironAt, 'axe'), 1]], [[COIN, 2], [metalTool(ironAt, 'shovel'), 1]],
+    [[COIN, 5], [armourId(2, 0), 1]], [[COIN, 8], [armourId(2, 1), 1]], [[COIN, 7], [armourId(2, 2), 1]], [[COIN, 4], [armourId(2, 3), 1]], [[COIN, 6], [IRON_SHIELD, 1]],
+    [[COIN, 10], [metalSword(ironAt + 1), 1]], [[COAL, 12], [IRON_INGOT, 3]]],
+  railsmith: [[[COIN, 2], [RAIL, 8]], [[IRON_INGOT, 2], [RAIL, 12]], [[COIN, 4], [POWERED_RAIL, 4]], [[COIN, 3], [DETECTOR_RAIL, 2]], [[COIN, 3], [SWITCH_RAIL, 2]],
+    [[COIN, 5], [MINECART, 1]], [[COIN, 7], [STORAGE_CART, 1]], [[COIN, 6], [RAIL_STATION, 1]], [[COIN, 4], [BRIDGE_RAIL, 4]], [[COIN, 18], [LOCOMOTIVE, 1]]],
+  mechanic: [[[COIN, 3], [kineticId('shaft', 1), 4]], [[COIN, 4], [kineticId('gear', 1), 2]], [[COIN, 5], [kineticId('large', 1), 1]], [[COIN, 4], [GEARBOX, 1]],
+    [[COIN, 4], [DRIVE_BELT, 4]], [[COIN, 5], [SPANNER, 1]], [[COIN, 10], [CRUSHER, 1]], [[COIN, 9], [SAW, 1]], [[COIN, 8], [MILLSTONE, 1]], [[COPPER_INGOT, 6], [kineticId('gear', 1), 2]]],
+  cook: [[[COIN, 2], [BAKED_POTATO, 3]], [[COIN, 3], [PUMPKIN_PIE, 1]], [[COIN, 5], [APPLE_PIE, 1]], [[COIN, 4], [FISH_PIE, 1]], [[COIN, 3], [MUSHROOM_STEW, 1]],
+    [[COIN, 3], [FISH_SOUP, 1]], [[COIN, 3], [CHEESE, 2]], [[WHEAT, 12], [BREAD, 4]], [[COIN, 3], [BERRY_JAM, 2]], [[POTATO, 8], [BAKED_POTATO, 6]]],
 };
-const PROFESSION_NAMES = { farmer: 'Farmer', smith: 'Smith', fisher: 'Fisher', cleric: 'Cleric' };
+const PROFESSION_NAMES = JOB_NAMES;
+// What a villager is called when you look at it: its job, or "Guard", or "Child".
+function villagerLabel(m) {
+  const who = m.role === 'guard' ? 'Guard' : m.role === 'child' ? 'Child' : PROFESSION_NAMES[m.profession] ?? 'Farmer';
+  return m.home ? `${who} of ${m.home.name}` : `Villager (${who.toLowerCase()})`;
+}
+// A village's children grow up (see mobs.tickChild): who has, is kept with the village.
+mobs.grownOf = (v) => villageGrowth.get(villageKey(v))?.grown;
+mobs.onGrownUp = (m) => {
+  const g = villageEntry(m.home);
+  if (!(g.grown ??= []).includes(m.folk)) g.grown.push(m.folk);
+  if (Math.hypot(m.pos.x - player.pos.x, m.pos.z - player.pos.z) < 32) toast(`One of the children of ${m.home.name} has grown up, and become the village's new ${PROFESSION_NAMES[m.profession].toLowerCase()}`, 3500);
+};
 mobs.onVillagerSpawn = (m) => {
-  const pool = [...VILLAGER_TRADES[m.profession]];
+  const pool = [...VILLAGER_TRADES[m.profession] ?? []]; // (guards and children don't trade)
   m.trades = [];
-  for (let i = 0; i < 3; i++) m.trades.push(pool.splice(Math.floor(Math.random() * pool.length), 1)[0]);
+  for (let i = 0; i < 3 && pool.length; i++) m.trades.push(pool.splice(Math.floor(Math.random() * pool.length), 1)[0]);
 };
 // The way to the nearest village, as the trader tells it ("about 300 blocks north-east"), or ''.
 function villageHint() {
@@ -7749,6 +7771,10 @@ const SPECIAL_TRADES = {
   smith: [[[COIN, 8], [SPEED_UPGRADE, 1]], [[COIN, 12], [YIELD_UPGRADE, 1]]],
   fisher: [[[COIN, 2], [WORM, 10]], [[COIN, 8], [TREASURE_MAP, 1]]],
   cleric: [[[COIN, 5], [GOLDEN_TEA, 1]], [[COIN, 8], [PEARL, 3]]],
+  blacksmith: [[[COIN, 14], [metalSword(ironAt + 2), 1]], [[COIN, 20], [armourId(4, 1), 1]]],
+  railsmith: [[[COIN, 8], [ELECTRIC_RAIL, 6]], [[COIN, 6], [LOADER_RAIL, 2]]],
+  mechanic: [[[COIN, 8], [SPEED_UPGRADE, 1]], [[COIN, 12], [YIELD_UPGRADE, 1]]],
+  cook: [[[COIN, 4], [CHERRY_PIE, 1]], [[COIN, 6], [TRUFFLE_SOUP, 2]]],
 };
 function specialTrades(m) {
   if (!m.spec.villager || !m.home) return [];
