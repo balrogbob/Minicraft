@@ -1695,13 +1695,28 @@ trader moves on after a few minutes.
 
 ## Villages and trade
 
+### Hamlets, villages, towns and cities
+
+Settlements come in four sizes: a **hamlet** of three to five houses, a **village** of up to ten, a **town** of up to
+twenty and, now and then, a **city** of thirty or more. Each has a cobbled square with the well and the bell in the
+middle and a lantern at each corner, and roads running out of it: gravel in hamlets and villages, cobbles in towns
+and cities, with side streets and street lamps in the bigger places. Roads keep to a gentle slope over hills and
+cross rivers and ponds on plank bridges with fenced sides. Houses, fields and empty plots line the roads, each on
+level ground with its door to the street, and the ground round it all is cut and built up to match and blends
+back into the hills at the edges. (In the desert the roads and square are sandstone.)
+
+The new layout comes in worlds made since Version 50, and in older worlds only in land you haven't been to yet:
+anywhere you've already explored keeps its old village exactly as it was. A world played on a server keeps the
+old villages unless the server's world was made with Version 50 or later.
+
 ### Village life and market stalls
 
 - Villagers walk home at dusk and stay indoors through the night. Each morning the village **bell** rings
   (tap a bell to hear which village you're in).
 - A **market stall** (6 planks, 4 logs, 3 wool) in a village: put things on it and passing villagers buy them for
   silver **coins**. Food, wine, cheese and pearls sell best. Traders take coins too.
-- A village you trade with grows: after enough deals the villagers build a new house (up to six).
+- A village you trade with grows: after enough deals the villagers build a new house (up to six). The new kind of
+  village builds on its empty plots, and grows until they're all taken.
 
 ### Village requests, reputation and festivals
 
@@ -1892,6 +1907,11 @@ guide to how everything works.
 
 ## Version history
 
+- **Version 50** (in progress): **villages, stage 1**. Hamlets, villages, towns and cities, with a cobbled square,
+  roads that keep to a gentle slope and bridge rivers, side streets and street lamps in towns and cities, and
+  houses, fields and empty plots for growing into along the roads, all on levelled ground that blends into the
+  land. Only in new worlds and land you haven't explored yet. See
+  [Hamlets, villages, towns and cities](#hamlets-villages-towns-and-cities).
 - **Version 49** (in progress): **skills**. Mining, Woodcutting, Farming, Building, Forging, Smelting, Cooking,
   Processing, Melee and Archery level up as you do them (K, or 🏅 Skills in the guidebook), each level giving a
   little and every fifth a perk: more ore, logs and crops, faster digging and machines, blocks not used up, longer
@@ -2016,6 +2036,7 @@ guide to how everything works.
 | `js/blocks.js` | Block & item definitions, break times, drops, recipes |
 | `js/textures.js` | Procedural texture atlas, item icons, break cracks |
 | `js/terrain.js` | Chunk-by-chunk terrain generation (every block is a pure function of seed and position) |
+| `js/villages.js` | Village plans (sizes, roads, bridges, plots, houses, fields, levelled ground) and putting them into chunks |
 | `js/world.js` | Chunk streaming, sunlight and torch light propagation across chunks, sending chunks to be meshed (in workers) and showing the results, water flow, raycasting |
 | `js/mesher.js`, `js/mesh-worker.js` | Chunk meshing (face culling + AO + smooth light, separate water mesh) from a snapshot of a chunk and its border; the shapes of fences, walls, wires, stairs and water surfaces. The worker runs it off the main thread |
 | `js/store.js` | Saving edited chunks to IndexedDB, per world slot (16 bits per block; older one-byte chunks are widened as they load) |

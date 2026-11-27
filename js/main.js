@@ -44,7 +44,7 @@ import { Fireworks } from './fireworks.js';
 import { makePalette } from './voxels.js';
 import { createAtlas, createGlowMask, createIcons, createCrackCanvases, createWaterCanvas, createHudIcons, paintSeason, ATLAS_COLS } from './textures.js';
 import { World, CHUNK, WORLD_SIZE, chunkKey, skyBrightness, lightBrightness } from './world.js';
-import { localIndex, CHUNK_VOLUME, OLD_CHUNK_VOLUME, H, SEA_LEVEL, SNOW_LINE } from './terrain.js';
+import { localIndex, CHUNK_VOLUME, OLD_CHUNK_VOLUME, H, SEA_LEVEL, SNOW_LINE, WORLD_CHUNKS } from './terrain.js';
 import { ChunkStore, toBlocks } from './store.js';
 import { buildLegacyWorld, LEGACY_W } from './legacy.js';
 import { Sky, DAY_LENGTH } from './sky.js';
@@ -773,6 +773,7 @@ async function startWorld(save, opts = {}) {
   if (!save) await store.clear();
   const seed = save?.seed ?? newSeed();
   world = new World(seed, store, save ? !!save.tall : true); // (v43: new worlds are tall; older saves stay classic)
+  world.generator.setVillageLayout(...villageLayoutFor(save));
   farLand.setGenerator(world.generator);
   world.onError = reportError;
   // leaves falling from a tree you just cut drop their saplings and sticks to you, if you're nearby
@@ -940,12 +941,32 @@ function respawn() {
 function setProgress(f) { $('load-bar').style.width = Math.round(f * 100) + '%'; }
 const nextFrame = () => new Promise((r) => requestAnimationFrame(() => r()));
 
+// (v50) Which villages a world has: [layout, old regions] for Generator.setVillageLayout. New worlds (and new
+// server worlds) get the new villages everywhere. A world made before v50 gets them too, but only in land nobody has
+// been to: every region with a chunk the map has seen, or a chunk that's been changed, keeps its old village
+// exactly as it was. (A world played on an older server keeps the old villages, as other players' games would.)
+function villageLayoutFor(save) {
+  if (!save) return [2, []];
+  if (save.mpWorld !== undefined) return [save.villages === 2 ? 2 : 1, []];
+  if (save.villages === 2) return [2, Array.isArray(save.oldRegions) ? save.oldRegions.filter(Number.isFinite) : []];
+  if (save.villages === 1 || !Array.isArray(save.explored) || save.explored.length >= 39000) return [1, []];
+  const old = new Set();
+  for (const k of [...save.explored, ...store.keys]) {
+    if (!Number.isFinite(k)) continue;
+    const cx = Math.floor(k / WORLD_CHUNKS), cz = k % WORLD_CHUNKS;
+    old.add((cx >> 2) * 4096 + (cz >> 2)); // (a village region is 4 x 4 chunks)
+  }
+  return [2, [...old]];
+}
+
 function saveGame() {
   if (!world || !player || !worldReady) return false;
   world.saveChunks();
+  const g = world.generator;
   return writeSave({
     seed: world.seed,
     ...(world.tall ? { tall: true } : {}),
+    villages: g.villageLayout, ...(g.villageLayout === 2 && g.oldRegions.size ? { oldRegions: [...g.oldRegions] } : {}),
     ...(activeSlot === MP_SLOT ? { mpWorld: net.worldId } : {}),
     inv: inventory.serialize(),
     player: { x: player.pos.x, y: player.pos.y, z: player.pos.z, yaw: player.yaw, pitch: player.pitch },
@@ -5348,6 +5369,7 @@ async function mpWelcome(m) {
     await store.clear(MP_SLOT);
     save = { seed: m.seed, mpWorld: m.world, ...(m.tall ? { tall: true } : {}) };
   }
+  save.villages = m.villages === 2 ? 2 : 1; // (v50: new villages, if the server's world was made for them)
   worldReady = false;
   activeSlot = MP_SLOT; store.setSlot(MP_SLOT);
   pendingEdits.clear();
@@ -6930,7 +6952,7 @@ function villageHouses(v) {
 function growVillage(v, n = 1) {
   const g = villageEntry(v);
   g.deals += n;
-  if (g.deals >= DEALS_PER_HOUSE * (g.built.length + 1) && g.built.length < 6) {
+  if (g.deals >= DEALS_PER_HOUSE * (g.built.length + 1) && g.built.length < (v.layout === 2 ? v.plots.filter((p) => p.kind === 'spare').length : 6)) {
     const h = buildVillageHouse(v);
     if (h) { g.built.push(h); v.houses.push({ ...h }); toast(`${v.name} is doing well: the villagers have built a new house`, 3000); }
   }
@@ -6945,6 +6967,7 @@ function groundAt(x, z) {
   return null;
 }
 function buildVillageHouse(v) {
+  if (v.layout === 2) return buildOnPlot(v);
   const base = Math.random() * Math.PI * 2;
   for (let i = 0; i < 24; i++) {
     const a = base + i * 0.9, d = 16 + (i % 4) * 2;
@@ -6964,6 +6987,24 @@ function buildVillageHouse(v) {
     const ddx = v.x - hx, ddz = v.z - hz;
     const door = Math.abs(ddx) > Math.abs(ddz) ? [Math.sign(ddx) * 2, 0] : [0, Math.sign(ddz) * 2];
     const h = { x: hx, y: hy, z: hz, door };
+    placeHouse(h);
+    return h;
+  }
+  return null;
+}
+// (v50) A new village builds on one of the plots it left free by its roads, nearest the well first, if that part
+// of the village is loaded and nobody has built over it.
+function buildOnPlot(v) {
+  for (const p of v.plots) {
+    if (p.kind !== 'spare' || v.houses.some((o) => Math.abs(o.x - p.x) < 4 && Math.abs(o.z - p.z) < 4)) continue;
+    let ok = true;
+    for (let dz = -3; dz <= 3 && ok; dz++) for (let dx = -3; dx <= 3 && ok; dx++) {
+      const x = p.x + dx, z = p.z + dz;
+      if (!world.chunkAt(x, z)) ok = false;
+      else for (let y = p.y + 1; y <= p.y + 4; y++) if (BLOCKS[world.get(x, y, z)]?.solid) { ok = false; break; }
+    }
+    if (!ok) continue;
+    const h = { x: p.x, y: p.y, z: p.z, door: [p.face[0] * 2, p.face[1] * 2] };
     placeHouse(h);
     return h;
   }
