@@ -10,9 +10,10 @@
 // Worlds made before v50 keep their old villages wherever anyone has been (see Generator.villageAt).
 import {
   AIR, GRASS, DIRT, SAND, SNOW, SNOW_GRASS, SANDSTONE, CUT_SANDSTONE, COBBLE, GRAVEL, PLANKS, LOG, FENCE, WATER,
-  GLASS_PANE, FURN_TABLE, CHEST, TORCH_WALL_W, doorId, slabId, WHEAT_0, VILLAGE_BELL, LANTERN,
+  BRICKS, MOSSY_BRICKS, LADDER, FACING_DIRS, WHEAT_0, VILLAGE_BELL, LANTERN,
 } from './blocks.js';
 import { CHUNK, H, SEA_LEVEL, SNOW_LINE, localIndex } from './terrain.js';
+import { buildBuilding, buildStall, houseStyle } from './buildings.js';
 
 // R: how far the village reaches from the well, its levelled edge included. plaza: half the width of the square.
 // sides: how far along each main road the side streets branch off; sideLen: how long they run.
@@ -23,11 +24,14 @@ export const VILLAGE_SIZES = {
   city: { R: 50, plaza: 6, roads: [4, 4], sides: [13, 27], sideLen: 19, houses: [20, 35], farms: 4, paved: true, lamps: true },
 };
 export const SIZE_ORDER = ['hamlet', 'village', 'town', 'city'];
+// (v50 stage 2) the kinds of home each size builds, and how many market stalls stand on its square
+const HOUSE_SIZES = { hamlet: ['small', 'small', 'long'], village: ['small', 'long', 'long'], town: ['small', 'long', 'tall'], city: ['long', 'tall', 'tall'] };
+const STALLS = { hamlet: 1, village: 2, town: 4, city: 8 };
 // How often each size comes up (before rough land makes some of them smaller).
 export const SIZE_CHANCE = [0.35, 0.4, 0.18, 0.07];
 
 // What a cell of the plan is
-export const K_NONE = 0, K_ROAD = 1, K_PLAZA = 2, K_PLOT = 3, K_EDGE = 4, K_BRIDGE = 5, K_RAIL = 6, K_LAMP = 7;
+export const K_NONE = 0, K_ROAD = 1, K_PLAZA = 2, K_PLOT = 3, K_EDGE = 4, K_BRIDGE = 5, K_RAIL = 6, K_LAMP = 7, K_WALL = 8;
 const PLOT = 7, PLOT_STEP = 9, EDGE = 5; // plots are 7 x 7, a plot every 9 blocks along a road; the edge blends over 5
 const MAX_SPAN = 12; // the longest bridge a road builds
 
@@ -164,16 +168,66 @@ export function planVillage(g, c) {
     }
   }
 
-  // which plots are houses, which are fields, and which are left for the village to grow into
+  // What goes on each plot: nearest the square the church and the workshops, then homes; out toward the edge of a
+  // town its guard towers, and furthest out the fields; and a plot or two left free for the village to grow into.
   plots.sort((a, b) => Math.hypot(a.x - c.x, a.z - c.z) - Math.hypot(b.x - c.x, b.z - c.z));
   const wantHouses = S.houses[0] + Math.floor(rnd(40) * (S.houses[1] - S.houses[0] + 1));
   const nFarms = Math.min(S.farms, Math.max(0, plots.length - 1));
+  const works = (c.size === 'hamlet' ? [] : ['church', 'smithy']).concat(S.paved ? ['railsmith', 'machine'] : []);
+  while (works.length && plots.length - nFarms - works.length < 2) works.pop(); // (homes first, if land is short)
+  const nTowers = c.size === 'town' ? Math.min(2, Math.max(0, plots.length - nFarms - works.length - 3)) : 0;
   // (a plot or two left free for the village to build on as it does well)
-  const spare = S.paved ? 2 : 1, free = plots.length - nFarms;
+  const spare = S.paved ? 2 : 1, free = plots.length - nFarms - works.length - nTowers;
   const nHouses = Math.max(Math.min(S.houses[0], free), Math.min(wantHouses, free - spare));
-  plots.forEach((p, i) => { p.kind = i < nHouses ? 'house' : i >= plots.length - nFarms ? 'farm' : 'spare'; });
-  const houses = plots.filter((p) => p.kind === 'house').map((p) => ({ x: p.x, y: p.y, z: p.z, door: [p.face[0] * 2, p.face[1] * 2] }));
+  plots.forEach((p, i) => {
+    const fromEnd = plots.length - 1 - i;
+    p.kind = i < works.length ? works[i] : fromEnd < nFarms ? 'farm' : fromEnd < nFarms + nTowers ? 'tower'
+      : i < works.length + nHouses ? 'house' : 'spare';
+  });
+  const desert = c.biome === 'desert', mainStyle = houseStyle(c.size, c.biome, 0);
+  const buildings = [], houses = [];
+  plots.forEach((p, n) => {
+    if (p.kind === 'farm' || p.kind === 'spare') return;
+    const b = { kind: p.kind, x: p.x, y: p.y, z: p.z, face: p.face, style: mainStyle };
+    if (p.kind === 'house') {
+      b.style = houseStyle(c.size, c.biome, rnd(60 + n));
+      b.size = HOUSE_SIZES[c.size][Math.floor(rnd(160 + n) * HOUSE_SIZES[c.size].length)];
+      b.flowers = !desert && rnd(260 + n) < 0.3;
+    }
+    if (p.kind === 'church') { b.style = desert ? 'sandchurch' : 'church'; b.glass = 3 + Math.floor(rnd(360) * 6); }
+    const out = buildBuilding(() => {}, b);
+    buildings.push(b);
+    if (p.kind === 'house') houses.push({ x: p.x, y: p.y, z: p.z, door: out.door, beds: out.beds, size: b.size, style: b.style });
+  });
+  const works2 = buildings.filter((b) => b.kind !== 'house' && b.kind !== 'tower').map((b) => ({ kind: b.kind, x: b.x, y: b.y, z: b.z, spot: b.spot, door: [b.face[0] * 2, b.face[1] * 2] }));
   const farms = plots.filter((p) => p.kind === 'farm').map((p) => ({ x: p.x, y: p.y, z: p.z, face: p.face, crop: Math.floor(rnd(50 + plots.indexOf(p)) * 6) }));
+
+  // market stalls on the square, near its corners, facing in
+  const stalls = [];
+  const spots = [[1, 1], [-1, -1], [1, -1], [-1, 1]].map(([sx, sz]) => [sx * (ps - 1), sz * (ps - 1), sz])
+    .concat(ps >= 6 ? [[1, 1], [-1, -1], [1, -1], [-1, 1]].map(([sx, sz]) => [sx * (ps - 1), sz * (ps - 3), -sz]) : []);
+  spots.slice(0, STALLS[c.size]).forEach(([dx, dz, sd], n) => {
+    stalls.push({ x: c.x + dx, y: P, z: c.z + dz, face: [-Math.sign(dx), 0], side: [0, sd], hay: rnd(70 + n) < 0.4 });
+  });
+
+  // A city's walls: two blocks thick round the edge, battlements along the top, a tower at each corner, and a
+  // gate where each main road runs out, with a tower either side.
+  let walls = null;
+  if (c.size === 'city') {
+    const ring = R - 3, gates = [];
+    for (const m of mains) {
+      const last = m.cells.at(-1), [ux, uz] = m.dir;
+      if (Math.max(Math.abs(last.x - c.x), Math.abs(last.z - c.z)) < reach) continue;
+      for (let t = 1; t <= ring + 1 - reach; t++) for (const o of [-1, 0, 1]) mark(last.x + ux * t + -uz * o, last.z + uz * t + ux * o, K_ROAD, last.y);
+      gates.push({ x: last.x + ux * (ring - reach), z: last.z + uz * (ring - reach), y: last.y, dir: m.dir });
+    }
+    for (let j = 0; j < W; j++) for (let i = 0; i < W; i++) {
+      const d = Math.max(Math.abs(bx0 + i - c.x), Math.abs(bz0 + j - c.z)), q = i + j * W;
+      if ((d !== ring && d !== ring - 1) || kind[q] === K_ROAD || kind[q] === K_BRIDGE) continue;
+      kind[q] = K_WALL; tgt[q] = Math.max(nat[q], SEA_LEVEL); post[q] = d === ring ? 2 : 3;
+    }
+    walls = { ring, gates };
+  }
 
   // street lamps by the roads of towns and cities, in the gaps between the plots
   if (S.lamps) for (const r of roads) {
@@ -210,7 +264,7 @@ export function planVillage(g, c) {
 
   return {
     x: c.x, y: P, z: c.z, biome: c.biome, name: c.name, size: c.size, radius: R, layout: 2,
-    houses, farm: farms[0] ?? null, farms, plots, lamps,
+    houses, farm: farms[0] ?? null, farms, plots, lamps, buildings, works: works2, stalls, walls,
     roads: roads.map((r) => ({ main: r.main, dir: r.dir, from: [r.cells[0].x, r.cells[0].z], to: [r.cells.at(-1).x, r.cells.at(-1).z] })),
     plaza: { x0: c.x - ps, z0: c.z - ps, x1: c.x + ps, z1: c.z + ps, y: P },
     bbox: { x0: bx0, z0: bz0, x1: bx0 + W - 1, z1: bz0 + W - 1 },
@@ -254,6 +308,16 @@ export function stampVillage(g, v, data, cx, cz, crops) {
       }
       continue;
     }
+    if (k === K_WALL) {
+      // a wall from its footing up: the outer course to 5 above the ground with battlements on top, the inner to
+      // 4 (the walk along the top)
+      const stone = desert ? SANDSTONE : g.villageRand(x, 4001, z) < 0.15 ? MOSSY_BRICKS : BRICKS;
+      for (let y = Math.min(h, t) - 1; y <= t; y++) set(x, y, z, desert ? SANDSTONE : COBBLE);
+      for (let y = t + 1; y <= Math.min(H - 1, Math.max(h, t) + 14); y++) set(x, y, z, AIR);
+      const outer = G.post[q] === 2, high = outer ? 5 + (((x + z) & 1) ? 0 : 1) : 4;
+      for (let dy = 1; dy <= high; dy++) set(x, t + dy, z, stone);
+      continue;
+    }
     const sandy = t <= SEA_LEVEL + 1;
     const top = desert || sandy ? SAND : t >= SNOW_LINE ? SNOW : v.biome === 'tundra' ? SNOW_GRASS : GRASS;
     const sub = desert || sandy ? SAND : DIRT;
@@ -275,27 +339,10 @@ export function stampVillage(g, v, data, cx, cz, crops) {
   }
   set(v.x + 2, v.y + 1, v.z, VILLAGE_BELL);
 
-  // houses: 5 x 5, plank walls on log corners, a cobblestone footing, a door to the road, windows, a torch and a table
-  for (const hs of v.houses) {
-    const { x, y, z, door } = hs;
-    for (let dz = -2; dz <= 2; dz++) for (let dx = -2; dx <= 2; dx++) {
-      const wx = x + dx, wz = z + dz, edge = Math.abs(dx) === 2 || Math.abs(dz) === 2, corner = Math.abs(dx) === 2 && Math.abs(dz) === 2;
-      set(wx, y, wz, edge ? COBBLE : PLANKS);
-      for (let k = 1; k <= 3; k++) set(wx, y + k, wz, corner ? LOG : edge ? (k === 2 && (dx === 0 || dz === 0) ? GLASS_PANE : PLANKS) : AIR);
-      set(wx, y + 4, wz, PLANKS);
-      if (!edge) set(wx, y + 5, wz, slabId(0));
-    }
-    const dx = x + door[0], dz = z + door[1], facing = door[1] ? 0 : 1;
-    set(dx, y + 1, dz, doorId(facing, false, false));
-    set(dx, y + 2, dz, doorId(facing, false, true));
-    set(dx + Math.sign(door[0]), y, dz + Math.sign(door[1]), GRAVEL); // the path to the road
-    const bx = x - Math.sign(door[0]), bz = z - Math.sign(door[1]);
-    const tw = door[0] > 0 ? 0 : door[0] < 0 ? 1 : door[1] > 0 ? 2 : 3; // the wall it hangs on: -x, +x, -z, +z
-    set(bx, y + 2, bz, TORCH_WALL_W + tw);
-    const side = door[0] ? [0, 1] : [1, 0];
-    set(x + side[0], y + 1, z + side[1], FURN_TABLE);
-    set(x - side[0], y + 1, z - side[1], CHEST);
-  }
+  // the buildings and the market stalls
+  for (const b of v.buildings) buildBuilding(set, b);
+  for (const st of v.stalls) buildStall(set, st);
+  if (v.walls) cityWalls(v, set, desert);
 
   // fields: a log border, a channel of water from the road end to the back, wheat on one side and a vegetable on the other
   for (const f of v.farms) {
@@ -308,5 +355,49 @@ export function stampVillage(g, v, data, cx, cz, crops) {
       const stage = Math.floor(g.villageRand(wx, 3011, wz) * 4);
       set(wx, y + 1, wz, (a < 0 ? WHEAT_0 : crops[f.crop % crops.length]) + stage);
     }
+  }
+}
+
+// The gates and towers of a city's walls (the walls themselves are laid with the ground).
+function cityWalls(v, set, desert) {
+  const G = v.grid, ring = v.walls.ring;
+  const ground = (x, z) => { const i = x - G.bx0, j = z - G.bz0; return i >= 0 && j >= 0 && i < G.W && j < G.W ? G.tgt[i + j * G.W] : v.y; };
+  const stone = desert ? SANDSTONE : BRICKS, cap = desert ? CUT_SANDSTONE : COBBLE;
+  // a solid tower: its footprint, up to `height` above the ground, with a merlon on every other block of its rim
+  const towerAt = (cells, height) => {
+    const top = Math.max(...cells.map(([x, z]) => ground(x, z))) + height;
+    const xs = cells.map((c) => c[0]), zs = cells.map((c) => c[1]);
+    const [xa, xb, za, zb] = [Math.min(...xs), Math.max(...xs), Math.min(...zs), Math.max(...zs)];
+    for (const [x, z] of cells) {
+      for (let y = ground(x, z) + 1; y <= top; y++) set(x, y, z, stone);
+      set(x, top, z, cap);
+      const rim = x === xa || x === xb || z === za || z === zb;
+      if (rim && ((x + z) & 1) === 0) set(x, top + 1, z, stone);
+    }
+    set(Math.round((xa + xb) / 2), top + 1, Math.round((za + zb) / 2), LANTERN);
+  };
+  // the corners
+  for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
+    const cells = [];
+    for (let a = -2; a <= 0; a++) for (let b = -2; b <= 0; b++) cells.push([v.x + sx * (ring + a + 1), v.z + sz * (ring + b + 1)]);
+    towerAt(cells, 8);
+  }
+  for (const gt of v.walls.gates) {
+    const [ux, uz] = gt.dir, px = -uz, pz = ux;
+    // the arch over the way through
+    for (const o of [-1, 0, 1]) for (const t of [-1, 0]) {
+      const x = gt.x + ux * t + px * o, z = gt.z + uz * t + pz * o;
+      for (let dy = 1; dy <= 3; dy++) set(x, gt.y + dy, z, AIR);
+      for (let dy = 4; dy <= 5; dy++) set(x, gt.y + dy, z, stone);
+    }
+    // a tower each side
+    for (const s of [-1, 1]) {
+      const cells = [];
+      for (const o of [2, 3]) for (const t of [-1, 0]) cells.push([gt.x + ux * t + px * o * s, gt.z + uz * t + pz * o * s]);
+      towerAt(cells, 7);
+    }
+    // a ladder up to the walk, just inside, beside the gate
+    const lx = gt.x - ux * 2 + px * 4, lz = gt.z - uz * 2 + pz * 4, f = FACING_DIRS.findIndex(([a, b]) => a === -ux && b === -uz);
+    for (let y = ground(lx, lz) + 1; y <= ground(gt.x - ux + px * 4, gt.z - uz + pz * 4) + 4; y++) set(lx, y, lz, LADDER + f);
   }
 }

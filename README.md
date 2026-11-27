@@ -1705,6 +1705,22 @@ cross rivers and ponds on plank bridges with fenced sides. Houses, fields and em
 level ground with its door to the street, and the ground round it all is cut and built up to match and blends
 back into the hills at the edges. (In the desert the roads and square are sandstone.)
 
+What's built there depends on the size of the place and the land:
+
+- **Homes**, each with a bed or two, a table and a chest: small cottages, long houses with two beds, and in towns
+  and cities tall houses on two floors with a ladder up to the bedroom. Hamlets and villages build in timber; towns
+  in timber, brick and cobblestone with tiled roofs; cities in brick and stone brick. Desert places build in
+  sandstone with flat roofs. Some houses have a window box of flowers.
+- A **church** in every village and bigger: a nave with pews, a carpet up the aisle, an altar with candles and
+  coloured windows, and a square tower with a lantern at the top.
+- A **smithy**, open to the street, with smelters by a fire-brick chimney, an anvil, a work table and a chest.
+- In towns and cities, a **railsmith's** (with a length of track along the back) and a **machine shop** (a rock
+  crusher, a millstone, a saw and a gearbox).
+- **Market stalls** on the square, with barrels and hay bales beside them: one in a hamlet, up to eight in a city.
+- **Guard towers** at the edge of a town: stone, with a ladder up to a lookout with battlements and a lantern.
+- A city stands inside **walls**: two blocks thick, with battlements and a walk along the top, a tower at each
+  corner, and a gate where each main road leaves, with a tower either side and a ladder up to the walk.
+
 The new layout comes in worlds made since Version 50, and in older worlds only in land you haven't been to yet:
 anywhere you've already explored keeps its old village exactly as it was. A world played on a server keeps the
 old villages unless the server's world was made with Version 50 or later.
@@ -1716,7 +1732,7 @@ old villages unless the server's world was made with Version 50 or later.
 - A **market stall** (6 planks, 4 logs, 3 wool) in a village: put things on it and passing villagers buy them for
   silver **coins**. Food, wine, cheese and pearls sell best. Traders take coins too.
 - A village you trade with grows: after enough deals the villagers build a new house (up to six). The new kind of
-  village builds on its empty plots, and grows until they're all taken.
+  village builds on its empty plots (homes like its others, with beds), and grows until they're all taken.
 
 ### Village requests, reputation and festivals
 
@@ -1907,7 +1923,10 @@ guide to how everything works.
 
 ## Version history
 
-- **Version 50** (in progress): **villages, stage 1**. Hamlets, villages, towns and cities, with a cobbled square,
+- **Version 50** (in progress): **villages, stage 2**: buildings. Homes with beds (cottages, long houses and tall
+  two-floor houses, in timber, brick, stone or sandstone by the place and the land), a church with a tower, a
+  smithy, a railsmith's and a machine shop, market stalls on the square, guard towers in towns, and walls with
+  gates and towers round cities. **Stage 1**: Hamlets, villages, towns and cities, with a cobbled square,
   roads that keep to a gentle slope and bridge rivers, side streets and street lamps in towns and cities, and
   houses, fields and empty plots for growing into along the roads, all on levelled ground that blends into the
   land. Only in new worlds and land you haven't explored yet. See
@@ -2036,7 +2055,8 @@ guide to how everything works.
 | `js/blocks.js` | Block & item definitions, break times, drops, recipes |
 | `js/textures.js` | Procedural texture atlas, item icons, break cracks |
 | `js/terrain.js` | Chunk-by-chunk terrain generation (every block is a pure function of seed and position) |
-| `js/villages.js` | Village plans (sizes, roads, bridges, plots, houses, fields, levelled ground) and putting them into chunks |
+| `js/villages.js` | Village plans (sizes, roads, bridges, plots, houses, fields, levelled ground, city walls) and putting them into chunks |
+| `js/buildings.js` | Village buildings: homes with beds, church, smithy, railsmith, machine shop, guard towers, market stalls |
 | `js/world.js` | Chunk streaming, sunlight and torch light propagation across chunks, sending chunks to be meshed (in workers) and showing the results, water flow, raycasting |
 | `js/mesher.js`, `js/mesh-worker.js` | Chunk meshing (face culling + AO + smooth light, separate water mesh) from a snapshot of a chunk and its border; the shapes of fences, walls, wires, stairs and water surfaces. The worker runs it off the main thread |
 | `js/store.js` | Saving edited chunks to IndexedDB, per world slot (16 bits per block; older one-byte chunks are widened as they load) |

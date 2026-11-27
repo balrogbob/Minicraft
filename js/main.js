@@ -44,6 +44,7 @@ import { Fireworks } from './fireworks.js';
 import { makePalette } from './voxels.js';
 import { createAtlas, createGlowMask, createIcons, createCrackCanvases, createWaterCanvas, createHudIcons, paintSeason, ATLAS_COLS } from './textures.js';
 import { World, CHUNK, WORLD_SIZE, chunkKey, skyBrightness, lightBrightness } from './world.js';
+import { buildBuilding, houseStyle } from './buildings.js';
 import { localIndex, CHUNK_VOLUME, OLD_CHUNK_VOLUME, H, SEA_LEVEL, SNOW_LINE, WORLD_CHUNKS } from './terrain.js';
 import { ChunkStore, toBlocks } from './store.js';
 import { buildLegacyWorld, LEGACY_W } from './legacy.js';
@@ -7004,9 +7005,10 @@ function buildOnPlot(v) {
       else for (let y = p.y + 1; y <= p.y + 4; y++) if (BLOCKS[world.get(x, y, z)]?.solid) { ok = false; break; }
     }
     if (!ok) continue;
-    const h = { x: p.x, y: p.y, z: p.z, door: [p.face[0] * 2, p.face[1] * 2] };
-    placeHouse(h);
-    return h;
+    // (v50 stage 2) a home like the village's others, in its materials, with beds
+    const b = { kind: 'house', x: p.x, y: p.y, z: p.z, face: p.face, style: houseStyle(v.size, v.biome, Math.random()), size: Math.random() < 0.5 ? 'small' : 'long' };
+    const out = buildBuilding((x, y, z, id) => world.setBlock(x, y, z, id), b);
+    return { x: p.x, y: p.y, z: p.z, door: out.door, beds: out.beds, size: b.size, style: b.style };
   }
   return null;
 }
