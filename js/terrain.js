@@ -16,6 +16,7 @@ import {
   SEA_BRICK, SEA_LANTERN, VAULT_GATE, SKY_STONE, LEVER, PRESSURE_PLATE, dyedWool,
   CORAL, CORAL_FAN, SEA_GRASS, KELP,
 } from './blocks.js';
+import { planVillage, stampVillage, villageCovers, fitSize, SIZE_ORDER, SIZE_CHANCE, VILLAGE_SIZES } from './villages.js';
 
 export const CHUNK = 16;
 export const H = 128; // (v43: was 64; worlds made before then keep their old ground, with 64 more blocks above)
@@ -164,6 +165,13 @@ export class Generator {
     this.rivers = makePerlin(mulberry32(seed ^ 0x1f83d9ab)); // rivers wind along where this is near zero
     this.cavern = makePerlin(mulberry32(seed ^ 0x9b05688c)); // flooded caves and glowing mushroom caverns
     this.villages = new Map(); // region key -> village plan (or null)
+    this.villagesV1 = new Map(); // region key -> the village as it was laid out before v50 (or null)
+    this.villageCands = new Map(); // region key -> where a village would go and how big (or null)
+    this.villageHeads = new Map(); // region key -> { x, z, R, layout } of the village there (or null)
+    // (v50) 1: every village is laid out as before v50 (worlds made before then, played together on a server);
+    // 2: new villages, except where the regions in `oldRegions` (explored before v50) need the old ones kept.
+    this.villageLayout = 1;
+    this.oldRegions = new Set();
   }
 
   // How far (0 = right in the middle) a column is from the centre line of a river.
@@ -352,9 +360,10 @@ export class Generator {
     // trees, including ones rooted just outside this chunk whose leaves reach in
     const inside = (x, z) => x >= x0 && z >= z0 && x < x0 + CHUNK && z < z0 + CHUNK;
     const trees = [];
+    const towns = this.villagesOver(cx, cz); // (v50) no trees in the streets and gardens of new villages
     for (let z = z0 - 2; z < z0 + CHUNK + 2; z++) for (let x = x0 - 2; x < x0 + CHUNK + 2; x++) {
       const trunk = this.treeAt(x, z, hAt);
-      if (trunk) trees.push([x, z, hAt(x, z), trunk]);
+      if (trunk && !(towns.length && towns.some((v) => villageCovers(v, x, z)))) trees.push([x, z, hAt(x, z), trunk]);
     }
     // trunks first, then leaves (which only fill air), so overlapping trees agree in every chunk
     for (const [x, z, h, trunk] of trees) {
@@ -729,18 +738,18 @@ export class Generator {
 
   // ---------- villages ----------
 
-  // The village in a 64 x 64 region, if there is one: its centre (with a well and a bell), houses and a
-  // field of wheat. Worked out from the seed alone, so every chunk agrees on where everything goes.
-  villageAt(rx, rz) {
+  // The village in a 64 x 64 region as it was laid out before v50, if there is one: its centre (with a well and a
+  // bell), houses and a field of wheat. Worked out from the seed alone, so every chunk agrees on where everything goes.
+  villageV1(rx, rz) {
     const key = rx * 4096 + rz;
-    if (this.villages.has(key)) return this.villages.get(key);
+    if (this.villagesV1.has(key)) return this.villagesV1.get(key);
     let v = null;
     const r = (k) => hash3(this.seed ^ 0x3e5a7c91, rx, k, rz);
     if (rx >= 1 && rz >= 1 && rx < WORLD_SIZE / VILLAGE_REGION - 1 && rz < WORLD_SIZE / VILLAGE_REGION - 1 && r(1) < VILLAGE_CHANCE) {
       const x = rx * VILLAGE_REGION + 20 + Math.floor(r(2) * 24), z = rz * VILLAGE_REGION + 20 + Math.floor(r(3) * 24);
       const y = this.height(x, z), biome = this.biomeAt(x, z);
       if (biome !== 'tundra' && y > SEA_LEVEL + 1 && y < 44 + DEEP) {
-        v = { x, y, z, biome, houses: [], farm: null, name: VILLAGE_NAMES[Math.floor(r(9) * VILLAGE_NAMES.length)] };
+        v = { x, y, z, biome, layout: 1, radius: 26, houses: [], farm: null, name: VILLAGE_NAMES[Math.floor(r(9) * VILLAGE_NAMES.length)] };
         const n = 3 + Math.floor(r(4) * 3), base = r(5) * Math.PI * 2;
         const flat = (hx, hz, rx2, rz2, hy) => {
           for (const [dx, dz] of [[-rx2, -rz2], [rx2, -rz2], [-rx2, rz2], [rx2, rz2], [0, 0]]) {
@@ -764,14 +773,89 @@ export class Generator {
         if (!v.houses.length) v = null;
       }
     }
+    this.villagesV1.set(key, v);
+    return v;
+  }
+
+  // (v50) Set which villages a world has (see villageLayout): before any chunk is made.
+  setVillageLayout(layout, oldRegions = []) {
+    this.villageLayout = layout === 2 ? 2 : 1;
+    this.oldRegions = new Set(oldRegions);
+    for (const m of [this.villages, this.villageCands, this.villageHeads]) m.clear();
+  }
+  villageRand(a, k, b) { return hash3(this.seed ^ 0x5a17c0de, a, k, b); }
+
+  // Where the village in a region would go, and how big it would be, before its neighbours are weighed (or null).
+  // (The same places as before v50: only what's built there is new.)
+  villageCandidate(rx, rz) {
+    const key = rx * 4096 + rz;
+    if (this.villageCands.has(key)) return this.villageCands.get(key);
+    let c = null;
+    const r = (k) => hash3(this.seed ^ 0x3e5a7c91, rx, k, rz);
+    if (rx >= 1 && rz >= 1 && rx < WORLD_SIZE / VILLAGE_REGION - 1 && rz < WORLD_SIZE / VILLAGE_REGION - 1 && r(1) < VILLAGE_CHANCE) {
+      const x = rx * VILLAGE_REGION + 20 + Math.floor(r(2) * 24), z = rz * VILLAGE_REGION + 20 + Math.floor(r(3) * 24);
+      const y = this.height(x, z), biome = this.biomeAt(x, z);
+      if (biome !== 'tundra' && y > SEA_LEVEL + 1 && y < 44 + DEEP) {
+        let roll = this.villageRand(rx, 20, rz), s = 0;
+        while (s < SIZE_ORDER.length - 1 && roll >= SIZE_CHANCE[s]) roll -= SIZE_CHANCE[s++];
+        const size = fitSize(this, x, z, y, SIZE_ORDER[s]);
+        c = { rx, rz, x, z, y, biome, size, R: VILLAGE_SIZES[size].R, prio: SIZE_ORDER.indexOf(size) + this.villageRand(rx, 21, rz),
+          name: VILLAGE_NAMES[Math.floor(r(9) * VILLAGE_NAMES.length)] };
+      }
+    }
+    this.villageCands.set(key, c);
+    return c;
+  }
+  // 1 if the village a candidate would be has to be laid out as before v50 (its land reaches into an old region).
+  candidateLayout(c) {
+    if (this.villageLayout !== 2) return 1;
+    const lo = (v) => Math.floor((v - c.R) / VILLAGE_REGION), hi = (v) => Math.floor((v + c.R) / VILLAGE_REGION);
+    for (let rz = lo(c.z); rz <= hi(c.z); rz++) for (let rx = lo(c.x); rx <= hi(c.x); rx++) if (this.oldRegions.has(rx * 4096 + rz)) return 1;
+    return 2;
+  }
+  // The village in a region, in brief: { x, z, R, layout }, or null. A new village gives way to an old one whose
+  // land it would reach, and to a bigger (or luckier) new one next door.
+  villageHead(rx, rz) {
+    const key = rx * 4096 + rz;
+    if (this.villageHeads.has(key)) return this.villageHeads.get(key);
+    const c = this.villageCandidate(rx, rz);
+    let h = null;
+    if (c && this.candidateLayout(c) === 1) {
+      const v = this.villageV1(rx, rz);
+      if (v) h = { x: v.x, z: v.z, R: 26, layout: 1 };
+    } else if (c) {
+      h = { x: c.x, z: c.z, R: c.R, layout: 2, c };
+      for (let dz = -1; dz <= 1 && h; dz++) for (let dx = -1; dx <= 1 && h; dx++) {
+        const n = (dx || dz) && this.villageCandidate(rx + dx, rz + dz);
+        if (!n) continue;
+        const old = this.candidateLayout(n) === 1;
+        if (Math.hypot(n.x - c.x, n.z - c.z) > c.R + (old ? 28 : n.R) + 6) continue;
+        if (old ? this.villageV1(rx + dx, rz + dz) : n.prio > c.prio) h = null;
+      }
+    }
+    this.villageHeads.set(key, h);
+    return h;
+  }
+  // The village in a 64 x 64 region, if there is one: a plan from villages.js, or (layout 1) the old kind.
+  villageAt(rx, rz) {
+    const key = rx * 4096 + rz;
+    if (this.villages.has(key)) return this.villages.get(key);
+    const h = this.villageHead(rx, rz);
+    const v = !h ? null : h.layout === 1 ? this.villageV1(rx, rz) : planVillage(this, h.c);
     this.villages.set(key, v);
     return v;
   }
 
-  // Whether a village's houses could reach out to (x, z) (so a volcano or ruin doesn't land in one).
+  // Whether a village could reach out to (x, z) (so a volcano or ruin doesn't land in one). Where the land is old,
+  // just as it was before v50, so nothing already there moves.
   nearVillage(x, z) {
-    const v = this.nearestVillage(x, z);
-    return !!v && Math.hypot(v.x - x, v.z - z) < 40;
+    const rx0 = Math.floor(x / VILLAGE_REGION), rz0 = Math.floor(z / VILLAGE_REGION);
+    const old = this.villageLayout !== 2 || this.oldRegions.has(rx0 * 4096 + rz0);
+    for (let rz = rz0 - 1; rz <= rz0 + 1; rz++) for (let rx = rx0 - 1; rx <= rx0 + 1; rx++) {
+      const v = old ? this.villageV1(rx, rz) : this.villageHead(rx, rz);
+      if (v && Math.hypot(v.x - x, v.z - z) < (old || v.layout === 1 ? 40 : v.R + 12)) return true;
+    }
+    return false;
   }
 
   // The village nearest to (x, z) within `regions` regions, or null.
@@ -779,16 +863,35 @@ export class Generator {
     const rx0 = Math.floor(x / VILLAGE_REGION), rz0 = Math.floor(z / VILLAGE_REGION);
     let best = null, bd = Infinity;
     for (let rz = rz0 - regions; rz <= rz0 + regions; rz++) for (let rx = rx0 - regions; rx <= rx0 + regions; rx++) {
-      const v = this.villageAt(rx, rz);
+      const v = this.villageHead(rx, rz);
       if (!v) continue;
       const d = Math.hypot(v.x - x, v.z - z);
-      if (d < bd) { bd = d; best = v; }
+      if (d < bd) { bd = d; best = [rx, rz]; }
     }
-    return best;
+    return best && this.villageAt(best[0], best[1]);
+  }
+
+  // The new villages whose land reaches chunk (cx, cz) (or comes within a block or two of it).
+  villagesOver(cx, cz) {
+    if (this.villageLayout !== 2) return [];
+    const x0 = cx * CHUNK - 2, z0 = cz * CHUNK - 2, x1 = x0 + CHUNK + 4, z1 = z0 + CHUNK + 4;
+    const rx0 = Math.floor(cx * CHUNK / VILLAGE_REGION), rz0 = Math.floor(cz * CHUNK / VILLAGE_REGION), out = [];
+    for (let rz = rz0 - 1; rz <= rz0 + 1; rz++) for (let rx = rx0 - 1; rx <= rx0 + 1; rx++) {
+      const h = this.villageHead(rx, rz);
+      if (!h || h.layout !== 2 || h.x + h.R < x0 || h.z + h.R < z0 || h.x - h.R >= x1 || h.z - h.R >= z1) continue;
+      out.push(this.villageAt(rx, rz));
+    }
+    return out;
   }
 
   village(data, cx, cz, hAt) {
-    const v = this.villageAt(Math.floor(cx * CHUNK / VILLAGE_REGION), Math.floor(cz * CHUNK / VILLAGE_REGION));
+    for (const v of this.villagesOver(cx, cz)) stampVillage(this, v, data, cx, cz, VILLAGE_CROPS);
+    const own = this.villageHead(Math.floor(cx * CHUNK / VILLAGE_REGION), Math.floor(cz * CHUNK / VILLAGE_REGION));
+    if (own?.layout === 1) this.villageV1Stamp(data, cx, cz, hAt);
+  }
+
+  villageV1Stamp(data, cx, cz, hAt) {
+    const v = this.villageV1(Math.floor(cx * CHUNK / VILLAGE_REGION), Math.floor(cz * CHUNK / VILLAGE_REGION));
     if (!v) return;
     const x0 = cx * CHUNK, z0 = cz * CHUNK;
     if (v.x + 26 < x0 || v.z + 26 < z0 || v.x - 26 >= x0 + CHUNK || v.z - 26 >= z0 + CHUNK) return;

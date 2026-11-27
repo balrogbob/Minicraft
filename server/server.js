@@ -25,7 +25,7 @@ const MAX_EDITS = 2_000_000;
 const WORLD_H = 256; // (above the game's world height; the game ignores anything out of range)
 
 // ---------- the world: seed + block edits ----------
-let world = { seed: Number.isFinite(+process.env.SEED) && process.env.SEED !== undefined ? +process.env.SEED | 0 : (Math.random() * 2 ** 31) | 0, id: crypto.randomBytes(6).toString('hex'), tall: true, edits: {} }; // (tall: a v43 world; older saved ones stay classic)
+let world = { seed: Number.isFinite(+process.env.SEED) && process.env.SEED !== undefined ? +process.env.SEED | 0 : (Math.random() * 2 ** 31) | 0, id: crypto.randomBytes(6).toString('hex'), tall: true, villages: 2, edits: {} }; // (tall: a v43 world; older saved ones stay classic. villages: 2, a v50 world)
 try {
   const saved = JSON.parse(fs.readFileSync(DATA, 'utf8'));
   if (Number.isFinite(saved.seed) && saved.edits && typeof saved.edits === 'object') world = { ...saved, seed: saved.seed, id: saved.id || world.id, tall: !!saved.tall, edits: saved.edits };
@@ -181,7 +181,7 @@ function handle(id, me, m) {
       me.look = cleanLook(m.look);
       const edits = Object.entries(world.edits).map(([k, v]) => { const [x, y, z] = k.split(',').map(Number); return [x, y, z, v]; });
       if (!hostId) hostId = id;
-      me.ws.send({ t: 'welcome', id, host: hostId, pvp: !!world.pvp, clock: world.clock ?? null, kv: world.kv, seed: world.seed, tall: !!world.tall, world: world.id, edits, drops: (cleanDrops(), [...drops.values()]), players: [...players].filter(([pid, p]) => pid !== id && p.hello).map(([pid, p]) => ({ id: pid, name: p.name, look: p.look, state: p.state })) });
+      me.ws.send({ t: 'welcome', id, host: hostId, pvp: !!world.pvp, clock: world.clock ?? null, kv: world.kv, seed: world.seed, tall: !!world.tall, villages: world.villages === 2 ? 2 : 1, world: world.id, edits, drops: (cleanDrops(), [...drops.values()]), players: [...players].filter(([pid, p]) => pid !== id && p.hello).map(([pid, p]) => ({ id: pid, name: p.name, look: p.look, state: p.state })) });
       others(id, { t: 'join', id, name: me.name, look: me.look });
       console.log(`${me.name} joined (${players.size} playing)`);
       break;

@@ -1063,7 +1063,8 @@ export class MobManager {
     if (!v || Math.hypot(v.x - player.pos.x, v.z - player.pos.z) > 80) return;
     if (this.owns && !this.owns(v.x, v.z)) return; // (the game nearest the village looks after its villagers)
     const here = this.mobs.filter((m) => m.home === v).length;
-    if (here >= Math.min(5 + Math.max(0, v.houses.length - 5), v.houses.length + 1) || this.villagerNight()) return;
+    // (one more than there are houses, up to 5 and then one a house; v50: never more than 12 about at once)
+    if (!v.houses.length || here >= Math.min(12, 5 + Math.max(0, v.houses.length - 5), v.houses.length + 1) || this.villagerNight()) return;
     const hs = pick(v.houses);
     const x = hs.x + hs.door[0] * 2 + Math.round(rand(-1, 1)), z = hs.z + hs.door[1] * 2 + Math.round(rand(-1, 1));
     if (!w.chunkAt(x, z)) return;
