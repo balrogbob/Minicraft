@@ -884,8 +884,8 @@ export function villageFolk(v, grown) {
         // the second bed in a house is a child's, now and then (in the villages that have room to grow)
         const child = b > 0 && hash(folk.length, 2) < 0.45;
         // (once every job is taken, the rest farm the fields or go fishing)
-        const spare = jobs.filter((o) => o.job === 'farmer' || o.job === 'fisher');
-        const w = j < jobs.length ? jobs[j] : spare[Math.floor(hash(folk.length, 4) * spare.length)];
+        const farms = jobs.filter((o) => o.job === 'farmer'), fisher = jobs.at(-1), r = hash(folk.length, 4);
+        const w = j < jobs.length ? jobs[j] : r < 0.5 || !farms.length ? fisher : farms[Math.floor((r - 0.5) * 2 * farms.length)];
         j++;
         add({ role: child ? 'child' : 'adult', job: w.job, work: w.work, house: hs });
       });
