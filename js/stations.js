@@ -275,6 +275,11 @@ export class Stations {
     this.map = new Map(); // "x,y,z" -> station state
     this.owns = null; // (x, z) -> does this game run the station there (v39: multiplayer)
     this.chosen = new Map(); // auto-crafter "x,y,z" -> the recipe its frame shows (worked out each tick)
+    // (v49 skills) tend(kind, x, y, z): how the player's skill helps a station near them, or null:
+    // { speed, extra (chance of one more), side (by-product chances times this), fuel (fuel lasts this many times) }.
+    // made(kind, x, y, z, r): something was made there.
+    this.tend = null;
+    this.made = null;
   }
 
   // The station at a position, created empty the first time it's used.
@@ -335,7 +340,7 @@ export class Stations {
     return SMELT_ALL.find((r) => r.hot && r.in.every(([id, n]) => this.count(st, id) >= n)) ?? null;
   }
 
-  make(st, r) {
+  make(st, r, tend = null) {
     for (const [id, n] of r.in) {
       let left = n;
       for (let i = 0; i < st.inputs.length && left > 0; i++) {
@@ -350,9 +355,10 @@ export class Stations {
       const i = st.inputs.findIndex((x) => !x);
       if (i >= 0) st.inputs[i] = { id: r.leaves, count: 1 };
     }
-    for (const [id, p, k = 1] of r.side ?? []) if (Math.random() < p && this.putSide(st, id, k) && id === r.trace) this.onTrace?.(st, id);
+    for (const [id, p, k = 1] of r.side ?? []) if (Math.random() < p * (tend?.side ?? 1) && this.putSide(st, id, k) && id === r.trace) this.onTrace?.(st, id);
     if (!r.out) return;
-    const extra = (r.bonus && Math.random() < r.bonus ? 1 : 0) + (STATION_KINDS[st.kind].yieldUp && Math.random() < 0.12 * (st.up?.yield ?? 0) ? 1 : 0);
+    const extra = (r.bonus && Math.random() < r.bonus ? 1 : 0) + (STATION_KINDS[st.kind].yieldUp && Math.random() < 0.12 * (st.up?.yield ?? 0) ? 1 : 0) +
+      (tend?.extra && Math.random() < tend.extra ? 1 : 0);
     const n = Math.min(maxStack(r.out[0]) - (st.out?.count ?? 0), r.out[1] + extra);
     if (st.out) st.out.count += n;
     else st.out = { id: r.out[0], count: n, ...(chargeCap(r.out[0]) ? { wear: chargeCap(r.out[0]) } : {}) }; // (batteries come out flat)
@@ -403,18 +409,20 @@ export class Stations {
         if (st.progress >= CRAFT_TIME) { this.make(st, r); st.progress = 0; }
         continue;
       }
+      const tend = this.tend?.(st.kind, x, y, z) ?? null;
+      const done = (r) => { this.make(st, r, tend); st.progress = 0; this.made?.(st.kind, x, y, z, r); };
       const r = (K.water && !(BLOCKS[id].water > 0)) || (K.wet && !wetAt(world, x, y, z)) ? null : this.recipeFor(st); // a dry cauldron can't brew, nor a washer wash
       if (!r) st.progress = 0;
       if (K.powered) {
         const speed = K.passive ? 1 : powerAt(x, y, z);
         st.speed = speed;
         if (r && speed > 0) {
-          st.progress += dt * speed * upSpeed(st);
-          if (st.progress >= r.time - 1e-9) { this.make(st, r); st.progress = 0; }
+          st.progress += dt * speed * upSpeed(st) * (tend?.speed ?? 1);
+          if (st.progress >= r.time - 1e-9) done(r);
         }
         continue;
       }
-      const sdt = dt * (K.speed ?? 1) * boostAt(x, y, z) * upSpeed(st); // a blast smelter cooks twice as fast, on the same fuel per item
+      const sdt = dt * (K.speed ?? 1) * boostAt(x, y, z) * upSpeed(st) * (tend?.speed ?? 1); // a blast smelter cooks twice as fast, on the same fuel per item
       // light a new piece of fuel only when there's something to make and the last piece is used up
       if (r && st.burn <= 1e-9 && st.fuel && isFuel(st.fuel.id)) {
         st.burn = st.burnMax = FUEL_ITEMS[st.fuel.id];
@@ -424,11 +432,12 @@ export class Stations {
       // cooking: fuel burns at one "item" per recipe time, so a log cooks exactly one item
       const cooking = !!r && st.burn > 1e-9;
       if (cooking) {
-        const step = Math.min(sdt, st.burn * r.time);
-        st.burn = Math.max(0, st.burn - step / r.time * 0.67 ** (st.up?.eff ?? 0));
+        const use = 0.67 ** (st.up?.eff ?? 0) / (tend?.fuel ?? 1); // (fuel used for each recipe's worth of cooking)
+        const step = Math.min(sdt, st.burn * r.time / use);
+        st.burn = Math.max(0, st.burn - step / r.time * use);
         st.progress += step;
         if (st.progress >= r.time - 1e-9) {
-          this.make(st, r); st.progress = 0;
+          done(r);
           if (K.water && (st.brews = (st.brews ?? 0) + 1) % 2 === 0) world.setBlock(x, y, z, CAULDRON + BLOCKS[id].water - 1);
         }
       }

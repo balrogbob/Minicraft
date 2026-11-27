@@ -465,6 +465,34 @@ body.photo.snapping #photo-bar { display: none; }
   .gb-ch { width: auto; white-space: nowrap; margin: 0; }
 }
 
+/* v49: skills */
+#btn-skills { margin-right: 8px; white-space: nowrap; }
+@media (max-width: 560px) { #btn-skills .lbl { display: none; } }
+.sk-panel { width: min(640px, 100%); max-height: min(640px, 100%); display: flex; flex-direction: column; }
+#sk-total { flex: 1; font-size: 13px; color: #555; margin-left: 10px; }
+#sk-list { overflow-y: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; padding: 2px; }
+.sk { background: rgba(0,0,0,0.05); border-radius: 6px; padding: 8px 10px; }
+.sk-head { display: flex; align-items: center; gap: 8px; }
+.sk-icon { font-size: 22px; }
+.sk-lv { margin-left: auto; font-size: 13px; color: #3d6b3a; font-weight: bold; }
+.sk-bar { height: 8px; border-radius: 4px; background: rgba(0,0,0,0.12); margin: 6px 0 2px; overflow: hidden; }
+.sk-bar i { display: block; height: 100%; background: #6aa84f; }
+.sk-xp { font-size: 11px; color: #666; }
+.sk-how { font-size: 12px; color: #444; margin: 4px 0; line-height: 1.35; }
+.sk-perks { list-style: none; margin: 0; padding: 0; font-size: 12px; line-height: 1.45; }
+.sk-perks li { opacity: 0.5; }
+.sk-perks li.got { opacity: 1; }
+.sk-perks li.got b { color: #3d6b3a; }
+.sk-perks .lv { display: inline-block; min-width: 22px; font-size: 11px; color: #888; }
+/* the little bar over the hotbar while you train a skill */
+#skill-pop {
+  position: absolute; left: 50%; bottom: calc(max(8px, env(safe-area-inset-bottom)) + var(--slot) + 58px); transform: translateX(-50%);
+  display: flex; align-items: center; gap: 8px; padding: 3px 10px; border-radius: 10px; background: rgba(0,0,0,0.55); color: #fff;
+  font-size: 13px; pointer-events: none; opacity: 0; transition: opacity 0.4s;
+}
+#skill-pop.show { opacity: 1; }
+#skill-pop i { width: 70px; height: 6px; border-radius: 3px; background: linear-gradient(90deg, #8fd16a calc(var(--f) * 100%), rgba(255,255,255,0.25) 0); }
+
 /* v29: logistics pipes */
 .lp-panel { width: min(560px, 100%); max-height: min(620px, 100%); display: flex; flex-direction: column; }
 #lp-search-row.hidden { display: none; }

@@ -323,6 +323,7 @@
         <div class="panel-head">
           <h2>📖 Guidebook</h2>
           <span id="gb-progress"></span>
+          <button class="btn small" id="btn-skills" title="Skills (K)">🏅<span class="lbl"> Skills</span></button>
           <button class="btn small" id="btn-close-guidebook">✕</button>
         </div>
         <div class="gb-body">
@@ -331,6 +332,17 @@
         </div>
       </div>
     </div>
+    <div id="skills" class="overlay hidden">
+      <div class="panel sk-panel">
+        <div class="panel-head">
+          <h2>🏅 Skills</h2>
+          <span id="sk-total"></span>
+          <button class="btn small" id="btn-close-skills">✕</button>
+        </div>
+        <div id="sk-list"></div>
+      </div>
+    </div>
+    <div id="skill-pop"></div>
     <div id="guide" class="overlay hidden">
       <div class="panel guide-panel">
         <div class="panel-head">
@@ -381,6 +393,7 @@
           <h3>Horses, honey, fishing and boats</h3>
           <p>Saddlebags and horse armour go on your horse. Fill a stable's manger with wheat or hay and your horses come out rested. Bees make honey after the flowers near them. Carry worms when you fish, or bait a fish trap with them. Fine crops win prizes at festival shows. A chest boat carries a chest, and a storage cart behind a locomotive keeps it in coal.</p>
           <h3>Guidebook, music and logistics pipes</h3>
+          <p>Press K, or tap 🏅 Skills in the guidebook, for your skills: mining, woodcutting, farming, building, forging, smelting, cooking, processing, melee and archery get better as you do them, and every fifth level unlocks a perk.</p>
           <p>Press G or tap 📖 for the guidebook: goals to reach, with rewards to claim. Set the music's volume in the menu. Logistics pipes make a network: a provider pipe on a chest offers what's in it, a crafting pipe on an auto-crafter or machine lets the network make one thing, a supplier pipe keeps a chest stocked, a sink pipe takes things in, and an extractor pipe empties a chest into the sinks. Tap a pipe to set it up. Put a power junction on the network, wired to the grid, and a request table to order from: it works out any crafting needed. A remote orderer, linked to a table, lets you order from afar. A stock sensor pipe signals while the network runs short of something; a power junction getting a signal pauses its network. Liquid provider and supplier pipes move water and lava between tanks, and feed lava to ovens, smelters and engines. A liquid sink pipe takes in liquid with nowhere else to go, and a bottler fills buckets from it. Drone pads on the same channel join two networks, and courier drones fly between them; a network with a drone pad stays loaded however far away you go.</p>
           <h3>Backpack tips</h3>
           <p>Pin a recipe (📌) to keep what it needs on screen. When the stack in your hand runs out, the next one moves in from your backpack. Double-tap a slot to gather a stack together; shift-click (or press and hold) to move a stack across to a chest or between hotbar and backpack. Tips show what each thing is used in, and a compass points to your nearest waypoint. Type in <b>Find in chests nearby</b> to see which chests hold something, and where. <b>Photo mode</b> (☰ or F2) hides the HUD and lets the camera float free for a picture.</p>

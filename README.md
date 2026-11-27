@@ -30,6 +30,7 @@ image or audio files.
 - [Survival, dungeons and exploration](#survival-dungeons-and-exploration)
 - [Inventory and recipes](#inventory-and-recipes)
 - [Guidebook and music](#guidebook-and-music)
+- [Skills](#skills)
 - [Worlds, creative mode, the map and achievements](#worlds-creative-mode-the-map-and-achievements)
 - [Recent fixes](#recent-fixes)
 - [Version history](#version-history)
@@ -1835,6 +1836,35 @@ to take the mark off. Marks off the edge of the map show as arrows pointing towa
 - Quiet music now plays, made as you listen, in a mood to suit where you are: day, night, caves, under water,
   villages, festivals and winter. Set its volume with the **Music** slider in the menu (0 turns it off).
 
+## Skills
+
+Doing things makes you better at them. Each of ten skills has a level from 1 to 20, raised by doing that thing.
+Every level gives a little, and levels 5, 10, 15 and 20 unlock a perk.
+- Press **K**, or tap **🏅 Skills** at the top of the guidebook, to see your skills: each one's level, how far it is to the next,
+  what trains it and its perks.
+- While you train a skill, a small bar above the hotbar shows its progress. Reaching a level pops up in the corner with
+  what it gave you.
+- Smelters, ovens and machines within 24 blocks of you work with your skill (faster, sometimes an extra product), and
+  what they make trains it. Work they do while you're far away, or asleep, doesn't.
+- Across all skills you tire less as you grow: hunger drains 0.4% slower for each level gained, up to 30% slower.
+- Levels are kept with each world, like your backpack. Creative mode earns nothing.
+- Levels take longer as you go: 10 experience for level 2, about 6,300 in all for level 20. A stone mined is 1, an ore 4,
+  a log 1.5, a crop harvested 2, a block placed 1, a thing made by a station 1.5; crafting gives more for bigger recipes;
+  fighting gives half the damage dealt, and 6 more for a defeat.
+
+| Skill | Trained by | Every level | Perks |
+| --- | --- | --- | --- |
+| ⛏ **Mining** | Dig stone, ore and earth with a pickaxe or shovel. | +3% digging speed | 5: **Prospector**, 15% chance of an extra ore; 10: **Steady Hands**, digging makes you half as hungry; 15: **Prospector II**, 30% chance of an extra ore; 20: **Prospector III**, 45% chance of an extra ore |
+| 🪓 **Woodcutting** | Chop logs and wooden things with an axe. | +3% chopping speed | 5: **Lumberjack**, 15% chance of an extra log for each log; 10: **Forester**, a felled tree leaves you a sapling; 15: **Lumberjack II**, 30% chance of an extra log; 20: **Lumberjack III**, 45% chance of an extra log |
+| 🌾 **Farming** | Harvest ripe crops, and butcher farm animals. | +2% chance of an extra crop | 5: **Green Thumb**, fine crops come up half as often again; 10: **Butcher**, farm animals give an extra cut of meat; 15: **Green Thumb II**, fine crops come up twice as often; 20: **Bumper Crop**, another 20% chance of an extra crop |
+| 🧱 **Building** | Place blocks. | +1.5% chance a block isn't used up | 5: **Long Arms**, reach a block further; 10: **Sure-footed**, falls hurt half as much; 15: **Long Arms II**, reach two blocks further; 20: **Cat's Feet**, falls hurt a quarter as much |
+| 🔨 **Forging** | Craft things in 🎒, at a crafting table or not. | +1.5% chance of keeping an ingredient | 5: **Well Made**, tools and armour wear 15% slower; 10: **Thrifty**, another 10% chance of keeping an ingredient; 15: **Well Made II**, tools and armour wear 30% slower; 20: **Master Smith**, armour blocks 10% more of a hit |
+| 🔥 **Smelting** | Smelt and fire things in smelters and kilns while you're near. | +2% speed of smelters and kilns near you | 5: **Good Yield**, 10% chance of an extra ingot or brick; 10: **Banked Fire**, fuel lasts 25% longer; 15: **Good Yield II**, 20% chance of an extra one; 20: **Good Yield III**, 30% chance of an extra one |
+| 🍳 **Cooking** | Cook, brew, press, smoke and dry food while you're near. | +2% speed of ovens, pots and presses near you | 5: **Generous Helpings**, 10% chance of an extra portion; 10: **Gourmet**, food fills you 20% more; 15: **Generous Helpings II**, 20% chance of an extra portion; 20: **Gourmet II**, food fills you 40% more |
+| ⚙ **Processing** | Run crushers, mills, saws, washers and other machines while you're near. | +2% speed of machines near you | 5: **Efficient**, 10% chance of an extra product; 10: **Keen Eye**, by-products (trace metals, slag...) half as likely again; 15: **Efficient II**, 20% chance of an extra product; 20: **Efficient III**, 30% chance of an extra product |
+| ⚔ **Melee** | Fight creatures up close. | +4% damage up close | 5: **Quick Strikes**, swing 15% faster; 10: **Thick Skin**, creatures hurt you 10% less; 15: **Quick Strikes II**, swing 30% faster; 20: **Second Wind**, defeating a creature up close heals you a heart |
+| 🏹 **Archery** | Hit creatures with arrows. | +4% arrow damage | 5: **Quick Draw**, draw the bow 20% faster; 10: **Fletcher**, 25% chance an arrow isn't used up; 15: **Quick Draw II**, draw the bow 40% faster; 20: **Fletcher II**, 50% chance an arrow isn't used up |
+
 ## Worlds, creative mode, the map and achievements
 
 ☰ → **Worlds…** holds three worlds. Play any of them, start a new **survival** or **creative** world in a slot,
@@ -1862,6 +1892,11 @@ guide to how everything works.
 
 ## Version history
 
+- **Version 49** (in progress): **skills**. Mining, Woodcutting, Farming, Building, Forging, Smelting, Cooking,
+  Processing, Melee and Archery level up as you do them (K, or 🏅 Skills in the guidebook), each level giving a
+  little and every fifth a perk: more ore, logs and crops, faster digging and machines, blocks not used up, longer
+  reach, softer falls, tools that last, more filling food, harder hits, quicker swings and arrows that come back.
+  Hunger drains slower as your skills grow. See [Skills](#skills).
 - **Version 48** (in progress: speed): the world's shader is built with only the graphics effects that are
   switched on, so with effects off it is much faster again (about 5× in tests, faster than Version 45). With
   every effect off, the sun's shine on metal, ice and wet ground is off too; it's back from Low up. Changing a
@@ -2009,6 +2044,7 @@ guide to how everything works.
 | `js/achievements.js` | The list of achievements |
 | `js/logistics.js` | Logistics pipes: building networks, providers, crafting chains, suppliers, sinks, extractors, and items in transit |
 | `js/guidebook.js` | The guidebook's chapters and goals |
+| `js/skills.js` | Skills: their levels, experience and perks (main.js hands out the experience and applies them) |
 | `js/music.js` | The generated music and its moods |
 | `js/bees.js` | Bees buzzing around their hives |
 | `js/apiculture.js` | Bee breeding: queens at work in bee houses, combs, young bees and mutations |
