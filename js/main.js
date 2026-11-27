@@ -60,6 +60,7 @@ import { WorldMap } from './worldmap.js';
 import { ItemDrops } from './drops.js';
 import { ACHIEVEMENTS, ACHIEVEMENT_IDS } from './achievements.js';
 import { GUIDE, GOALS, chapterOpen, goalItem, goalShown } from './guidebook.js';
+import { SKILLS, SKILL, MAX_LEVEL, xpToNext, perk, gain, hungerSaving, loadSkills, STATION_SKILL, STATION_PERKS } from './skills.js';
 import { CRATED } from './blocks.js';
 import { MobManager, DIFFICULTY, DIFFICULTY_ORDER, SPECIES } from './mobs.js';
 import { ArrowManager } from './arrows.js';
@@ -87,7 +88,9 @@ const GAME_VERSION = '46'; // shown in the menu; bump with each release
 const SAVE_KEY = 'minicraft-save-v2';
 const LEGACY_SAVE_KEY = 'minicraft-save-v1';
 const SETTINGS_KEY = 'minicraft-settings-v1';
-const REACH = 5.5;
+const BASE_REACH = 5.5;
+let REACH = BASE_REACH; // (v49: Building's Long Arms adds to it)
+let skills = loadSkills(null), skillQuiet = false, skillHunger = 0; // (v49: see the skills section)
 const $ = (id) => document.getElementById(id);
 
 // ---------- storage (never trusted to exist) ----------
@@ -697,7 +700,7 @@ const armourEnch = [null, null, null, null, null]; // enchantments on what you'r
 const armourPoints = () => armour.reduce((t, id) => t + (id ? ITEMS[id].armour.points : 0), 0);
 // Each point of armour takes 4% off what creatures do to you, up to 80%.
 const armourShare = () => Math.min(0.8, armourPoints() * 0.04);
-const armoured = (amount) => { if (amount > 0) wearArmour(); return amount * (1 - armourShare()) * (ridingMob?.armoured ? 0.5 : 1); }; // (an armoured horse takes half)
+const armoured = (amount) => { if (amount > 0) wearArmour(); return amount * (1 - Math.min(0.9, armourShare() * (1 + skillPerk('forging', 'armour')))) * (1 - skillPerk('melee', 'skin')) * (ridingMob?.armoured ? 0.5 : 1); }; // (an armoured horse takes half; v49: Master Smith, Thick Skin)
 let caneToday = 0; // raw sugar cane eaten since sunrise: the 5th gives you food poisoning
 const store = new ChunkStore();
 let worldReady = false; // false while a world is loading: nothing gets saved until the player is placed
@@ -866,6 +869,8 @@ async function startWorld(save, opts = {}) {
   achieved = new Set((Array.isArray(save?.achievements) ? save.achievements : []).filter((a) => ACHIEVEMENT_IDS.has(a)));
   guideDone = new Set((Array.isArray(save?.guidebook?.done) ? save.guidebook.done : []).filter((g) => GOAL_IDS.has(g)));
   guideClaimed = new Set((Array.isArray(save?.guidebook?.claimed) ? save.guidebook.claimed : []).filter((g) => guideDone.has(g)));
+  skills = loadSkills(save?.skills);
+  skillsChanged();
   worldMap.load(save?.explored);
   wand.a = null; wand.clip = null;
   air = MAX_AIR;
@@ -978,6 +983,7 @@ function saveGame() {
     flying: player.flying,
     achievements: [...achieved],
     guidebook: { done: [...guideDone], claimed: [...guideClaimed] },
+    skills,
     explored: worldMap.serialize(),
     loose: loose.serialize(),
     start: startPos,
@@ -1139,8 +1145,8 @@ let starvingWarned = false;
 function updateHunger(dt) {
   if (creative) { hunger = MAX_HUNGER; player.speedMul = 1; return false; }
   const moving = Math.hypot(player.vel.x, player.vel.z) > 0.5;
-  const rate = (1 / 80 + (moving ? 1 / 40 : 0) + (moving && player.sprinting ? 1 / 25 : 0) + (controls.breaking ? 1 / 50 : 0)) * (poisoned > 0 ? 4 : 1) *
-    (effects.fed > 0 ? 0.5 : 1) * (ailments.heat >= 1 ? 2 : 1);
+  const rate = (1 / 80 + (moving ? 1 / 40 : 0) + (moving && player.sprinting ? 1 / 25 : 0) + (controls.breaking ? (1 - skillPerk('mining', 'digHunger')) / 50 : 0)) * (poisoned > 0 ? 4 : 1) *
+    (effects.fed > 0 ? 0.5 : 1) * (ailments.heat >= 1 ? 2 : 1) * (1 - skillHunger); // (v49: you tire less as your skills grow)
   hunger = Math.max(0, hunger - rate * dt);
   // starving: you can only stagger along until you eat something; the cold slows you too
   player.speedMul = (hunger <= 0 ? 0.45 : 1) * (ailments.chill >= 1 ? 0.7 : 1) * (effects.swift > 0 ? 1.3 : 1);
@@ -1243,7 +1249,7 @@ function updateHealth(dt, wasGround, prevY) {
   if (player.onGround && !wasGround && fallTop !== null) {
     const fall = fallTop - player.pos.y;
     fallTop = null;
-    const hurt = Math.floor((fall - 3) * (armourEnch[3]?.includes('feather') ? 0.5 : 1));
+    const hurt = Math.floor((fall - 3) * (armourEnch[3]?.includes('feather') ? 0.5 : 1) * (skillPerk('building', 'fall') || 1)); // (v49: Sure-footed)
     // v32: a bounce pad throws you back up (hold jump to bounce higher, sneak to stop), and never hurts
     const pad = BLOCKS[world.get(Math.floor(player.pos.x), Math.floor(player.pos.y - 0.05), Math.floor(player.pos.z))]?.bounce;
     if (pad) {
@@ -1301,7 +1307,7 @@ const FULL_DRAW = 1; // seconds to draw the bow all the way
 function shootArrow(power) {
   const silver = inventory.count(SILVER_ARROW) > 0;
   if (!silver && inventory.count(ARROW) <= 0) { toast('You need arrows'); return; }
-  inventory.remove(silver ? SILVER_ARROW : ARROW, 1);
+  if (!(Math.random() < skillPerk('ranged', 'saveArrow'))) inventory.remove(silver ? SILVER_ARROW : ARROW, 1); // (Fletcher)
   arrows.shoot(player.eye, player.lookDir(), power, silver);
 }
 
@@ -1608,6 +1614,7 @@ function renderInventory() {
       const charge = batteriesTaken(r);
       for (const [id, n] of r.in) takeOf(id, n);
       for (const id of r.tools ?? []) wearTool(id);
+      craftedSkill(r);
       const cap = chargeCap(r.out[0]);
       let lost = cap ? inventory.addItem({ id: r.out[0], count: 1, ...(charge < cap ? { wear: cap - charge } : {}) }) : inventory.add(r.out[0], r.out[1]);
       for (const [id, n] of r.also ?? []) lost += inventory.add(id, n);
@@ -2264,13 +2271,15 @@ function hitMob() {
   if (targetMob.mob.spec.hostile) {
     // fight a night creature: damage depends on what's in your hand
     const now = performance.now();
-    if (now - lastSwing < (isSword(inventory.heldId()) ? 300 : 450)) return; // swords swing quicker
+    if (now - lastSwing < (isSword(inventory.heldId()) ? 300 : 450) * (1 - skillPerk('melee', 'swing'))) return; // swords swing quicker
     lastSwing = now;
     swingArm();
     const held = inventory.held(), m = targetMob.mob;
-    const dmg = (WEAPON_DAMAGE[inventory.heldId()] ?? ITEMS[inventory.heldId()]?.tool?.damage ?? 2) + (hasEnch(held, 'keen') ? 3 : 0);
+    const dmg = ((WEAPON_DAMAGE[inventory.heldId()] ?? ITEMS[inventory.heldId()]?.tool?.damage ?? 2) + (hasEnch(held, 'keen') ? 3 : 0)) * (1 + skillPerk('melee', 'meleeDmg'));
     if (hasEnch(held, 'flame') && !m.spec.burns) m.burning = 4;
+    const wasDying = !!m.dying;
     giveDrops(mobs.hurt(m, dmg, player.pos));
+    if (!wasDying) foughtSkill('melee', m, dmg);
     wearOutHeld(1);
     return;
   }
@@ -2282,7 +2291,10 @@ function hitMob() {
     lastSwing = now;
     const r = mobs.butcher(targetMob.mob, ITEMS[inventory.heldId()].tool.damage ?? 4, player.pos);
     if (r.why) { toast(r.why[0].toUpperCase() + r.why.slice(1), 1500); return; }
-    if (r.drops.length) { giveDrops(r.drops); achieve('butcher'); }
+    if (r.drops.length) {
+      if (skillPerk('farming', 'butcher')) r.drops.push([r.drops[0][0], 1]); // (Butcher)
+      giveDrops(r.drops); achieve('butcher'); train('farming', 3);
+    }
     wearOutHeld(1);
     return;
   }
@@ -2341,7 +2353,7 @@ function eat(id) {
     return;
   }
   if (hunger > MAX_HUNGER - 1) { toast('You\'re not hungry'); return; } // (hunger drains constantly, so never exactly full)
-  hunger = Math.min(MAX_HUNGER, hunger + foodValue(id));
+  hunger = Math.min(MAX_HUNGER, hunger + foodValue(id) * (1 + skillPerk('cooking', 'filling')));
   inventory.consumeHeld();
   if (ITEMS[id]?.risky && Math.random() < ITEMS[id].risky) { poisoned = Math.max(poisoned, 15); toast('Ugh! That wasn\'t cooked: you have food poisoning.', 2500); renderHealth(); } // (v34: raw chicken)
   if (foodValue(id) >= 6) {
@@ -2527,7 +2539,8 @@ async function napThroughStorm() {
   weather.set(false);
   if (net.isHost) sendClock('slept');
   const secs = skip * DAY_LENGTH;
-  stations.tick(secs, world, setStationLit, powerAt, boostAt, crafterRecipe);
+  skillQuiet = true;
+  try { stations.tick(secs, world, setStationLit, powerAt, boostAt, crafterRecipe); } finally { skillQuiet = false; }
   apiculture.tick(secs, stations, world, beeEnv);
   tickLamps(secs);
   for (let i = 0, n = Math.max(1, Math.ceil(secs / 60)); i < n; i++) world.tickPlants(secs / n);
@@ -2549,7 +2562,8 @@ async function sleepUntilMorning() {
   if (!together) { sky.time = 0.001; day++; }
   caneToday = 0;
   if (net.isHost) sendClock('slept');
-  stations.tick(skipped, world, setStationLit, powerAt, boostAt, crafterRecipe);
+  skillQuiet = true;
+  try { stations.tick(skipped, world, setStationLit, powerAt, boostAt, crafterRecipe); } finally { skillQuiet = false; }
   apiculture.tick(skipped, stations, world, nightEnv); // (night bees work while you sleep)
   tickLamps(skipped);
   const steps = Math.max(1, Math.ceil(skipped / 60)); // (a minute at a time, so plants grow as they would have)
@@ -2590,6 +2604,7 @@ function wearOutHeld(n) {
   const s = inventory.held();
   if (creative || !settings.wear || !s || !maxWear(s.id)) return;
   if (hasEnch(s, 'sturdy') && Math.random() < 0.5) return;
+  if (Math.random() < skillPerk('forging', 'wear')) return; // (Well Made)
   s.wear = (s.wear ?? 0) + n;
   if (s.wear >= maxWear(s.id)) {
     inventory.slots[inventory.selected] = null;
@@ -4236,7 +4251,9 @@ function place() {
   const before = inventory.held();
   const pk = before?.pack > 0 && isBlock(before.id) ? before.pack : 0;
   const at = target && { x: target.x + target.nx, y: target.y + target.ny, z: target.z + target.nz };
+  const was = at && world.get(at.x, at.y, at.z), had = before && isBlock(before.id) ? inventory.count(before.id) : -1;
   placeInner();
+  if (at && had > 0 && !pk && !creative) builtSkill(before.id, had, was, at);
   if (!pk || (inventory.slots[inventory.selected] === before && before.count > 0)) return;
   const there = at && world.get(at.x, at.y, at.z);
   if (there && ((BLOCKS[there].variantOf || there) === before.id || BLOCKS[there].drop === before.id)) unpack(at.x, at.y, at.z, pk);
@@ -4961,7 +4978,7 @@ function tickBlasts(dt) {
 function updateBreaking(dt) {
   // holding with the bow draws it; letting go shoots (a quick tap is handled by place())
   if (inventory.heldId() === BOW) {
-    if (controls.breaking) bowCharge = Math.min(FULL_DRAW, bowCharge + dt);
+    if (controls.breaking) bowCharge = Math.min(FULL_DRAW, bowCharge + dt * (1 + skillPerk('ranged', 'draw')));
     else if (bowCharge > 0) { shootArrow(Math.max(0.25, bowCharge / FULL_DRAW)); bowCharge = 0; }
     $('charge').style.setProperty('--charge', String(bowCharge / FULL_DRAW));
     $('charge').classList.toggle('show', bowCharge > 0);
@@ -5038,7 +5055,7 @@ function updateBreaking(dt) {
   const t = breakTime(target.id, held);
   if (!isFinite(t)) { crack.visible = false; return; }
   if (creative) breakState.progress += dt / 0.12; // creative: everything breaks at once (one block every so often)
-  else breakState.progress += dt * (effects.haste > 0 ? 1.5 : 1) * (hasEnch(inventory.held(), 'swift') ? 1.4 : 1) / Math.max(t, 0.05);
+  else breakState.progress += dt * (effects.haste > 0 ? 1.5 : 1) * (hasEnch(inventory.held(), 'swift') ? 1.4 : 1) * digSkill(BLOCKS[target.id]) / Math.max(t, 0.05);
   breakState.tick = (breakState.tick || 0) - dt;
   if (breakState.tick <= 0) { sound.dig(BLOCKS[target.id].sound); breakState.tick = 0.24; swingArm(); }
   if (breakState.progress >= 1) {
@@ -5149,6 +5166,7 @@ function breakBlock(x, y, z) {
     sound.breakBlock('leaves');
     toast(`Timber! +${felled.length + 1} Log`, 1800);
   }
+  if (!creative && spannerPack < 0) drops = skillDrops(id, def, drops, felled.length);
   if (creative) {
     // creative: blocks you break aren't collected (the palette has them all)
   } else if (drops.length) {
@@ -5818,6 +5836,7 @@ controls = null;
     toggleInventory,
     toggleMap: () => (worldMap.open ? closeMap() : !paused && !dead && !photoMode && openMap()),
     toggleGuidebook: () => ($('guidebook').classList.contains('hidden') ? openGuidebook() : closeGuidebook()),
+    toggleSkills: () => ($('skills').classList.contains('hidden') ? openSkills() : closeSkills()),
     toggleFly,
     throwItem: (all) => !photoMode && throwHeld(all),
     quickHold: () => inventory.heldId() === BOW,
@@ -5829,6 +5848,7 @@ controls = null;
       else if (shown('station')) closeStation();
       else if (worldMap.open) closeMap();
       else if (shown('guidebook')) closeGuidebook();
+      else if (shown('skills')) closeSkills();
       else if (shown('inventory')) toggleInventory();
     },
   });
@@ -6272,6 +6292,144 @@ function claimGoal(g) {
   $('btn-guidebook').classList.toggle('claim', unclaimed().length > 0);
   renderGuidebook();
 }
+// ---------- v49: skills ----------
+// Doing things trains the skill for them (see skills.js): each level helps a little, and some unlock a perk.
+// Levels go with the world's save, like the backpack. No experience in creative.
+const TEND_REACH = 24; // blocks: stations and machines this near you work with your skill (and train it)
+function skillPerk(id, key) { return perk(id, key, skills[id]?.level ?? 1); }
+function skillsChanged() {
+  REACH = BASE_REACH + skillPerk('building', 'reach');
+  skillHunger = hungerSaving(Object.fromEntries(SKILLS.map((k) => [k.id, skills[k.id].level])));
+  if (!$('skills').classList.contains('hidden')) renderSkills();
+}
+let skillPopTimer = 0;
+const pct = (f) => `${+(f * 100).toFixed(1)}%`; // (0.015 -> "1.5%")
+function train(id, xp) {
+  if (creative || dead || !(xp > 0) || !skills[id]) return;
+  const st = skills[id], k = SKILL[id];
+  const reached = gain(st, xp);
+  // a little bar over the hotbar shows what you're getting better at
+  const pop = $('skill-pop');
+  const frac = st.level >= MAX_LEVEL ? 1 : st.xp / xpToNext(st.level);
+  pop.innerHTML = `<span>${k.icon} ${k.name} ${st.level}</span><i style="--f:${frac.toFixed(3)}"></i>`;
+  if (!paused) pop.classList.add('show');
+  clearTimeout(skillPopTimer);
+  skillPopTimer = setTimeout(() => pop.classList.remove('show'), 2200);
+  if (!reached.length) return;
+  for (const lv of reached) {
+    const p = k.perks.find((x) => x.lv === lv);
+    const el = $('ach-toast');
+    el.innerHTML = `<span class="icon">${k.icon}</span><span><small>${k.name} level ${lv}</small><b>${p ? `${p.name}: ${p.text}` : `+${pct(k.every.per)} ${k.every.text}`}</b></span>`;
+    el.classList.add('show');
+    clearTimeout(achToastTimer);
+    achToastTimer = setTimeout(() => el.classList.remove('show'), 3500);
+  }
+  sound.levelUp?.() ?? sound.pop();
+  skillsChanged();
+}
+// How much faster you break a block with your Mining or Woodcutting.
+function digSkill(def) {
+  if (def?.tool === 'axe') return 1 + skillPerk('wood', 'chopSpeed');
+  if (def?.tool === 'pick' || def?.tool === 'shovel') return 1 + skillPerk('mining', 'digSpeed');
+  return 1;
+}
+// What counts as ore for Mining: the smeltable ores, and coal, saltpetre and the rest named "... Ore".
+let SKILL_ORES = null;
+const isSkillOre = (id) => (SKILL_ORES ??= new Set([...ORES.map((o) => o.id), ...Object.keys(BLOCKS).map(Number).filter((k) => / Ore$/.test(BLOCKS[k]?.name ?? ''))])).has(id);
+// A block you broke: train the skill it took, and maybe get more for it. Returns the drops.
+function skillDrops(id, def, drops, felled) {
+  if (!drops.length) return drops;
+  if (id === WHEAT_3 || def.crop?.ripe) {
+    train('farming', 2);
+    if (Math.random() < skillPerk('farming', 'extraCrop') + skillPerk('farming', 'bumper')) {
+      const crop = drops.find(([d]) => FINE_CROPS[d] || Object.values(FINE_CROPS).includes(d)) ?? drops[0];
+      drops = [...drops, [crop[0], 1]];
+    }
+    return drops;
+  }
+  if (!(def.hardness > 0)) return drops;
+  if (def.tool === 'axe') {
+    const logs = id === LOG ? 1 + felled : 0;
+    train('wood', logs ? logs * 1.5 : 0.5);
+    let extra = 0;
+    for (let i = 0; i < logs; i++) if (Math.random() < skillPerk('wood', 'extraLog')) extra++;
+    if (extra) drops.push([LOG, extra]);
+    if (felled && skillPerk('wood', 'sapling')) drops.push([SAPLING, 1]);
+  } else if (def.tool === 'pick' || def.tool === 'shovel') {
+    const ore = isSkillOre(id);
+    train('mining', ore ? 4 : def.tool === 'shovel' ? 0.5 : 1);
+    if (ore && Math.random() < skillPerk('mining', 'extraOre')) drops.push([drops[0][0], 1]);
+  }
+  return drops;
+}
+// A block was put down from the hand (one fewer in the backpack, and the world changed there).
+function builtSkill(id, had, was, at) {
+  const now = world.get(at.x, at.y, at.z);
+  if (now === was || now === AIR || inventory.count(id) !== had - 1) return;
+  train('building', 1);
+  if (Math.random() < skillPerk('building', 'spare')) {
+    const s = inventory.slots[inventory.selected];
+    if (!s) inventory.slots[inventory.selected] = { id, count: 1 }; else inventory.add(id, 1);
+    inventory.onChange();
+  }
+}
+// Something crafted in the backpack. (Packing and unpacking crates teaches nothing.)
+function craftedSkill(r) {
+  if ([r.out[0], ...r.in.flatMap(([id]) => idsOf(id))].some((id) => CRATED[id])) return;
+  train('forging', Math.min(8, 0.5 + r.in.reduce((t, [, n]) => t + n, 0) / 4));
+  if (Math.random() < skillPerk('forging', 'keepIng') + skillPerk('forging', 'thrifty')) {
+    const plain = r.in.filter(([id]) => !Array.isArray(id) && !chargeCap(id));
+    if (!plain.length) return;
+    const [id] = plain[Math.floor(Math.random() * plain.length)];
+    inventory.add(id, 1);
+    toast(`Thrifty: you kept a ${itemName(id).toLowerCase()}`, 1200);
+  }
+}
+// A hit on a creature, up close or with an arrow.
+function foughtSkill(id, m, dmg) {
+  train(id, Math.min(dmg, 20) * 0.5 + (m.dying ? 6 : 0));
+  if (id === 'melee' && m.dying && skillPerk('melee', 'heal')) { health = Math.min(MAX_HEALTH, health + skillPerk('melee', 'heal')); renderHealth(); }
+}
+// Smelters, ovens and machines near you work with your skill, and what they make trains it.
+const nearYou = (x, y, z) => Math.abs(x + 0.5 - player.pos.x) < TEND_REACH && Math.abs(z + 0.5 - player.pos.z) < TEND_REACH && Math.abs(y + 0.5 - player.pos.y) < TEND_REACH;
+stations.tend = (kind, x, y, z) => {
+  const sk = STATION_SKILL[kind];
+  if (!sk || creative || dead || !nearYou(x, y, z)) return null;
+  const P = STATION_PERKS[sk];
+  return {
+    speed: 1 + skillPerk(sk, P.speed), extra: skillPerk(sk, P.extra),
+    side: sk === 'processing' ? skillPerk(sk, 'byproduct') || 1 : 1, fuel: sk === 'smelting' ? 1 + skillPerk(sk, 'fuel') : 1,
+  };
+};
+stations.made = (kind, x, y, z) => {
+  const sk = STATION_SKILL[kind];
+  if (sk && !skillQuiet && nearYou(x, y, z)) train(sk, 1.5);
+};
+function renderSkills() {
+  const total = SKILLS.reduce((t, k) => t + skills[k.id].level, 0);
+  $('sk-total').textContent = `Total level ${total} · hunger drains ${Math.round(skillHunger * 100)}% slower`;
+  $('sk-list').innerHTML = SKILLS.map((k) => {
+    const st = skills[k.id], max = st.level >= MAX_LEVEL, frac = max ? 1 : st.xp / xpToNext(st.level);
+    const now = perk(k.id, k.every.key, st.level);
+    const perks = k.perks.map((p) => `<li class="${st.level >= p.lv ? 'got' : ''}"><span class="lv">${p.lv}</span><b>${p.name}</b>: ${p.text}</li>`).join('');
+    return `<div class="sk"><div class="sk-head"><span class="sk-icon">${k.icon}</span><b>${k.name}</b><span class="sk-lv">Level ${st.level}${max ? ' (max)' : ''}</span></div>` +
+      `<div class="sk-bar"><i style="width:${(frac * 100).toFixed(1)}%"></i></div>` +
+      `<div class="sk-xp">${max ? 'Mastered' : `${Math.floor(st.xp)} / ${xpToNext(st.level)} to level ${st.level + 1}`}</div>` +
+      `<div class="sk-how">${k.how} Every level: +${pct(k.every.per)} ${k.every.text}${now ? ` (now +${pct(now)})` : ''}.</div>` +
+      `<ul class="sk-perks">${perks}</ul></div>`;
+  }).join('');
+}
+function openSkills() {
+  if (paused || dead || photoMode) return;
+  paused = true; controls.reset(); document.exitPointerLock?.();
+  renderSkills();
+  $('skills').classList.remove('hidden');
+}
+function closeSkills() { $('skills').classList.add('hidden'); paused = false; }
+$('btn-skills').addEventListener('click', () => { closeGuidebook(); openSkills(); }); // (in the guidebook's title bar)
+$('btn-close-skills').addEventListener('click', closeSkills);
+$('skills').addEventListener('click', (e) => { if (e.target.id === 'skills') closeSkills(); });
+
 function openGuidebook() {
   if (paused || dead || photoMode) return;
   paused = true; controls.reset(); document.exitPointerLock?.();
@@ -7508,7 +7666,7 @@ function fineChance(x, y, z) {
 }
 function fineHarvest(drops, x, y, z) {
   const i = drops.findIndex(([d]) => FINE_CROPS[d]);
-  if (i < 0 || Math.random() >= fineChance(x, y, z)) return drops;
+  if (i < 0 || Math.random() >= fineChance(x, y, z) * (skillPerk('farming', 'fine') || 1)) return drops; // (v49: Green Thumb)
   const [d, n] = drops[i];
   achieve('fine');
   const out = drops.slice();
@@ -8068,7 +8226,11 @@ function stepGame(now, dt) {
       world, mobs, player, light: { day: lightUniforms.uDay.value, flicker: lightUniforms.uFlicker.value, ambient: lightUniforms.uAmbient.value },
       // arrows bump animals, and hurt creatures more the further the bow was drawn
       onHitMob: (m, arrow, from) => {
-        if (m.spec.hostile) giveDrops(mobs.hurt(m, Math.round(2 + 6 * arrow.power) * (arrow.silver ? 2 : 1), from));
+        if (m.spec.hostile) {
+          const dmg = Math.round(2 + 6 * arrow.power) * (arrow.silver ? 2 : 1) * (1 + skillPerk('ranged', 'arrowDmg')), wasDying = !!m.dying;
+          giveDrops(mobs.hurt(m, dmg, from));
+          if (!wasDying) foughtSkill('ranged', m, dmg);
+        }
         else mobs.bump(m, from);
       },
       onHitPlayer: (dmg, from, a) => {
@@ -8195,6 +8357,7 @@ window.minicraft = {
   arrows, fishing, kinetics, electric, lightUniforms, bees, catchAt, seasonOf, applySeason, set day(v) { day = v; applySeason(); }, frames, signalAt, setSwitch, logic, machines, carts, minimap, signs, armour, damage, placeRail, getInCart, getOutOfCart,
   get riding() { return riding; }, explode, lightFuse, fuses, clockTime, compassText, place, editSign, closeSign, openInventory, closeInventory, chestMove, lamps, tickLamps, sleepUntilMorning, stations, openStation, closeStation,
   get caneToday() { return caneToday; }, get creative() { return creative; }, set creative(v) { creative = v; applyCreative(); }, toggleFly, wand, useWand, get achieved() { return achieved; }, achieve, worldMap, openMap, closeMap, openGuide, switchSlot, store, saveGame, renderWorlds, openWorlds, exportSlot, get target() { return target; }, set target(v) { target = v; }, applyKeys, renderKeys, camera, get controls() { return controls; }, loose, throwHeld, get waypoints() { return waypoints; }, toggleWaypoint, sortSlots, quickStack, dropMeteor, get meteors() { return meteors; }, weather, openTrade, closeTrade, mountMob, dismount, get ridingMob() { return ridingMob; }, effects, armourWear, useAnvil, rollLoot, settings,
+  get skills() { return skills; }, set skills(v) { skills = loadSkills(v); skillsChanged(); }, train, skillPerk, openSkills, closeSkills, get reach() { return REACH; },
   get bedSpawn() { return bedSpawn; }, fertilise, openJournal, closeJournal, get packs() { return packs; }, radiationAt, vehicles, boardVehicle, leaveVehicle, get boarded() { return boarded; }, get seated() { return seated; }, crows, onInvSlot, onStationSlot, quickMoveInv, quickMoveStation, usedIn, itemTipHTML, critters, tickPets, sealife, useRecordPlayer, recordNear, useStand, undoEdit, undoStack, get catGiftDay() { return catGiftDay; }, get villageGrowth() { return villageGrowth; }, notePlanting, tickPuzzles, airPumpNear, useStable, stableNear, horseLabel, logistics, openLogistics, closeLogistics, placeOrder, get lpOpen() { return lpOpen; }, music, musicMood, get guideDone() { return guideDone; }, get guideClaimed() { return guideClaimed; }, tickGuidebook, openGuidebook, closeGuidebook, claimGoal, goalMet, fineChance, fineHarvest, showProduce, foodContest, specialTrades, catchAt, stockStable, tickStables, mangers, openSaddlebags, honeyAt, apiculture, scoopHive, beeEnv, fitUpgrade, piles, lightCharcoalPile, tickPiles, searchChests, takeFromChest, markChest, get chestMark() { return chestMark; }, enterPhotoMode, exitPhotoMode, snapPhoto, get photoMode() { return photoMode; }, photoCam, get lastPhoto() { return lastPhoto; }, tickStalactites, loosenStalactite, fallingRocks, shaking, workLock, findLock, tickLocks, openGates, lockJobs, hangRopeLadder, layBridge, rollUpRope, fireworks, ringBell, requestFor, festivalToday, repOf, addRep, tradeCost, tickFestival, villageEntry, hearths, tickHearths, feedHearth, chimneyTop, smoke, renderPins, togglePin, lightning, igniteAt, fires, tickFires, tickStorm, growVillage, buildVillageHouse, stallPrice, tickStalls, tickVillages, set catGiftDay(v) { catGiftDay = v; }, get places() { return places; }, get treasures() { return treasures; }, readTreasureMap, tickTreasure, beams, tickBeams, beaconSpots: () => beaconSpots, mistNow, tickSnow, tickExplore, sitOn, standUp, useDisplay, zips, linkZip, startZip, get zipping() { return zipping; }, burnCoal, get health() { return health; }, set health(v) { health = v; }, paintings, screens, tuneMonitor, tiltCamera, placeSwitchRail, signalAt, ailments, armourEnch, openAltar, lairNear, useBed, eat, drinkTea,
 };
 
@@ -8293,7 +8456,7 @@ function useMould(x, y, z, tid, held) {
 function eatCakeSlice(x, y, z, tid) {
   if (hunger > MAX_HUNGER - 1) { toast('You\'re not hungry'); return; }
   const k = tid - CHOC_CAKE;
-  hunger = Math.min(MAX_HUNGER, hunger + 5);
+  hunger = Math.min(MAX_HUNGER, hunger + 5 * (1 + skillPerk('cooking', 'filling')));
   health = Math.min(MAX_HEALTH, health + 2);
   effects.fed = Math.max(effects.fed, 100);
   world.setBlock(x, y, z, k + 1 < CAKE_SLICES ? tid + 1 : AIR);
