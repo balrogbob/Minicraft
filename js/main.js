@@ -64,7 +64,8 @@ import { ACHIEVEMENTS, ACHIEVEMENT_IDS } from './achievements.js';
 import { GUIDE, GOALS, chapterOpen, goalItem, goalShown } from './guidebook.js';
 import { SKILLS, SKILL, MAX_LEVEL, xpToNext, perk, gain, hungerSaving, loadSkills, STATION_SKILL, STATION_PERKS } from './skills.js';
 import { CRATED } from './blocks.js';
-import { SKILL_BOOK_OF, skillBookFor } from './blocks.js';
+import { SKILL_BOOK_OF, skillBookFor, PARCEL, HEIRLOOMS } from './blocks.js';
+import { questOffers, questTarget, loadQuest, periodOf, MAX_QUESTS, HUNT_KINDS, QUEST_DAYS } from './quests.js';
 import { MobManager, DIFFICULTY, DIFFICULTY_ORDER, SPECIES, JOB_NAMES, villageFolk, CHILD_TIME } from './mobs.js';
 import { ArrowManager } from './arrows.js';
 import { Stations, STATION_KINDS, isFuel, inCellar, wetAt, upgradeStacks, upgradeRefusal } from './stations.js';
@@ -851,6 +852,8 @@ async function startWorld(save, opts = {}) {
   waypoints = Array.isArray(save?.waypoints) ? save.waypoints.filter((w) => w && [w.x, w.y, w.z].every(Number.isFinite)).map((w) => ({ x: w.x, y: w.y, z: w.z, name: String(w.name ?? 'Mark').slice(0, 16) })).slice(0, 12) : [];
   places = Array.isArray(save?.places) ? save.places.filter((p) => p && typeof p.kind === 'string' && [p.x, p.z].every(Number.isFinite)).slice(0, 400) : [];
   treasures = Array.isArray(save?.treasures) ? save.treasures.filter((t) => t && [t.x, t.z].every(Number.isFinite)) : [];
+  quests = (Array.isArray(save?.quests) ? save.quests : []).map(loadQuest).filter(Boolean).slice(0, MAX_QUESTS);
+  questsDone = Number.isInteger(save?.questsDone) ? save.questsDone : 0;
   catGiftDay = Number.isInteger(save?.catGiftDay) ? save.catGiftDay : -1;
   bellDay = Number.isInteger(save?.bellDay) ? save.bellDay : -1;
   world.soil = new Map((Array.isArray(save?.soil) ? save.soil : []).filter((e) => Array.isArray(e) && typeof e[0] === 'string' && e[1] && typeof e[1].kind === 'string'));
@@ -867,6 +870,7 @@ async function startWorld(save, opts = {}) {
       rep: Number.isFinite(g.rep) ? g.rep : 0, grown: Array.isArray(g.grown) ? g.grown.filter(Number.isInteger) : [], reqDay: Number.isInteger(g.reqDay) ? g.reqDay : -1, decorDay: Number.isInteger(g.decorDay) ? g.decorDay : -1,
       decor: (Array.isArray(g.decor) ? g.decor : []).filter((e) => Array.isArray(e) && e.length === 4 && e.every(Number.isFinite)),
       ...(Number.isInteger(g.fillDay) ? { fillDay: g.fillDay } : {}),
+      ...(Array.isArray(g.qTaken) ? { qTaken: g.qTaken.filter((id) => typeof id === 'string').slice(-12) } : {}),
       ...(g.site?.b && [g.site.b.x, g.site.b.y, g.site.b.z].every(Number.isFinite) && Array.isArray(g.site.b.face) && Number.isInteger(g.site.i)
         ? { site: { b: { kind: 'house', x: g.site.b.x, y: g.site.b.y, z: g.site.b.z, face: g.site.b.face.map(Number), style: String(g.site.b.style), size: String(g.site.b.size),
           ...(g.site.b.road && [g.site.b.road.x, g.site.b.road.z, g.site.b.road.len, g.site.b.road.y, g.site.b.road.id].every(Number.isFinite) && Array.isArray(g.site.b.road.dir)
@@ -1008,7 +1012,7 @@ function saveGame() {
     weather: { raining: weather.raining, timer: Math.round(weather.timer) },
     pets: mobs.pets(),
     waypoints,
-    places, treasures, beacons: [...beaconSpots], catGiftDay, villageGrowth: [...villageGrowth], bellDay, fires: [...fires], hearths: [...hearths], openGates: [...openGates], mangers: [...mangers], piles: piles.map((p) => ({ cells: p.cells, hole: p.hole, left: p.left, total: p.total })), soil: [...(world.soil ?? [])].slice(-4000),
+    places, treasures, quests, questsDone, beacons: [...beaconSpots], catGiftDay, villageGrowth: [...villageGrowth], bellDay, fires: [...fires], hearths: [...hearths], openGates: [...openGates], mangers: [...mangers], piles: piles.map((p) => ({ cells: p.cells, hole: p.hole, left: p.left, total: p.total })), soil: [...(world.soil ?? [])].slice(-4000),
     time: sky.time,
     creative,
     flying: player.flying,
@@ -3808,6 +3812,7 @@ function renderTrades() {
     row.appendChild(btn);
     list.appendChild(row);
   }
+  renderQuestRows(list, tradingWith);
 }
 $('btn-close-trade').addEventListener('click', closeTrade);
 $('trade').addEventListener('click', (e) => { if (e.target.id === 'trade') closeTrade(); });
@@ -5923,6 +5928,7 @@ controls = null;
     toggleMap: () => (worldMap.open ? closeMap() : !paused && !dead && !photoMode && openMap()),
     toggleGuidebook: () => ($('guidebook').classList.contains('hidden') ? openGuidebook() : closeGuidebook()),
     toggleSkills: () => ($('skills').classList.contains('hidden') ? openSkills() : closeSkills()),
+    toggleQuests: () => ($('quests').classList.contains('hidden') ? openQuests() : closeQuests()),
     toggleFly,
     throwItem: (all) => !photoMode && throwHeld(all),
     quickHold: () => inventory.heldId() === BOW,
@@ -5935,6 +5941,7 @@ controls = null;
       else if (worldMap.open) closeMap();
       else if (shown('guidebook')) closeGuidebook();
       else if (shown('skills')) closeSkills();
+      else if (shown('quests')) closeQuests();
       else if (shown('inventory')) toggleInventory();
     },
   });
@@ -6473,6 +6480,7 @@ function craftedSkill(r) {
 }
 // A hit on a creature, up close or with an arrow.
 function foughtSkill(id, m, dmg) {
+  if (m.dying) questKill(m);
   train(id, Math.min(dmg, 20) * 0.5 + (m.dying ? 6 : 0));
   if (id === 'melee' && m.dying && skillPerk('melee', 'heal')) { health = Math.min(MAX_HEALTH, health + skillPerk('melee', 'heal')); renderHealth(); }
 }
@@ -6572,7 +6580,8 @@ $('guidebook').addEventListener('click', (e) => { if (e.target.id === 'guidebook
 // ---------- world map ----------
 const worldMap = new WorldMap($('worldmap'), $('bigmap'), minimap, {
   marks: () => waypoints,
-  places: () => [...places, ...treasures.filter((t) => !t.found).map((t) => ({ kind: 'treasure', x: t.x, z: t.z, name: 'X' }))],
+  places: () => [...places, ...treasures.filter((t) => !t.found).map((t) => ({ kind: 'treasure', x: t.x, z: t.z, name: 'X' })),
+    ...quests.map(questTarget).filter(Boolean).map(([x, z, name]) => ({ kind: 'quest', x, z, name }))],
   home: () => bedSpawn ?? (world.spawnCache ??= world.generator.findSpawn()),
   toggleMark(x, z, near) {
     if (near) { waypoints = waypoints.filter((w) => w !== near); toast(`Removed ${near.name}`, 1200); sound.click(); return; }
@@ -6829,6 +6838,153 @@ function tickExplore(dt) {
 
 // A treasure map, the first time it's read, leads to a chest buried somewhere 120-280 blocks away on dry land.
 // The chest is put in the ground once that part of the world is loaded.
+// ---------- v50 (later 2): quests (see quests.js) ----------
+let quests = [], questsDone = 0; // the jobs you've taken on, and how many you've finished
+const GATHER = [[COBBLE, 128, 10], [LOG, 64, 10], [PLANKS, 96, 8], [IRON_INGOT, 16, 14], [WHEAT, 48, 9], [GLASS, 32, 10], [TORCH, 48, 8],
+  [BREAD, 16, 10], [WOOL, 24, 10], [COAL, 48, 9], [BAKED_FISH, 16, 10], [PAPER, 24, 9]];
+const QUEST_IDS = { parcel: PARCEL, heirlooms: HEIRLOOMS, gather: GATHER, name: (id) => itemName(id) };
+const QUEST_ICON = { deliver: '📦', fetch: '🔎', gather: '🧺', hunt: '⚔' };
+const peacefulNow = () => settings.difficulty === 'peaceful';
+// the jobs a village still has going today (not ones you've taken)
+function villageQuests(v) {
+  const g = villageEntry(v);
+  return questOffers(world.generator, v, periodOf(day), QUEST_IDS, peacefulNow()).filter((q) => !(g.qTaken ?? []).includes(q.id));
+}
+const villageFromKey = (k, x, z) => { const v = world.generator.nearestVillage(x, z, 1); return v && villageKey(v) === k ? v : null; };
+const questReady = (q) => (q.kind === 'deliver' ? inventory.count(PARCEL) > 0 : q.kind === 'fetch' ? q.found && inventory.count(q.item) > 0
+  : q.kind === 'gather' ? inventory.count(q.item) >= q.n : q.got >= q.n);
+function questProgress(q) {
+  if (q.kind === 'deliver') return inventory.count(PARCEL) ? `carrying the parcel to ${q.to.name}` : 'you\'ve lost the parcel!';
+  if (q.kind === 'fetch') return !q.found ? `lost at ${q.spot.place === 'wreck' ? 'a shipwreck' : 'a ruin'}` : inventory.count(q.item) ? `found: take it back to ${q.home.name}` : 'found, but you\'ve lost it again!';
+  if (q.kind === 'gather') return `${Math.min(q.n, inventory.count(q.item))} / ${q.n} ${itemName(q.item).toLowerCase()}`;
+  return `${Math.min(q.n, q.got)} / ${q.n} ${HUNT_KINDS[q.mob][1]} defeated`;
+}
+function questWay(q) {
+  const t = questTarget(q);
+  if (!t) return q.kind === 'hunt' ? 'They come out at night' + (q.mob === 'spider' ? ', in caves' : '') : '';
+  const dx = t[0] - player.pos.x, dz = t[1] - player.pos.z, d = Math.hypot(dx, dz);
+  return d < 24 ? `${t[2]} is right here` : `${t[2]}: ${Math.round(d)} blocks ${POINT_NAMES[pointOf(dx, dz)]}`;
+}
+const questReward = (q) => `${q.coins} coins${q.book ? ' and a skill book' : ''}`;
+function acceptQuest(q, v) {
+  if (quests.length >= MAX_QUESTS) { toast(`You've taken on ${MAX_QUESTS} jobs already: finish one first (or give one up in your quest log, J)`, 3000); return false; }
+  if (q.kind === 'deliver' && inventory.room(PARCEL) < 1) { toast('You have no room for the parcel', 2000); return false; }
+  const g = villageEntry(v);
+  (g.qTaken ??= []).push(q.id);
+  if (g.qTaken.length > 12) g.qTaken.splice(0, g.qTaken.length - 12);
+  quests.push({ ...q, got: 0, found: false, day });
+  if (q.kind === 'deliver') inventory.add(PARCEL, 1);
+  sound.pop();
+  toast(`Quest taken: ${q.text}. ${questWay(quests.at(-1))} (it's in your quest log, J, and on your map)`, 4000);
+  return true;
+}
+function finishQuest(q, here) {
+  if (q.kind === 'deliver') inventory.remove(PARCEL, 1);
+  else if (q.kind === 'fetch') inventory.remove(q.item, 1);
+  else if (q.kind === 'gather') inventory.remove(q.item, q.n);
+  quests.splice(quests.indexOf(q), 1);
+  questsDone++;
+  const drops = [[COIN, q.coins]];
+  if (q.book) drops.push([skillBookFor(SKILL_BOOK_OF[Math.floor(Math.random() * SKILL_BOOK_OF.length)]), 1]);
+  giveDrops(drops);
+  sound.ding(0.8);
+  const home = q.kind === 'deliver' ? villageFromKey(q.home.key, q.home.x, q.home.z) : here;
+  if (home) addRep(home, 6);
+  if (q.kind === 'deliver') addRep(here, 3);
+  toast(q.kind === 'deliver' ? `The people of ${here.name} thank you for bringing it all the way from ${q.home.name}: ${questReward(q)}`
+    : q.kind === 'fetch' ? `"My ${q.who}'s ${itemName(q.item).toLowerCase()}! I never thought I'd see it again." ${questReward(q)}`
+    : `${here.name} thanks you: ${questReward(q)}`, 3600);
+  achieve('quest');
+  if (questsDone >= 10) achieve('quests10');
+}
+// In a villager's trade panel: things to hand in here, and the village's jobs going.
+function renderQuestRows(list, m) {
+  if (!m.spec.villager || !m.home || m.role === 'child') return;
+  const v = m.home, key = villageKey(v);
+  const row = (icon, html, label, ok, fn, cls = 'quest') => {
+    const r = document.createElement('div');
+    r.className = `recipe special ${cls}`;
+    r.innerHTML = `<span class="qicon">${icon}</span><span class="name">${html}</span>`;
+    if (label) {
+      const b = document.createElement('button');
+      b.className = 'btn'; b.textContent = label; b.disabled = !ok;
+      b.addEventListener('click', () => { fn(); renderTrades(); });
+      r.appendChild(b);
+    }
+    list.appendChild(r);
+  };
+  for (const q of [...quests]) {
+    const here = q.kind === 'deliver' ? q.to.key === key : q.home.key === key;
+    if (!here) continue;
+    const ok = questReady(q);
+    row(QUEST_ICON[q.kind], `${q.text} <small>📜 ${ok ? `done! ${questReward(q)}` : questProgress(q)}</small>`, 'Hand in', ok, () => finishQuest(q, v));
+  }
+  for (const q of villageQuests(v)) {
+    if (quests.some((a) => a.id === q.id)) continue;
+    row(QUEST_ICON[q.kind], `${q.text} <small>📜 job: ${questReward(q)}</small>`, 'Accept', quests.length < MAX_QUESTS, () => acceptQuest(q, v));
+  }
+}
+// Creatures you defeat count toward hunts; lost things are found when you get to them.
+function questKill(m) {
+  for (const q of quests) {
+    if (q.kind !== 'hunt' || q.mob !== m.kind || q.got >= q.n) continue;
+    q.got++;
+    toast(q.got >= q.n ? `That's ${q.n} ${HUNT_KINDS[q.mob][1]}: go back to ${q.home.name} for your reward` : `${q.got} / ${q.n} ${HUNT_KINDS[q.mob][1]} for ${q.home.name}`, 2200);
+    return;
+  }
+}
+let questTimer = 0;
+function tickQuests(dt) {
+  if ((questTimer -= dt) > 0) return;
+  questTimer = 1;
+  for (const q of quests) {
+    if (q.kind !== 'fetch' || q.found) continue;
+    const s = q.spot;
+    if (Math.hypot(s.x + 0.5 - player.pos.x, s.z + 0.5 - player.pos.z) > 5 || Math.abs(s.y - player.pos.y) > 10) continue;
+    if (inventory.room(q.item) < 1) { toast('Something glints in the rubble here, but you have no room to pick it up', 2000); continue; }
+    inventory.add(q.item, 1);
+    q.found = true;
+    sound.pop();
+    toast(`You find the ${itemName(q.item).toLowerCase()} ${s.place === 'wreck' ? 'among the ship\'s timbers' : 'among the fallen stones'}! Take it back to ${q.home.name}`, 3500);
+  }
+}
+// The quest log (J): what you've taken on, how far along it is and which way to go.
+function renderQuestLog() {
+  const el = $('qs-list');
+  el.innerHTML = '';
+  $('qs-count').textContent = `${quests.length} / ${MAX_QUESTS} · ${questsDone} done`;
+  if (!quests.length) el.innerHTML = `<p class="qs-none">No quests yet. Every village has two jobs going, new every ${QUEST_DAYS} days: ask any of its villagers (they're at the bottom of the trade panel).</p>`;
+  for (const q of quests) {
+    const c = document.createElement('div');
+    c.className = 'qs-card';
+    c.innerHTML = `<div class="qs-head"><span class="qicon">${QUEST_ICON[q.kind]}</span><b></b></div><div class="qs-from"></div><div class="qs-prog"></div><div class="qs-way"></div>`;
+    c.querySelector('b').textContent = q.text;
+    c.querySelector('.qs-from').textContent = `For ${q.home.name} · reward: ${questReward(q)}`;
+    c.querySelector('.qs-prog').textContent = questReady(q) ? `Ready to hand in at ${q.kind === 'deliver' ? q.to.name : q.home.name}` : questProgress(q);
+    c.querySelector('.qs-way').textContent = questWay(q);
+    const b = document.createElement('button');
+    b.className = 'btn small'; b.textContent = 'Give up';
+    b.addEventListener('click', () => {
+      if (!b.dataset.sure) { b.dataset.sure = '1'; b.textContent = 'Really give up?'; return; }
+      if (q.kind === 'deliver' && inventory.count(PARCEL)) inventory.remove(PARCEL, 1);
+      quests.splice(quests.indexOf(q), 1);
+      renderQuestLog();
+    });
+    c.appendChild(b);
+    el.appendChild(c);
+  }
+}
+function openQuests() {
+  if (paused || dead || photoMode) return;
+  paused = true; controls.reset(); document.exitPointerLock?.();
+  renderQuestLog();
+  $('quests').classList.remove('hidden');
+}
+function closeQuests() { $('quests').classList.add('hidden'); paused = false; }
+$('btn-quests').addEventListener('click', () => { closeGuidebook(); openQuests(); }); // (in the guidebook's title bar)
+$('btn-close-quests').addEventListener('click', closeQuests);
+$('quests').addEventListener('click', (e) => { if (e.target.id === 'quests') closeQuests(); });
+
 let treasures = []; // [{ id, x, z, y, placed, found }]
 const pointName = (dx, dz) => ['north', 'north-east', 'east', 'south-east', 'south', 'south-west', 'west', 'north-west'][(Math.round(Math.atan2(dx, -dz) / (Math.PI / 4)) + 8) % 8];
 function readTreasureMap(s) {
@@ -7375,7 +7531,7 @@ function ringBell(x, z, held) {
     addRep(v, 8);
     return;
   }
-  toast(`${head} Today they need ${n} × ${itemName(id)} (${coins * (fest ? 2 : 1)} coins): tap the bell holding them${fest ? '. Bring fine produce for the show, and a dish for the food contest!' : ''}`, 4000);
+  toast(`${head} Today they need ${n} × ${itemName(id)} (${coins * (fest ? 2 : 1)} coins): tap the bell holding them${fest ? '. Bring fine produce for the show, and a dish for the food contest!' : ''}${villageQuests(v).length ? '. There are jobs going too: ask any villager' : ''}`, 4000);
 }
 // Decorations round the well: flowers in spring, lanterns in summer, jack-o'-lanterns in autumn and snowmen in winter.
 // They go up on the morning of the festival and come down the next day (unless you've moved them).
@@ -8460,7 +8616,7 @@ function stepGame(now, dt) {
     world.tickPlants(dt);
     world.tickLeaves(dt);
     tickLamps(dt);
-    tickExplore(dt); tickTreasure(dt); tickLocks(dt); tickPiles(dt); tickStables(dt); tickStalactites(dt); tickSnow(dt); tickVillages(dt); tickStorm(dt); tickFires(dt); tickPuzzles(dt); tickHearths(dt);
+    tickExplore(dt); tickTreasure(dt); tickQuests(dt); tickLocks(dt); tickPiles(dt); tickStables(dt); tickStalactites(dt); tickSnow(dt); tickVillages(dt); tickStorm(dt); tickFires(dt); tickPuzzles(dt); tickHearths(dt);
     crows.update(dt, world, player.pos, {
       day: lightUniforms.uDay.value,
       eat: (x, y, z) => world.setBlock(x, y, z, WHEAT_3 - 2), // back to green shoots
@@ -8633,7 +8789,7 @@ window.minicraft = {
   get riding() { return riding; }, explode, lightFuse, fuses, clockTime, compassText, place, editSign, closeSign, openInventory, closeInventory, chestMove, lamps, tickLamps, sleepUntilMorning, stations, openStation, closeStation,
   get caneToday() { return caneToday; }, get creative() { return creative; }, set creative(v) { creative = v; applyCreative(); }, toggleFly, wand, useWand, get achieved() { return achieved; }, achieve, worldMap, openMap, closeMap, openGuide, switchSlot, store, saveGame, renderWorlds, openWorlds, exportSlot, get target() { return target; }, set target(v) { target = v; }, applyKeys, renderKeys, camera, get controls() { return controls; }, loose, throwHeld, get waypoints() { return waypoints; }, toggleWaypoint, sortSlots, quickStack, dropMeteor, get meteors() { return meteors; }, weather, openTrade, closeTrade, mountMob, dismount, get ridingMob() { return ridingMob; }, effects, armourWear, useAnvil, rollLoot, settings,
   get skills() { return skills; }, set skills(v) { skills = loadSkills(v); skillsChanged(); }, train, skillPerk, openSkills, closeSkills, get reach() { return REACH; },
-  get bedSpawn() { return bedSpawn; }, fertilise, openJournal, closeJournal, get packs() { return packs; }, radiationAt, vehicles, boardVehicle, leaveVehicle, get boarded() { return boarded; }, get seated() { return seated; }, crows, onInvSlot, onStationSlot, quickMoveInv, quickMoveStation, usedIn, itemTipHTML, critters, tickPets, sealife, useRecordPlayer, recordNear, useStand, undoEdit, undoStack, get catGiftDay() { return catGiftDay; }, get villageGrowth() { return villageGrowth; }, notePlanting, tickPuzzles, airPumpNear, useStable, stableNear, horseLabel, logistics, openLogistics, closeLogistics, placeOrder, get lpOpen() { return lpOpen; }, music, musicMood, get guideDone() { return guideDone; }, get guideClaimed() { return guideClaimed; }, tickGuidebook, openGuidebook, closeGuidebook, claimGoal, goalMet, fineChance, fineHarvest, showProduce, foodContest, specialTrades, trainerTrades, readSkillBook, catchAt, stockStable, tickStables, mangers, openSaddlebags, honeyAt, apiculture, scoopHive, beeEnv, fitUpgrade, piles, lightCharcoalPile, tickPiles, searchChests, takeFromChest, markChest, get chestMark() { return chestMark; }, enterPhotoMode, exitPhotoMode, snapPhoto, get photoMode() { return photoMode; }, photoCam, get lastPhoto() { return lastPhoto; }, tickStalactites, loosenStalactite, fallingRocks, shaking, workLock, findLock, tickLocks, openGates, lockJobs, hangRopeLadder, layBridge, rollUpRope, fireworks, ringBell, requestFor, festivalToday, repOf, addRep, tradeCost, tickFestival, villageEntry, hearths, tickHearths, feedHearth, chimneyTop, smoke, renderPins, togglePin, lightning, igniteAt, fires, tickFires, tickStorm, growVillage, buildVillageHouse, startSite, fillBeds, roadEndPlots, siteColumnOk, stallPrice, tickStalls, tickVillages, set catGiftDay(v) { catGiftDay = v; }, get places() { return places; }, get treasures() { return treasures; }, readTreasureMap, tickTreasure, beams, tickBeams, beaconSpots: () => beaconSpots, mistNow, tickSnow, tickExplore, sitOn, standUp, useDisplay, zips, linkZip, startZip, get zipping() { return zipping; }, burnCoal, get health() { return health; }, set health(v) { health = v; }, paintings, screens, tuneMonitor, tiltCamera, placeSwitchRail, signalAt, ailments, armourEnch, openAltar, lairNear, useBed, eat, drinkTea,
+  get bedSpawn() { return bedSpawn; }, fertilise, openJournal, closeJournal, get packs() { return packs; }, radiationAt, vehicles, boardVehicle, leaveVehicle, get boarded() { return boarded; }, get seated() { return seated; }, crows, onInvSlot, onStationSlot, quickMoveInv, quickMoveStation, usedIn, itemTipHTML, critters, tickPets, sealife, useRecordPlayer, recordNear, useStand, undoEdit, undoStack, get catGiftDay() { return catGiftDay; }, get villageGrowth() { return villageGrowth; }, notePlanting, tickPuzzles, airPumpNear, useStable, stableNear, horseLabel, logistics, openLogistics, closeLogistics, placeOrder, get lpOpen() { return lpOpen; }, music, musicMood, get guideDone() { return guideDone; }, get guideClaimed() { return guideClaimed; }, tickGuidebook, openGuidebook, closeGuidebook, claimGoal, goalMet, fineChance, fineHarvest, showProduce, foodContest, specialTrades, trainerTrades, readSkillBook, get quests() { return quests; }, villageQuests, acceptQuest, finishQuest, questKill, tickQuests, openQuests, closeQuests, renderQuestLog, catchAt, stockStable, tickStables, mangers, openSaddlebags, honeyAt, apiculture, scoopHive, beeEnv, fitUpgrade, piles, lightCharcoalPile, tickPiles, searchChests, takeFromChest, markChest, get chestMark() { return chestMark; }, enterPhotoMode, exitPhotoMode, snapPhoto, get photoMode() { return photoMode; }, photoCam, get lastPhoto() { return lastPhoto; }, tickStalactites, loosenStalactite, fallingRocks, shaking, workLock, findLock, tickLocks, openGates, lockJobs, hangRopeLadder, layBridge, rollUpRope, fireworks, ringBell, requestFor, festivalToday, repOf, addRep, tradeCost, tickFestival, villageEntry, hearths, tickHearths, feedHearth, chimneyTop, smoke, renderPins, togglePin, lightning, igniteAt, fires, tickFires, tickStorm, growVillage, buildVillageHouse, startSite, fillBeds, roadEndPlots, siteColumnOk, stallPrice, tickStalls, tickVillages, set catGiftDay(v) { catGiftDay = v; }, get places() { return places; }, get treasures() { return treasures; }, readTreasureMap, tickTreasure, beams, tickBeams, beaconSpots: () => beaconSpots, mistNow, tickSnow, tickExplore, sitOn, standUp, useDisplay, zips, linkZip, startZip, get zipping() { return zipping; }, burnCoal, get health() { return health; }, set health(v) { health = v; }, paintings, screens, tuneMonitor, tiltCamera, placeSwitchRail, signalAt, ailments, armourEnch, openAltar, lairNear, useBed, eat, drinkTea,
 };
 
 // ---------- v31: catching bees ----------

@@ -26,7 +26,7 @@ export const KEY_ACTIONS = [
   ['forward', 'Walk forward', 'KeyW'], ['back', 'Walk back', 'KeyS'], ['left', 'Step left', 'KeyA'], ['right', 'Step right', 'KeyD'],
   ['jump', 'Jump / swim / fly up', 'Space'], ['down', 'Fly down (creative)', 'ShiftLeft'], ['sprint', 'Sprint (or double-tap forward)', 'KeyR'], ['inventory', 'Inventory', 'KeyE'],
   ['map', 'World map', 'KeyM'], ['fly', 'Fly on/off (creative)', 'KeyF'], ['drop', 'Throw item (Shift: whole stack)', 'KeyQ'],
-  ['guidebook', 'Guidebook', 'KeyG'], ['skills', 'Skills', 'KeyK'], ['view', 'Change view (first / third person)', 'KeyV'], ['chat', 'Chat (multiplayer)', 'KeyT'],
+  ['guidebook', 'Guidebook', 'KeyG'], ['skills', 'Skills', 'KeyK'], ['quests', 'Quest log', 'KeyJ'], ['view', 'Change view (first / third person)', 'KeyV'], ['chat', 'Chat (multiplayer)', 'KeyT'],
 ];
 export const DEFAULT_KEYS = Object.fromEntries(KEY_ACTIONS.map(([a, , k]) => [a, k]));
 // How a key code is shown: "KeyW" -> "W", "Digit3" -> "3", "ShiftLeft" -> "Left Shift".
@@ -295,6 +295,7 @@ export class Controls {
       if (e.code === this.binds.map) { toggle(this.hooks.toggleMap); return; }
       if (e.code === this.binds.guidebook) { toggle(this.hooks.toggleGuidebook); return; }
       if (e.code === this.binds.skills) { toggle(this.hooks.toggleSkills); return; }
+      if (e.code === this.binds.quests) { toggle(this.hooks.toggleQuests); return; }
       if (e.code === this.binds.view) { this.hooks.toggleView?.(); return; }
       if (this.hooks.isPaused()) return;
       if (e.code === this.binds.chat) { e.preventDefault(); this.hooks.openChat?.(); return; }

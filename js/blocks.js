@@ -3550,3 +3550,12 @@ export const skillBookFor = (skill) => SKILL_BOOK + SKILL_BOOK_OF.indexOf(skill)
 SKILL_BOOK_OF.forEach((skill, i) => {
   ITEMS[SKILL_BOOK + i] = { name: SKILL_BOOK_NAMES[i], stack: 8, skillBook: skill, about: `read it (tap with it in hand) to learn about ${SKILL_BOOK_ABOUT[i]}: half a level of the skill` };
 });
+
+// ---------- v50 (later 2): quests ----------
+// A parcel to carry from one village to another, and the lost things villagers ask you to find (see quests.js).
+export const PARCEL = 3255, LOCKET = 3256, POCKET_WATCH = 3257, SIGNET_RING = 3258;
+export const HEIRLOOMS = [LOCKET, POCKET_WATCH, SIGNET_RING];
+ITEMS[PARCEL] = { name: 'Parcel', stack: 16, quest: true, about: 'a parcel for another village: take it to any villager there (see your quest log, J)' };
+ITEMS[LOCKET] = { name: 'Silver Locket', stack: 1, quest: true, about: 'lost long ago: take it back to its owner\'s village' };
+ITEMS[POCKET_WATCH] = { name: 'Old Pocket Watch', stack: 1, quest: true, about: 'lost long ago: take it back to its owner\'s village' };
+ITEMS[SIGNET_RING] = { name: 'Signet Ring', stack: 1, quest: true, about: 'lost long ago: take it back to its owner\'s village' };

@@ -1966,6 +1966,26 @@ of what your next level needs (at least 10), and is used up. A book is worth mor
   the wandering trader sometimes has one from far away.
 - Reading your first earns **Book Learning**. Books can't teach you anything in creative mode, or past level 20.
 
+### Quests
+
+Every village has two jobs going, new every three days. Any of its villagers will offer them: they're at the bottom
+of the trade panel, in green, with **Accept**. You can take on three at a time.
+
+| Job | What to do | Reward |
+| --- | --- | --- |
+| 📦 Delivery | Take a **parcel** to another village 100-600 blocks away, and hand it to any villager there | 3 coins + 1 for every 40 blocks; reputation in both villages |
+| 🔎 Lost heirloom | Find a villager's **silver locket**, **pocket watch** or **signet ring**, lost at a ruin or a shipwreck nearby (walk, or swim, up to the spot), and bring it back | 5 coins + 1 for every 40 blocks, and a skill book |
+| 🧺 Big order | Bring a lot of one thing: 128 cobblestone, 64 logs, 16 iron ingots, 48 wheat... | 8-14 coins |
+| ⚔ Hunt | Defeat some of the creatures troubling the village: gloomlings, thornspitters, mossbacks or cave spiders (not in peaceful) | 4 coins + 2-4 a creature |
+
+- Hand a job in at the village it's for (a delivery at the village it goes to), from the trade panel of any villager.
+  Finishing one also earns the village's good opinion.
+- Your **quest log** (J, or **📜 Quests** at the top of the guidebook) shows what you've taken on, how far along it is
+  and which way to go. Where each job leads is marked 📜 on the world map. You can give a job up from the log.
+- A village's bell mentions when it has jobs going. The same jobs come up for a village however often you look, and a
+  job you've taken isn't offered again.
+- Finish one for **Odd Jobs**, and ten for **Known on Every Road**.
+
 ## Worlds, creative mode, the map and achievements
 
 ☰ → **Worlds…** holds three worlds. Play any of them, start a new **survival** or **creative** world in a slot,
