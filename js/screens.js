@@ -14,6 +14,10 @@ import { CHUNK } from './world.js';
 
 const key = (x, y, z) => `${x},${y},${z}`;
 const MIRROR_RANGE = 40; // (mirror planes further away than this aren't drawn live)
+// (v50) how far the glass stands out in front of the mirror block's metal face, so it sits on top of it rather
+// than sharing its place (with the corners made exact, see quads, this is plenty at any distance), and is too
+// thin to be seen as a gap
+const GLASS_GAP = 0.02;
 const MAX_PLANES = 2;
 const SCREEN_RANGE = 64;
 const PX_PER_BLOCK = 128, MAX_PX = 768;
@@ -24,7 +28,7 @@ varying vec3 vWorld;
 void main() {
   vec4 w = modelMatrix * vec4(position, 1.0);
   vWorld = w.xyz;
-  gl_Position = projectionMatrix * viewMatrix * w;
+  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); // (not from w: see quads)
 }`;
 const MIRROR_FRAG = `
 uniform sampler2D uTex;
@@ -131,8 +135,9 @@ export class Screens {
       else if (d.screen === 'monitor') monitors.push([x, y, z, d.facing]);
       else if (d.screen === 'mirror') {
         const [dx, dz] = FACING_DIRS[d.facing];
-        // the glass is 1/16 out from the wall behind the block it hangs in
-        const c = dx ? dx * (x + 0.5 - dx * 0.5 + dx / 16) : dz * (z + 0.5 - dz * 0.5 + dz / 16);
+        // the glass is 1/16 out from the wall behind the block it hangs in (just over: see GLASS_GAP)
+        const out = 1 / 16 + GLASS_GAP;
+        const c = dx ? dx * (x + 0.5 - dx * 0.5 + dx * out) : dz * (z + 0.5 - dz * 0.5 + dz * out);
         const pk = `${d.facing}:${c.toFixed(3)}`;
         if (!mirrors.has(pk)) mirrors.set(pk, { f: d.facing, c, cells: [] });
         mirrors.get(pk).cells.push([x, y, z]);
@@ -160,15 +165,19 @@ export class Screens {
   }
 
   // one quad per cell, in a single mesh; `uv` gives each corner's place in the whole picture
+  // (the corners are kept relative to the first cell, which the mesh is placed at: built from whole world
+  // coordinates, thousands of blocks out, they lost enough precision on the way through the GPU that the glass
+  // and the mirror's metal face behind it took turns to be in front, in patches that moved as you looked around)
   quads(cells, f, out, uvOf, inset) {
     const [dx, dz] = FACING_DIRS[f], [rx, rz] = rightOf(f), pos = [], uv = [], idx = [];
+    const [ox, oy, oz] = cells[0];
     for (const [x, y, z] of cells) {
       const [l, r, b, t] = inset ? inset(x, y, z) : [0, 0, 0, 0];
       const cx = x + 0.5 + dx * out, cz = z + 0.5 + dz * out;
       const base = pos.length / 3;
       for (const [u, v] of [[-0.5 + l, b], [0.5 - r, b], [0.5 - r, 1 - t], [-0.5 + l, 1 - t]]) {
         const px = cx + rx * u, pz = cz + rz * u;
-        pos.push(px, y + v, pz);
+        pos.push(px - ox, y + v - oy, pz - oz);
         if (uvOf) uv.push(...uvOf(px, y + v, pz));
       }
       idx.push(base, base + 1, base + 2, base, base + 2, base + 3);
@@ -179,7 +188,10 @@ export class Screens {
     geo.setIndex(idx);
     geo.computeBoundingSphere();
     geo.computeBoundingBox();
-    return geo;
+    const mesh = new THREE.Mesh(geo);
+    mesh.position.set(ox, oy, oz);
+    mesh.updateMatrixWorld(true);
+    return { mesh, box: geo.boundingBox.clone().translate(mesh.position) };
   }
 
   makePlane({ f, c, cells }) {
@@ -194,11 +206,11 @@ export class Screens {
       // picture fought the mirror's own face for depth, in stripes)
       polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -4,
     });
-    const geo = this.quads(cells, f, -0.5 + 1 / 16 + 0.003, null, null);
-    const mesh = new THREE.Mesh(geo, mat);
+    const { mesh, box } = this.quads(cells, f, -0.5 + 1 / 16 + GLASS_GAP, null, null);
+    mesh.material = mat;
     mesh.userData.noShadow = true;
     this.scene.add(mesh);
-    return { f, n: new THREE.Vector3(dx, 0, dz), c, cells, mesh, mat, box: geo.boundingBox };
+    return { f, n: new THREE.Vector3(dx, 0, dz), c, cells, mesh, mat, box };
   }
 
   makeGroup(f, cells) {
@@ -212,14 +224,13 @@ export class Screens {
       has.has(key(x, y - 1, z)) ? 0 : B, has.has(key(x, y + 1, z)) ? 0 : B,
     ];
     const uvOf = (px, py, pz) => [(px * rx + pz * rz - s0) / (s1 - s0), (py - y0) / (y1 - y0)];
-    const geo = this.quads(cells, f, 0.5 + 0.003, uvOf, inset);
-    const mat = new THREE.MeshBasicMaterial({ color: 0xf0f0f0, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -4 });
-    const mesh = new THREE.Mesh(geo, mat);
+    const { mesh, box } = this.quads(cells, f, 0.5 + GLASS_GAP, uvOf, inset);
+    const mat = mesh.material = new THREE.MeshBasicMaterial({ color: 0xf0f0f0, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -4 });
     mesh.visible = false;
     mesh.userData.noShadow = true;
     this.scene.add(mesh);
     const w = s1 - s0, h = y1 - y0, scale = Math.min(1, MAX_PX / (Math.max(w, h) * PX_PER_BLOCK));
-    return { f, cells, mesh, mat, rt: null, w, h, px: [Math.max(16, Math.round(w * PX_PER_BLOCK * scale)), Math.max(16, Math.round(h * PX_PER_BLOCK * scale))], link: null, box: geo.boundingBox };
+    return { f, cells, mesh, mat, rt: null, w, h, px: [Math.max(16, Math.round(w * PX_PER_BLOCK * scale)), Math.max(16, Math.round(h * PX_PER_BLOCK * scale))], link: null, box };
   }
 
   // ---------- tuning a monitor ----------

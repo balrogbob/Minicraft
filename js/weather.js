@@ -2,13 +2,20 @@
 // follow). What falls depends on where you are: rain in temperate land,
 // snow in the tundra, and a sandstorm of blowing sand in the desert. While it rains the sky clouds
 // over and the light dims, crops grow faster, and cauldrons left out in the open fill with water.
-// Particles are drawn in a box around the camera, and only when there's open sky above you.
+// Particles are drawn in a box around the camera, and only when there's open sky above you. (v50: and each one
+// only where nothing is over it, so none falls through roofs, into caves or past a glass roof, and a sandstorm
+// doesn't blow in through the door.)
 import * as THREE from 'three';
+import { BLOCKS, AIR, isWaterId, isLeaves } from './blocks.js';
+import { H } from './terrain.js';
 
 const COUNT = 900;
 const BOX = 22; // half-width of the box of particles around the camera
 const TOP = 16, BOTTOM = -10;
 const rand = (a, b) => a + Math.random() * (b - a);
+const FAR = -1e5; // (where a sheltered particle is put, out of sight)
+// What rain, snow and blowing sand stop at: anything solid (glass too), leaves and water.
+const stops = (id) => id !== AIR && (BLOCKS[id]?.solid || isLeaves(id) || isWaterId(id));
 
 export class Weather {
   constructor(scene) {
@@ -77,6 +84,24 @@ export class Weather {
     this.rainbow = g;
   }
 
+  // Is (x, y, z) under cover? Sunlight there that isn't full means a roof, a cave ceiling or leaves over it (or
+  // it's inside a block); full sunlight can still have come through glass, so each column's top is checked too.
+  sheltered(x, y, z) {
+    const w = this.getWorld?.();
+    if (!w) return false;
+    const bx = Math.floor(x), by = Math.floor(y), bz = Math.floor(z);
+    if (by >= H) return false;
+    if (w.skyAt(bx, by, bz) < 15) return true;
+    const k = bx * 65536 + bz;
+    let top = this.tops.get(k);
+    if (top === undefined) {
+      top = -1;
+      for (let ty = H - 1; ty >= 0; ty--) if (stops(w.get(bx, ty, bz))) { top = ty; break; }
+      this.tops.set(k, top);
+    }
+    return by <= top;
+  }
+
   // dt: game seconds; biome where the player is; sky: sunlight level (0..15) at the player's head.
   // high: up in the mountains (rain falls as hail there); sunX: which way the sun is (east +1, west -1);
   // daylight: 0..1.
@@ -116,6 +141,8 @@ export class Weather {
     this.flakes.visible = lv > 0.01 && this.kind !== 'rain';
     if (lv <= 0.01) return;
     const o = this.offsets;
+    // (column tops are found again now and then: blocks get placed and broken)
+    if ((this.topsAge = (this.topsAge ?? 0) + dt) > 1 || !this.tops) { this.tops = new Map(); this.topsAge = 0; }
     if (this.kind === 'rain') {
       const p = this.streaks.geometry.attributes.position.array;
       for (let i = 0; i < COUNT; i++) {
@@ -123,8 +150,9 @@ export class Weather {
         if (y < BOTTOM) y += TOP - BOTTOM;
         o[i * 3 + 1] = y;
         const x = camPos.x + wrap(o[i * 3] - camPos.x), z = camPos.z + wrap(o[i * 3 + 2] - camPos.z);
-        p[i * 6] = x; p[i * 6 + 1] = camPos.y + y; p[i * 6 + 2] = z;
-        p[i * 6 + 3] = x - 0.05; p[i * 6 + 4] = camPos.y + y - 0.7; p[i * 6 + 5] = z;
+        const yy = this.sheltered(x, camPos.y + y - 0.7, z) ? FAR : camPos.y + y;
+        p[i * 6] = x; p[i * 6 + 1] = yy; p[i * 6 + 2] = z;
+        p[i * 6 + 3] = x - 0.05; p[i * 6 + 4] = yy - 0.7; p[i * 6 + 5] = z;
       }
       this.streaks.geometry.attributes.position.needsUpdate = true;
       this.streaks.material.opacity = 0.55 * lv;
@@ -141,6 +169,7 @@ export class Weather {
         p[i * 3] = camPos.x + wrap(o[i * 3] - camPos.x);
         p[i * 3 + 1] = camPos.y + y + (sand ? Math.sin(this.t * 2 + i) * 0.3 : 0);
         p[i * 3 + 2] = camPos.z + wrap(o[i * 3 + 2] - camPos.z);
+        if (this.sheltered(p[i * 3], p[i * 3 + 1], p[i * 3 + 2])) p[i * 3 + 1] = FAR;
       }
       this.flakes.geometry.attributes.position.needsUpdate = true;
       this.flakes.material.color.setHex(sand ? 0xd8bc80 : hail ? 0xe4eef8 : 0xffffff);
