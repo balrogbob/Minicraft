@@ -40,6 +40,15 @@ function discTexture(draw) {
 
 // Clouds (v41): a flat layer of blocky clouds above the world, drifting with the wind, that follows you.
 // The pattern is a seamless 64 x 64 map of cover, each pixel CLOUD_PX blocks across.
+// The sun, moon and stars hang 120-odd blocks from the camera (inside its far plane) but are drawn as if at the
+// very back of the depth buffer, so anything in the world, however far (the far land too), stands in front of them.
+function farAway(material) {
+  material.onBeforeCompile = (sh) => {
+    sh.vertexShader = sh.vertexShader.replace('#include <project_vertex>', '#include <project_vertex>\n  gl_Position.z = gl_Position.w * 0.99999;');
+  };
+  material.customProgramCacheKey = () => 'farAway';
+  return material;
+}
 const CLOUD_Y = 136, CLOUD_PX = 8, CLOUD_N = 64, CLOUD_SIZE = 300;
 function cloudTexture() {
   const c = document.createElement('canvas');
@@ -108,7 +117,7 @@ export class Sky {
     const disc = (map, size) => {
       const m = new THREE.Mesh(
         new THREE.PlaneGeometry(size, size),
-        new THREE.MeshBasicMaterial({ map, transparent: true, fog: false, depthWrite: false }),
+        farAway(new THREE.MeshBasicMaterial({ map, transparent: true, fog: false, depthWrite: false })),
       );
       m.renderOrder = -1;
       scene.add(m);
@@ -125,9 +134,9 @@ export class Sky {
     }
     const sg = new THREE.BufferGeometry();
     sg.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
-    this.stars = new THREE.Points(sg, new THREE.PointsMaterial({
+    this.stars = new THREE.Points(sg, farAway(new THREE.PointsMaterial({
       color: 0xffffff, size: 2, sizeAttenuation: false, transparent: true, opacity: 0, fog: false, depthWrite: false,
-    }));
+    })));
     this.stars.renderOrder = -2;
     scene.add(this.stars);
 

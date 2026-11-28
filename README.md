@@ -378,7 +378,8 @@ water for **pufferfish** (which poison you if you eat them); now and then you ho
 fish into a **fish pie** (with flour and butter) for a hearty meal.
 
 **Villages** have houses, a well, a wheat field and a **bell** (tap it to hear the village's name).
-Villagers are farmers, smiths, fishers and clerics, and each trades its own goods: tap one to trade.
+Villagers are farmers, smiths, fishers and clerics, and each trades its own goods: tap one to trade. (In the
+villages of Version 50 and later there are blacksmiths, railsmiths, mechanics and cooks too, and guards and children.)
 
 **Bee hives** hang in trees. Bees fill them with honey (faster with flowers around, slower in winter) and
 spread new flowers as they go. Tap a full hive holding a **glass bottle** for honey, or break it for
@@ -1721,6 +1722,30 @@ What's built there depends on the size of the place and the land:
 - A city stands inside **walls**: two blocks thick, with battlements and a walk along the top, a tower at each
   corner, and a gate where each main road leaves, with a tower either side and a ladder up to the walk.
 
+### The people
+
+In the new villages the same people come out each day. Each sleeps in a bed of their own: whoever has the only bed
+of a cottage lives alone, and the second bed of a house is a partner's, or a child's. By day each grown-up goes
+off to work:
+
+- the **cleric** at the church, the **blacksmith** at the smithy, and in towns and cities the **railsmith** and
+  the **mechanic** at their workshops, each waiting outside the door for custom;
+- a **farmer** for each field, out among the crops;
+- a **cook** for every two market stalls, by the stall;
+- and anyone left over is a farmer or a fisher, about the square.
+
+They break at noon and spend the evening on the square before going home at dusk. **Blacksmiths** trade iron and
+steel tools, swords, shields and armour; **railsmiths** rails of every kind, carts, stations and (dearly) a
+locomotive; **mechanics** shafts, gears, gearboxes, belts, a spanner and machines; **cooks** pies, stews, soups,
+cheese and jam. Like the others, each has something better for friends and heroes of the village.
+
+**Children** play about the square at half size, and grow up after two days or so of play near the village,
+taking up the job that's waiting for them (and the clothes that go with it). A village remembers who has grown up.
+
+**Guards** (one in a village, two in a town, four in a city) wear a helmet and a red tabard and carry a spear.
+They walk the rounds of the guard towers, the city gates and the square, and stay out all night: a night
+creature that comes into the village is chased down and speared. Guards and children don't trade, but say hello.
+
 The new layout comes in worlds made since Version 50, and in older worlds only in land you haven't been to yet:
 anywhere you've already explored keeps its old village exactly as it was. A world played on a server keeps the
 old villages unless the server's world was made with Version 50 or later.
@@ -1923,7 +1948,10 @@ guide to how everything works.
 
 ## Version history
 
-- **Version 50** (in progress): **villages, stage 2**: buildings. Homes with beds (cottages, long houses and tall
+- **Version 50** (in progress): **villages, stage 3**: the people. Each villager has a bed of their own and the
+  same people come out each day; grown-ups go off to work at the church, the workshops, the fields and the market
+  stalls, with new trades (blacksmith, railsmith, mechanic and cook); men and women dress apart; children grow up
+  and take up a job; guards patrol the towers, gates and square and fight off night creatures. **Stage 2**: buildings. Homes with beds (cottages, long houses and tall
   two-floor houses, in timber, brick, stone or sandstone by the place and the land), a church with a tower, a
   smithy, a railsmith's and a machine shop, market stalls on the square, guard towers in towns, and walls with
   gates and towers round cities. **Stage 1**: Hamlets, villages, towns and cities, with a cobbled square,
