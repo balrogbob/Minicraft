@@ -107,6 +107,7 @@ const CHAPTERS = [
     ['cheese', 'Cheesemaker', has(B.CHEESE), 'Press curds in a cheese press and let them age.', [B.MILK_BUCKET, 1]],
     ['fine', 'Prize Grower', ach('fine'), 'Grow crops in good soil until one comes up fine. Show three at a festival.', [B.FERTILISER, 8]],
     ['hero', 'Local Hero', ach('hero'), 'Earn a village\'s highest regard. Heroes get special trades.', [B.COIN, 15]],
+    ['scholar', 'Book Learning', ach('scholar'), 'Buy a lesson from a village trainer (villagers teach their trade, guards teach fighting) and read it.', [B.COIN, 4]],
     ['defend', 'Hold the Line', ach('defend'), 'Help a village\'s guards beat off a night raid. Prosperous villages draw them.', [B.IRON_INGOT, 6]],
   ]],
   ['bees', 'Busy Bees', 2, [

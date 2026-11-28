@@ -64,6 +64,7 @@ import { ACHIEVEMENTS, ACHIEVEMENT_IDS } from './achievements.js';
 import { GUIDE, GOALS, chapterOpen, goalItem, goalShown } from './guidebook.js';
 import { SKILLS, SKILL, MAX_LEVEL, xpToNext, perk, gain, hungerSaving, loadSkills, STATION_SKILL, STATION_PERKS } from './skills.js';
 import { CRATED } from './blocks.js';
+import { SKILL_BOOK_OF, skillBookFor } from './blocks.js';
 import { MobManager, DIFFICULTY, DIFFICULTY_ORDER, SPECIES, JOB_NAMES, villageFolk, CHILD_TIME } from './mobs.js';
 import { ArrowManager } from './arrows.js';
 import { Stations, STATION_KINDS, isFuel, inCellar, wetAt, upgradeStacks, upgradeRefusal } from './stations.js';
@@ -3367,6 +3368,7 @@ const LOOT = [
   [IRON_INGOT, 2, 6, 0.8], [GOLD_INGOT, 1, 3, 0.5], [SILVER_INGOT, 1, 3, 0.4], [ELECTRUM_INGOT, 1, 2, 0.25],
   [TUNGSTEN_INGOT, 1, 2, 0.15], [GUNPOWDER, 2, 6, 0.5], [SILVER_ARROW, 4, 8, 0.4], [BAKED_FISH, 2, 4, 0.6],
   [NIGHT_TEA, 1, 2, 0.35], [HASTE_TEA, 1, 2, 0.3], [FIRE_TEA, 1, 1, 0.25], [HEAL_TEA, 1, 2, 0.3], [IRON_SHIELD, 1, 1, 0.12],
+  [skillBookFor('melee'), 1, 1, 0.15], [skillBookFor('ranged'), 1, 1, 0.12], [skillBookFor('mining'), 1, 1, 0.12],
 ];
 // A lair's chests also hold things from its own land: crystal and gold in a tomb, frost and silver in a
 // crypt, obsidian and fire tea in a fortress.
@@ -3389,6 +3391,8 @@ const ironAt = TOOL_MATERIALS.findIndex((m) => m.key === 'iron');
 const RUIN_LOOT = [
   [BOOK, 1, 3, 0.8], [MAP, 1, 1, 0.35], [JOURNAL, 1, 1, 0.25], [PAPER, 2, 6, 0.6], [CRYSTAL_SHARD, 1, 4, 0.5],
   [metalTool(ironAt, 'pick'), 1, 1, 0.3], [metalTool(ironAt, 'axe'), 1, 1, 0.25], [metalTool(ironAt, 'shovel'), 1, 1, 0.25], [metalSword(ironAt), 1, 1, 0.2],
+  // (v50 later 1) old skill books
+  ...SKILL_BOOK_OF.map((s) => [skillBookFor(s), 1, 1, 0.06]),
 ];
 const TEMPLE_LOOT = [
   [PEARL, 1, 3, 0.9], [COIN, 4, 12, 0.8], [GOLD_INGOT, 2, 5, 0.6], [SEA_LANTERN, 1, 3, 0.5], [DIVING_HELMET, 1, 1, 0.3], [FLIPPERS, 1, 1, 0.3], [TREASURE_MAP, 1, 1, 0.3],
@@ -3398,6 +3402,7 @@ const SKY_LOOT = [
 ];
 const WRECK_LOOT = [
   [TREASURE_MAP, 1, 1, 0.45], [GOLD_INGOT, 2, 6, 0.8], [COMPASS, 1, 1, 0.45], [MAP, 1, 1, 0.35], [GUNPOWDER, 2, 6, 0.6], [RAW_FISH, 2, 5, 0.6], [SALMON, 1, 3, 0.4], [PAPER, 1, 3, 0.3],
+  [skillBookFor('building'), 1, 1, 0.12], [skillBookFor('ranged'), 1, 1, 0.1],
 ];
 // a lighthouse keeper's things
 const LIGHTHOUSE_LOOT = [
@@ -3679,6 +3684,8 @@ const TRADES = [
   [[CORNFLOWER, 4], [HASTE_TEA, 1]], [[TRUFFLE, 3], [GOLD_INGOT, 2]], [[COPPER_INGOT, 8], [IRON_SHIELD, 1]],
   [[COIN, 10], [TUNGSTEN_INGOT, 1]], [[COIN, 8], [GOLD_INGOT, 2]],
   [[WHEAT, 8], [GRAPES, 4]], [[SEEDS, 12], [PUMPKIN_SEEDS, 3]], [[BREAD, 2], [CARROT, 6]], [[STICK, 16], [POTATO, 6]],
+  // (v50 later 1) books of lessons from far away
+  [[COIN, 9], [skillBookFor('smelting'), 1]], [[COIN, 9], [skillBookFor('processing'), 1]], [[PAPER, 8], [skillBookFor('mining'), 1]], [[LEATHER, 4], [skillBookFor('melee'), 1]],
 ];
 mobs.onTraderSpawn = (m) => {
   const pool = [...TRADES];
@@ -3697,7 +3704,7 @@ const VILLAGER_TRADES = {
     [[COIN, 5], [armourId(2, 0), 1]], [[COIN, 8], [armourId(2, 1), 1]], [[COIN, 7], [armourId(2, 2), 1]], [[COIN, 4], [armourId(2, 3), 1]], [[COIN, 6], [IRON_SHIELD, 1]],
     [[COIN, 10], [metalSword(ironAt + 1), 1]], [[COAL, 12], [IRON_INGOT, 3]]],
   railsmith: [[[COIN, 2], [RAIL, 8]], [[IRON_INGOT, 2], [RAIL, 12]], [[COIN, 4], [POWERED_RAIL, 4]], [[COIN, 3], [DETECTOR_RAIL, 2]], [[COIN, 3], [SWITCH_RAIL, 2]],
-    [[COIN, 5], [MINECART, 1]], [[COIN, 7], [STORAGE_CART, 1]], [[COIN, 6], [RAIL_STATION, 1]], [[COIN, 4], [BRIDGE_RAIL, 4]], [[COIN, 18], [LOCOMOTIVE, 1]]],
+    [[COIN, 5], [MINECART, 1]], [[COIN, 7], [STORAGE_CART, 1]], [[COIN, 6], [RAIL_STATION, 1]], [[COIN, 4], [ROPE_BRIDGE, 4]], [[COIN, 18], [LOCOMOTIVE, 1]]],
   mechanic: [[[COIN, 3], [kineticId('shaft', 1), 4]], [[COIN, 4], [kineticId('gear', 1), 2]], [[COIN, 5], [kineticId('large', 1), 1]], [[COIN, 4], [GEARBOX, 1]],
     [[COIN, 4], [DRIVE_BELT, 4]], [[COIN, 5], [SPANNER, 1]], [[COIN, 10], [CRUSHER, 1]], [[COIN, 9], [SAW, 1]], [[COIN, 8], [MILLSTONE, 1]], [[COPPER_INGOT, 6], [kineticId('gear', 1), 2]]],
   cook: [[[COIN, 2], [BAKED_POTATO, 3]], [[COIN, 3], [PUMPKIN_PIE, 1]], [[COIN, 5], [APPLE_PIE, 1]], [[COIN, 4], [FISH_PIE, 1]], [[COIN, 3], [MUSHROOM_STEW, 1]],
@@ -3740,7 +3747,7 @@ mobs.onRaidEnd = (r, won) => {
   achieve('defend');
 };
 mobs.onVillagerSpawn = (m) => {
-  const pool = [...VILLAGER_TRADES[m.profession] ?? []]; // (guards and children don't trade)
+  const pool = m.role === 'guard' || m.role === 'child' ? [] : [...VILLAGER_TRADES[m.profession] ?? []]; // (guards only train you; children don't trade)
   m.trades = [];
   for (let i = 0; i < 3 && pool.length; i++) m.trades.push(pool.splice(Math.floor(Math.random() * pool.length), 1)[0]);
 };
@@ -3757,8 +3764,8 @@ let tradingWith = null;
 function openTrade(m) {
   if (!m.trades) (m.spec.villager ? mobs.onVillagerSpawn : mobs.onTraderSpawn)(m);
   if (m.spec.villager) {
-    $('trade-title').textContent = `${PROFESSION_NAMES[m.profession] ?? 'Villager'} of ${m.home?.name ?? 'the village'}`;
-    $('trade-hint').textContent = tradeGreeting(m.home);
+    $('trade-title').textContent = m.role === 'guard' ? `Guard of ${m.home?.name ?? 'the village'}` : `${PROFESSION_NAMES[m.profession] ?? 'Villager'} of ${m.home?.name ?? 'the village'}`;
+    $('trade-hint').textContent = m.role === 'guard' ? '"Want to learn to hold a blade, or a bow? I\'ll teach you, for a few coins."' : tradeGreeting(m.home);
   } else {
     $('trade-title').textContent = 'Wandering Trader';
     $('trade-hint').textContent = `"Rare things from far away! I'll take what you have plenty of.${villageHint()}" The trader moves on after a while.`;
@@ -3775,14 +3782,16 @@ function closeTrade() { $('trade').classList.add('hidden'); tradingWith = null; 
 function renderTrades() {
   const list = $('trades');
   list.innerHTML = '';
-  for (const [[gid, gn0], [oid, on], special] of [...tradingWith.trades, ...specialTrades(tradingWith)]) {
+  for (const [[gid, gn0], [oid, on], special] of [...tradingWith.trades, ...specialTrades(tradingWith), ...trainerTrades(tradingWith)]) {
     const gn = special ? gn0 : tradeCost(gn0, tradingWith.home);
     const row = document.createElement('div');
-    row.className = special ? 'recipe special' : 'recipe';
-    if (special) row.title = `Only for ${special === 'Hero' ? 'heroes' : 'friends'} of ${tradingWith.home.name}`;
+    const teaches = special === 'Trainer' && ITEMS[oid].skillBook;
+    row.className = teaches ? 'recipe special trainer' : special ? 'recipe special' : 'recipe';
+    if (teaches) row.title = `A lesson in ${SKILL[teaches].name.toLowerCase()}: worth half a level (taught up to level ${TRAIN_MAX})`;
+    else if (special) row.title = `Only for ${special === 'Hero' ? 'heroes' : 'friends'} of ${tradingWith.home.name}`;
     const have = inventory.count(gid) >= gn;
     row.innerHTML = `<span class="ing${have ? '' : ' missing'}" title="${itemName(gid)}"><img src="${icons[gid]}" alt="">${gn}</span>` +
-      `<span class="arrow">→</span><img class="outimg" src="${icons[oid]}" alt=""><span class="name">${on > 1 ? on + ' × ' : ''}${itemName(oid)}${special ? ` <small>★ ${special}</small>` : ''}</span>`;
+      `<span class="arrow">→</span><img class="outimg" src="${icons[oid]}" alt=""><span class="name">${on > 1 ? on + ' × ' : ''}${itemName(oid)}${teaches ? ` <small class="teach">📖 teaches ${SKILL[teaches].name.toLowerCase()}</small>` : special ? ` <small>★ ${special}</small>` : ''}</span>`;
     const btn = document.createElement('button');
     btn.className = 'btn';
     btn.textContent = 'Trade';
@@ -4381,6 +4390,7 @@ function placeInner() {
   if (held?.id === DRIVE_BELT) { useDriveBelt(); return; }
   if (held && isBackpack(held.id)) { openBackpack(held); return; }
   if (held?.id === BOOK) { openGuide(); return; }
+  if (held && ITEMS[held.id]?.skillBook) { readSkillBook(held.id); return; }
   if (held?.id === JOURNAL) { openJournal(held); return; }
   if (held?.id === REMOTE_ORDERER) { useOrderer(target); return; }
   if (held?.id === TREASURE_MAP) { readTreasureMap(held); return; }
@@ -7948,6 +7958,30 @@ const SPECIAL_TRADES = {
   mechanic: [[[COIN, 8], [SPEED_UPGRADE, 1]], [[COIN, 12], [YIELD_UPGRADE, 1]]],
   cook: [[[COIN, 4], [CHERRY_PIE, 1]], [[COIN, 6], [TRUFFLE_SOUP, 2]]],
 };
+// (v50 later 1) Skill trainers: villagers teach the skills of their trade, and guards teach fighting, by selling
+// you a book of lessons (read it to gain half a level). The price goes up with your level, they teach up to
+// level TRAIN_MAX (past that you're better than they are), and a village that likes you charges less.
+const TRAINS = { farmer: ['farming', 'wood'], blacksmith: ['forging', 'smelting'], smith: ['forging', 'smelting'], railsmith: ['building', 'mining'],
+  mechanic: ['processing', 'building'], cook: ['cooking'], fisher: ['cooking'], guard: ['melee', 'ranged'] };
+const TRAIN_MAX = 12;
+const trainPrice = (s) => 3 + 2 * (skills[s]?.level ?? 1);
+function trainerTrades(m) {
+  if (!m.spec.villager || !m.home || m.role === 'child') return [];
+  return (TRAINS[m.role === 'guard' ? 'guard' : m.profession] ?? []).filter((s) => (skills[s]?.level ?? 1) < TRAIN_MAX)
+    .map((s) => [[COIN, tradeCost(trainPrice(s), m.home)], [skillBookFor(s), 1], 'Trainer']);
+}
+// Reading a skill book: half of what the next level takes (at least 10), and the book is used up.
+function readSkillBook(id) {
+  const s = ITEMS[id].skillBook, st = skills[s];
+  if (!st) return;
+  if (creative) { toast('There is nothing to learn in creative mode', 1500); return; }
+  if (st.level >= MAX_LEVEL) { toast(`You know all there is to know about ${SKILL[s].name.toLowerCase()}`, 2000); return; }
+  inventory.consumeHeld();
+  sound.pop();
+  toast(`You read the ${ITEMS[id].name} from cover to cover, and learn a good deal about ${SKILL[s].name.toLowerCase()}`, 2600);
+  train(s, Math.max(10, Math.round(xpToNext(st.level) * 0.5)));
+  achieve('scholar');
+}
 function specialTrades(m) {
   if (!m.spec.villager || !m.home) return [];
   const t = repTier(repOf(m.home))[1], [friend, hero] = SPECIAL_TRADES[m.profession] ?? [];
@@ -8599,7 +8633,7 @@ window.minicraft = {
   get riding() { return riding; }, explode, lightFuse, fuses, clockTime, compassText, place, editSign, closeSign, openInventory, closeInventory, chestMove, lamps, tickLamps, sleepUntilMorning, stations, openStation, closeStation,
   get caneToday() { return caneToday; }, get creative() { return creative; }, set creative(v) { creative = v; applyCreative(); }, toggleFly, wand, useWand, get achieved() { return achieved; }, achieve, worldMap, openMap, closeMap, openGuide, switchSlot, store, saveGame, renderWorlds, openWorlds, exportSlot, get target() { return target; }, set target(v) { target = v; }, applyKeys, renderKeys, camera, get controls() { return controls; }, loose, throwHeld, get waypoints() { return waypoints; }, toggleWaypoint, sortSlots, quickStack, dropMeteor, get meteors() { return meteors; }, weather, openTrade, closeTrade, mountMob, dismount, get ridingMob() { return ridingMob; }, effects, armourWear, useAnvil, rollLoot, settings,
   get skills() { return skills; }, set skills(v) { skills = loadSkills(v); skillsChanged(); }, train, skillPerk, openSkills, closeSkills, get reach() { return REACH; },
-  get bedSpawn() { return bedSpawn; }, fertilise, openJournal, closeJournal, get packs() { return packs; }, radiationAt, vehicles, boardVehicle, leaveVehicle, get boarded() { return boarded; }, get seated() { return seated; }, crows, onInvSlot, onStationSlot, quickMoveInv, quickMoveStation, usedIn, itemTipHTML, critters, tickPets, sealife, useRecordPlayer, recordNear, useStand, undoEdit, undoStack, get catGiftDay() { return catGiftDay; }, get villageGrowth() { return villageGrowth; }, notePlanting, tickPuzzles, airPumpNear, useStable, stableNear, horseLabel, logistics, openLogistics, closeLogistics, placeOrder, get lpOpen() { return lpOpen; }, music, musicMood, get guideDone() { return guideDone; }, get guideClaimed() { return guideClaimed; }, tickGuidebook, openGuidebook, closeGuidebook, claimGoal, goalMet, fineChance, fineHarvest, showProduce, foodContest, specialTrades, catchAt, stockStable, tickStables, mangers, openSaddlebags, honeyAt, apiculture, scoopHive, beeEnv, fitUpgrade, piles, lightCharcoalPile, tickPiles, searchChests, takeFromChest, markChest, get chestMark() { return chestMark; }, enterPhotoMode, exitPhotoMode, snapPhoto, get photoMode() { return photoMode; }, photoCam, get lastPhoto() { return lastPhoto; }, tickStalactites, loosenStalactite, fallingRocks, shaking, workLock, findLock, tickLocks, openGates, lockJobs, hangRopeLadder, layBridge, rollUpRope, fireworks, ringBell, requestFor, festivalToday, repOf, addRep, tradeCost, tickFestival, villageEntry, hearths, tickHearths, feedHearth, chimneyTop, smoke, renderPins, togglePin, lightning, igniteAt, fires, tickFires, tickStorm, growVillage, buildVillageHouse, startSite, fillBeds, roadEndPlots, siteColumnOk, stallPrice, tickStalls, tickVillages, set catGiftDay(v) { catGiftDay = v; }, get places() { return places; }, get treasures() { return treasures; }, readTreasureMap, tickTreasure, beams, tickBeams, beaconSpots: () => beaconSpots, mistNow, tickSnow, tickExplore, sitOn, standUp, useDisplay, zips, linkZip, startZip, get zipping() { return zipping; }, burnCoal, get health() { return health; }, set health(v) { health = v; }, paintings, screens, tuneMonitor, tiltCamera, placeSwitchRail, signalAt, ailments, armourEnch, openAltar, lairNear, useBed, eat, drinkTea,
+  get bedSpawn() { return bedSpawn; }, fertilise, openJournal, closeJournal, get packs() { return packs; }, radiationAt, vehicles, boardVehicle, leaveVehicle, get boarded() { return boarded; }, get seated() { return seated; }, crows, onInvSlot, onStationSlot, quickMoveInv, quickMoveStation, usedIn, itemTipHTML, critters, tickPets, sealife, useRecordPlayer, recordNear, useStand, undoEdit, undoStack, get catGiftDay() { return catGiftDay; }, get villageGrowth() { return villageGrowth; }, notePlanting, tickPuzzles, airPumpNear, useStable, stableNear, horseLabel, logistics, openLogistics, closeLogistics, placeOrder, get lpOpen() { return lpOpen; }, music, musicMood, get guideDone() { return guideDone; }, get guideClaimed() { return guideClaimed; }, tickGuidebook, openGuidebook, closeGuidebook, claimGoal, goalMet, fineChance, fineHarvest, showProduce, foodContest, specialTrades, trainerTrades, readSkillBook, catchAt, stockStable, tickStables, mangers, openSaddlebags, honeyAt, apiculture, scoopHive, beeEnv, fitUpgrade, piles, lightCharcoalPile, tickPiles, searchChests, takeFromChest, markChest, get chestMark() { return chestMark; }, enterPhotoMode, exitPhotoMode, snapPhoto, get photoMode() { return photoMode; }, photoCam, get lastPhoto() { return lastPhoto; }, tickStalactites, loosenStalactite, fallingRocks, shaking, workLock, findLock, tickLocks, openGates, lockJobs, hangRopeLadder, layBridge, rollUpRope, fireworks, ringBell, requestFor, festivalToday, repOf, addRep, tradeCost, tickFestival, villageEntry, hearths, tickHearths, feedHearth, chimneyTop, smoke, renderPins, togglePin, lightning, igniteAt, fires, tickFires, tickStorm, growVillage, buildVillageHouse, startSite, fillBeds, roadEndPlots, siteColumnOk, stallPrice, tickStalls, tickVillages, set catGiftDay(v) { catGiftDay = v; }, get places() { return places; }, get treasures() { return treasures; }, readTreasureMap, tickTreasure, beams, tickBeams, beaconSpots: () => beaconSpots, mistNow, tickSnow, tickExplore, sitOn, standUp, useDisplay, zips, linkZip, startZip, get zipping() { return zipping; }, burnCoal, get health() { return health; }, set health(v) { health = v; }, paintings, screens, tuneMonitor, tiltCamera, placeSwitchRail, signalAt, ailments, armourEnch, openAltar, lairNear, useBed, eat, drinkTea,
 };
 
 // ---------- v31: catching bees ----------

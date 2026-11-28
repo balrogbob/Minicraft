@@ -2102,6 +2102,8 @@ export class MobManager {
       this.sound?.mob(m.kind, 1, true);
       return { give, take, said: '' };
     }
+    // (by day, and with no raid on, a guard will teach you to fight: see the trainers in main.js)
+    if (m.role === 'guard' && !this.villagerNight() && !this.raid) return { give, take, said: '', trade: true };
     if (m.role === 'guard') return { give, take, said: pick(this.villagerNight() ? ['"Stay near the lamps after dark."', '"Keep close. Things come out of the dark."', `"I'll keep watch. Sleep well."`] : [`"All quiet in ${m.home?.name ?? 'the village'}."`, '"Move along, friend."', '"I keep watch from the towers and the gates."']) };
     if (m.role === 'child') return { give, take, said: pick(['"When I grow up I\'m going to be ' + (/^[aeiou]/.test(m.home?.folk?.[m.folk]?.job ?? 'f') ? 'an ' : 'a ') + (JOB_NAMES[m.home?.folk?.[m.folk]?.job] ?? 'Farmer').toLowerCase() + '!"', '"Tag! You\'re it!"', '"Have you seen a dragon? I have. Nearly."']) };
     if (m.spec.trader) return { give, take, said: '', trade: true };

@@ -3536,3 +3536,17 @@ METAL_BLOCKS.forEach((ingot, i) => {
     { out: [ingot, 9], in: [[METAL_BLOCK + i, 1]], metal: METAL_BLOCK + i },
   );
 });
+
+// ---------- v50 (later 1): skill books ----------
+// One for each skill: read it (tap with it in hand) to learn half a level of that skill. Village trainers sell
+// the books of their own trades, and they turn up in ruins, dungeons and with wandering traders.
+export const SKILL_BOOK = 3245; // 3245..3254, in the order of SKILL_BOOK_OF
+export const SKILL_BOOK_OF = ['mining', 'wood', 'farming', 'building', 'forging', 'smelting', 'cooking', 'processing', 'melee', 'ranged'];
+const SKILL_BOOK_NAMES = ['Miner\'s Manual', 'Woodsman\'s Guide', 'Farmer\'s Almanac', 'Builder\'s Handbook', 'Smith\'s Handbook',
+  'Smelter\'s Notes', 'Cookery Book', 'Machinist\'s Manual', 'Fencing Primer', 'Archer\'s Companion'];
+const SKILL_BOOK_ABOUT = ['mining', 'woodcutting', 'farming', 'building', 'forging', 'smelting', 'cooking', 'processing', 'fighting up close', 'archery'];
+export const isSkillBook = (id) => id >= SKILL_BOOK && id < SKILL_BOOK + SKILL_BOOK_OF.length;
+export const skillBookFor = (skill) => SKILL_BOOK + SKILL_BOOK_OF.indexOf(skill);
+SKILL_BOOK_OF.forEach((skill, i) => {
+  ITEMS[SKILL_BOOK + i] = { name: SKILL_BOOK_NAMES[i], stack: 8, skillBook: skill, about: `read it (tap with it in hand) to learn about ${SKILL_BOOK_ABOUT[i]}: half a level of the skill` };
+});

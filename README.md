@@ -1945,6 +1945,27 @@ Every level gives a little, and levels 5, 10, 15 and 20 unlock a perk.
 | ⚔ **Melee** | Fight creatures up close. | +4% damage up close | 5: **Quick Strikes**, swing 15% faster; 10: **Thick Skin**, creatures hurt you 10% less; 15: **Quick Strikes II**, swing 30% faster; 20: **Second Wind**, defeating a creature up close heals you a heart |
 | 🏹 **Archery** | Hit creatures with arrows. | +4% arrow damage | 5: **Quick Draw**, draw the bow 20% faster; 10: **Fletcher**, 25% chance an arrow isn't used up; 15: **Quick Draw II**, draw the bow 40% faster; 20: **Fletcher II**, 50% chance an arrow isn't used up |
 
+### Trainers and skill books
+
+Villagers will teach you the skills of their trade, for coins. Lessons are sold as **skill books**, in the trade
+panel under the villager's own trades (with a blue **📖 teaches…** label). Hold one and tap to read it: it gives half
+of what your next level needs (at least 10), and is used up. A book is worth more early on, while levels come quickly.
+
+| Trainer | Teaches |
+| --- | --- |
+| Farmer | Farming, Woodcutting |
+| Smith, Blacksmith | Forging, Smelting |
+| Railsmith | Building, Mining |
+| Mechanic | Processing, Building |
+| Cook, Fisher | Cooking |
+| Guard (by day, with no raid on) | Melee, Archery |
+
+- A lesson costs 3 coins, plus 2 for each level you already have in it, less what a village that likes you knocks off.
+- Trainers only teach up to level 12; past that, you know more than they do.
+- Old skill books turn up in ruins (any skill), dungeons (melee, archery, mining) and shipwrecks (building, archery), and
+  the wandering trader sometimes has one from far away.
+- Reading your first earns **Book Learning**. Books can't teach you anything in creative mode, or past level 20.
+
 ## Worlds, creative mode, the map and achievements
 
 ☰ → **Worlds…** holds three worlds. Play any of them, start a new **survival** or **creative** world in a slot,
