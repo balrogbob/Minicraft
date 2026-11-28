@@ -27,6 +27,8 @@ export const ACHIEVEMENTS = [
   { id: 'treasure', icon: '💰', name: 'X Marks the Spot', about: 'Dig up the chest a treasure map leads to.' },
   { id: 'horse', icon: '🐎', name: 'Giddy-up', about: 'Win over a wild horse, saddle it and ride.' },
   { id: 'hero', icon: '🎖️', name: 'Local Hero', about: 'Earn a village\'s highest regard by trading and filling its requests.' },
+  { id: 'quest', icon: '📜', name: 'Odd Jobs', about: 'Finish a quest for a village.' },
+  { id: 'quests10', icon: '🎖️', name: 'Known on Every Road', about: 'Finish ten quests.' },
   { id: 'scholar', icon: '📖', name: 'Book Learning', about: 'Read a skill book, bought from a village trainer or found in a ruin.' },
   { id: 'defend', icon: '🛡️', name: 'Hold the Line', about: 'Help a village\'s guards beat off a night raid.' },
   { id: 'lock', icon: '⛵', name: 'Lock Keeper', about: 'Work a canal lock with a sluice wheel.' },
