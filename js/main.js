@@ -598,6 +598,7 @@ const paintings = new Paintings(scene); // the pictures in paintings
 const screens = new Screens(scene, renderer); // (v46) mirrors, and what security cameras see on monitors
 screens.links = frames; // (a monitor's camera is kept with the item frames)
 const weather = new Weather(scene);
+weather.getWorld = () => world; // (to keep rain and snow off whatever's under cover)
 const smoke = new Smoke(scene); // chimney and locomotive smoke
 const fireworks = new Fireworks(scene);
 fireworks.onBurst = (x, y, z) => {
