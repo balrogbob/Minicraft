@@ -144,6 +144,13 @@ export class Sound {
     for (const [f, v] of [[880, 0.25], [1320, 0.12], [2210, 0.06]]) this.voice({ type: 'sine', from: f, to: f * 0.998, dur: 2.2, vol: v * gain, freq: 6000, attack: 0.005 });
   }
 
+  // (v50) the raiders' horn, out past the edge of a village: long, low and rough, rising a little at the end
+  horn(gain = 1) {
+    if (!this.ready || gain <= 0.01) return;
+    this.voice({ type: 'sawtooth', from: 98, to: 104, dur: 1.8, vol: 0.16 * gain, freq: 700, q: 3, attack: 0.25 });
+    this.voice({ type: 'sawtooth', from: 147, to: 156, dur: 1.8, vol: 0.07 * gain, freq: 900, q: 2, attack: 0.3 });
+  }
+
   // A reactor's alarm: a two-tone whoop, louder the nearer (k: 0..1).
   alarm(k = 1) {
     if (!this.ready || k <= 0) return;

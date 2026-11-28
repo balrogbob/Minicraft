@@ -272,6 +272,45 @@ export function planVillage(g, c) {
   };
 }
 
+// (v50 stage 4) Where a village can build beyond the plots in its plan, as it grows: plots of the usual size and
+// place beside its roads (2 to 8 out from the middle of the road, levelled to it) on ground the plan leaves alone,
+// not too far above or below the road, and dry; inside a city's walls. Nearest the well first. The ground there
+// isn't level yet: whoever builds on one levels it first.
+export function growthPlots(v) {
+  const G = v.grid;
+  if (!G || !v.roads) return [];
+  const free = (x, z) => {
+    const i = x - G.bx0, j = z - G.bz0;
+    if (i < 1 || j < 1 || i >= G.W - 1 || j >= G.W - 1) return null;
+    const q = i + j * G.W;
+    return G.kind[q] === K_NONE || G.kind[q] === K_EDGE ? G.nat[q] : null;
+  };
+  const inside = (x, z) => !v.walls || Math.max(Math.abs(x - v.x), Math.abs(z - v.z)) < v.walls.ring - 2;
+  const out = [];
+  for (const r of v.roads) {
+    const [ux, uz] = r.dir, px = -uz, pz = ux;
+    const len = Math.abs(r.to[0] - r.from[0]) + Math.abs(r.to[1] - r.from[1]);
+    for (const s of [-1, 1]) for (let t0 = 1; t0 + PLOT - 1 <= len; t0++) {
+      const mx = r.from[0] + ux * (t0 + 3), mz = r.from[1] + uz * (t0 + 3);
+      const mi = mx - G.bx0, mj = mz - G.bz0;
+      if (mi < 0 || mj < 0 || mi >= G.W || mj >= G.W) continue;
+      const L = G.tgt[mi + mj * G.W];
+      let ok = true;
+      for (let a = 0; a < PLOT && ok; a++) for (let o = 2; o <= 2 + PLOT - 1; o++) {
+        const x = r.from[0] + ux * (t0 + a) + px * s * o, z = r.from[1] + uz * (t0 + a) + pz * s * o, h = free(x, z);
+        if (h === null || h < SEA_LEVEL || Math.abs(h - L) > 4 || !inside(x, z)) { ok = false; break; }
+      }
+      if (!ok) continue;
+      const p = { x: mx + px * s * 5, y: L, z: mz + pz * s * 5, face: [-px * s, -pz * s], along: [ux, uz], kind: 'grow' };
+      // (a plot's width and a gap from the one before it on this side of this road)
+      if (out.some((o) => Math.abs(o.x - p.x) < PLOT_STEP && Math.abs(o.z - p.z) < PLOT_STEP)) continue;
+      out.push(p);
+      t0 += PLOT_STEP - 1;
+    }
+  }
+  return out.sort((a, b) => Math.hypot(a.x - v.x, a.z - v.z) - Math.hypot(b.x - v.x, b.z - v.z));
+}
+
 // Whether a village's plan touches column (x, z) (so no tree grows there).
 export function villageCovers(v, x, z) {
   const G = v.grid;
