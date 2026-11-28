@@ -1744,7 +1744,8 @@ taking up the job that's waiting for them (and the clothes that go with it). A v
 
 **Guards** (one in a village, two in a town, four in a city) wear a helmet and a red tabard and carry a spear.
 They walk the rounds of the guard towers, the city gates and the square, and stay out all night: a night
-creature that comes into the village is chased down and speared. Guards and children don't trade, but say hello.
+creature that comes into the village is chased down and speared (see **Night raids** below). Guards and children
+don't trade, but say hello.
 
 The new layout comes in worlds made since Version 50, and in older worlds only in land you haven't been to yet:
 anywhere you've already explored keeps its old village exactly as it was. A world played on a server keeps the
@@ -1756,8 +1757,31 @@ old villages unless the server's world was made with Version 50 or later.
   (tap a bell to hear which village you're in).
 - A **market stall** (6 planks, 4 logs, 3 wool) in a village: put things on it and passing villagers buy them for
   silver **coins**. Food, wine, cheese and pearls sell best. Traders take coins too.
-- A village you trade with grows: after enough deals the villagers build a new house (up to six). The new kind of
-  village builds on its empty plots (homes like its others, with beds), and grows until they're all taken.
+- A village you trade with grows: after enough deals the villagers build a new house (up to six).
+- The new kind of village (Version 50 and later) grows a house at a time, up to two more in a hamlet, three in a
+  village, four in a town and five in a city:
+  - It builds on a plot it left free, or on open land beside its roads. Once those are gone, it carries a main
+    road on past its end and builds either side of the new stretch (a city stays inside its walls).
+  - The house goes up by day over a few minutes, inside scaffolding, with one of the villagers at work on it.
+    First the ground is levelled, then the floor, the walls and the roof.
+  - A finished house stands empty at first. Each morning someone takes one of its beds: a family moves in, or a
+    baby is born (a baby takes the longest to grow up).
+  - The village won't start another house until every bed it has is taken.
+
+### Night raids
+
+- Now and then at night, while you're about a village that keeps guards (a village, town or city), a horn
+  sounds out in the dark, the village bell rings the alarm, and night creatures gather at the end of one of its
+  roads (outside a gate, round a city).
+- They come at the village in waves, two for a village and three for a town or city, a bit bigger each time,
+  and make for the square. The guards go after them wherever they are in the village.
+- The raiders fight the guards, and you if you're nearer. A guard who takes too many blows is carried off
+  wounded, and is back at the post the next day.
+- Beat every wave and the villagers thank you with coins (more for a longer raid) and a lot of standing in the
+  village. New achievement: **Hold the Line**.
+- Whatever's left at dawn, or when you go away, slinks off into the dark.
+- The better a village is doing (the more you're liked there, and the more it has built), the more it tempts
+  them. There are no raids on festival days, and none on Peaceful.
 
 ### Village requests, reputation and festivals
 

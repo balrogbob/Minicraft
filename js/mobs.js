@@ -854,12 +854,19 @@ export const WORK_JOBS = { church: 'cleric', smithy: 'blacksmith', railsmith: 'r
 export const JOB_NAMES = { farmer: 'Farmer', smith: 'Smith', fisher: 'Fisher', cleric: 'Cleric', blacksmith: 'Blacksmith', railsmith: 'Railsmith', mechanic: 'Mechanic', cook: 'Cook' };
 const GUARDS = { hamlet: 0, village: 1, town: 2, city: 4 };
 export const CHILD_TIME = 2 * 12 * 60; // seconds (two days) a child spends about the village before it's grown up
+// (v50 stage 4) night raids: how many waves come at a village of each size, and how many creatures in the first
+const RAID_WAVES = { village: 2, town: 3, city: 3 }, RAID_FIRST = { village: 3, town: 4, city: 5 };
+const RAID_KINDS = ['gloomling', 'gloomling', 'gloomling', 'mossback', 'thornspitter'];
+const GUARD_HP = 40;
 const MAX_ABOUT = 12; // never more villagers (not counting guards) about at once
 // Everyone who lives in a village, in a fixed order (so the same people come out each time): guards first,
 // then whoever sleeps in each bed of each house. Each is { i, role: 'guard'|'adult'|'child', sex: 'm'|'f',
 // job, house, work: { x, z, r } | null }. A child has a job waiting for it when it grows up.
 export function villageFolk(v, grown) {
-  if (v.folk && v.folkFor === v.houses.length) return v.folk;
+  // (v50 stage 4: a house the village builds fills a bed at a time, so who lives there changes with `moved` too)
+  const sig = `${v.houses.length}:${v.houses.reduce((t, h) => t + (h.moved ?? 99), 0)}`;
+  if (v.folk && v.folkFor === sig) return v.folk;
+  const was = v.folk;
   const hash = (i, k) => { let h = (v.x * 73856093) ^ (v.z * 19349663) ^ (i * 83492791) ^ (k * 2654435761); h = Math.imul(h ^ (h >>> 13), 1274126177); return ((h ^ (h >>> 16)) >>> 0) / 4294967296; };
   const folk = [];
   const add = (o) => { const i = folk.length; folk.push({ i, sex: hash(i, 1) < 0.5 ? 'm' : 'f', work: null, house: null, ...o }); };
@@ -880,7 +887,7 @@ export function villageFolk(v, grown) {
     for (let i = 0; i < (GUARDS[v.size] ?? 0); i++) add({ role: 'guard', job: 'guard', work: posts[i % posts.length] });
     let j = 0;
     for (const hs of v.houses) {
-      (hs.beds?.length ? hs.beds : [0]).forEach((_, b) => {
+      (hs.beds?.length ? hs.beds : [0]).slice(0, hs.moved ?? 99).forEach((_, b) => {
         // the second bed in a house is a child's, now and then (in the villages that have room to grow)
         const child = b > 0 && hash(folk.length, 2) < 0.45;
         // (once every job is taken, the rest farm the fields or go fishing)
@@ -891,8 +898,12 @@ export function villageFolk(v, grown) {
       });
     }
   }
-  for (const f of folk) if (f.role === 'child' && grown?.includes(f.i)) f.role = 'adult';
-  v.folk = folk; v.folkFor = v.houses.length;
+  for (const f of folk) {
+    if (f.role === 'child' && grown?.includes(f.i)) f.role = 'adult';
+    const o = was?.[f.i]; // (the same person as before: keep how far a child has grown, and a guard's wounds)
+    if (o) { if (o.youth != null && f.role === 'child') f.youth = o.youth; if (o.wounded) f.wounded = o.wounded; }
+  }
+  v.folk = folk; v.folkFor = sig;
   return folk;
 }
 const HOSTILE_KINDS = MOB_KINDS.filter((k) => SPECIES[k].hostile && !SPECIES[k].boss);
@@ -1143,8 +1154,9 @@ export class MobManager {
     if (this.owns && !this.owns(v.x, v.z)) return; // (the game nearest the village looks after its villagers)
     const folk = villageFolk(v, this.grownOf?.(v));
     const here = this.mobs.filter((m) => m.home === v), night = this.villagerNight();
+    if (!night && !this.raid) for (const o of folk) o.wounded = false; // (patched up by day)
     const about = here.filter((m) => m.role !== 'guard').length;
-    const f = folk.find((o) => !here.some((m) => m.folk === o.i) && (o.role === 'guard' || (!night && about < MAX_ABOUT)));
+    const f = folk.find((o) => !here.some((m) => m.folk === o.i) && !o.wounded && (o.role === 'guard' || (!night && about < MAX_ABOUT)));
     if (!f) return;
     const hs = f.house, p = f.role === 'guard' ? f.work : null;
     const x = p ? Math.floor(p.x + rand(-1, 1)) : hs.x + hs.door[0] * 2 + Math.round(rand(-1, 1));
@@ -1154,6 +1166,7 @@ export class MobManager {
     if (!s || w.isWater(x, s.y, z) || !this.hasRoom('villager', x + 0.5, s.y + 1, z + 0.5)) return;
     const m = this.spawn('villager', x + 0.5, s.y + 1, z + 0.5, { profession: f.role === 'adult' ? f.job : undefined, role: f.role, sex: f.sex });
     m.home = v; m.house = f.role === 'guard' ? null : hs; m.folk = f.i;
+    if (f.role === 'guard') m.guardHp = GUARD_HP;
     if (f.role === 'child') { f.youth ??= CHILD_TIME * (0.4 + 0.6 * ((f.i * 0.618) % 1)); m.youth = f.youth; m.root.scale.setScalar(m.baseScale * childScale(m.youth)); }
     this.onVillagerSpawn?.(m);
     return m;
@@ -1179,6 +1192,8 @@ export class MobManager {
   // at noon, and the festival), otherwise the square. Children play about the square.
   anchorOf(m) {
     const v = m.home, f = v.folk?.[m.folk], h = this.hour ?? 12;
+    // (v50 stage 4) one of them builds the village's new house, by day
+    if (v.siteAt && v.siteAt.builder === m.folk && m.role === 'adult' && !this.festival && h >= 7 && h < 18) return v.siteAt;
     if (f?.work && m.role !== 'child' && !this.festival && h >= 7.5 && h < 17 && (h < 12 || h >= 13)) return f.work;
     return { x: v.x + 0.5, z: v.z + 0.5, r: m.role === 'child' ? 10 : v.layout === 2 ? Math.min(20, v.radius * 0.5) : 16 };
   }
@@ -1187,7 +1202,9 @@ export class MobManager {
   thinkGuard(m, dt, player) {
     const v = m.home;
     m.attackCD = Math.max(0, (m.attackCD ?? 0) - dt);
-    let target = null, best = 14;
+    // (in a raid on its village, a guard goes for the raiders wherever they are in it)
+    const raid = this.raid?.v === v;
+    let target = null, best = raid ? (v.radius ?? 26) * 2 : 14;
     for (const o of this.mobs) {
       if (!o.spec.hostile || o.dying || o.puppet) continue;
       const d = Math.hypot(o.pos.x - m.pos.x, o.pos.z - m.pos.z);
@@ -1197,6 +1214,7 @@ export class MobManager {
       m.state = 'chase';
       m.heading = Math.atan2(target.pos.x - m.pos.x, target.pos.z - m.pos.z);
       m.closeEnough = best < 1 + target.spec.w / 2;
+      m.brisk = best > 8;
       if (best < 1.6 + target.spec.w / 2 && m.attackCD <= 0) {
         m.attackCD = 1;
         m.swingT = 0.3;
@@ -1215,6 +1233,132 @@ export class MobManager {
       if (m.state === 'walk' || Math.random() < 0.3) { m.state = 'idle'; m.timer = rand(3, 8); }
       else { m.post = pick(posts); m.state = 'walk'; m.timer = 1; } // on to another post
     }
+  }
+
+  // ---------- (v50 stage 4) night raids ----------
+  // Now and then, at night, while you're near a village that keeps guards, night creatures gather out past its
+  // edge and come at it in waves, making for the square. The guards (and you) fight them off; a guard who takes
+  // too many blows is carried off wounded, and is back at the post the next night. The raid is over when every
+  // wave is beaten (the village is grateful: see onRaidEnd), or when morning comes or you go away (whatever's
+  // left slinks off).
+  raidable(v) { return v?.layout === 2 && RAID_WAVES[v.size] && (GUARDS[v.size] ?? 0) > 0; }
+
+  // Start a raid on village v now (the game decides when: see tickRaid). Returns the raid, or null.
+  startRaid(v, player) {
+    if (this.raid || !this.raidable(v)) return null;
+    // where they come from: out past the end of a main road (outside a gate, round a city)
+    // (on the road itself, its last few blocks: off it the ground may drop away where the village was levelled)
+    const ends = v.walls?.gates?.length ? v.walls.gates.map((g) => [g.x + g.dir[0] * 5, g.z + g.dir[1] * 5, g.dir])
+      : (v.roads ?? []).filter((r) => r.main).map((r) => [r.to[0] - r.dir[0] * 3, r.to[1] - r.dir[1] * 3, r.dir]);
+    if (!ends.length) ends.push([v.x + v.radius - 8, v.z, [1, 0]]);
+    // (the side away from you if there's a choice, so you see them coming)
+    ends.sort((a, b) => Math.hypot(b[0] - player.pos.x, b[1] - player.pos.z) - Math.hypot(a[0] - player.pos.x, a[1] - player.pos.z));
+    this.raid = { v, from: ends[Math.floor(Math.random() * Math.min(2, ends.length))], waves: RAID_WAVES[v.size], wave: 0, next: 4, raiders: [], beaten: 0, wounded: 0 };
+    this.onRaidStart?.(this.raid);
+    return this.raid;
+  }
+
+  // One wave: RAID_FIRST creatures (and one more each wave after), spread about the place they come from.
+  raidWave(r) {
+    const w = this.world, n = RAID_FIRST[r.v.size] + r.wave;
+    let made = 0;
+    for (let k = 0; k < n * 4 && made < n; k++) {
+      const [ux, uz] = r.from[2], a = Math.floor(rand(-3, 4)), o = Math.floor(rand(-1, 2));
+      const x = r.from[0] + ux * a - uz * o, z = r.from[1] + uz * a + ux * o;
+      if (!w.chunkAt(x, z)) continue;
+      const s = this.surface(x, z);
+      if (!s || w.isWater(x, s.y, z)) continue;
+      const kind = r.wave === 0 && made === 0 ? 'gloomling' : pick(RAID_KINDS);
+      if (!this.hasRoom(kind, x + 0.5, s.y + 1, z + 0.5)) continue;
+      const m = this.spawn(kind, x + 0.5, s.y + 1, z + 0.5);
+      m.raid = r;
+      r.raiders.push(m);
+      made++;
+    }
+    r.wave++;
+    r.next = 70; // (the next wave comes when this one is nearly beaten, or after a while anyway)
+    this.onRaidWave?.(r, made);
+    return made;
+  }
+
+  // Each frame: maybe start a raid, send in the waves, and see whether it's over.
+  tickRaid(dt, player, ctx) {
+    const r = this.raid, night = this.hour != null && (this.hour > 19.5 || this.hour < 4.5);
+    if (!r) {
+      if (!night || !ctx.difficulty || ctx.difficulty === DIFFICULTY.peaceful || ctx.playerDead) return;
+      const v = this.world.generator.nearestVillage(player.pos.x, player.pos.z, 1);
+      if (!this.raidable(v) || Math.hypot(v.x - player.pos.x, v.z - player.pos.z) > v.radius + 24 || (this.owns && !this.owns(v.x, v.z))) return;
+      // (one roll a night for each village, and only once you've been about it a while)
+      const key = `${v.x},${v.z}:${ctx.day ?? 0}`;
+      if (this.raidRolled === key) return;
+      this.raidNear = (this.raidNear ?? 0) + dt;
+      if (this.raidNear < 20) return;
+      this.raidRolled = key; this.raidNear = 0;
+      if (Math.random() < (this.raidChance?.(v) ?? 0.15)) this.startRaid(v, player);
+      return;
+    }
+    r.raiders = r.raiders.filter((m) => { if (!m.dying && this.mobs.includes(m)) return true; if (m.dying) r.beaten++; return false; });
+    const v = r.v, far = Math.hypot(v.x - player.pos.x, v.z - player.pos.z) > v.radius + 100;
+    if (!night && this.hour > 4 && this.hour < 12 || far || ctx.playerDead) {
+      // morning (or you've gone): whatever's left slinks off into the dark
+      for (const m of r.raiders) { m.dispose(this.scene); this.mobs.splice(this.mobs.indexOf(m), 1); }
+      this.raid = null;
+      this.onRaidEnd?.(r, false);
+      return;
+    }
+    r.next -= dt;
+    if (r.wave < r.waves && (r.next <= 0 || (r.wave > 0 && r.raiders.length <= 1))) {
+      if (!this.raidWave(r) && r.wave === 1) { this.raid = null; this.onRaidEnd?.(r, null); return; } // (nowhere for them to come from)
+    }
+    if (r.wave >= r.waves && !r.raiders.length) {
+      this.raid = null;
+      this.onRaidEnd?.(r, true);
+    }
+  }
+
+  // A raider's mind: the player or a guard if one is near, otherwise on to the square.
+  thinkRaider(m, dt, player, ctx) {
+    const v = m.raid.v, spec = m.spec, diff = ctx.difficulty ?? DIFFICULTY.worrying;
+    let foe = null, best = 9;
+    for (const o of this.mobs) {
+      if (o.role !== 'guard' || o.home !== v || o.dying) continue;
+      const d = Math.hypot(o.pos.x - m.pos.x, o.pos.z - m.pos.z);
+      if (d < best) { best = d; foe = o; }
+    }
+    const dp = Math.hypot(player.pos.x - m.pos.x, player.pos.z - m.pos.z);
+    // (you, if you're nearer than any guard, or have hurt it, or it shoots)
+    if (!ctx.playerDead && (dp < best + 2 || m.angry > 0 || (spec.ranged && dp < 16))) return false;
+    if (foe) {
+      m.state = 'chase';
+      m.heading = Math.atan2(foe.pos.x - m.pos.x, foe.pos.z - m.pos.z);
+      m.closeEnough = best < (spec.reach ?? 1.4) * 0.6;
+      if (!spec.ranged && best < (spec.reach ?? 1.4) + 0.3 && m.attackCD <= 0) {
+        m.attackCD = spec.attackEvery / diff.speed;
+        m.swingT = 0.3;
+        this.hurtGuard(foe, spec.damage * diff.dmg * 0.6, m); // (guards wear mail)
+      }
+      return true;
+    }
+    // on to the square, and mill about there
+    const dx = v.x + 0.5 - m.pos.x, dz = v.z + 0.5 - m.pos.z, d = Math.hypot(dx, dz);
+    if (d > 5) { m.state = 'chase'; m.heading = Math.atan2(dx, dz); m.closeEnough = false; return true; }
+    return false;
+  }
+
+  // A guard takes a blow. Knocked down, it's carried off wounded (back the next night).
+  hurtGuard(g, amount, from) {
+    g.guardHp = (g.guardHp ?? GUARD_HP) - amount;
+    g.flash = 0.25;
+    const dx = g.pos.x - from.pos.x, dz = g.pos.z - from.pos.z, len = Math.hypot(dx, dz) || 1;
+    g.kx = (dx / len) * 3; g.kz = (dz / len) * 3;
+    this.sound?.mob('villager', 0.8);
+    if (g.guardHp > 0) return;
+    const f = g.home?.folk?.[g.folk];
+    if (f) f.wounded = true;
+    if (this.raid) this.raid.wounded++;
+    g.dying = 0.4;
+    this.sound?.poof();
+    this.onGuardDown?.(g);
   }
 
   // Villagers go indoors from dusk until morning. (`hour` is set by the game each frame: 0..24.)
@@ -1334,6 +1478,7 @@ export class MobManager {
     }
     this.villageTimer = (this.villageTimer ?? 0) - dt;
     if (this.villageTimer <= 0) { this.villageTimer = 3; this.spawnVillagers(player); }
+    this.tickRaid(dt, player, ctx);
     this.hostileTimer -= dt;
     if (this.hostileTimer <= 0) {
       this.hostileTimer = 0.5;
@@ -1507,12 +1652,13 @@ export class MobManager {
     m.attackCD = Math.max(0, m.attackCD - dt);
     m.angry = Math.max(0, m.angry - dt);
     m.swingT = Math.max(0, m.swingT - dt);
+    if (m.raid && this.thinkRaider(m, dt, player, ctx)) return;
     const ex = player.pos.x - m.pos.x, ez = player.pos.z - m.pos.z;
     const ey = (player.pos.y + 0.9) - (m.pos.y + spec.h * 0.5);
     const d = Math.hypot(ex, ez);
     if ((m.seeTimer -= dt) <= 0) { m.seeTimer = 0.4; m.sees = d < 40 && this.canSee(m, player); }
     const range = m.angry > 0 ? 28 : diff.sight;
-    const hunting = !ctx.playerDead && range > 0 && d < range && (m.sees || m.angry > 0);
+    const hunting = !ctx.playerDead && (m.raid ? d < 24 : range > 0 && d < range && (m.sees || m.angry > 0));
     if (!hunting) {
       if (m.hunting) { m.hunting = false; m.state = 'idle'; m.timer = rand(1, 3); }
       this.think(m, dt, player);

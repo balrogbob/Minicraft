@@ -27,6 +27,7 @@ export const ACHIEVEMENTS = [
   { id: 'treasure', icon: '💰', name: 'X Marks the Spot', about: 'Dig up the chest a treasure map leads to.' },
   { id: 'horse', icon: '🐎', name: 'Giddy-up', about: 'Win over a wild horse, saddle it and ride.' },
   { id: 'hero', icon: '🎖️', name: 'Local Hero', about: 'Earn a village\'s highest regard by trading and filling its requests.' },
+  { id: 'defend', icon: '🛡️', name: 'Hold the Line', about: 'Help a village\'s guards beat off a night raid.' },
   { id: 'lock', icon: '⛵', name: 'Lock Keeper', about: 'Work a canal lock with a sluice wheel.' },
   { id: 'charcoal', icon: '🔥', name: 'Charcoal Burner', about: 'Burn a covered pile of logs down into charcoal.' },
   { id: 'upgrade', icon: '⚙️', name: 'Souped Up', about: 'Fit an upgrade to a machine.' },

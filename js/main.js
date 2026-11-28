@@ -6,7 +6,7 @@ import { Net } from './net.js';
 import { Graphics, GFX_DEFAULTS, GFX_NAMES, GFX_TOGGLES, SHADOW_LEVELS, TRACED_LEVELS, GODRAY_LEVELS, GFX_PRESETS, PRESET_ORDER, PRESET_NAMES, MAX_TORCH_SHADOWS, gfxUniforms, gfxMaterials, GFX_FRAG_HEAD, GFX_SUN_TERM, GFX_WATER, GFX_VERT_HEAD, GFX_VERT_DECODE, GFX_VERT_SWAY, WATER_LAYER, LATE_LAYER } from './graphics.js';
 import {
   BLOCKS, RECIPES, TABLE, armourId, GEARBOX, MUSHROOM_STEW, APPLE_PIE, FISH_PIE, PUMPKIN_PIE, BAKED_POTATO, FISH_SOUP, BERRY_JAM, CHERRY_PIE, TRUFFLE_SOUP, AIR, WATER, TORCH, TORCH_WALL_W, WALL_TORCH_DIRS,
-  GRASS, DIRT, SAND, CHURN, SUGAR_CANE, BREAD, ITEMS, BOW, ARROW, BUCKET,
+  GRASS, DIRT, SAND, SNOW, SNOW_GRASS, CHURN, SUGAR_CANE, BREAD, ITEMS, BOW, ARROW, BUCKET,
   WOOD_PICK, STONE_PICK, WOOD_AXE, STONE_AXE, WOOD_SHOVEL, STONE_SHOVEL,
   BED, BED_FOOT, CHAIR, LAMP, CARPET, CURTAIN, DOOR, SLIME_FUEL, FACING_DIRS, MAX_LAMP_FUEL,
   isBed, isChair, isLamp, isCurtain, isDoor, doorId, IRON_BARS, FLOWER_POT, HANGING_PLANT, WINDOW_BOX, POT_PLANTS, potOf,
@@ -45,6 +45,7 @@ import { makePalette } from './voxels.js';
 import { createAtlas, createGlowMask, createIcons, createCrackCanvases, createWaterCanvas, createHudIcons, paintSeason, ATLAS_COLS } from './textures.js';
 import { World, CHUNK, WORLD_SIZE, chunkKey, skyBrightness, lightBrightness } from './world.js';
 import { buildBuilding, houseStyle } from './buildings.js';
+import { growthPlots } from './villages.js';
 import { localIndex, CHUNK_VOLUME, OLD_CHUNK_VOLUME, H, SEA_LEVEL, SNOW_LINE, WORLD_CHUNKS } from './terrain.js';
 import { ChunkStore, toBlocks } from './store.js';
 import { buildLegacyWorld, LEGACY_W } from './legacy.js';
@@ -63,7 +64,7 @@ import { ACHIEVEMENTS, ACHIEVEMENT_IDS } from './achievements.js';
 import { GUIDE, GOALS, chapterOpen, goalItem, goalShown } from './guidebook.js';
 import { SKILLS, SKILL, MAX_LEVEL, xpToNext, perk, gain, hungerSaving, loadSkills, STATION_SKILL, STATION_PERKS } from './skills.js';
 import { CRATED } from './blocks.js';
-import { MobManager, DIFFICULTY, DIFFICULTY_ORDER, SPECIES, JOB_NAMES } from './mobs.js';
+import { MobManager, DIFFICULTY, DIFFICULTY_ORDER, SPECIES, JOB_NAMES, villageFolk, CHILD_TIME } from './mobs.js';
 import { ArrowManager } from './arrows.js';
 import { Stations, STATION_KINDS, isFuel, inCellar, wetAt, upgradeStacks, upgradeRefusal } from './stations.js';
 import { Fishing } from './fishing.js';
@@ -863,7 +864,13 @@ async function startWorld(save, opts = {}) {
   villageGrowth = new Map((Array.isArray(save?.villageGrowth) ? save.villageGrowth : []).filter((e) => Array.isArray(e) && typeof e[0] === 'string' && e[1] && Number.isFinite(e[1].deals))
     .map(([k, g]) => [k, { deals: g.deals, built: (Array.isArray(g.built) ? g.built : []).filter((h) => h && [h.x, h.y, h.z].every(Number.isFinite) && Array.isArray(h.door)),
       rep: Number.isFinite(g.rep) ? g.rep : 0, grown: Array.isArray(g.grown) ? g.grown.filter(Number.isInteger) : [], reqDay: Number.isInteger(g.reqDay) ? g.reqDay : -1, decorDay: Number.isInteger(g.decorDay) ? g.decorDay : -1,
-      decor: (Array.isArray(g.decor) ? g.decor : []).filter((e) => Array.isArray(e) && e.length === 4 && e.every(Number.isFinite)) }]));
+      decor: (Array.isArray(g.decor) ? g.decor : []).filter((e) => Array.isArray(e) && e.length === 4 && e.every(Number.isFinite)),
+      ...(Number.isInteger(g.fillDay) ? { fillDay: g.fillDay } : {}),
+      ...(g.site?.b && [g.site.b.x, g.site.b.y, g.site.b.z].every(Number.isFinite) && Array.isArray(g.site.b.face) && Number.isInteger(g.site.i)
+        ? { site: { b: { kind: 'house', x: g.site.b.x, y: g.site.b.y, z: g.site.b.z, face: g.site.b.face.map(Number), style: String(g.site.b.style), size: String(g.site.b.size),
+          ...(g.site.b.road && [g.site.b.road.x, g.site.b.road.z, g.site.b.road.len, g.site.b.road.y, g.site.b.road.id].every(Number.isFinite) && Array.isArray(g.site.b.road.dir)
+            ? { road: { x: g.site.b.road.x, z: g.site.b.road.z, dir: g.site.b.road.dir.map(Number), len: g.site.b.road.len, y: g.site.b.road.y, id: g.site.b.road.id } } : {}) }, i: g.site.i,
+          scaf: (Array.isArray(g.site.scaf) ? g.site.scaf : []).filter((c) => Array.isArray(c) && c.length === 3 && c.every(Number.isFinite)) } } : {}) }]));
   beaconSpots = new Set(Array.isArray(save?.beacons) ? save.beacons.filter((k) => typeof k === 'string') : []);
   if (save?.weather) weather.set(!!save.weather.raining, Math.max(10, +save.weather.timer || 60));
   else weather.set(false);
@@ -3708,6 +3715,29 @@ mobs.onGrownUp = (m) => {
   const g = villageEntry(m.home);
   if (!(g.grown ??= []).includes(m.folk)) g.grown.push(m.folk);
   if (Math.hypot(m.pos.x - player.pos.x, m.pos.z - player.pos.z) < 32) toast(`One of the children of ${m.home.name} has grown up, and become the village's new ${PROFESSION_NAMES[m.profession].toLowerCase()}`, 3500);
+};
+// (v50 stage 4) Night raids (see mobs.tickRaid): the better a village does, the more it tempts the creatures of
+// the night; never on a festival day.
+mobs.raidChance = (v) => (festivalToday() ? 0 : 0.1 + Math.min(0.1, repOf(v) / 500) + Math.min(0.1, (villageGrowth.get(villageKey(v))?.built?.length ?? 0) * 0.03));
+const raidHeard = (r) => Math.hypot(r.v.x - player.pos.x, r.v.z - player.pos.z) < r.v.radius + 60;
+mobs.onRaidStart = (r) => {
+  const d = Math.hypot(r.from[0] - player.pos.x, r.from[1] - player.pos.z);
+  sound.horn(Math.max(0.3, 1 - d / 120));
+  for (let k = 0; k < 4; k++) setTimeout(() => sound.ding(0.7), 1600 + k * 450); // (and the village bell rings the alarm)
+  const dir = POINT_NAMES[pointOf(r.from[0] - r.v.x, r.from[1] - r.v.z)];
+  toast(`A horn sounds out of the dark ${dir ? `to the ${dir} ` : ''}of ${r.v.name}: night creatures are coming! Help the guards hold the village`, 4500);
+};
+mobs.onRaidWave = (r, made) => { if (r.wave > 1 && made && raidHeard(r)) { sound.horn(0.6); toast(`Another wave of creatures is coming at ${r.v.name}!`, 2500); } };
+mobs.onGuardDown = (g) => { if (Math.hypot(g.pos.x - player.pos.x, g.pos.z - player.pos.z) < 48) toast(`A guard of ${g.home.name} has been wounded, and carried off to be patched up`, 2600); };
+mobs.onRaidEnd = (r, won) => {
+  if (won === null) return;
+  if (!won) { if (r.wave > 0 && raidHeard(r)) toast(`The last of the creatures slink away from ${r.v.name} into the dark`, 2600); return; }
+  const coins = 3 * r.waves + r.beaten;
+  sound.ding(0.8);
+  toast(`The raid on ${r.v.name} is beaten off! The villagers come out to thank you`, 3500);
+  giveDrops([[COIN, coins]]);
+  addRep(r.v, 3 + r.waves);
+  achieve('defend');
 };
 mobs.onVillagerSpawn = (m) => {
   const pool = [...VILLAGER_TRADES[m.profession] ?? []]; // (guards and children don't trade)
@@ -6976,7 +7006,10 @@ function villageHouses(v) {
 function growVillage(v, n = 1) {
   const g = villageEntry(v);
   g.deals += n;
-  if (g.deals >= DEALS_PER_HOUSE * (g.built.length + 1) && g.built.length < (v.layout === 2 ? v.plots.filter((p) => p.kind === 'spare').length : 6)) {
+  // (v50 stage 4) a new village builds only once every bed it has is slept in, and one house at a time
+  if (v.layout === 2 && (g.site || g.built.some((h) => (h.moved ?? 99) < (h.beds?.length || 1)))) return;
+  if (g.deals >= DEALS_PER_HOUSE * (g.built.length + 1) && g.built.length < (v.layout === 2 ? GROW_MAX[v.size] ?? 2 : 6)) {
+    if (v.layout === 2) { startSite(v, g); return; }
     const h = buildVillageHouse(v);
     if (h) { g.built.push(h); v.houses.push({ ...h }); toast(`${v.name} is doing well: the villagers have built a new house`, 3000); }
   }
@@ -7034,6 +7067,143 @@ function buildOnPlot(v) {
     return { x: p.x, y: p.y, z: p.z, door: out.door, beds: out.beds, size: b.size, style: b.style };
   }
   return null;
+}
+// (v50 stage 4) A new village's house goes up a layer at a time by day, over a few minutes, inside scaffolding at
+// its corners, with one of the villagers at work on it. Finished, it stands empty until someone moves in: a bed
+// a morning, a family from elsewhere or a baby born (see fillBeds).
+const SITE_TIME = 150; // seconds of daylight a house takes to build
+const GROW_MAX = { hamlet: 2, village: 3, town: 4, city: 5 }; // houses a village builds, at most
+// (what a village will clear off land it builds on: the ground and what grows on it, never anything built there)
+const WILD = new Set([AIR, GRASS, DIRT, SAND, STONE, GRAVEL, SNOW, SNOW_GRASS, CLAY, LOG, WATER]);
+const wildAt = (x, y, z) => { const id = world.get(x, y, z), d = BLOCKS[id]; return WILD.has(id) || isLeaves(id) || (d && !d.solid && !d.light && d.sound === 'leaves'); };
+// (v50 stage 4) Once a village has used up its land, it builds out past the ends of its main roads: the road
+// goes on (level, in the same stone) and the houses stand either side, as along the rest of it. Not round a city:
+// its walls hem it in.
+function roadEndPlots(v) {
+  if (v.walls) return [];
+  const out = [];
+  for (const r of v.roads ?? []) {
+    if (!r.main) continue;
+    const [ux, uz] = r.dir, px = -uz, pz = ux, [ex, ez] = r.to, G = v.grid;
+    const L = G ? G.tgt[(ex - G.bx0) + (ez - G.bz0) * G.W] : groundAt(ex, ez);
+    if (!Number.isFinite(L)) continue;
+    for (const t0 of [1, 10]) for (const s of [-1, 1]) {
+      out.push({ x: ex + ux * (t0 + 3) + px * s * 5, y: L, z: ez + uz * (t0 + 3) + pz * s * 5, face: [-px * s, -pz * s],
+        road: { x: ex + ux, z: ez + uz, dir: [ux, uz], len: t0 + 6, y: L, id: world.get(ex, L, ez) } });
+    }
+  }
+  return out.sort((a, b) => a.road.len - b.road.len || Math.hypot(a.x - player.pos.x, a.z - player.pos.z) - Math.hypot(b.x - player.pos.x, b.z - player.pos.z));
+}
+// The columns of a road a site lays, each [x, z].
+const roadCells = (rd) => { const out = []; for (let t = 0; t < rd.len; t++) for (let o = -1; o <= 1; o++) out.push([rd.x + rd.dir[0] * t - rd.dir[1] * o, rd.z + rd.dir[1] * t + rd.dir[0] * o]); return out; };
+// Whether a column can be built on at height y: loaded, nothing built in the way, ground not far below.
+function siteColumnOk(x, y, z) {
+  if (!world.chunkAt(x, z)) return false;
+  for (let yy = y - 1; yy <= y + 12; yy++) if (!wildAt(x, yy, z) || (yy <= y + 1 && world.isWater(x, yy, z))) return false;
+  let y0 = y;
+  while (y0 > y - 8 && (world.get(x, y0, z) === AIR || world.isWater(x, y0, z))) y0--;
+  return y0 > y - 8;
+}
+function startSite(v, g) {
+  const taken = (p) => v.houses.some((o) => Math.abs(o.x - p.x) < 8 && Math.abs(o.z - p.z) < 8) || (v.buildings ?? []).some((o) => Math.abs(o.x - p.x) < 8 && Math.abs(o.z - p.z) < 8);
+  // the plots the plan left free first, then new land beside the roads
+  for (const p of [...v.plots.filter((q) => q.kind === 'spare'), ...growthPlots(v), ...roadEndPlots(v)]) {
+    if (taken(p)) continue;
+    let ok = true;
+    for (let dz = -3; dz <= 3 && ok; dz++) for (let dx = -3; dx <= 3 && ok; dx++) if (!siteColumnOk(p.x + dx, p.y, p.z + dz)) ok = false;
+    // (a road out to it: over ground that's its own, or the road already laid)
+    if (ok && p.road) for (const [x, z] of roadCells(p.road)) if (world.get(x, p.road.y, z) !== p.road.id && !siteColumnOk(x, p.road.y, z)) { ok = false; break; }
+    if (!ok) continue;
+    g.site = { b: { kind: 'house', x: p.x, y: p.y, z: p.z, face: p.face, style: houseStyle(v.size, v.biome, Math.random()), size: Math.random() < 0.5 ? 'small' : 'long', ...(p.road ? { road: p.road } : {}) }, i: 0, scaf: [] };
+    if (Math.hypot(p.x - player.pos.x, p.z - player.pos.z) < 96) toast(`${v.name} is doing well: the villagers have started building a new house`, 3000);
+    return;
+  }
+}
+// The blocks of a house, in the order they go up: each place once (the last word on it), lowest first, and the
+// air inside (clearing the plot) before anything.
+const siteLists = new WeakMap();
+function siteList(site) {
+  let list = siteLists.get(site);
+  if (list) return list;
+  const b = site.b, at = new Map();
+  const out = buildBuilding((x, y, z, id) => { const k = `${x},${y},${z}`; at.delete(k); at.set(k, [x, y, z, id]); }, b);
+  // first the ground: levelled to the road over the plot (cut down, or built up from below)
+  const ground = [], top0 = world.get(b.x, b.y, b.z);
+  const top = [GRASS, SAND, SNOW_GRASS, SNOW].includes(top0) ? top0 : GRASS, sub = top === SAND ? SAND : DIRT;
+  const level = (x, z, y, id) => {
+    for (let yy = y + 12; yy > y; yy--) if (wildAt(x, yy, z) && world.get(x, yy, z) !== AIR) ground.push([x, yy, z, AIR]);
+    let y0 = y - 1;
+    while (y0 > y - 8 && (world.get(x, y0, z) === AIR || world.isWater(x, y0, z))) y0--;
+    for (let yy = y0 + 1; yy < y; yy++) ground.push([x, yy, z, sub]);
+    ground.push([x, y, z, id]);
+  };
+  if (b.road) for (const [x, z] of roadCells(b.road)) if (world.get(x, b.road.y, z) !== b.road.id) level(x, z, b.road.y, b.road.id);
+  for (let dz = -3; dz <= 3; dz++) for (let dx = -3; dx <= 3; dx++) level(b.x + dx, b.z + dz, b.y, top);
+  list = [...ground, ...[...at.values()].sort((p, q) => ((q[3] === AIR) - (p[3] === AIR)) || p[1] - q[1])];
+  list.out = out;
+  siteLists.set(site, list);
+  return list;
+}
+let siteCarry = 0;
+function tickSite(v, dt) {
+  const g = villageGrowth.get(villageKey(v)), site = g?.site;
+  if (!site) { v.siteAt = null; return; }
+  const b = site.b;
+  v.siteAt ??= { x: b.x + b.face[0] * 4 + 0.5, z: b.z + b.face[1] * 4 + 0.5, r: 3, builder: -1 };
+  // the builder: one of the grown-ups about (a farmer or fisher if there's one), till the house is done
+  if (!mobs.mobs.some((m) => m.home === v && m.folk === v.siteAt.builder && !m.dying)) {
+    const about = mobs.mobs.filter((m) => m.home === v && m.role === 'adult' && !m.dying);
+    v.siteAt.builder = (about.find((m) => m.profession === 'farmer' || m.profession === 'fisher') ?? about[0])?.folk ?? -1;
+  }
+  if (mobs.villagerNight()) return;
+  for (let dz = -4; dz <= 4; dz += 4) for (let dx = -4; dx <= 4; dx += 4) if (!world.chunkAt(b.x + dx, b.z + dz)) return;
+  const list = siteList(site);
+  siteCarry += dt * list.length / SITE_TIME;
+  let placed = 0;
+  while (siteCarry >= 1 && site.i < list.length) {
+    siteCarry -= 1;
+    const [x, y, z, id] = list[site.i++];
+    if (world.get(x, y, z) === id) continue;
+    world.setBlock(x, y, z, id);
+    placed++;
+    // the scaffolding at the back corners climbs with the walls
+    if (id !== AIR) for (const s of [-1, 1]) {
+      const ax = Math.abs(b.face[1]), az = Math.abs(b.face[0]), sx = b.x + ax * s * 4 - b.face[0] * 4, sz = b.z + az * s * 4 - b.face[1] * 4;
+      for (let sy = b.y + 1; sy <= y; sy++) if (world.get(sx, sy, sz) === AIR) { world.setBlock(sx, sy, sz, SCAFFOLD); site.scaf.push([sx, sy, sz]); }
+    }
+  }
+  if (placed && Math.random() < 0.4) {
+    const d = Math.hypot(b.x - player.pos.x, b.y - player.pos.y, b.z - player.pos.z);
+    if (d < 32) sound.place('wood');
+  }
+  if (site.i < list.length) return;
+  // finished: down come the scaffolds, and the house goes on the village's list, empty
+  for (const [x, y, z] of site.scaf) if (world.get(x, y, z) === SCAFFOLD) world.setBlock(x, y, z, AIR);
+  const out = list.out, h = { x: b.x, y: b.y, z: b.z, door: out.door, beds: out.beds, size: b.size, style: b.style, moved: 0 };
+  g.built.push(h);
+  v.houses.push({ ...h });
+  g.site = null; v.siteAt = null;
+  g.fillDay = day;
+  if (Math.hypot(b.x - player.pos.x, b.z - player.pos.z) < 96) toast(`The new house in ${v.name} is finished. It's waiting for someone to move in`, 3200);
+}
+// A bed a morning in a house the village has built: whoever's bed it is (see villageFolk) moves in, or is born.
+function fillBeds(v) {
+  const g = villageGrowth.get(villageKey(v));
+  if (!g?.built?.length) return;
+  g.fillDay ??= day;
+  while (g.fillDay < day) {
+    g.fillDay++;
+    const h = g.built.find((o) => (o.moved ?? 99) < (o.beds?.length || 1));
+    if (!h) { g.fillDay = day; return; }
+    h.moved++;
+    const vh = v.houses.find((o) => o.x === h.x && o.z === h.z);
+    if (vh) vh.moved = h.moved;
+    const folk = villageFolk(v, g.grown), f = folk.filter((o) => o.house === vh).at(-1);
+    if (f?.role === 'child') f.youth = CHILD_TIME; // (a newborn: the longest to grow up)
+    if (Math.hypot(v.x - player.pos.x, v.z - player.pos.z) < 96 && f) {
+      toast(f.role === 'child' ? `A baby has been born in ${v.name}` : h.moved === 1 ? `A family has moved into the new house in ${v.name}` : `Someone new has come to live in ${v.name}`, 3000);
+    }
+  }
 }
 function placeHouse({ x, y, z, door }) {
   const set = (bx, by, bz, id) => world.setBlock(bx, by, bz, id);
@@ -7120,6 +7290,7 @@ function tickVillages(dt) {
   mobs.hour = hours;
   const v = world.generator.nearestVillage(player.pos.x, player.pos.z, 1);
   if (v) villageHouses(v);
+  if (v?.layout === 2) { tickSite(v, dt); if (!mobs.villagerNight()) fillBeds(v); }
   if (v && bellDay !== day && hours > 6.05 && hours < 9) {
     bellDay = day;
     const d = Math.hypot(v.x + 2 - player.pos.x, v.z - player.pos.z);
@@ -8314,7 +8485,7 @@ function stepGame(now, dt) {
     bees.update(dt, world, player, { day: lightUniforms.uDay.value, flicker: lightUniforms.uFlicker.value, ambient: lightUniforms.uAmbient.value }, sky.light);
     mobs.sneaking = controls.down && player.onGround; // (deer let you creep up on them)
     mobs.update(dt, player, { day: lightUniforms.uDay.value, flicker: lightUniforms.uFlicker.value, ambient: lightUniforms.uAmbient.value },
-      { difficulty: difficulty(), daylight: sky.light, playerDead: dead, ride: ridingMob && { moveX: controls.moveX, moveZ: controls.moveZ, yaw: player.yaw, jump: controls.jump } });
+      { difficulty: difficulty(), daylight: sky.light, playerDead: dead, day, ride: ridingMob && { moveX: controls.moveX, moveZ: controls.moveZ, yaw: player.yaw, jump: controls.jump } });
     if (ridingMob) followMount();
   }
   // write edited chunks to storage shortly (1.5 s) after the player stops changing them
@@ -8428,7 +8599,7 @@ window.minicraft = {
   get riding() { return riding; }, explode, lightFuse, fuses, clockTime, compassText, place, editSign, closeSign, openInventory, closeInventory, chestMove, lamps, tickLamps, sleepUntilMorning, stations, openStation, closeStation,
   get caneToday() { return caneToday; }, get creative() { return creative; }, set creative(v) { creative = v; applyCreative(); }, toggleFly, wand, useWand, get achieved() { return achieved; }, achieve, worldMap, openMap, closeMap, openGuide, switchSlot, store, saveGame, renderWorlds, openWorlds, exportSlot, get target() { return target; }, set target(v) { target = v; }, applyKeys, renderKeys, camera, get controls() { return controls; }, loose, throwHeld, get waypoints() { return waypoints; }, toggleWaypoint, sortSlots, quickStack, dropMeteor, get meteors() { return meteors; }, weather, openTrade, closeTrade, mountMob, dismount, get ridingMob() { return ridingMob; }, effects, armourWear, useAnvil, rollLoot, settings,
   get skills() { return skills; }, set skills(v) { skills = loadSkills(v); skillsChanged(); }, train, skillPerk, openSkills, closeSkills, get reach() { return REACH; },
-  get bedSpawn() { return bedSpawn; }, fertilise, openJournal, closeJournal, get packs() { return packs; }, radiationAt, vehicles, boardVehicle, leaveVehicle, get boarded() { return boarded; }, get seated() { return seated; }, crows, onInvSlot, onStationSlot, quickMoveInv, quickMoveStation, usedIn, itemTipHTML, critters, tickPets, sealife, useRecordPlayer, recordNear, useStand, undoEdit, undoStack, get catGiftDay() { return catGiftDay; }, get villageGrowth() { return villageGrowth; }, notePlanting, tickPuzzles, airPumpNear, useStable, stableNear, horseLabel, logistics, openLogistics, closeLogistics, placeOrder, get lpOpen() { return lpOpen; }, music, musicMood, get guideDone() { return guideDone; }, get guideClaimed() { return guideClaimed; }, tickGuidebook, openGuidebook, closeGuidebook, claimGoal, goalMet, fineChance, fineHarvest, showProduce, foodContest, specialTrades, catchAt, stockStable, tickStables, mangers, openSaddlebags, honeyAt, apiculture, scoopHive, beeEnv, fitUpgrade, piles, lightCharcoalPile, tickPiles, searchChests, takeFromChest, markChest, get chestMark() { return chestMark; }, enterPhotoMode, exitPhotoMode, snapPhoto, get photoMode() { return photoMode; }, photoCam, get lastPhoto() { return lastPhoto; }, tickStalactites, loosenStalactite, fallingRocks, shaking, workLock, findLock, tickLocks, openGates, lockJobs, hangRopeLadder, layBridge, rollUpRope, fireworks, ringBell, requestFor, festivalToday, repOf, addRep, tradeCost, tickFestival, villageEntry, hearths, tickHearths, feedHearth, chimneyTop, smoke, renderPins, togglePin, lightning, igniteAt, fires, tickFires, tickStorm, growVillage, buildVillageHouse, stallPrice, tickStalls, tickVillages, set catGiftDay(v) { catGiftDay = v; }, get places() { return places; }, get treasures() { return treasures; }, readTreasureMap, tickTreasure, beams, tickBeams, beaconSpots: () => beaconSpots, mistNow, tickSnow, tickExplore, sitOn, standUp, useDisplay, zips, linkZip, startZip, get zipping() { return zipping; }, burnCoal, get health() { return health; }, set health(v) { health = v; }, paintings, screens, tuneMonitor, tiltCamera, placeSwitchRail, signalAt, ailments, armourEnch, openAltar, lairNear, useBed, eat, drinkTea,
+  get bedSpawn() { return bedSpawn; }, fertilise, openJournal, closeJournal, get packs() { return packs; }, radiationAt, vehicles, boardVehicle, leaveVehicle, get boarded() { return boarded; }, get seated() { return seated; }, crows, onInvSlot, onStationSlot, quickMoveInv, quickMoveStation, usedIn, itemTipHTML, critters, tickPets, sealife, useRecordPlayer, recordNear, useStand, undoEdit, undoStack, get catGiftDay() { return catGiftDay; }, get villageGrowth() { return villageGrowth; }, notePlanting, tickPuzzles, airPumpNear, useStable, stableNear, horseLabel, logistics, openLogistics, closeLogistics, placeOrder, get lpOpen() { return lpOpen; }, music, musicMood, get guideDone() { return guideDone; }, get guideClaimed() { return guideClaimed; }, tickGuidebook, openGuidebook, closeGuidebook, claimGoal, goalMet, fineChance, fineHarvest, showProduce, foodContest, specialTrades, catchAt, stockStable, tickStables, mangers, openSaddlebags, honeyAt, apiculture, scoopHive, beeEnv, fitUpgrade, piles, lightCharcoalPile, tickPiles, searchChests, takeFromChest, markChest, get chestMark() { return chestMark; }, enterPhotoMode, exitPhotoMode, snapPhoto, get photoMode() { return photoMode; }, photoCam, get lastPhoto() { return lastPhoto; }, tickStalactites, loosenStalactite, fallingRocks, shaking, workLock, findLock, tickLocks, openGates, lockJobs, hangRopeLadder, layBridge, rollUpRope, fireworks, ringBell, requestFor, festivalToday, repOf, addRep, tradeCost, tickFestival, villageEntry, hearths, tickHearths, feedHearth, chimneyTop, smoke, renderPins, togglePin, lightning, igniteAt, fires, tickFires, tickStorm, growVillage, buildVillageHouse, startSite, fillBeds, roadEndPlots, siteColumnOk, stallPrice, tickStalls, tickVillages, set catGiftDay(v) { catGiftDay = v; }, get places() { return places; }, get treasures() { return treasures; }, readTreasureMap, tickTreasure, beams, tickBeams, beaconSpots: () => beaconSpots, mistNow, tickSnow, tickExplore, sitOn, standUp, useDisplay, zips, linkZip, startZip, get zipping() { return zipping; }, burnCoal, get health() { return health; }, set health(v) { health = v; }, paintings, screens, tuneMonitor, tiltCamera, placeSwitchRail, signalAt, ailments, armourEnch, openAltar, lairNear, useBed, eat, drinkTea,
 };
 
 // ---------- v31: catching bees ----------
